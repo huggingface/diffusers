@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -12,183 +12,135 @@ specific language governing permissions and limitations under the License.
 
 # Installation
 
-🤗 Diffusers is tested on Python 3.8+, PyTorch 1.7.0+, and Flax. Follow the installation instructions below for the deep learning library you are using:
+Diffusers is tested on Python 3.8+ and PyTorch 1.4+. Install [PyTorch](https://pytorch.org/get-started/locally/) according to your system and setup.
 
-- [PyTorch](https://pytorch.org/get-started/locally/) installation instructions
-- [Flax](https://flax.readthedocs.io/en/latest/) installation instructions
-
-## Install with pip
-
-You should install 🤗 Diffusers in a [virtual environment](https://docs.python.org/3/library/venv.html).
-If you're unfamiliar with Python virtual environments, take a look at this [guide](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/).
-A virtual environment makes it easier to manage different projects and avoid compatibility issues between dependencies.
-
-Create a virtual environment with Python or [uv](https://docs.astral.sh/uv/) (refer to [Installation](https://docs.astral.sh/uv/getting-started/installation/) for installation instructions), a fast Rust-based Python package and project manager.
-
-<hfoptions id="install">
-<hfoption id="uv">
+Create a [virtual environment](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) for easier management of separate projects and to avoid compatibility issues between dependencies. Use [uv](https://docs.astral.sh/uv/), a Rust-based Python package and project manager, to create a virtual environment and install Diffusers.
 
 ```bash
 uv venv my-env
 source my-env/bin/activate
 ```
 
-</hfoption>
-<hfoption id="Python">
+Install Diffusers with one of the following methods.
+
+<hfoptions id="install">
+<hfoption id="pip">
+
+PyTorch only supports Python 3.8 - 3.11 on Windows.
 
 ```bash
-python -m venv my-env
-source my-env/bin/activate
+uv pip install diffusers["torch"] transformers
 ```
 
 </hfoption>
-</hfoptions>
-
-You should also install 🤗 Transformers because 🤗 Diffusers relies on its models.
-
-
-<frameworkcontent>
-<pt>
-
-PyTorch only supports Python 3.8 - 3.11 on Windows. Install Diffusers with uv.
-
-```bash
-uv install diffusers["torch"] transformers
-```
-
-You can also install Diffusers with pip.
-
-```bash
-pip install diffusers["torch"] transformers
-```
-
-</pt>
-<jax>
-
-Install Diffusers with uv.
-
-```bash
-uv pip install diffusers["flax"] transformers
-```
-
-You can also install Diffusers with pip.
-
-```bash
-pip install diffusers["flax"] transformers
-```
-
-</jax>
-</frameworkcontent>
-
-## Install with conda
-
-After activating your virtual environment, with `conda` (maintained by the community):
+<hfoption id="conda">
 
 ```bash
 conda install -c conda-forge diffusers
 ```
 
-## Install from source
+</hfoption>
+<hfoption id="source">
 
-Before installing 🤗 Diffusers from source, make sure you have PyTorch and 🤗 Accelerate installed.
+A source install installs the `main` version instead of the latest `stable` version. The `main` version is useful for staying updated with the latest changes but it may not always be stable. If you run into a problem, open an [Issue](https://github.com/huggingface/diffusers/issues/new/choose) and we will try to resolve it as soon as possible.
 
-To install 🤗 Accelerate:
-
-```bash
-pip install accelerate
-```
-
-Then install 🤗 Diffusers from source:
+Make sure [Accelerate](https://huggingface.co/docs/accelerate/index) is installed.
 
 ```bash
-pip install git+https://github.com/huggingface/diffusers
+uv pip install accelerate
 ```
 
-This command installs the bleeding edge `main` version rather than the latest `stable` version.
-The `main` version is useful for staying up-to-date with the latest developments.
-For instance, if a bug has been fixed since the last official release but a new release hasn't been rolled out yet.
-However, this means the `main` version may not always be stable.
-We strive to keep the `main` version operational, and most issues are usually resolved within a few hours or a day.
-If you run into a problem, please open an [Issue](https://github.com/huggingface/diffusers/issues/new/choose) so we can fix it even sooner!
+Install Diffusers from source with the command below.
+
+```bash
+uv pip install git+https://github.com/huggingface/diffusers
+```
+
+</hfoption>
+</hfoptions>
 
 ## Editable install
 
-You will need an editable install if you'd like to:
+An editable install is recommended for development workflows or if you're using the `main` version of the source code. A special link is created between the cloned repository and the Python library paths. This avoids reinstalling a package after every change.
 
-* Use the `main` version of the source code.
-* Contribute to 🤗 Diffusers and need to test changes in the code.
-
-Clone the repository and install 🤗 Diffusers with the following commands:
+Clone the repository and install Diffusers with the following commands.
 
 ```bash
 git clone https://github.com/huggingface/diffusers.git
 cd diffusers
+uv pip install -e ".[torch]"
 ```
 
-<frameworkcontent>
-<pt>
-```bash
-pip install -e ".[torch]"
-```
-</pt>
-<jax>
-```bash
-pip install -e ".[flax]"
-```
-</jax>
-</frameworkcontent>
+> [!WARNING]
+> You must keep the `diffusers` folder if you want to keep using the library with the editable install.
 
-These commands will link the folder you cloned the repository to and your Python library paths.
-Python will now look inside the folder you cloned to in addition to the normal library paths.
-For example, if your Python packages are typically installed in `~/anaconda3/envs/main/lib/python3.10/site-packages/`, Python will also search the `~/diffusers/` folder you cloned to.
-
-<Tip warning={true}>
-
-You must keep the `diffusers` folder if you want to keep using the library.
-
-</Tip>
-
-Now you can easily update your clone to the latest version of 🤗 Diffusers with the following command:
+Update your cloned repository to the latest version of Diffusers with the command below.
 
 ```bash
 cd ~/diffusers/
 git pull
 ```
 
-Your Python environment will find the `main` version of 🤗 Diffusers on the next run.
-
 ## Cache
 
-Model weights and files are downloaded from the Hub to a cache which is usually your home directory. You can change the cache location by specifying the `HF_HOME` or `HUGGINFACE_HUB_CACHE` environment variables or configuring the `cache_dir` parameter in methods like [`~DiffusionPipeline.from_pretrained`].
+Model weights and files are downloaded from the Hub to a cache, which is usually your home directory. Change the cache location with the [HF_HOME](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfhome) or [HF_HUB_CACHE](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfhubcache) environment variables or configuring the `cache_dir` parameter in methods like [`~DiffusionPipeline.from_pretrained`].
 
-Cached files allow you to run 🤗 Diffusers offline. To prevent 🤗 Diffusers from connecting to the internet, set the `HF_HUB_OFFLINE` environment variable to `1` and 🤗 Diffusers will only load previously downloaded files in the cache.
+<hfoptions id="cache">
+<hfoption id="env variable">
+
+```bash
+export HF_HOME="/path/to/your/cache"
+export HF_HUB_CACHE="/path/to/your/hub/cache"
+```
+
+</hfoption>
+<hfoption id="from_pretrained">
+
+```py
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    cache_dir="/path/to/your/cache"
+)
+```
+
+</hfoption>
+</hfoptions>
+
+Cached files allow you to use Diffusers offline. Set the [HF_HUB_OFFLINE](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfhuboffline) environment variable to `1` to prevent Diffusers from connecting to the internet.
 
 ```shell
 export HF_HUB_OFFLINE=1
 ```
 
-For more details about managing and cleaning the cache, take a look at the [caching](https://huggingface.co/docs/huggingface_hub/guides/manage-cache) guide.
+For more details about managing and cleaning the cache, take a look at the [Understand caching](https://huggingface.co/docs/huggingface_hub/guides/manage-cache) guide.
 
 ## Telemetry logging
 
-Our library gathers telemetry information during [`~DiffusionPipeline.from_pretrained`] requests.
-The data gathered includes the version of 🤗 Diffusers and PyTorch/Flax, the requested model or pipeline class,
-and the path to a pretrained checkpoint if it is hosted on the Hugging Face Hub.
+Diffusers gathers telemetry information during [`~DiffusionPipeline.from_pretrained`] requests.
+The data gathered includes the Diffusers and PyTorch version, the requested model or pipeline class,
+and the path to a pretrained checkpoint if it is hosted on the Hub.
+
 This usage data helps us debug issues and prioritize new features.
 Telemetry is only sent when loading models and pipelines from the Hub,
 and it is not collected if you're loading local files.
 
-We understand that not everyone wants to share additional information,and we respect your privacy.
-You can disable telemetry collection by setting the `HF_HUB_DISABLE_TELEMETRY` environment variable from your terminal:
+Opt-out and disable telemetry collection with the [HF_HUB_DISABLE_TELEMETRY](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfhubdisabletelemetry) environment variable.
 
-On Linux/MacOS:
+<hfoptions id="telemetry">
+<hfoption id="Linux/macOS">
 
 ```bash
 export HF_HUB_DISABLE_TELEMETRY=1
 ```
 
-On Windows:
+</hfoption>
+<hfoption id="Windows">
 
 ```bash
 set HF_HUB_DISABLE_TELEMETRY=1
 ```
+
+</hfoption>
+</hfoptions>

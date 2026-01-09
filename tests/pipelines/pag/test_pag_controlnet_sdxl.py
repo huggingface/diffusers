@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,9 +28,9 @@ from diffusers import (
     StableDiffusionXLControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism
 from diffusers.utils.torch_utils import randn_tensor
 
+from ...testing_utils import enable_full_determinism
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,

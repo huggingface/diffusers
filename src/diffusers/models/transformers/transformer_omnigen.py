@@ -1,4 +1,4 @@
-# Copyright 2024 OmniGen team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 OmniGen team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -283,7 +283,7 @@ class OmniGenBlock(nn.Module):
 
 class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
     """
-    The Transformer model introduced in OmniGen (https://arxiv.org/pdf/2409.11340).
+    The Transformer model introduced in OmniGen (https://huggingface.co/papers/2409.11340).
 
     Parameters:
         in_channels (`int`, defaults to `4`):

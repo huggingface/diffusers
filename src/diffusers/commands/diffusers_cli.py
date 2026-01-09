@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 
 from argparse import ArgumentParser
 
+from .custom_blocks import CustomBlocksCommand
 from .env import EnvironmentCommand
 from .fp16_safetensors import FP16SafetensorsCommand
 
@@ -26,6 +27,7 @@ def main():
     # Register commands
     EnvironmentCommand.register_subcommand(commands_parser)
     FP16SafetensorsCommand.register_subcommand(commands_parser)
+    CustomBlocksCommand.register_subcommand(commands_parser)
 
     # Let's go
     args = parser.parse_args()

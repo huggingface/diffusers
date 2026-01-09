@@ -1,6 +1,6 @@
 # DreamBooth training example for HiDream Image
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
+[DreamBooth](https://huggingface.co/papers/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
 
 The `train_dreambooth_lora_hidream.py` script shows how to implement the training procedure with [LoRA](https://huggingface.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) and adapt it for [HiDream Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/). 
 
@@ -95,7 +95,7 @@ accelerate launch train_dreambooth_lora_hidream.py \
 For using `push_to_hub`, make you're logged into your Hugging Face account:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 To better track our training experiments, we're using the following flags in the command above:

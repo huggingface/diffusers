@@ -832,7 +832,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
 
 class UniDiffuserModel(ModelMixin, ConfigMixin):
     """
-    Transformer model for a image-text [UniDiffuser](https://arxiv.org/pdf/2303.06555.pdf) model. This is a
+    Transformer model for a image-text [UniDiffuser](https://huggingface.co/papers/2303.06555) model. This is a
     modification of [`UTransformer2DModel`] with input and output heads for the VAE-embedded latent image, the
     CLIP-embedded image, and the CLIP-embedded prompt (see paper for more details).
 

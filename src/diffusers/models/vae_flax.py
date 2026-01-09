@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,8 +25,11 @@ import jax.numpy as jnp
 from flax.core.frozen_dict import FrozenDict
 
 from ..configuration_utils import ConfigMixin, flax_register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, logging
 from .modeling_flax_utils import FlaxModelMixin
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -73,6 +76,10 @@ class FlaxUpsample2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         self.conv = nn.Conv(
             self.in_channels,
             kernel_size=(3, 3),
@@ -107,6 +114,11 @@ class FlaxDownsample2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         self.conv = nn.Conv(
             self.in_channels,
             kernel_size=(3, 3),
@@ -149,6 +161,11 @@ class FlaxResnetBlock2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         out_channels = self.in_channels if self.out_channels is None else self.out_channels
 
         self.norm1 = nn.GroupNorm(num_groups=self.groups, epsilon=1e-6)
@@ -221,6 +238,11 @@ class FlaxAttentionBlock(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         self.num_heads = self.channels // self.num_head_channels if self.num_head_channels is not None else 1
 
         dense = partial(nn.Dense, self.channels, dtype=self.dtype)
@@ -302,6 +324,11 @@ class FlaxDownEncoderBlock2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         resnets = []
         for i in range(self.num_layers):
             in_channels = self.in_channels if i == 0 else self.out_channels
@@ -359,6 +386,11 @@ class FlaxUpDecoderBlock2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         resnets = []
         for i in range(self.num_layers):
             in_channels = self.in_channels if i == 0 else self.out_channels
@@ -413,6 +445,11 @@ class FlaxUNetMidBlock2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         resnet_groups = self.resnet_groups if self.resnet_groups is not None else min(self.in_channels // 4, 32)
 
         # there is always at least one resnet
@@ -495,8 +532,8 @@ class FlaxEncoder(nn.Module):
 
     in_channels: int = 3
     out_channels: int = 3
-    down_block_types: Tuple[str] = ("DownEncoderBlock2D",)
-    block_out_channels: Tuple[int] = (64,)
+    down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",)
+    block_out_channels: Tuple[int, ...] = (64,)
     layers_per_block: int = 2
     norm_num_groups: int = 32
     act_fn: str = "silu"
@@ -504,6 +541,11 @@ class FlaxEncoder(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         block_out_channels = self.block_out_channels
         # in
         self.conv_in = nn.Conv(
@@ -608,14 +650,19 @@ class FlaxDecoder(nn.Module):
 
     in_channels: int = 3
     out_channels: int = 3
-    up_block_types: Tuple[str] = ("UpDecoderBlock2D",)
-    block_out_channels: int = (64,)
+    up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",)
+    block_out_channels: Tuple[int, ...] = (64,)
     layers_per_block: int = 2
     norm_num_groups: int = 32
     act_fn: str = "silu"
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         block_out_channels = self.block_out_channels
 
         # z to block_in
@@ -769,16 +816,16 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
             model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
             diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
             / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
-            Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
+            Synthesis with Latent Diffusion Models](https://huggingface.co/papers/2112.10752) paper.
         dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
             The `dtype` of the parameters.
     """
 
     in_channels: int = 3
     out_channels: int = 3
-    down_block_types: Tuple[str] = ("DownEncoderBlock2D",)
-    up_block_types: Tuple[str] = ("UpDecoderBlock2D",)
-    block_out_channels: Tuple[int] = (64,)
+    down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",)
+    up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",)
+    block_out_channels: Tuple[int, ...] = (64,)
     layers_per_block: int = 1
     act_fn: str = "silu"
     latent_channels: int = 4
@@ -788,6 +835,11 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         self.encoder = FlaxEncoder(
             in_channels=self.config.in_channels,
             out_channels=self.config.latent_channels,

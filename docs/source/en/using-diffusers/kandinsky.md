@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -31,15 +31,12 @@ Before you begin, make sure you have the following libraries installed:
 #!pip install -q diffusers transformers accelerate
 ```
 
-<Tip warning={true}>
-
-Kandinsky 2.1 and 2.2 usage is very similar! The only difference is Kandinsky 2.2 doesn't accept `prompt` as an input when decoding the latents. Instead, Kandinsky 2.2 only accepts `image_embeds` during decoding.
-
-<br>
-
-Kandinsky 3 has a more concise architecture and it doesn't require a prior model. This means it's usage is identical to other diffusion models like [Stable Diffusion XL](sdxl).
-
-</Tip>
+> [!WARNING]
+> Kandinsky 2.1 and 2.2 usage is very similar! The only difference is Kandinsky 2.2 doesn't accept `prompt` as an input when decoding the latents. Instead, Kandinsky 2.2 only accepts `image_embeds` during decoding.
+>
+> <br>
+>
+> Kandinsky 3 has a more concise architecture and it doesn't require a prior model. This means it's usage is identical to other diffusion models like [Stable Diffusion XL](sdxl).
 
 ## Text-to-image
 
@@ -321,20 +318,17 @@ make_image_grid([original_image.resize((512, 512)), image.resize((512, 512))], r
 
 ## Inpainting
 
-<Tip warning={true}>
-
-⚠️ The Kandinsky models use ⬜️ **white pixels** to represent the masked area now instead of black pixels. If you are using [`KandinskyInpaintPipeline`] in production, you need to change the mask to use white pixels:
-
-```py
-# For PIL input
-import PIL.ImageOps
-mask = PIL.ImageOps.invert(mask)
-
-# For PyTorch and NumPy input
-mask = 1 - mask
-```
-
-</Tip>
+> [!WARNING]
+> ⚠️ The Kandinsky models use ⬜️ **white pixels** to represent the masked area now instead of black pixels. If you are using [`KandinskyInpaintPipeline`] in production, you need to change the mask to use white pixels:
+>
+> ```py
+> # For PIL input
+> import PIL.ImageOps
+> mask = PIL.ImageOps.invert(mask)
+>
+> # For PyTorch and NumPy input
+> mask = 1 - mask
+> ```
 
 For inpainting, you'll need the original image, a mask of the area to replace in the original image, and a text prompt of what to inpaint. Load the prior pipeline:
 
@@ -565,11 +559,8 @@ image
 
 ## ControlNet
 
-<Tip warning={true}>
-
-⚠️ ControlNet is only supported for Kandinsky 2.2!
-
-</Tip>
+> [!WARNING]
+> ⚠️ ControlNet is only supported for Kandinsky 2.2!
 
 ControlNet enables conditioning large pretrained diffusion models with additional inputs such as a depth map or edge detection. For example, you can condition Kandinsky 2.2 with a depth map so the model understands and preserves the structure of the depth image.
 

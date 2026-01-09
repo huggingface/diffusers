@@ -1,4 +1,4 @@
-# Copyright 2024 Zhejiang University Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Zhejiang University Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -80,7 +80,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
     [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
     [`~SchedulerMixin.from_pretrained`] functions.
 
-    For more details, see the original paper: https://arxiv.org/abs/2202.09778
+    For more details, see the original paper: https://huggingface.co/papers/2202.09778
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
@@ -103,7 +103,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
+            https://huggingface.co/papers/2210.02303)
         dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
             the `dtype` used for params and computation.
     """
@@ -134,7 +134,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         self.dtype = dtype
 
         # For now we only support F-PNDM, i.e. the runge-kutta method
-        # For more information on the algorithm please take a look at the paper: https://arxiv.org/pdf/2202.09778.pdf
+        # For more information on the algorithm please take a look at the paper: https://huggingface.co/papers/2202.09778
         # mainly at formula (9), (12), (13) and the Algorithm 2.
         self.pndm_order = 4
 
@@ -452,7 +452,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         return (prev_sample, state)
 
     def _get_prev_sample(self, state: PNDMSchedulerState, sample, timestep, prev_timestep, model_output):
-        # See formula (9) of PNDM paper https://arxiv.org/pdf/2202.09778.pdf
+        # See formula (9) of PNDM paper https://huggingface.co/papers/2202.09778
         # this function computes x_(t−δ) using the formula of (9)
         # Note that x_t needs to be added to both sides of the equation
 

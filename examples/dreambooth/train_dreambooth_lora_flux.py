@@ -12,6 +12,25 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
+
+# /// script
+# dependencies = [
+#     "diffusers @ git+https://github.com/huggingface/diffusers.git",
+#     "torch>=2.0.0",
+#     "accelerate>=0.31.0",
+#     "transformers>=4.41.2",
+#     "ftfy",
+#     "tensorboard",
+#     "Jinja2",
+#     "peft>=0.11.1",
+#     "sentencepiece",
+#     "torchvision",
+#     "datasets",
+#     "bitsandbytes",
+#     "prodigyopt",
+# ]
+# ///
 
 import argparse
 import copy
@@ -27,7 +46,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -53,6 +71,7 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
+    _collate_lora_metadata,
     _set_state_dict_into_text_encoder,
     cast_training_params,
     compute_density_for_timestep_sampling,
@@ -65,6 +84,7 @@ from diffusers.utils import (
     is_wandb_available,
 )
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
+from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
@@ -72,7 +92,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.37.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -358,7 +378,12 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
-
+    parser.add_argument(
+        "--lora_alpha",
+        type=int,
+        default=4,
+        help="LoRA alpha to be used for additional scaling.",
+    )
     parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
 
     parser.add_argument(
@@ -666,6 +691,7 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument("--enable_npu_flash_attention", action="store_true", help="Enabla Flash Attention for NPU")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1046,7 +1072,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
@@ -1109,6 +1135,7 @@ def main(args):
                 torch_dtype = torch.float16
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
+
             pipeline = FluxPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
@@ -1129,7 +1156,8 @@ def main(args):
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                images = pipeline(example["prompt"]).images
+                with torch.autocast(device_type=accelerator.device.type, dtype=torch_dtype):
+                    images = pipeline(prompt=example["prompt"]).images
 
                 for i, image in enumerate(images):
                     hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
@@ -1137,8 +1165,7 @@ def main(args):
                     image.save(image_filename)
 
             del pipeline
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            free_memory()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -1193,6 +1220,13 @@ def main(args):
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
 
+    if args.enable_npu_flash_attention:
+        if is_torch_npu_available():
+            logger.info("npu flash attention enabled.")
+            transformer.set_attention_backend("_native_npu")
+        else:
+            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu device ")
+
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -1238,7 +1272,7 @@ def main(args):
     # now we will add new LoRA weights the transformer layers
     transformer_lora_config = LoraConfig(
         r=args.rank,
-        lora_alpha=args.rank,
+        lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
         init_lora_weights="gaussian",
         target_modules=target_modules,
@@ -1247,7 +1281,7 @@ def main(args):
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
             r=args.rank,
-            lora_alpha=args.rank,
+            lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
@@ -1264,12 +1298,14 @@ def main(args):
         if accelerator.is_main_process:
             transformer_lora_layers_to_save = None
             text_encoder_one_lora_layers_to_save = None
-
+            modules_to_save = {}
             for model in models:
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
+                    modules_to_save["transformer"] = model
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
                     text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                    modules_to_save["text_encoder"] = model
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1280,6 +1316,7 @@ def main(args):
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
+                **_collate_lora_metadata(modules_to_save),
             )
 
     def load_model_hook(models, input_dir):
@@ -1696,6 +1733,10 @@ def main(args):
                             device=accelerator.device,
                             prompt=args.instance_prompt,
                         )
+                    else:
+                        prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
+                            prompts, text_encoders, tokenizers
+                        )
 
                 # Convert images to latent space
                 if args.cache_latents:
@@ -1889,16 +1930,19 @@ def main(args):
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        modules_to_save = {}
         transformer = unwrap_model(transformer)
         if args.upcast_before_saving:
             transformer.to(torch.float32)
         else:
             transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
+        modules_to_save["transformer"] = transformer
 
         if args.train_text_encoder:
             text_encoder_one = unwrap_model(text_encoder_one)
             text_encoder_lora_layers = get_peft_model_state_dict(text_encoder_one.to(torch.float32))
+            modules_to_save["text_encoder"] = text_encoder_one
         else:
             text_encoder_lora_layers = None
 
@@ -1906,6 +1950,7 @@ def main(args):
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
             text_encoder_lora_layers=text_encoder_lora_layers,
+            **_collate_lora_metadata(modules_to_save),
         )
 
         # Final inference

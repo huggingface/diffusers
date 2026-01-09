@@ -37,13 +37,12 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
     Attention,
     AttnProcessor,
-    AttnProcessor2_0,
-    XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import DDIMScheduler, DPMSolverMultistepScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     is_invisible_watermark_available,
     is_torch_xla_available,
     logging,
@@ -622,7 +621,7 @@ class LEditsPPPipelineStableDiffusionXL(
     def prepare_extra_step_kwargs(self, eta, generator=None):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -687,21 +686,12 @@ class LEditsPPPipelineStableDiffusionXL(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
     def upcast_vae(self):
-        dtype = self.vae.dtype
-        self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-            ),
+        deprecate(
+            "upcast_vae",
+            "1.0.0",
+            "`upcast_vae` is deprecated. Please use `pipe.vae.to(torch.float32)`. For more details, please refer to: https://github.com/huggingface/diffusers/pull/12619#issue-3606633695.",
         )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
+        self.vae.to(dtype=torch.float32)
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
@@ -747,7 +737,7 @@ class LEditsPPPipelineStableDiffusionXL(
         return self._clip_skip
 
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
@@ -770,6 +760,12 @@ class LEditsPPPipelineStableDiffusionXL(
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
+        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
+        deprecate(
+            "enable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_slicing()
 
     def disable_vae_slicing(self):
@@ -777,6 +773,12 @@ class LEditsPPPipelineStableDiffusionXL(
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
+        deprecate(
+            "disable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_slicing()
 
     def enable_vae_tiling(self):
@@ -785,6 +787,12 @@ class LEditsPPPipelineStableDiffusionXL(
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
+        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
+        deprecate(
+            "enable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_tiling()
 
     def disable_vae_tiling(self):
@@ -792,6 +800,12 @@ class LEditsPPPipelineStableDiffusionXL(
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
+        deprecate(
+            "disable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_tiling()
 
     # Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.LEditsPPPipelineStableDiffusion.prepare_unet
@@ -901,9 +915,10 @@ class LEditsPPPipelineStableDiffusionXL(
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             guidance_rescale (`float`, *optional*, defaults to 0.7):
                 Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
-                Flawed](https://arxiv.org/pdf/2305.08891.pdf) `guidance_scale` is defined as `φ` in equation 16. of
-                [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf).
-                Guidance rescale factor should fix overexposure when using zero terminal SNR.
+                Flawed](https://huggingface.co/papers/2305.08891) `guidance_scale` is defined as `φ` in equation 16. of
+                [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://huggingface.co/papers/2305.08891). Guidance rescale factor should fix overexposure when
+                using zero terminal SNR.
             crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
                 `crops_coords_top_left` can be used to generate an image that appears to be "cropped" from the position
                 `crops_coords_top_left` downwards. Favorable, well-centered images are usually achieved by setting
@@ -929,7 +944,7 @@ class LEditsPPPipelineStableDiffusionXL(
             edit_guidance_scale (`float` or `List[float]`, *optional*, defaults to 5):
                 Guidance scale for guiding the image generation. If provided as list values should correspond to
                 `editing_prompt`. `edit_guidance_scale` is defined as `s_e` of equation 12 of [LEDITS++
-                Paper](https://arxiv.org/abs/2301.12247).
+                Paper](https://huggingface.co/papers/2301.12247).
             edit_warmup_steps (`float` or `List[float]`, *optional*, defaults to 10):
                 Number of diffusion steps (for each prompt) for which guidance is not applied.
             edit_cooldown_steps (`float` or `List[float]`, *optional*, defaults to `None`):
@@ -937,18 +952,18 @@ class LEditsPPPipelineStableDiffusionXL(
             edit_threshold (`float` or `List[float]`, *optional*, defaults to 0.9):
                 Masking threshold of guidance. Threshold should be proportional to the image region that is modified.
                 'edit_threshold' is defined as 'λ' of equation 12 of [LEDITS++
-                Paper](https://arxiv.org/abs/2301.12247).
+                Paper](https://huggingface.co/papers/2301.12247).
             sem_guidance (`List[torch.Tensor]`, *optional*):
                 List of pre-generated guidance vectors to be applied at generation. Length of the list has to
                 correspond to `num_inference_steps`.
             use_cross_attn_mask:
                 Whether cross-attention masks are used. Cross-attention masks are always used when use_intersect_mask
                 is set to true. Cross-attention masks are defined as 'M^1' of equation 12 of [LEDITS++
-                paper](https://arxiv.org/pdf/2311.16711.pdf).
+                paper](https://huggingface.co/papers/2311.16711).
             use_intersect_mask:
                 Whether the masking term is calculated as intersection of cross-attention masks and masks derived from
                 the noise estimate. Cross-attention mask are defined as 'M^1' and masks derived from the noise estimate
-                are defined as 'M^2' of equation 12 of [LEDITS++ paper](https://arxiv.org/pdf/2311.16711.pdf).
+                are defined as 'M^2' of equation 12 of [LEDITS++ paper](https://huggingface.co/papers/2311.16711).
             user_mask:
                 User-provided mask for even better control over the editing process. This is helpful when LEDITS++'s
                 implicit masks do not meet user preferences.
@@ -1350,7 +1365,7 @@ class LEditsPPPipelineStableDiffusionXL(
 
                 # compute the previous noisy sample x_t -> x_t-1
                 if enable_edit_guidance and self.guidance_rescale > 0.0:
-                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                    # Based on 3.4. in https://huggingface.co/papers/2305.08891
                     noise_pred = rescale_noise_cfg(
                         noise_pred,
                         noise_pred_edit_concepts.mean(dim=0, keepdim=False),
@@ -1478,8 +1493,8 @@ class LEditsPPPipelineStableDiffusionXL(
     ):
         r"""
         The function to the pipeline for image inversion as described by the [LEDITS++
-        Paper](https://arxiv.org/abs/2301.12247). If the scheduler is set to [`~schedulers.DDIMScheduler`] the
-        inversion proposed by [edit-friendly DPDM](https://arxiv.org/abs/2304.06140) will be performed instead.
+        Paper](https://huggingface.co/papers/2301.12247). If the scheduler is set to [`~schedulers.DDIMScheduler`] the
+        inversion proposed by [edit-friendly DPDM](https://huggingface.co/papers/2304.06140) will be performed instead.
 
         Args:
             image (`PipelineImageInput`):
@@ -1691,7 +1706,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     r"""
     Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
     Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
-    Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+    Flawed](https://huggingface.co/papers/2305.08891).
 
     Args:
         noise_cfg (`torch.Tensor`):
@@ -1727,7 +1742,7 @@ def compute_noise_ddim(scheduler, prev_latents, latents, timestep, noise_pred, e
     beta_prod_t = 1 - alpha_prod_t
 
     # 3. compute predicted original sample from predicted noise also called
-    # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+    # "predicted x_0" of formula (12) from https://huggingface.co/papers/2010.02502
     pred_original_sample = (latents - beta_prod_t ** (0.5) * noise_pred) / alpha_prod_t ** (0.5)
 
     # 4. Clip "predicted x_0"
@@ -1739,7 +1754,7 @@ def compute_noise_ddim(scheduler, prev_latents, latents, timestep, noise_pred, e
     variance = scheduler._get_variance(timestep, prev_timestep)
     std_dev_t = eta * variance ** (0.5)
 
-    # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+    # 6. compute "direction pointing to x_t" of formula (12) from https://huggingface.co/papers/2010.02502
     pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * noise_pred
 
     # modified so that updated xtm1 is returned as well (to avoid error accumulation)

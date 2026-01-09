@@ -1,6 +1,6 @@
 # DreamBooth training example
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
+[DreamBooth](https://huggingface.co/papers/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
 The `train_dreambooth.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
 
@@ -19,8 +19,9 @@ cd diffusers
 pip install -e .
 ```
 
-Then cd in the example folder and run
+Install the requirements in the `examples/dreambooth` folder as shown below.
 ```bash
+cd examples/dreambooth
 pip install -r requirements.txt
 ```
 
@@ -296,7 +297,7 @@ You can also perform inference from one of the checkpoints saved during the trai
 
 ## Training with Low-Rank Adaptation of Large Language Models (LoRA)
 
-Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*
+Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://huggingface.co/papers/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*
 
 In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 - Previous pretrained weights are kept frozen so that the model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114)
@@ -330,7 +331,7 @@ For this example we want to directly store the trained LoRA embeddings on the Hu
 we need to be logged in and add the `--push_to_hub` flag.
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 Now we can start training!

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,8 +22,10 @@ import torch
 from diffusers import IFImg2ImgPipeline
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
+    backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
     floats_tensor,
@@ -36,7 +38,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
@@ -151,7 +152,7 @@ class IFImg2ImgPipelineSlowTests(unittest.TestCase):
         )
         image = output.images[0]
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         assert mem_bytes < 12 * 10**9
 
         expected_image = load_numpy(

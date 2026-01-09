@@ -1,4 +1,4 @@
-# Copyright 2024 Kakao Brain and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Kakao Brain and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -46,10 +46,10 @@ class UnCLIPSchedulerOutput(BaseOutput):
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(
-    num_diffusion_timesteps,
-    max_beta=0.999,
-    alpha_transform_type="cosine",
-):
+    num_diffusion_timesteps: int,
+    max_beta: float = 0.999,
+    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
+) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -57,21 +57,29 @@ def betas_for_alpha_bar(
     Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
     to that part of the diffusion process.
 
-
     Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
-                     Choose from `cosine` or `exp`
+        num_diffusion_timesteps (`int`):
+            The number of betas to produce.
+        max_beta (`float`, defaults to `0.999`):
+            The maximum beta to use; use values lower than 1 to avoid numerical instability.
+        alpha_transform_type (`"cosine"` or `"exp"`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine` or `exp`.
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        `torch.Tensor`:
+            The betas used by the scheduler to step the model outputs.
     """
     if alpha_transform_type == "cosine":
 
         def alpha_bar_fn(t):
             return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    elif alpha_transform_type == "laplace":
+
+        def alpha_bar_fn(t):
+            lmb = -0.5 * math.copysign(1, 0.5 - t) * math.log(1 - 2 * math.fabs(0.5 - t) + 1e-6)
+            snr = math.exp(lmb)
+            return math.sqrt(snr / (1 + snr))
 
     elif alpha_transform_type == "exp":
 
@@ -191,7 +199,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         else:
             beta = 1 - alpha_prod_t / alpha_prod_t_prev
 
-        # For t > 0, compute predicted variance βt (see formula (6) and (7) from https://arxiv.org/pdf/2006.11239.pdf)
+        # For t > 0, compute predicted variance βt (see formula (6) and (7) from https://huggingface.co/papers/2006.11239)
         # and sample from it to get previous sample
         # x_{t-1} ~ N(pred_prev_sample, variance) == add variance to pred_sample
         variance = beta_prod_t_prev / beta_prod_t * beta
@@ -266,7 +274,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
             alpha = 1 - beta
 
         # 2. compute predicted original sample from predicted noise also called
-        # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
+        # "predicted x_0" of formula (15) from https://huggingface.co/papers/2006.11239
         if self.config.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
         elif self.config.prediction_type == "sample":
@@ -284,12 +292,12 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
             )
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
-        # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
+        # See formula (7) from https://huggingface.co/papers/2006.11239
         pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * beta) / beta_prod_t
         current_sample_coeff = alpha ** (0.5) * beta_prod_t_prev / beta_prod_t
 
         # 5. Compute predicted previous sample µ_t
-        # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
+        # See formula (7) from https://huggingface.co/papers/2006.11239
         pred_prev_sample = pred_original_sample_coeff * pred_original_sample + current_sample_coeff * sample
 
         # 6. Add noise
@@ -334,6 +342,22 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.IntTensor,
     ) -> torch.Tensor:
+        """
+        Add noise to the original samples according to the noise magnitude at each timestep (this is the forward
+        diffusion process).
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to which noise will be added.
+            noise (`torch.Tensor`):
+                The noise to add to the samples.
+            timesteps (`torch.IntTensor`):
+                The timesteps indicating the noise level for each sample.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples.
+        """
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
         # for the subsequent add_noise calls

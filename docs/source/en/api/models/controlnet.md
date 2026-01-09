@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -33,6 +33,21 @@ url = "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/m
 pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=controlnet)
 ```
 
+## Loading from Control LoRA
+
+Control-LoRA is introduced by Stability AI in [stabilityai/control-lora](https://huggingface.co/stabilityai/control-lora) by adding low-rank parameter efficient fine tuning to ControlNet. This approach offers a more efficient and compact method to bring model control to a wider variety of consumer GPUs.
+
+```py
+from diffusers import ControlNetModel, UNet2DConditionModel
+
+lora_id = "stabilityai/control-lora"
+lora_filename = "control-LoRAs-rank128/control-lora-canny-rank128.safetensors"
+
+unet = UNet2DConditionModel.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", torch_dtype=torch.bfloat16).to("cuda")
+controlnet = ControlNetModel.from_unet(unet).to(device="cuda", dtype=torch.bfloat16)
+controlnet.load_lora_adapter(lora_id, weight_name=lora_filename, prefix=None, controlnet_config=controlnet.config)
+```
+
 ## ControlNetModel
 
 [[autodoc]] ControlNetModel
@@ -40,11 +55,3 @@ pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=contro
 ## ControlNetOutput
 
 [[autodoc]] models.controlnets.controlnet.ControlNetOutput
-
-## FlaxControlNetModel
-
-[[autodoc]] FlaxControlNetModel
-
-## FlaxControlNetOutput
-
-[[autodoc]] models.controlnets.controlnet_flax.FlaxControlNetOutput

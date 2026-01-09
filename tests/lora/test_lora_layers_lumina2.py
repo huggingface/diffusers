@@ -1,4 +1,4 @@
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,19 +26,19 @@ from diffusers import (
     Lumina2Pipeline,
     Lumina2Transformer2DModel,
 )
-from diffusers.utils.testing_utils import floats_tensor, is_torch_version, require_peft_backend, skip_mps, torch_device
+
+from ..testing_utils import floats_tensor, is_torch_version, require_peft_backend, skip_mps, torch_device
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 @require_peft_backend
 class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = Lumina2Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {
@@ -140,33 +140,30 @@ class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         strict=False,
     )
     def test_lora_fuse_nan(self):
-        for scheduler_cls in self.scheduler_classes:
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            if "text_encoder" in self.pipeline_class._lora_loadable_modules:
-                pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-                self.assertTrue(
-                    check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-                )
+        if "text_encoder" in self.pipeline_class._lora_loadable_modules:
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
-            denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
-            denoiser.add_adapter(denoiser_lora_config, "adapter-1")
-            self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+        denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
+        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
 
-            # corrupt one LoRA weight with `inf` values
-            with torch.no_grad():
-                pipe.transformer.layers[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
+        # corrupt one LoRA weight with `inf` values
+        with torch.no_grad():
+            pipe.transformer.layers[0].attn.to_q.lora_A["adapter-1"].weight += float("inf")
 
-            # with `safe_fusing=True` we should see an Error
-            with self.assertRaises(ValueError):
-                pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=True)
+        # with `safe_fusing=True` we should see an Error
+        with self.assertRaises(ValueError):
+            pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=True)
 
-            # without we should not see an error, but every image will be black
-            pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
-            out = pipe(**inputs)[0]
+        # without we should not see an error, but every image will be black
+        pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
+        out = pipe(**inputs)[0]
 
-            self.assertTrue(np.isnan(out).all())
+        self.assertTrue(np.isnan(out).all())

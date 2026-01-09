@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,11 +21,9 @@ import numpy as np
 import pytest
 import torch
 from transformers import (
-    ClapAudioConfig,
     ClapConfig,
     ClapFeatureExtractor,
     ClapModel,
-    ClapTextConfig,
     GPT2Config,
     GPT2LMHeadModel,
     RobertaTokenizer,
@@ -45,8 +43,15 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, is_torch_version, nightly, torch_device
+from diffusers.utils import is_transformers_version
 
+from ...testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    is_torch_version,
+    nightly,
+    torch_device,
+)
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -104,37 +109,35 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             latent_channels=4,
         )
         torch.manual_seed(0)
-        text_branch_config = ClapTextConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=8,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=1,
-            num_hidden_layers=1,
-            pad_token_id=1,
-            vocab_size=1000,
-            projection_dim=8,
-        )
-        audio_branch_config = ClapAudioConfig(
-            spec_size=8,
-            window_size=4,
-            num_mel_bins=8,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            depths=[1, 1],
-            num_attention_heads=[1, 1],
-            num_hidden_layers=1,
-            hidden_size=192,
-            projection_dim=8,
-            patch_size=2,
-            patch_stride=2,
-            patch_embed_input_channels=4,
-        )
-        text_encoder_config = ClapConfig.from_text_audio_configs(
-            text_config=text_branch_config,
-            audio_config=audio_branch_config,
-            projection_dim=16,
+        text_branch_config = {
+            "bos_token_id": 0,
+            "eos_token_id": 2,
+            "hidden_size": 8,
+            "intermediate_size": 37,
+            "layer_norm_eps": 1e-05,
+            "num_attention_heads": 1,
+            "num_hidden_layers": 1,
+            "pad_token_id": 1,
+            "vocab_size": 1000,
+            "projection_dim": 8,
+        }
+        audio_branch_config = {
+            "spec_size": 8,
+            "window_size": 4,
+            "num_mel_bins": 8,
+            "intermediate_size": 37,
+            "layer_norm_eps": 1e-05,
+            "depths": [1, 1],
+            "num_attention_heads": [1, 1],
+            "num_hidden_layers": 1,
+            "hidden_size": 192,
+            "projection_dim": 8,
+            "patch_size": 2,
+            "patch_stride": 2,
+            "patch_embed_input_channels": 4,
+        }
+        text_encoder_config = ClapConfig(
+            text_config=text_branch_config, audio_config=audio_branch_config, projection_dim=16
         )
         text_encoder = ClapModel(text_encoder_config)
         tokenizer = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)
@@ -214,6 +217,11 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">=", "4.54.1"),
+        reason="Test currently fails on Transformers version 4.54.1.",
+        strict=False,
+    )
     def test_audioldm2_ddim(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -306,7 +314,6 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = self.get_dummy_components()
         audioldm_pipe = AudioLDM2Pipeline(**components)
         audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
         audioldm_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -365,6 +372,11 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(audio_1 - audio_2).max() < 1e-2
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">=", "4.54.1"),
+        reason="Test currently fails on Transformers version 4.54.1.",
+        strict=False,
+    )
     def test_audioldm2_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -540,12 +552,12 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)

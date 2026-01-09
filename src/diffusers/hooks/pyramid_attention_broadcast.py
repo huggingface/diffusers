@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,15 @@ from typing import Any, Callable, Optional, Tuple, Union
 
 import torch
 
+from ..models.attention import AttentionModuleMixin
 from ..models.attention_processor import Attention, MochiAttention
 from ..utils import logging
+from ._common import (
+    _ATTENTION_CLASSES,
+    _CROSS_TRANSFORMER_BLOCK_IDENTIFIERS,
+    _SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS,
+    _TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS,
+)
 from .hooks import HookRegistry, ModelHook
 
 
@@ -27,10 +34,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 _PYRAMID_ATTENTION_BROADCAST_HOOK = "pyramid_attention_broadcast"
-_ATTENTION_CLASSES = (Attention, MochiAttention)
-_SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "single_transformer_blocks")
-_TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
-_CROSS_ATTENTION_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks")
 
 
 @dataclass
@@ -42,15 +45,15 @@ class PyramidAttentionBroadcastConfig:
         spatial_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             The number of times a specific spatial attention broadcast is skipped before computing the attention states
             to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
-            old attention states will be re-used) before computing the new attention states again.
+            old attention states will be reused) before computing the new attention states again.
         temporal_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             The number of times a specific temporal attention broadcast is skipped before computing the attention
             states to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times
-            (i.e., old attention states will be re-used) before computing the new attention states again.
+            (i.e., old attention states will be reused) before computing the new attention states again.
         cross_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             The number of times a specific cross-attention broadcast is skipped before computing the attention states
             to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
-            old attention states will be re-used) before computing the new attention states again.
+            old attention states will be reused) before computing the new attention states again.
         spatial_attention_timestep_skip_range (`Tuple[int, int]`, defaults to `(100, 800)`):
             The range of timesteps to skip in the spatial attention layer. The attention computations will be
             conditionally skipped if the current timestep is within the specified range.
@@ -60,11 +63,11 @@ class PyramidAttentionBroadcastConfig:
         cross_attention_timestep_skip_range (`Tuple[int, int]`, defaults to `(100, 800)`):
             The range of timesteps to skip in the cross-attention layer. The attention computations will be
             conditionally skipped if the current timestep is within the specified range.
-        spatial_attention_block_identifiers (`Tuple[str, ...]`, defaults to `("blocks", "transformer_blocks")`):
+        spatial_attention_block_identifiers (`Tuple[str, ...]`):
             The identifiers to match against the layer names to determine if the layer is a spatial attention layer.
-        temporal_attention_block_identifiers (`Tuple[str, ...]`, defaults to `("temporal_transformer_blocks",)`):
+        temporal_attention_block_identifiers (`Tuple[str, ...]`):
             The identifiers to match against the layer names to determine if the layer is a temporal attention layer.
-        cross_attention_block_identifiers (`Tuple[str, ...]`, defaults to `("blocks", "transformer_blocks")`):
+        cross_attention_block_identifiers (`Tuple[str, ...]`):
             The identifiers to match against the layer names to determine if the layer is a cross-attention layer.
     """
 
@@ -76,9 +79,9 @@ class PyramidAttentionBroadcastConfig:
     temporal_attention_timestep_skip_range: Tuple[int, int] = (100, 800)
     cross_attention_timestep_skip_range: Tuple[int, int] = (100, 800)
 
-    spatial_attention_block_identifiers: Tuple[str, ...] = _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS
-    temporal_attention_block_identifiers: Tuple[str, ...] = _TEMPORAL_ATTENTION_BLOCK_IDENTIFIERS
-    cross_attention_block_identifiers: Tuple[str, ...] = _CROSS_ATTENTION_BLOCK_IDENTIFIERS
+    spatial_attention_block_identifiers: Tuple[str, ...] = _SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS
+    temporal_attention_block_identifiers: Tuple[str, ...] = _TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS
+    cross_attention_block_identifiers: Tuple[str, ...] = _CROSS_TRANSFORMER_BLOCK_IDENTIFIERS
 
     current_timestep_callback: Callable[[], int] = None
 
@@ -227,7 +230,7 @@ def apply_pyramid_attention_broadcast(module: torch.nn.Module, config: PyramidAt
         config.spatial_attention_block_skip_range = 2
 
     for name, submodule in module.named_modules():
-        if not isinstance(submodule, _ATTENTION_CLASSES):
+        if not isinstance(submodule, (*_ATTENTION_CLASSES, AttentionModuleMixin)):
             # PAB has been implemented specific to Diffusers' Attention classes. However, this does not mean that PAB
             # cannot be applied to this layer. For custom layers, users can extend this functionality and implement
             # their own PAB logic similar to `_apply_pyramid_attention_broadcast_on_attention_class`.
@@ -302,7 +305,7 @@ def _apply_pyramid_attention_broadcast_hook(
         block_skip_range (`int`):
             The number of times a specific attention broadcast is skipped before computing the attention states to
             re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e., old
-            attention states will be re-used) before computing the new attention states again.
+            attention states will be reused) before computing the new attention states again.
         current_timestep_callback (`Callable[[], int]`):
             A callback function that returns the current inference timestep.
     """

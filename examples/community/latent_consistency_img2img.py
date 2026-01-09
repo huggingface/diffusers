@@ -1,4 +1,4 @@
-# Copyright 2024 Stanford University Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Stanford University Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -450,7 +450,7 @@ def betas_for_alpha_bar(
 
 def rescale_zero_terminal_snr(betas):
     """
-    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
+    Rescales betas to have zero terminal SNR Based on https://huggingface.co/papers/2305.08891 (Algorithm 1)
     Args:
         betas (`torch.Tensor`):
             the betas that the scheduler is being initialized with.
@@ -620,7 +620,7 @@ class LCMSchedulerWithTimestamp(SchedulerMixin, ConfigMixin):
         s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
         pixels from saturation at each step. We find that dynamic thresholding results in significantly better
         photorealism as well as better image-text alignment, especially when using very large guidance weights."
-        https://arxiv.org/abs/2205.11487
+        https://huggingface.co/papers/2205.11487
         """
         dtype = sample.dtype
         batch_size, channels, height, width = sample.shape

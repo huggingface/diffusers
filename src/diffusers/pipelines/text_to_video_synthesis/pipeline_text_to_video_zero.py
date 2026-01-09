@@ -23,8 +23,8 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ...utils.torch_utils import empty_device_cache, randn_tensor
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionSafetyChecker
 
 
@@ -296,12 +296,14 @@ def create_motion_field_and_warp_latents(motion_field_strength_x, motion_field_s
 
 
 class TextToVideoZeroPipeline(
+    DeprecatedPipelineMixin,
     DiffusionPipeline,
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     StableDiffusionLoraLoaderMixin,
     FromSingleFileMixin,
 ):
+    _last_supported_version = "0.33.1"
     r"""
     Pipeline for zero-shot text-to-video generation using Stable Diffusion.
 
@@ -588,8 +590,8 @@ class TextToVideoZeroPipeline(
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
-                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
+                applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
@@ -610,17 +612,17 @@ class TextToVideoZeroPipeline(
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
             motion_field_strength_x (`float`, *optional*, defaults to 12):
-                Strength of motion in generated video along x-axis. See the [paper](https://arxiv.org/abs/2303.13439),
-                Sect. 3.3.1.
+                Strength of motion in generated video along x-axis. See the
+                [paper](https://huggingface.co/papers/2303.13439), Sect. 3.3.1.
             motion_field_strength_y (`float`, *optional*, defaults to 12):
-                Strength of motion in generated video along y-axis. See the [paper](https://arxiv.org/abs/2303.13439),
-                Sect. 3.3.1.
+                Strength of motion in generated video along y-axis. See the
+                [paper](https://huggingface.co/papers/2303.13439), Sect. 3.3.1.
             t0 (`int`, *optional*, defaults to 44):
                 Timestep t0. Should be in the range [0, num_inference_steps - 1]. See the
-                [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+                [paper](https://huggingface.co/papers/2303.13439), Sect. 3.3.1.
             t1 (`int`, *optional*, defaults to 47):
                 Timestep t0. Should be in the range [t0 + 1, num_inference_steps - 1]. See the
-                [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
+                [paper](https://huggingface.co/papers/2303.13439), Sect. 3.3.1.
             frame_ids (`List[int]`, *optional*):
                 Indexes of the frames that are being generated. This is used when generating longer videos
                 chunk-by-chunk.
@@ -663,7 +665,7 @@ class TextToVideoZeroPipeline(
         batch_size = 1 if isinstance(prompt, str) else len(prompt)
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
@@ -758,7 +760,7 @@ class TextToVideoZeroPipeline(
         # manually for max memory savings
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")
-        torch.cuda.empty_cache()
+        empty_device_cache()
 
         if output_type == "latent":
             image = latents
@@ -797,7 +799,7 @@ class TextToVideoZeroPipeline(
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())

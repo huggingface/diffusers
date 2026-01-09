@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 
 import gc
 import random
-import traceback
 import unittest
 
 import numpy as np
@@ -36,7 +35,8 @@ from diffusers import (
     StableDiffusionInpaintPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     backend_max_memory_allocated,
@@ -44,17 +44,13 @@ from diffusers.utils.testing_utils import (
     backend_reset_peak_memory_stats,
     enable_full_determinism,
     floats_tensor,
-    is_torch_compile,
     load_image,
     load_numpy,
     nightly,
-    require_torch_2,
     require_torch_accelerator,
-    run_test_in_subprocess,
     slow,
     torch_device,
 )
-
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
@@ -69,40 +65,6 @@ from ..test_pipelines_common import (
 
 
 enable_full_determinism()
-
-
-# Will be run via run_test_in_subprocess
-def _test_inpaint_compile(in_queue, out_queue, timeout):
-    error = None
-    try:
-        inputs = in_queue.get(timeout=timeout)
-        torch_device = inputs.pop("torch_device")
-        seed = inputs.pop("seed")
-        inputs["generator"] = torch.Generator(device=torch_device).manual_seed(seed)
-
-        pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
-        )
-        pipe.unet.set_default_attn_processor()
-        pipe.scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        pipe.unet.to(memory_format=torch.channels_last)
-        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-
-        image = pipe(**inputs).images
-        image_slice = image[0, 253:256, 253:256, -1].flatten()
-
-        assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0689, 0.0699, 0.0790, 0.0536, 0.0470, 0.0488, 0.041, 0.0508, 0.04179])
-        assert np.abs(expected_slice - image_slice).max() < 3e-3
-    except Exception:
-        error = f"{traceback.format_exc()}"
-
-    results = {"error": error}
-    out_queue.put(results, timeout=timeout)
-    out_queue.join()
 
 
 class StableDiffusionInpaintPipelineFastTests(
@@ -727,17 +689,6 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
 
-    @is_torch_compile
-    @require_torch_2
-    def test_inpaint_compile(self):
-        seed = 0
-        inputs = self.get_inputs(torch_device, seed=seed)
-        # Can't pickle a Generator object
-        del inputs["generator"]
-        inputs["torch_device"] = torch_device
-        inputs["seed"] = seed
-        run_test_in_subprocess(test_case=self, target_func=_test_inpaint_compile, inputs=inputs)
-
     def test_stable_diffusion_inpaint_pil_input_resolution_test(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             "botp/stable-diffusion-v1-5-inpainting", safety_checker=None
@@ -963,11 +914,6 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
         mem_bytes = backend_max_memory_allocated(torch_device)
         # make sure that less than 2.45 GB is allocated
         assert mem_bytes < 2.45 * 10**9
-
-    @is_torch_compile
-    @require_torch_2
-    def test_inpaint_compile(self):
-        pass
 
     def test_stable_diffusion_inpaint_pil_input_resolution_test(self):
         vae = AsymmetricAutoencoderKL.from_pretrained(

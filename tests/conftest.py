@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,14 +30,20 @@ sys.path.insert(1, git_repo_path)
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "big_accelerator: marks tests as requiring big accelerator resources")
+    config.addinivalue_line("markers", "slow: mark test as slow")
+    config.addinivalue_line("markers", "nightly: mark test as nightly")
+
+
 def pytest_addoption(parser):
-    from diffusers.utils.testing_utils import pytest_addoption_shared
+    from .testing_utils import pytest_addoption_shared
 
     pytest_addoption_shared(parser)
 
 
 def pytest_terminal_summary(terminalreporter):
-    from diffusers.utils.testing_utils import pytest_terminal_summary_main
+    from .testing_utils import pytest_terminal_summary_main
 
     make_reports = terminalreporter.config.getoption("--make-reports")
     if make_reports:

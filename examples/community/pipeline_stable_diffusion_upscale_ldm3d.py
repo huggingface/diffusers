@@ -1,4 +1,4 @@
-# Copyright 2024 The Intel Labs Team Authors and the HuggingFace Team. All rights reserved.
+# Copyright 2025 The Intel Labs Team Authors and the HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ class StableDiffusionUpscaleLDM3DPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for more details
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
@@ -390,7 +390,7 @@ class StableDiffusionUpscaleLDM3DPipeline(
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -503,24 +503,9 @@ class StableDiffusionUpscaleLDM3DPipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # def upcast_vae(self):
-    #     dtype = self.vae.dtype
-    #     self.vae.to(dtype=torch.float32)
-    #     use_torch_2_0_or_xformers = isinstance(
-    #         self.vae.decoder.mid_block.attentions[0].processor,
-    #         (
-    #             AttnProcessor2_0,
-    #             XFormersAttnProcessor,
-    #             LoRAXFormersAttnProcessor,
-    #             LoRAAttnProcessor2_0,
-    #         ),
-    #     )
-    #     # if xformers or torch_2_0 is used attention block does not need
-    #     # to be in float32 which can save lots of memory
-    #     if use_torch_2_0_or_xformers:
-    #         self.vae.post_quant_conv.to(dtype)
-    #         self.vae.decoder.conv_in.to(dtype)
-    #         self.vae.decoder.mid_block.to(dtype)
+    def upcast_vae(self):
+        deprecate("upcast_vae", "1.0.0", "`upcast_vae` is deprecated. Please use `pipe.vae.to(torch.float32)`")
+        self.vae.to(dtype=torch.float32)
 
     @torch.no_grad()
     def __call__(
@@ -565,7 +550,7 @@ class StableDiffusionUpscaleLDM3DPipeline(
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only applies
                 to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
@@ -624,7 +609,7 @@ class StableDiffusionUpscaleLDM3DPipeline(
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 

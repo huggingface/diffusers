@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ class DummyCosmosSafetyChecker(ModelMixin, ConfigMixin):
     def __init__(self) -> None:
         super().__init__()
 
-        self._dtype = torch.float32
+        self.register_buffer("_device_tracker", torch.zeros(1, dtype=torch.float32), persistent=False)
 
     def check_text_safety(self, prompt: str) -> bool:
         return True
@@ -35,13 +35,14 @@ class DummyCosmosSafetyChecker(ModelMixin, ConfigMixin):
     def check_video_safety(self, frames: np.ndarray) -> np.ndarray:
         return frames
 
-    def to(self, device: Union[str, torch.device] = None, dtype: torch.dtype = None) -> None:
-        self._dtype = dtype
+    def to(self, device: Union[str, torch.device] = None, dtype: torch.dtype = None):
+        module = super().to(device=device, dtype=dtype)
+        return module
 
     @property
     def device(self) -> torch.device:
-        return None
+        return self._device_tracker.device
 
     @property
     def dtype(self) -> torch.dtype:
-        return self._dtype
+        return self._device_tracker.dtype

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AutoencoderKL
 
-The variational autoencoder (VAE) model with KL loss was introduced in [Auto-Encoding Variational Bayes](https://arxiv.org/abs/1312.6114v11) by Diederik P. Kingma and Max Welling. The model is used in 🤗 Diffusers to encode images into latents and to decode latent representations into images.
+The variational autoencoder (VAE) model with KL loss was introduced in [Auto-Encoding Variational Bayes](https://huggingface.co/papers/1312.6114v11) by Diederik P. Kingma and Max Welling. The model is used in 🤗 Diffusers to encode images into latents and to decode latent representations into images.
 
 The abstract from the paper is:
 
@@ -44,15 +44,3 @@ model = AutoencoderKL.from_single_file(url)
 ## DecoderOutput
 
 [[autodoc]] models.autoencoders.vae.DecoderOutput
-
-## FlaxAutoencoderKL
-
-[[autodoc]] FlaxAutoencoderKL
-
-## FlaxAutoencoderKLOutput
-
-[[autodoc]] models.vae_flax.FlaxAutoencoderKLOutput
-
-## FlaxDecoderOutput
-
-[[autodoc]] models.vae_flax.FlaxDecoderOutput

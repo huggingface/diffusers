@@ -1,4 +1,4 @@
-# Copyright 2024 Zhejiang University Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Zhejiang University Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         # For now we only support F-PNDM, i.e. the runge-kutta method
-        # For more information on the algorithm please take a look at the paper: https://arxiv.org/pdf/2202.09778.pdf
+        # For more information on the algorithm please take a look at the paper: https://huggingface.co/papers/2202.09778
         # mainly at formula (9), (12), (13) and the Algorithm 2.
         self.pndm_order = 4
 
@@ -78,7 +78,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
@@ -112,7 +112,23 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+    ) -> int:
+        """
+        Find the index of a given timestep in the timestep schedule.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The timestep value to find in the schedule.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule. For the very first step, returns the second index if
+                multiple matches exist to avoid skipping a sigma when starting mid-schedule (e.g., for image-to-image).
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -127,7 +143,14 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep):
+    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+        """
+        Initialize the step index for the scheduler based on the given timestep.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The current timestep to initialize the step index from.
+        """
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)

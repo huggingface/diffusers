@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 The HuggingFace Team Inc.
+# Copyright 2025 The HuggingFace Team Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,8 +30,10 @@ from diffusers import (
     FluxTransformer2DModel,
     SD3Transformer2DModel,
 )
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import is_accelerate_version, logging
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     is_bitsandbytes_available,
@@ -44,10 +46,12 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch,
     require_torch_accelerator,
+    require_torch_version_greater,
     require_transformers_version_greater,
     slow,
     torch_device,
 )
+from ..test_torch_compile_utils import QuantCompileTests
 
 
 def get_some_linear_layer(model):
@@ -91,6 +95,17 @@ class Base4bitTests(unittest.TestCase):
     prompt = "a beautiful sunset amidst the mountains."
     num_inference_steps = 10
     seed = 0
+
+    @classmethod
+    def setUpClass(cls):
+        cls.is_deterministic_enabled = torch.are_deterministic_algorithms_enabled()
+        if not cls.is_deterministic_enabled:
+            torch.use_deterministic_algorithms(True)
+
+    @classmethod
+    def tearDownClass(cls):
+        if not cls.is_deterministic_enabled:
+            torch.use_deterministic_algorithms(False)
 
     def get_dummy_inputs(self):
         prompt_embeds = load_pt(
@@ -205,7 +220,7 @@ class BnB4BitBasicTests(Base4bitTests):
 
     def test_original_dtype(self):
         r"""
-        A simple test to check if the model succesfully stores the original dtype
+        A simple test to check if the model successfully stores the original dtype
         """
         self.assertTrue("_pre_quantization_dtype" in self.model_4bit.config)
         self.assertFalse("_pre_quantization_dtype" in self.model_fp16.config)
@@ -526,7 +541,7 @@ class SlowBnb4BitTests(Base4bitTests):
         reason="Test will pass after https://github.com/huggingface/accelerate/pull/3223 is in a release.",
         strict=True,
     )
-    def test_pipeline_device_placement_works_with_nf4(self):
+    def test_pipeline_cuda_placement_works_with_nf4(self):
         transformer_nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
@@ -560,7 +575,7 @@ class SlowBnb4BitTests(Base4bitTests):
         ).to(torch_device)
 
         # Check if inference works.
-        _ = pipeline_4bit("table", max_sequence_length=20, num_inference_steps=2)
+        _ = pipeline_4bit(self.prompt, max_sequence_length=20, num_inference_steps=2)
 
         del pipeline_4bit
 
@@ -854,3 +869,27 @@ class ExtendedSerializationTest(BaseBnb4BitSerializationTests):
 
     def test_fp4_double_safe(self):
         self.test_serialization(quant_type="fp4", double_quant=True, safe_serialization=True)
+
+
+@require_torch_version_greater("2.7.1")
+@require_bitsandbytes_version_greater("0.45.5")
+class Bnb4BitCompileTests(QuantCompileTests, unittest.TestCase):
+    @property
+    def quantization_config(self):
+        return PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["transformer", "text_encoder_2"],
+        )
+
+    @require_bitsandbytes_version_greater("0.46.1")
+    def test_torch_compile(self):
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
+        super().test_torch_compile()
+
+    def test_torch_compile_with_group_offload_leaf(self):
+        super()._test_torch_compile_with_group_offload_leaf(use_stream=True)

@@ -57,7 +57,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.37.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -359,14 +359,14 @@ def parse_args():
         type=float,
         default=None,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
+        "More details here: https://huggingface.co/papers/2303.09556.",
     )
     parser.add_argument(
         "--dream_training",
         action="store_true",
         help=(
             "Use the DREAM training method, which makes training more efficient and accurate at the "
-            "expense of doing an extra forward pass. See: https://arxiv.org/abs/2312.00210"
+            "expense of doing an extra forward pass. See: https://huggingface.co/papers/2312.00210"
         ),
     )
     parser.add_argument(
@@ -531,7 +531,7 @@ def main():
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     if args.non_ema_revision is not None:
@@ -1022,7 +1022,7 @@ def main():
                 if args.snr_gamma is None:
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 else:
-                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Compute loss-weights as per Section 3.4 of https://huggingface.co/papers/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
                     snr = compute_snr(noise_scheduler, timesteps)

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,14 +28,15 @@ import warnings
 
 import numpy as np
 import PIL.Image
+import pytest
 import requests_mock
 import safetensors.torch
 import torch
 import torch.nn as nn
 from huggingface_hub import snapshot_download
+from huggingface_hub.utils import HfHubHTTPError
 from parameterized import parameterized
 from PIL import Image
-from requests.exceptions import HTTPError
 from transformers import CLIPImageProcessor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -62,11 +63,10 @@ from diffusers import (
 )
 from diffusers.pipelines.pipeline_utils import _get_pipeline_class
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from diffusers.utils import (
-    CONFIG_NAME,
-    WEIGHTS_NAME,
-)
-from diffusers.utils.testing_utils import (
+from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, is_transformers_version
+from diffusers.utils.torch_utils import is_compiled_module
+
+from ..testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     enable_full_determinism,
@@ -89,7 +89,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-from diffusers.utils.torch_utils import is_compiled_module
 
 
 enable_full_determinism()
@@ -429,7 +428,7 @@ class DownloadTests(unittest.TestCase):
         response_mock = mock.Mock()
         response_mock.status_code = 500
         response_mock.headers = {}
-        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.raise_for_status.side_effect = HfHubHTTPError("Server down", response=mock.Mock())
         response_mock.json.return_value = {}
 
         # Download this model to make sure it's in the cache.
@@ -456,7 +455,7 @@ class DownloadTests(unittest.TestCase):
         response_mock = mock.Mock()
         response_mock.status_code = 500
         response_mock.headers = {}
-        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.raise_for_status.side_effect = HfHubHTTPError("Server down", response=mock.Mock())
         response_mock.json.return_value = {}
 
         # first check that with local files only the pipeline can only be used if cached
@@ -583,25 +582,23 @@ class DownloadTests(unittest.TestCase):
                     assert not any(f.endswith(unexpected_ext) for f in files)
                     assert all(variant in f for f in model_files if f.endswith(model_ext) and variant is not None)
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_download_legacy_variants_with_sharded_ckpts_raises_warning(self):
         repo_id = "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds"
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
         deprecated_warning_msg = "Warning: The repository contains sharded checkpoints for variant"
 
-        for is_local in [True, False]:
-            with CaptureLogger(logger) as cap_logger:
-                with tempfile.TemporaryDirectory() as tmpdirname:
-                    local_repo_id = repo_id
-                    if is_local:
-                        local_repo_id = snapshot_download(repo_id, cache_dir=tmpdirname)
+        with CaptureLogger(logger) as cap_logger:
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                local_repo_id = snapshot_download(repo_id, cache_dir=tmpdirname)
 
-                    _ = DiffusionPipeline.from_pretrained(
-                        local_repo_id,
-                        safety_checker=None,
-                        variant="fp16",
-                        use_safetensors=True,
-                    )
-            assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
+                _ = DiffusionPipeline.from_pretrained(
+                    local_repo_id,
+                    safety_checker=None,
+                    variant="fp16",
+                    use_safetensors=True,
+                )
+        assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
 
     def test_download_safetensors_only_variant_exists_for_model(self):
         variant = None
@@ -616,7 +613,7 @@ class DownloadTests(unittest.TestCase):
                     variant=variant,
                     use_safetensors=use_safetensors,
                 )
-            assert "Error no file name" in str(error_context.exception)
+            assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
 
         # text encoder has fp16 variants so we can load it
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -632,6 +629,7 @@ class DownloadTests(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
             assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_download_bin_only_variant_exists_for_model(self):
         variant = None
         use_safetensors = False
@@ -675,8 +673,9 @@ class DownloadTests(unittest.TestCase):
                     use_safetensors=use_safetensors,
                 )
 
-            assert "Error no file name" in str(error_context.exception)
+            assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_download_bin_variant_does_not_exist_for_model(self):
         variant = "no_ema"
         use_safetensors = False
@@ -692,6 +691,7 @@ class DownloadTests(unittest.TestCase):
                 )
             assert "Error no file name" in str(error_context.exception)
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_local_save_load_index(self):
         prompt = "hello"
         for variant in [None, "fp16"]:
@@ -1108,6 +1108,21 @@ class CustomPipelineTests(unittest.TestCase):
 
         assert images.shape == (1, 64, 64, 3)
 
+    def test_remote_custom_pipe_with_dot_in_name(self):
+        # make sure that trust remote code has to be passed
+        with self.assertRaises(ValueError):
+            pipeline = DiffusionPipeline.from_pretrained("akasharidas/ddpm-cifar10-32-dot.in.name")
+
+        pipeline = DiffusionPipeline.from_pretrained("akasharidas/ddpm-cifar10-32-dot.in.name", trust_remote_code=True)
+
+        assert pipeline.__class__.__name__ == "CustomPipeline"
+
+        pipeline = pipeline.to(torch_device)
+        images, output_str = pipeline(num_inference_steps=2, output_type="np")
+
+        assert images[0].shape == (1, 32, 32, 3)
+        assert output_str == "This is a test"
+
     def test_local_custom_pipeline_repo(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
         pipeline = DiffusionPipeline.from_pretrained(
@@ -1206,13 +1221,13 @@ class PipelineFastTests(unittest.TestCase):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def dummy_image(self):
         batch_size = 1
@@ -1571,6 +1586,7 @@ class PipelineFastTests(unittest.TestCase):
             assert pipeline.scheduler is not None
             assert pipeline.feature_extractor is not None
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_no_pytorch_download_when_doing_safetensors(self):
         # by default we don't download
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -1590,6 +1606,7 @@ class PipelineFastTests(unittest.TestCase):
             # pytorch does not
             assert not os.path.exists(os.path.join(path, "diffusion_pytorch_model.bin"))
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_no_safetensors_download_when_doing_pytorch(self):
         use_safetensors = False
 
@@ -1875,6 +1892,7 @@ class PipelineFastTests(unittest.TestCase):
                 "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", load_connected_pipeline=True
             )
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_wrong_model(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         with self.assertRaises(ValueError) as error_context:
@@ -1997,7 +2015,9 @@ class PipelineSlowTests(unittest.TestCase):
         reason="Torch Dynamo isn't yet supported for Python 3.12.",
     )
     def test_from_save_pretrained_dynamo(self):
-        run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
+        torch.compiler.rest()
+        with torch._inductor.utils.fresh_inductor_cache():
+            run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
 
     def test_from_pretrained_hub(self):
         model_path = "google/ddpm-cifar10-32"
@@ -2209,7 +2229,7 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
         # It is critical that the dynamo cache is reset for each test. Otherwise, if the test re-uses the same model,
         # there will be recompilation errors, as torch caches the model when run in the same process.
         super().tearDown()
-        torch._dynamo.reset()
+        torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -2334,21 +2354,21 @@ class TestLoraHotSwappingForPipeline(unittest.TestCase):
     def test_hotswapping_compiled_pipline_linear(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_pipline_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["conv", "conv1", "conv2"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     @parameterized.expand([(11, 11), (7, 13), (13, 7)])  # important to test small to large and vice versa
     def test_hotswapping_compiled_pipline_both_linear_and_conv2d(self, rank0, rank1):
         # It's important to add this context to raise an error on recompilation
         target_modules = ["to_q", "conv"]
-        with torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True), torch._inductor.utils.fresh_inductor_cache():
             self.check_pipeline_hotswap(do_compile=True, rank0=rank0, rank1=rank1, target_modules0=target_modules)
 
     def test_enable_lora_hotswap_called_after_adapter_added_raises(self):

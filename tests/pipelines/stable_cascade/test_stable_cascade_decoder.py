@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,9 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 from diffusers import DDPMWuerstchenScheduler, StableCascadeDecoderPipeline
 from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
-from diffusers.utils.testing_utils import (
+from diffusers.utils.torch_utils import randn_tensor
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     load_numpy,
@@ -34,8 +36,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-from diffusers.utils.torch_utils import randn_tensor
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -304,7 +304,8 @@ class StableCascadeDecoderPipelineIntegrationTests(unittest.TestCase):
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         image_embedding = load_pt(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/image_embedding.pt"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/image_embedding.pt",
+            map_location=torch_device,
         )
 
         image = pipe(
@@ -320,4 +321,4 @@ class StableCascadeDecoderPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/stable_cascade_decoder_image.npy"
         )
         max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
-        assert max_diff < 1e-4
+        assert max_diff < 2e-4

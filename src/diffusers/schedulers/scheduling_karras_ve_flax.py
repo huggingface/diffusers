@@ -1,4 +1,4 @@
-# Copyright 2024 NVIDIA and The HuggingFace Team. All rights reserved.
+# Copyright 2025 NVIDIA and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -63,8 +63,8 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
     the VE column of Table 1 from [1] for reference.
 
     [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
-    https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
-    differential equations." https://arxiv.org/abs/2011.13456
+    https://huggingface.co/papers/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
+    differential equations." https://huggingface.co/papers/2011.13456
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
@@ -72,8 +72,8 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
     [`~SchedulerMixin.from_pretrained`] functions.
 
     For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
-    Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364. The grid search values used to find the
-    optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
+    Diffusion-Based Generative Models." https://huggingface.co/papers/2206.00364. The grid search values used to find
+    the optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
 
     Args:
         sigma_min (`float`): minimum noise magnitude

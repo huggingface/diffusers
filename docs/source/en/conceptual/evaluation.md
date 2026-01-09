@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -18,8 +18,8 @@ specific language governing permissions and limitations under the License.
 
 > [!TIP]
 > This document has now grown outdated given the emergence of existing evaluation frameworks for diffusion models for image generation. Please check
-> out works like [HEIM](https://crfm.stanford.edu/helm/heim/latest/), [T2I-Compbench](https://arxiv.org/abs/2307.06350),
-> [GenEval](https://arxiv.org/abs/2310.11513).
+> out works like [HEIM](https://crfm.stanford.edu/helm/heim/latest/), [T2I-Compbench](https://huggingface.co/papers/2307.06350),
+> [GenEval](https://huggingface.co/papers/2310.11513).
 
 Evaluation of generative models like [Stable Diffusion](https://huggingface.co/docs/diffusers/stable_diffusion) is subjective in nature. But as practitioners and researchers, we often have to make careful choices amongst many different possibilities. So, when working with different generative models (like GANs, Diffusion, etc.), how do we choose one over the other?
 
@@ -104,13 +104,10 @@ We can also set `num_images_per_prompt` accordingly to compare different images 
 Once several images are generated from all the prompts using multiple models (under evaluation), these results are presented to human evaluators for scoring. For
 more details on the DrawBench and PartiPrompts benchmarks, refer to their respective papers.
 
-<Tip>
-
-It is useful to look at some inference samples while a model is training to measure the
-training progress. In our [training scripts](https://github.com/huggingface/diffusers/tree/main/examples/), we support this utility with additional support for
-logging to TensorBoard and Weights & Biases.
-
-</Tip>
+> [!TIP]
+> It is useful to look at some inference samples while a model is training to measure the
+> training progress. In our [training scripts](https://github.com/huggingface/diffusers/tree/main/examples/), we support this utility with additional support for
+> logging to TensorBoard and Weights & Biases.
 
 ## Quantitative Evaluation
 
@@ -122,7 +119,7 @@ In this section, we will walk you through how to evaluate three different diffus
 
 ### Text-guided image generation
 
-[CLIP score](https://arxiv.org/abs/2104.08718) measures the compatibility of image-caption pairs. Higher CLIP scores imply higher compatibility 🔼. The CLIP score is a quantitative measurement of the qualitative concept "compatibility". Image-caption pair compatibility can also be thought of as the semantic similarity between the image and the caption. CLIP score was found to have high correlation with human judgement.
+[CLIP score](https://huggingface.co/papers/2104.08718) measures the compatibility of image-caption pairs. Higher CLIP scores imply higher compatibility 🔼. The CLIP score is a quantitative measurement of the qualitative concept "compatibility". Image-caption pair compatibility can also be thought of as the semantic similarity between the image and the caption. CLIP score was found to have high correlation with human judgement.
 
 Let's first load a [`StableDiffusionPipeline`]:
 
@@ -205,14 +202,11 @@ print(f"CLIP Score with v-1-5: {sd_clip_score_1_5}")
 
 It seems like the [v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) checkpoint performs better than its predecessor. Note, however, that the number of prompts we used to compute the CLIP scores is quite low. For a more practical evaluation, this number should be way higher, and the prompts should be diverse.
 
-<Tip warning={true}>
-
-By construction, there are some limitations in this score. The captions in the training dataset
-were crawled from the web and extracted from `alt` and similar tags associated an image on the internet.
-They are not necessarily representative of what a human being would use to describe an image. Hence we
-had to "engineer" some prompts here.
-
-</Tip>
+> [!WARNING]
+> By construction, there are some limitations in this score. The captions in the training dataset
+> were crawled from the web and extracted from `alt` and similar tags associated an image on the internet.
+> They are not necessarily representative of what a human being would use to describe an image. Hence we
+> had to "engineer" some prompts here.
 
 ### Image-conditioned text-to-image generation
 
@@ -222,7 +216,7 @@ Here is one example:
 
 ![edit-instruction](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/edit-instruction.png)
 
-One strategy to evaluate such a model is to measure the consistency of the change between the two images (in [CLIP](https://huggingface.co/docs/transformers/model_doc/clip) space) with the change between the two image captions (as shown in [CLIP-Guided Domain Adaptation of Image Generators](https://arxiv.org/abs/2108.00946)). This is referred to as the "**CLIP directional similarity**".
+One strategy to evaluate such a model is to measure the consistency of the change between the two images (in [CLIP](https://huggingface.co/docs/transformers/model_doc/clip) space) with the change between the two image captions (as shown in [CLIP-Guided Domain Adaptation of Image Generators](https://huggingface.co/papers/2108.00946)). This is referred to as the "**CLIP directional similarity**".
 
 - Caption 1 corresponds to the input image (image 1) that is to be edited.
 - Caption 2 corresponds to the edited image (image 2). It should reflect the edit instruction.
@@ -421,11 +415,8 @@ We can extend the idea of this metric to measure how similar the original image 
 
 We can use these metrics for similar pipelines such as the [`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline).
 
-<Tip>
-
-Both CLIP score and CLIP direction similarity rely on the CLIP model, which can make the evaluations biased.
-
-</Tip>
+> [!TIP]
+> Both CLIP score and CLIP direction similarity rely on the CLIP model, which can make the evaluations biased.
 
 ***Extending metrics like IS, FID (discussed later), or KID can be difficult*** when the model under evaluation was pre-trained on a large image-captioning dataset (such as the [LAION-5B dataset](https://laion.ai/blog/laion-5b/)). This is because underlying these metrics is an InceptionNet (pre-trained on the ImageNet-1k dataset) used for extracting intermediate image features. The pre-training dataset of Stable Diffusion may have limited overlap with the pre-training dataset of InceptionNet, so it is not a good candidate here for feature extraction.
 
@@ -433,7 +424,7 @@ Both CLIP score and CLIP direction similarity rely on the CLIP model, which can 
 
 ### Class-conditioned image generation
 
-Class-conditioned generative models are usually pre-trained on a class-labeled dataset such as [ImageNet-1k](https://huggingface.co/datasets/imagenet-1k). Popular metrics for evaluating these models include Fréchet Inception Distance (FID), Kernel Inception Distance (KID), and Inception Score (IS). In this document, we focus on FID ([Heusel et al.](https://arxiv.org/abs/1706.08500)). We show how to compute it with the [`DiTPipeline`](https://huggingface.co/docs/diffusers/api/pipelines/dit), which uses the [DiT model](https://arxiv.org/abs/2212.09748) under the hood.
+Class-conditioned generative models are usually pre-trained on a class-labeled dataset such as [ImageNet-1k](https://huggingface.co/datasets/imagenet-1k). Popular metrics for evaluating these models include Fréchet Inception Distance (FID), Kernel Inception Distance (KID), and Inception Score (IS). In this document, we focus on FID ([Heusel et al.](https://huggingface.co/papers/1706.08500)). We show how to compute it with the [`DiTPipeline`](https://huggingface.co/docs/diffusers/api/pipelines/dit), which uses the [DiT model](https://huggingface.co/papers/2212.09748) under the hood.
 
 FID aims to measure how similar are two datasets of images. As per [this resource](https://mmgeneration.readthedocs.io/en/latest/quick_run.html#fid):
 
@@ -554,21 +545,18 @@ The lower the FID, the better it is. Several things can influence FID here:
 
 For the last two points, it is, therefore, a good practice to run the evaluation across different seeds and inference steps, and then report an average result.
 
-<Tip warning={true}>
-
-FID results tend to be fragile as they depend on a lot of factors:
-
-* The specific Inception model used during computation.
-* The implementation accuracy of the computation.
-* The image format (not the same if we start from PNGs vs JPGs).
-
-Keeping that in mind, FID is often most useful when comparing similar runs, but it is
-hard to reproduce paper results unless the authors carefully disclose the FID
-measurement code.
-
-These points apply to other related metrics too, such as KID and IS.
-
-</Tip>
+> [!WARNING]
+> FID results tend to be fragile as they depend on a lot of factors:
+>
+> * The specific Inception model used during computation.
+> * The implementation accuracy of the computation.
+> * The image format (not the same if we start from PNGs vs JPGs).
+>
+> Keeping that in mind, FID is often most useful when comparing similar runs, but it is
+> hard to reproduce paper results unless the authors carefully disclose the FID
+> measurement code.
+>
+> These points apply to other related metrics too, such as KID and IS.
 
 As a final step, let's visually inspect the `fake_images`.
 

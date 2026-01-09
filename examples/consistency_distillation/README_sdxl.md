@@ -1,6 +1,6 @@
 # Latent Consistency Distillation Example:
 
-[Latent Consistency Models (LCMs)](https://arxiv.org/abs/2310.04378) is a method to distill a latent diffusion model to enable swift inference with minimal steps. This example demonstrates how to use latent consistency distillation to distill SDXL for inference with few timesteps.
+[Latent Consistency Models (LCMs)](https://huggingface.co/papers/2310.04378) is a method to distill a latent diffusion model to enable swift inference with minimal steps. This example demonstrates how to use latent consistency distillation to distill SDXL for inference with few timesteps.
 
 ## Full model distillation
 

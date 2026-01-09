@@ -1,4 +1,4 @@
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,8 @@ from diffusers import (
     WanPipeline,
     WanTransformer3DModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     floats_tensor,
     require_peft_backend,
     skip_mps,
@@ -33,7 +34,7 @@ from diffusers.utils.testing_utils import (
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
@@ -41,7 +42,6 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = WanPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {

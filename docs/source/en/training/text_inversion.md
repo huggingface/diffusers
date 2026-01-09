@@ -1,4 +1,4 @@
- <!--Copyright 2024 The HuggingFace Team. All rights reserved.
+ <!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [Textual Inversion](https://hf.co/papers/2208.01618) is a training technique for personalizing image generation models with just a few example images of what you want it to learn. This technique works by learning and updating the text embeddings (the new embeddings are tied to a special word you must use in the prompt) to match the example images you provide.
 
-If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing or xFormers. With the same configuration and setup as PyTorch, the Flax training script should be at least ~70% faster!
+If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers).
 
 This guide will explore the [textual_inversion.py](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
 
@@ -28,30 +28,12 @@ pip install .
 
 Navigate to the example folder with the training script and install the required dependencies for the script you're using:
 
-<hfoptions id="installation">
-<hfoption id="PyTorch">
-
 ```bash
 cd examples/textual_inversion
 pip install -r requirements.txt
 ```
-
-</hfoption>
-<hfoption id="Flax">
-
-```bash
-cd examples/textual_inversion
-pip install -r requirements_flax.txt
-```
-
-</hfoption>
-</hfoptions>
-
-<Tip>
-
-🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
 
 Initialize an 🤗 Accelerate environment:
 
@@ -75,11 +57,8 @@ write_basic_config()
 
 Lastly, if you want to train a model on your own dataset, take a look at the [Create a dataset for training](create_dataset) guide to learn how to create a dataset that works with the training script.
 
-<Tip>
-
-The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py) and let us know if you have any questions or concerns.
-
-</Tip>
+> [!TIP]
+> The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py) and let us know if you have any questions or concerns.
 
 ## Script parameters
 
@@ -175,11 +154,8 @@ Set the environment variable `MODEL_NAME` to a model id on the Hub or a path to 
 - `token_identifier.txt`: the special placeholder token
 - `type_of_concept.txt`: the type of concept you're training on (either "object" or "style")
 
-<Tip warning={true}>
-
-A full training run takes ~1 hour on a single V100 GPU.
-
-</Tip>
+> [!WARNING]
+> A full training run takes ~1 hour on a single V100 GPU.
 
 One more thing before you launch the script. If you're interested in following along with the training process, you can periodically save generated images as training progresses. Add the following parameters to the training command:
 
@@ -188,9 +164,6 @@ One more thing before you launch the script. If you're interested in following a
 --num_validation_images=4
 --validation_steps=100
 ```
-
-<hfoptions id="training-inference">
-<hfoption id="PyTorch">
 
 ```bash
 export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -214,35 +187,7 @@ accelerate launch textual_inversion.py \
   --push_to_hub
 ```
 
-</hfoption>
-<hfoption id="Flax">
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export DATA_DIR="./cat"
-
-python textual_inversion_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --train_data_dir=$DATA_DIR \
-  --learnable_property="object" \
-  --placeholder_token="<cat-toy>" \
-  --initializer_token="toy" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --max_train_steps=3000 \
-  --learning_rate=5.0e-04 \
-  --scale_lr \
-  --output_dir="textual_inversion_cat" \
-  --push_to_hub
-```
-
-</hfoption>
-</hfoptions>
-
 After training is complete, you can use your newly trained model for inference like:
-
-<hfoptions id="training-inference">
-<hfoption id="PyTorch">
 
 ```py
 from diffusers import StableDiffusionPipeline
@@ -254,45 +199,8 @@ image = pipeline("A <cat-toy> train", num_inference_steps=50).images[0]
 image.save("cat-train.png")
 ```
 
-</hfoption>
-<hfoption id="Flax">
-
-Flax doesn't support the [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] method, but the textual_inversion_flax.py script [saves](https://github.com/huggingface/diffusers/blob/c0f058265161178f2a88849e92b37ffdc81f1dcc/examples/textual_inversion/textual_inversion_flax.py#L636C2-L636C2) the learned embeddings as a part of the model after training. This means you can use the model for inference like any other Flax model:
-
-```py
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline
-
-model_path = "path-to-your-trained-model"
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(model_path, dtype=jax.numpy.bfloat16)
-
-prompt = "A <cat-toy> train"
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 50
-
-num_samples = jax.device_count()
-prompt = num_samples * [prompt]
-prompt_ids = pipeline.prepare_inputs(prompt)
-
-# shard inputs and rng
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-image.save("cat-train.png")
-```
-
-</hfoption>
-</hfoptions>
-
 ## Next steps
 
 Congratulations on training your own Textual Inversion model! 🎉 To learn more about how to use your new model, the following guides may be helpful:
 
-- Learn how to [load Textual Inversion embeddings](../using-diffusers/loading_adapters) and also use them as negative embeddings.
-- Learn how to use [Textual Inversion](textual_inversion_inference) for inference with Stable Diffusion 1/2 and Stable Diffusion XL.
+- Learn how to [load Textual Inversion embeddings](../using-diffusers/textual_inversion_inference) and also use them as negative embeddings.

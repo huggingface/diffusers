@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -15,7 +15,7 @@ OmniGen is an image generation model. Unlike existing text-to-image models, Omni
 - Minimalist model architecture, consisting of only a VAE and a transformer module, for joint modeling of text and images.
 - Support for multimodal inputs. It can process any text-image mixed data as instructions for image generation, rather than relying solely on text.
 
-For more information, please refer to the [paper](https://arxiv.org/pdf/2409.11340).
+For more information, please refer to the [paper](https://huggingface.co/papers/2409.11340).
 This guide will walk you through using OmniGen for various tasks and use cases.
 
 ## Load model checkpoints

@@ -1,4 +1,4 @@
-# Copyright 2024 The CogVideoX team, Tsinghua University & ZhipuAI and The HuggingFace Team.
+# Copyright 2025 The CogVideoX team, Tsinghua University & ZhipuAI and The HuggingFace Team.
 # All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@ from ..downsampling import CogVideoXDownsample3D
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from ..upsampling import CogVideoXUpsample3D
-from .vae import DecoderOutput, DiagonalGaussianDistribution
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -148,8 +148,8 @@ class CogVideoXCausalConv3d(nn.Module):
 
 class CogVideoXSpatialNorm3D(nn.Module):
     r"""
-    Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002. This implementation is specific
-    to 3D-video like data.
+    Spatially conditioned normalization as defined in https://huggingface.co/papers/2209.09002. This implementation is
+    specific to 3D-video like data.
 
     CogVideoXSafeConv3d is used instead of nn.Conv3d to avoid OOM in CogVideoX Model.
 
@@ -955,7 +955,7 @@ class CogVideoXDecoder3D(nn.Module):
         return hidden_states, new_conv_cache
 
 
-class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images. Used in
     [CogVideoX](https://github.com/THUDM/CogVideo).
@@ -980,11 +980,11 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
             diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
             / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
-            Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
+            Synthesis with Latent Diffusion Models](https://huggingface.co/papers/2112.10752) paper.
         force_upcast (`bool`, *optional*, default to `True`):
             If enabled it will force the VAE to run in float32 for high image resolution pipelines, such as SD-XL. VAE
-            can be fine-tuned / trained to a lower range without loosing too much precision in which case
-            `force_upcast` can be set to `False` - see: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix
+            can be fine-tuned / trained to a lower range without losing too much precision in which case `force_upcast`
+            can be set to `False` - see: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix
     """
 
     _supports_gradient_checkpointing = True
@@ -995,19 +995,19 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str] = (
+        down_block_types: Tuple[str, ...] = (
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
         ),
-        up_block_types: Tuple[str] = (
+        up_block_types: Tuple[str, ...] = (
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
         ),
-        block_out_channels: Tuple[int] = (128, 256, 256, 512),
+        block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
         latent_channels: int = 16,
         layers_per_block: int = 3,
         act_fn: str = "silu",
@@ -1123,27 +1123,6 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.tile_latent_min_width = int(self.tile_sample_min_width / (2 ** (len(self.config.block_out_channels) - 1)))
         self.tile_overlap_factor_height = tile_overlap_factor_height or self.tile_overlap_factor_height
         self.tile_overlap_factor_width = tile_overlap_factor_width or self.tile_overlap_factor_width
-
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_tiling = False
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = x.shape

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -143,7 +143,7 @@ class SplitInferenceModule(nn.Module):
 
 
 class AnimateDiffFreeNoiseMixin:
-    r"""Mixin class for [FreeNoise](https://arxiv.org/abs/2310.15169)."""
+    r"""Mixin class for [FreeNoise](https://huggingface.co/papers/2310.15169)."""
 
     def _enable_free_noise_in_block(self, block: Union[CrossAttnDownBlockMotion, DownBlockMotion, UpBlockMotion]):
         r"""Helper function to enable FreeNoise in transformer blocks."""

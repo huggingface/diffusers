@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -173,7 +173,7 @@ mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data
 init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
-path = "runwayml/stable-diffusion-inpainting"
+path = "stable-diffusion-v1-5/stable-diffusion-inpainting"
 
 run_compile = True  # Set True / False
 

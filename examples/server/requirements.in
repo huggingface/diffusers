@@ -1,4 +1,4 @@
-torch~=2.4.0
+torch~=2.7.0
 transformers==4.46.1
 sentencepiece
 aiohttp
@@ -7,3 +7,4 @@ prometheus_client >= 0.18.0
 prometheus-fastapi-instrumentator >= 7.0.0
 fastapi
 uvicorn
+accelerate

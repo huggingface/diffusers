@@ -12,6 +12,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import contextlib
@@ -376,7 +377,7 @@ def parse_args(input_args=None):
         "--do_edm_style_training",
         default=False,
         action="store_true",
-        help="Flag to conduct training using the EDM formulation as introduced in https://arxiv.org/abs/2206.00364.",
+        help="Flag to conduct training using the EDM formulation as introduced in https://huggingface.co/papers/2206.00364.",
     )
     parser.add_argument(
         "--with_prior_preservation",
@@ -517,7 +518,7 @@ def parse_args(input_args=None):
         type=float,
         default=None,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
+        "More details here: https://huggingface.co/papers/2303.09556.",
     )
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
@@ -661,7 +662,7 @@ def parse_args(input_args=None):
         action="store_true",
         default=False,
         help=(
-            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://huggingface.co/papers/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
         ),
     )
@@ -1054,7 +1055,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     if args.do_edm_style_training and args.snr_gamma is not None:
@@ -1759,7 +1760,7 @@ def main(args):
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
                 # For EDM-style training, we first obtain the sigmas based on the continuous timesteps.
                 # We then precondition the final model inputs based on these sigmas instead of the timesteps.
-                # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                # Follow: Section 5 of https://huggingface.co/papers/2206.00364.
                 if args.do_edm_style_training:
                     sigmas = get_sigmas(timesteps, len(noisy_model_input.shape), noisy_model_input.dtype)
                     if "EDM" in scheduler_type:
@@ -1819,7 +1820,7 @@ def main(args):
                 if args.do_edm_style_training:
                     # Similar to the input preconditioning, the model predictions are also preconditioned
                     # on noised model inputs (before preconditioning) and the sigmas.
-                    # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                    # Follow: Section 5 of https://huggingface.co/papers/2206.00364.
                     if "EDM" in scheduler_type:
                         model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
                     else:
@@ -1873,7 +1874,7 @@ def main(args):
                         weighting=weighting,
                     )
                 else:
-                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Compute loss-weights as per Section 3.4 of https://huggingface.co/papers/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
                     snr = compute_snr(noise_scheduler, timesteps)

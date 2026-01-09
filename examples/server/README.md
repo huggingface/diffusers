@@ -9,8 +9,8 @@ This guide will show you how to use the [`StableDiffusion3Pipeline`] in a server
 Start by navigating to the `examples/server` folder and installing all of the dependencies.
 
 ```py
-pip install .
-pip install -f requirements.txt
+pip install diffusers
+pip install -r requirements.txt
 ```
 
 Launch the server with the following command.

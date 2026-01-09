@@ -1,4 +1,4 @@
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,16 +17,12 @@ import unittest
 import torch
 
 from diffusers import HunyuanVideoTransformer3DModel
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
-    is_torch_compile,
-    require_torch_2,
-    require_torch_gpu,
-    slow,
     torch_device,
 )
-
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
@@ -96,20 +92,12 @@ class HunyuanVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    @require_torch_gpu
-    @require_torch_2
-    @is_torch_compile
-    @slow
-    def test_torch_compile_recompilation_and_graph_break(self):
-        torch._dynamo.reset()
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        model = self.model_class(**init_dict).to(torch_device)
-        model = torch.compile(model, fullgraph=True)
+class HunyuanTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = HunyuanVideoTransformer3DModel
 
-        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
-            _ = model(**inputs_dict)
-            _ = model(**inputs_dict)
+    def prepare_init_args_and_inputs_for_common(self):
+        return HunyuanVideoTransformer3DTests().prepare_init_args_and_inputs_for_common()
 
 
 class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
@@ -179,20 +167,12 @@ class HunyuanSkyreelsImageToVideoTransformer3DTests(ModelTesterMixin, unittest.T
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    @require_torch_gpu
-    @require_torch_2
-    @is_torch_compile
-    @slow
-    def test_torch_compile_recompilation_and_graph_break(self):
-        torch._dynamo.reset()
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        model = self.model_class(**init_dict).to(torch_device)
-        model = torch.compile(model, fullgraph=True)
+class HunyuanSkyreelsImageToVideoCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = HunyuanVideoTransformer3DModel
 
-        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
-            _ = model(**inputs_dict)
-            _ = model(**inputs_dict)
+    def prepare_init_args_and_inputs_for_common(self):
+        return HunyuanSkyreelsImageToVideoTransformer3DTests().prepare_init_args_and_inputs_for_common()
 
 
 class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
@@ -260,20 +240,12 @@ class HunyuanVideoImageToVideoTransformer3DTests(ModelTesterMixin, unittest.Test
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    @require_torch_gpu
-    @require_torch_2
-    @is_torch_compile
-    @slow
-    def test_torch_compile_recompilation_and_graph_break(self):
-        torch._dynamo.reset()
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        model = self.model_class(**init_dict).to(torch_device)
-        model = torch.compile(model, fullgraph=True)
+class HunyuanImageToVideoCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = HunyuanVideoTransformer3DModel
 
-        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
-            _ = model(**inputs_dict)
-            _ = model(**inputs_dict)
+    def prepare_init_args_and_inputs_for_common(self):
+        return HunyuanVideoImageToVideoTransformer3DTests().prepare_init_args_and_inputs_for_common()
 
 
 class HunyuanVideoTokenReplaceImageToVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
@@ -343,17 +315,9 @@ class HunyuanVideoTokenReplaceImageToVideoTransformer3DTests(ModelTesterMixin, u
         expected_set = {"HunyuanVideoTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    @require_torch_gpu
-    @require_torch_2
-    @is_torch_compile
-    @slow
-    def test_torch_compile_recompilation_and_graph_break(self):
-        torch._dynamo.reset()
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        model = self.model_class(**init_dict).to(torch_device)
-        model = torch.compile(model, fullgraph=True)
+class HunyuanVideoTokenReplaceCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+    model_class = HunyuanVideoTransformer3DModel
 
-        with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
-            _ = model(**inputs_dict)
-            _ = model(**inputs_dict)
+    def prepare_init_args_and_inputs_for_common(self):
+        return HunyuanVideoTokenReplaceImageToVideoTransformer3DTests().prepare_init_args_and_inputs_for_common()

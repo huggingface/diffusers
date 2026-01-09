@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -21,11 +21,10 @@ Flux is a series of text-to-image generation models based on diffusion transform
 
 Original model checkpoints for Flux can be found [here](https://huggingface.co/black-forest-labs). Original inference code can be found [here](https://github.com/black-forest-labs/flux).
 
-<Tip>
-
-Flux can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details. Additionally, Flux can benefit from quantization for memory efficiency with a trade-off in inference latency. Refer to [this blog post](https://huggingface.co/blog/quanto-diffusers) to learn more.  For an exhaustive list of resources, check out [this gist](https://gist.github.com/sayakpaul/b664605caf0aa3bf8585ab109dd5ac9c).
-
-</Tip>
+> [!TIP]
+> Flux can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details. Additionally, Flux can benefit from quantization for memory efficiency with a trade-off in inference latency. Refer to [this blog post](https://huggingface.co/blog/quanto-diffusers) to learn more.  For an exhaustive list of resources, check out [this gist](https://gist.github.com/sayakpaul/b664605caf0aa3bf8585ab109dd5ac9c).
+>
+> [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 Flux comes in the following variants:
 
@@ -39,6 +38,7 @@ Flux comes in the following variants:
 | Canny Control (LoRA) | [`black-forest-labs/FLUX.1-Canny-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev-lora) |
 | Depth Control (LoRA) | [`black-forest-labs/FLUX.1-Depth-dev-lora`](https://huggingface.co/black-forest-labs/FLUX.1-Depth-dev-lora) |
 | Redux (Adapter) | [`black-forest-labs/FLUX.1-Redux-dev`](https://huggingface.co/black-forest-labs/FLUX.1-Redux-dev) |
+| Kontext | [`black-forest-labs/FLUX.1-kontext`](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) |
 
 All checkpoints have different usage which we detail below.
 
@@ -273,6 +273,107 @@ images = pipe(
 images[0].save("flux-redux.png")
 ```
 
+### Kontext
+
+Flux Kontext is a model that allows in-context control of the image generation process, allowing for editing, refinement, relighting, style transfer, character customization, and more.
+
+```python
+import torch
+from diffusers import FluxKontextPipeline
+from diffusers.utils import load_image
+
+pipe = FluxKontextPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png").convert("RGB")
+prompt = "Make Pikachu hold a sign that says 'Black Forest Labs is awesome', yarn art style, detailed, vibrant colors"
+image = pipe(
+    image=image,
+    prompt=prompt,
+    guidance_scale=2.5,
+    generator=torch.Generator().manual_seed(42),
+).images[0]
+image.save("flux-kontext.png")
+```
+
+Flux Kontext comes with an integrity safety checker, which should be run after the image generation step. To run the safety checker, install the official repository from [black-forest-labs/flux](https://github.com/black-forest-labs/flux) and add the following code:
+
+```python
+from flux.content_filters import PixtralContentFilter
+
+# ... pipeline invocation to generate images
+
+integrity_checker = PixtralContentFilter(torch.device("cuda"))
+image_ = np.array(image) / 255.0
+image_ = 2 * image_ - 1
+image_ = torch.from_numpy(image_).to("cuda", dtype=torch.float32).unsqueeze(0).permute(0, 3, 1, 2)
+if integrity_checker.test_image(image_):
+    raise ValueError("Your image has been flagged. Choose another prompt/image or try again.")
+```
+
+### Kontext Inpainting
+`FluxKontextInpaintPipeline` enables image modification within a fixed mask region. It currently supports both text-based conditioning and image-reference conditioning.
+<hfoptions id="kontext-inpaint">
+<hfoption id="text-only">
+
+
+```python
+import torch
+from diffusers import FluxKontextInpaintPipeline
+from diffusers.utils import load_image
+
+prompt = "Change the yellow dinosaur to green one"
+img_url = (
+    "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_input.jpeg?raw=true"
+)
+mask_url = (
+    "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_mask.png?raw=true"
+)
+
+source = load_image(img_url)
+mask = load_image(mask_url)
+
+pipe = FluxKontextInpaintPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+image = pipe(prompt=prompt, image=source, mask_image=mask, strength=1.0).images[0]
+image.save("kontext_inpainting_normal.png")
+```
+</hfoption>
+<hfoption id="image conditioning">
+
+```python
+import torch
+from diffusers import FluxKontextInpaintPipeline
+from diffusers.utils import load_image
+
+pipe = FluxKontextInpaintPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+prompt = "Replace this ball"
+img_url = "https://images.pexels.com/photos/39362/the-ball-stadion-football-the-pitch-39362.jpeg?auto=compress&cs=tinysrgb&dpr=1&w=500"
+mask_url = "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/ball_mask.png?raw=true"
+image_reference_url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTah3x6OL_ECMBaZ5ZlJJhNsyC-OSMLWAI-xw&s"
+
+source = load_image(img_url)
+mask = load_image(mask_url)
+image_reference = load_image(image_reference_url)
+
+mask = pipe.mask_processor.blur(mask, blur_factor=12)
+image = pipe(
+    prompt=prompt, image=source, mask_image=mask, image_reference=image_reference, strength=1.0
+).images[0]
+image.save("kontext_inpainting_ref.png")
+```
+</hfoption>
+</hfoptions>
+
 ## Combining Flux Turbo LoRAs with Flux Control, Fill, and Redux
 
 We can combine Flux Turbo LoRAs with Flux Control and other pipelines like Fill and Redux to enable few-steps' inference. The example below shows how to do that for Flux Control LoRA for depth and turbo LoRA from [`ByteDance/Hyper-SD`](https://hf.co/ByteDance/Hyper-SD).
@@ -316,11 +417,8 @@ When unloading the Control LoRA weights, call `pipe.unload_lora_weights(reset_to
 
 ## IP-Adapter
 
-<Tip>
-
-Check out [IP-Adapter](../../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
-
-</Tip>
+> [!TIP]
+> Check out [IP-Adapter](../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
 
 An IP-Adapter lets you prompt Flux with images, in addition to the text prompt. This is especially useful when describing complex concepts that are difficult to articulate through text alone and you have reference images.
 
@@ -500,9 +598,8 @@ image.save("flux.png")
 
 The `FluxTransformer2DModel` supports loading checkpoints in the original format shipped by Black Forest Labs. This is also useful when trying to load finetunes or quantized versions of the models that have been published by the community.
 
-<Tip>
-`FP8` inference can be brittle depending on the GPU type, CUDA version, and `torch` version that you are using. It is recommended that you use the `optimum-quanto` library in order to run FP8 inference on your machine.
-</Tip>
+> [!TIP]
+> `FP8` inference can be brittle depending on the GPU type, CUDA version, and `torch` version that you are using. It is recommended that you use the `optimum-quanto` library in order to run FP8 inference on your machine.
 
 The following example demonstrates how to run Flux with less than 16GB of VRAM.
 
@@ -601,5 +698,17 @@ image.save("flux-fp8-dev.png")
 ## FluxFillPipeline
 
 [[autodoc]] FluxFillPipeline
+	- all
+	- __call__
+
+## FluxKontextPipeline
+
+[[autodoc]] FluxKontextPipeline
+	- all
+	- __call__
+
+## FluxKontextInpaintPipeline
+
+[[autodoc]] FluxKontextInpaintPipeline
 	- all
 	- __call__

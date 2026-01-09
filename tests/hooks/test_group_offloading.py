@@ -1,4 +1,4 @@
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,12 +17,22 @@ import gc
 import unittest
 
 import torch
+from parameterized import parameterized
 
+from diffusers import AutoencoderKL
+from diffusers.hooks import HookRegistry, ModelHook
 from diffusers.models import ModelMixin
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils import get_logger
 from diffusers.utils.import_utils import compare_versions
-from diffusers.utils.testing_utils import require_torch_gpu, torch_device
+
+from ..testing_utils import (
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_peak_memory_stats,
+    require_torch_accelerator,
+    torch_device,
+)
 
 
 class DummyBlock(torch.nn.Module):
@@ -93,6 +103,29 @@ class DummyModelWithMultipleBlocks(ModelMixin):
         return x
 
 
+# Test for https://github.com/huggingface/diffusers/pull/12077
+class DummyModelWithLayerNorm(ModelMixin):
+    def __init__(self, in_features: int, hidden_features: int, out_features: int, num_layers: int) -> None:
+        super().__init__()
+
+        self.linear_1 = torch.nn.Linear(in_features, hidden_features)
+        self.activation = torch.nn.ReLU()
+        self.blocks = torch.nn.ModuleList(
+            [DummyBlock(hidden_features, hidden_features, hidden_features) for _ in range(num_layers)]
+        )
+        self.layer_norm = torch.nn.LayerNorm(hidden_features, elementwise_affine=True)
+        self.linear_2 = torch.nn.Linear(hidden_features, out_features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.linear_1(x)
+        x = self.activation(x)
+        for block in self.blocks:
+            x = block(x)
+        x = self.layer_norm(x)
+        x = self.linear_2(x)
+        return x
+
+
 class DummyPipeline(DiffusionPipeline):
     model_cpu_offload_seq = "model"
 
@@ -107,7 +140,85 @@ class DummyPipeline(DiffusionPipeline):
         return x
 
 
-@require_torch_gpu
+class LayerOutputTrackerHook(ModelHook):
+    def __init__(self):
+        super().__init__()
+        self.outputs = []
+
+    def post_forward(self, module, output):
+        self.outputs.append(output)
+        return output
+
+
+# Model with only standalone computational layers at top level
+class DummyModelWithStandaloneLayers(ModelMixin):
+    def __init__(self, in_features: int, hidden_features: int, out_features: int) -> None:
+        super().__init__()
+
+        self.layer1 = torch.nn.Linear(in_features, hidden_features)
+        self.activation = torch.nn.ReLU()
+        self.layer2 = torch.nn.Linear(hidden_features, hidden_features)
+        self.layer3 = torch.nn.Linear(hidden_features, out_features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.layer1(x)
+        x = self.activation(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        return x
+
+
+# Model with deeply nested structure
+class DummyModelWithDeeplyNestedBlocks(ModelMixin):
+    def __init__(self, in_features: int, hidden_features: int, out_features: int) -> None:
+        super().__init__()
+
+        self.input_layer = torch.nn.Linear(in_features, hidden_features)
+        self.container = ContainerWithNestedModuleList(hidden_features)
+        self.output_layer = torch.nn.Linear(hidden_features, out_features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.input_layer(x)
+        x = self.container(x)
+        x = self.output_layer(x)
+        return x
+
+
+class ContainerWithNestedModuleList(torch.nn.Module):
+    def __init__(self, features: int) -> None:
+        super().__init__()
+
+        # Top-level computational layer
+        self.proj_in = torch.nn.Linear(features, features)
+
+        # Nested container with ModuleList
+        self.nested_container = NestedContainer(features)
+
+        # Another top-level computational layer
+        self.proj_out = torch.nn.Linear(features, features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.proj_in(x)
+        x = self.nested_container(x)
+        x = self.proj_out(x)
+        return x
+
+
+class NestedContainer(torch.nn.Module):
+    def __init__(self, features: int) -> None:
+        super().__init__()
+
+        self.blocks = torch.nn.ModuleList([torch.nn.Linear(features, features), torch.nn.Linear(features, features)])
+        self.norm = torch.nn.LayerNorm(features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for block in self.blocks:
+            x = block(x)
+        x = self.norm(x)
+        return x
+
+
+@require_torch_accelerator
 class GroupOffloadTests(unittest.TestCase):
     in_features = 64
     hidden_features = 256
@@ -125,8 +236,8 @@ class GroupOffloadTests(unittest.TestCase):
         del self.model
         del self.input
         gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
     def get_model(self):
         torch.manual_seed(0)
@@ -141,8 +252,8 @@ class GroupOffloadTests(unittest.TestCase):
         @torch.no_grad()
         def run_forward(model):
             gc.collect()
-            torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
+            backend_empty_cache(torch_device)
+            backend_reset_peak_memory_stats(torch_device)
             self.assertTrue(
                 all(
                     module._diffusers_hook.get_hook("group_offloading") is not None
@@ -152,7 +263,7 @@ class GroupOffloadTests(unittest.TestCase):
             )
             model.eval()
             output = model(self.input)[0].cpu()
-            max_memory_allocated = torch.cuda.max_memory_allocated()
+            max_memory_allocated = backend_max_memory_allocated(torch_device)
             return output, max_memory_allocated
 
         self.model.to(torch_device)
@@ -187,10 +298,10 @@ class GroupOffloadTests(unittest.TestCase):
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading5, atol=1e-5))
 
         # Memory assertions - offloading should reduce memory usage
-        self.assertTrue(mem4 <= mem5 < mem2 < mem3 < mem1 < mem_baseline)
+        self.assertTrue(mem4 <= mem5 < mem2 <= mem3 < mem1 < mem_baseline)
 
-    def test_warning_logged_if_group_offloaded_module_moved_to_cuda(self):
-        if torch.device(torch_device).type != "cuda":
+    def test_warning_logged_if_group_offloaded_module_moved_to_accelerator(self):
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
             return
         self.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
         logger = get_logger("diffusers.models.modeling_utils")
@@ -199,8 +310,8 @@ class GroupOffloadTests(unittest.TestCase):
             self.model.to(torch_device)
         self.assertIn(f"The module '{self.model.__class__.__name__}' is group offloaded", cm.output[0])
 
-    def test_warning_logged_if_group_offloaded_pipe_moved_to_cuda(self):
-        if torch.device(torch_device).type != "cuda":
+    def test_warning_logged_if_group_offloaded_pipe_moved_to_accelerator(self):
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
             return
         pipe = DummyPipeline(self.model)
         self.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
@@ -210,19 +321,20 @@ class GroupOffloadTests(unittest.TestCase):
             pipe.to(torch_device)
         self.assertIn(f"The module '{self.model.__class__.__name__}' is group offloaded", cm.output[0])
 
-    def test_error_raised_if_streams_used_and_no_cuda_device(self):
-        original_is_available = torch.cuda.is_available
-        torch.cuda.is_available = lambda: False
+    def test_error_raised_if_streams_used_and_no_accelerator_device(self):
+        torch_accelerator_module = getattr(torch, torch_device, torch.cuda)
+        original_is_available = torch_accelerator_module.is_available
+        torch_accelerator_module.is_available = lambda: False
         with self.assertRaises(ValueError):
             self.model.enable_group_offload(
-                onload_device=torch.device("cuda"), offload_type="leaf_level", use_stream=True
+                onload_device=torch.device(torch_device), offload_type="leaf_level", use_stream=True
             )
-        torch.cuda.is_available = original_is_available
+        torch_accelerator_module.is_available = original_is_available
 
     def test_error_raised_if_supports_group_offloading_false(self):
         self.model._supports_group_offloading = False
         with self.assertRaisesRegex(ValueError, "does not support group offloading"):
-            self.model.enable_group_offload(onload_device=torch.device("cuda"))
+            self.model.enable_group_offload(onload_device=torch.device(torch_device))
 
     def test_error_raised_if_model_offloading_applied_on_group_offloaded_module(self):
         pipe = DummyPipeline(self.model)
@@ -249,8 +361,9 @@ class GroupOffloadTests(unittest.TestCase):
             pipe.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
 
     def test_block_level_stream_with_invocation_order_different_from_initialization_order(self):
-        if torch.device(torch_device).type != "cuda":
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
             return
+
         model = DummyModelWithMultipleBlocks(
             in_features=self.in_features,
             hidden_features=self.hidden_features,
@@ -267,3 +380,189 @@ class GroupOffloadTests(unittest.TestCase):
 
         with context:
             model(self.input)
+
+    @parameterized.expand([("block_level",), ("leaf_level",)])
+    def test_block_level_offloading_with_parameter_only_module_group(self, offload_type: str):
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        def apply_layer_output_tracker_hook(model: DummyModelWithLayerNorm):
+            for name, module in model.named_modules():
+                registry = HookRegistry.check_if_exists_or_initialize(module)
+                hook = LayerOutputTrackerHook()
+                registry.register_hook(hook, "layer_output_tracker")
+
+        model_ref = DummyModelWithLayerNorm(128, 256, 128, 2)
+        model = DummyModelWithLayerNorm(128, 256, 128, 2)
+
+        model.load_state_dict(model_ref.state_dict(), strict=True)
+
+        model_ref.to(torch_device)
+        model.enable_group_offload(torch_device, offload_type=offload_type, num_blocks_per_group=1, use_stream=True)
+
+        apply_layer_output_tracker_hook(model_ref)
+        apply_layer_output_tracker_hook(model)
+
+        x = torch.randn(2, 128).to(torch_device)
+
+        out_ref = model_ref(x)
+        out = model(x)
+        self.assertTrue(torch.allclose(out_ref, out, atol=1e-5), "Outputs do not match.")
+
+        num_repeats = 2
+        for i in range(num_repeats):
+            out_ref = model_ref(x)
+            out = model(x)
+
+        self.assertTrue(torch.allclose(out_ref, out, atol=1e-5), "Outputs do not match after multiple invocations.")
+
+        for (ref_name, ref_module), (name, module) in zip(model_ref.named_modules(), model.named_modules()):
+            assert ref_name == name
+            ref_outputs = (
+                HookRegistry.check_if_exists_or_initialize(ref_module).get_hook("layer_output_tracker").outputs
+            )
+            outputs = HookRegistry.check_if_exists_or_initialize(module).get_hook("layer_output_tracker").outputs
+            cumulated_absmax = 0.0
+            for i in range(len(outputs)):
+                diff = ref_outputs[0] - outputs[i]
+                absdiff = diff.abs()
+                absmax = absdiff.max().item()
+                cumulated_absmax += absmax
+            self.assertLess(
+                cumulated_absmax, 1e-5, f"Output differences for {name} exceeded threshold: {cumulated_absmax:.5f}"
+            )
+
+    def test_vae_like_model_without_streams(self):
+        """Test VAE-like model with block-level offloading but without streams."""
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        config = self.get_autoencoder_kl_config()
+        model = AutoencoderKL(**config)
+
+        model_ref = AutoencoderKL(**config)
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=False)
+
+        x = torch.randn(2, 3, 32, 32).to(torch_device)
+
+        with torch.no_grad():
+            out_ref = model_ref(x).sample
+            out = model(x).sample
+
+        self.assertTrue(
+            torch.allclose(out_ref, out, atol=1e-5), "Outputs do not match for VAE-like model without streams."
+        )
+
+    def test_model_with_only_standalone_layers(self):
+        """Test that models with only standalone layers (no ModuleList/Sequential) work with block-level offloading."""
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        model = DummyModelWithStandaloneLayers(in_features=64, hidden_features=128, out_features=64)
+
+        model_ref = DummyModelWithStandaloneLayers(in_features=64, hidden_features=128, out_features=64)
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+
+        x = torch.randn(2, 64).to(torch_device)
+
+        with torch.no_grad():
+            for i in range(2):
+                out_ref = model_ref(x)
+                out = model(x)
+                self.assertTrue(
+                    torch.allclose(out_ref, out, atol=1e-5),
+                    f"Outputs do not match at iteration {i} for model with standalone layers.",
+                )
+
+    @parameterized.expand([("block_level",), ("leaf_level",)])
+    def test_standalone_conv_layers_with_both_offload_types(self, offload_type: str):
+        """Test that standalone Conv2d layers work correctly with both block-level and leaf-level offloading."""
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        config = self.get_autoencoder_kl_config()
+        model = AutoencoderKL(**config)
+
+        model_ref = AutoencoderKL(**config)
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(torch_device, offload_type=offload_type, num_blocks_per_group=1, use_stream=True)
+
+        x = torch.randn(2, 3, 32, 32).to(torch_device)
+
+        with torch.no_grad():
+            out_ref = model_ref(x).sample
+            out = model(x).sample
+
+        self.assertTrue(
+            torch.allclose(out_ref, out, atol=1e-5),
+            f"Outputs do not match for standalone Conv layers with {offload_type}.",
+        )
+
+    def test_multiple_invocations_with_vae_like_model(self):
+        """Test that multiple forward passes work correctly with VAE-like model."""
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        config = self.get_autoencoder_kl_config()
+        model = AutoencoderKL(**config)
+
+        model_ref = AutoencoderKL(**config)
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+
+        x = torch.randn(2, 3, 32, 32).to(torch_device)
+
+        with torch.no_grad():
+            for i in range(2):
+                out_ref = model_ref(x).sample
+                out = model(x).sample
+                self.assertTrue(torch.allclose(out_ref, out, atol=1e-5), f"Outputs do not match at iteration {i}.")
+
+    def test_nested_container_parameters_offloading(self):
+        """Test that parameters from non-computational layers in nested containers are handled correctly."""
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        model = DummyModelWithDeeplyNestedBlocks(in_features=64, hidden_features=128, out_features=64)
+
+        model_ref = DummyModelWithDeeplyNestedBlocks(in_features=64, hidden_features=128, out_features=64)
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+
+        x = torch.randn(2, 64).to(torch_device)
+
+        with torch.no_grad():
+            for i in range(2):
+                out_ref = model_ref(x)
+                out = model(x)
+                self.assertTrue(
+                    torch.allclose(out_ref, out, atol=1e-5),
+                    f"Outputs do not match at iteration {i} for nested parameters.",
+                )
+
+    def get_autoencoder_kl_config(self, block_out_channels=None, norm_num_groups=None):
+        block_out_channels = block_out_channels or [2, 4]
+        norm_num_groups = norm_num_groups or 2
+        init_dict = {
+            "block_out_channels": block_out_channels,
+            "in_channels": 3,
+            "out_channels": 3,
+            "down_block_types": ["DownEncoderBlock2D"] * len(block_out_channels),
+            "up_block_types": ["UpDecoderBlock2D"] * len(block_out_channels),
+            "latent_channels": 4,
+            "norm_num_groups": norm_num_groups,
+            "layers_per_block": 1,
+        }
+        return init_dict

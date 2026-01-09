@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -107,11 +107,8 @@ pip install -e ".[flax]"
 Python은 이제 일반 라이브러리 경로에 더하여 복제한 폴더 내부를 살펴봅니다.
 예를들어 Python 패키지가 `~/anaconda3/envs/main/lib/python3.10/site-packages/`에 설치되어 있는 경우 Python은 복제한 폴더인 `~/diffusers/`도 검색합니다.
 
-<Tip warning={true}>
-
-라이브러리를 계속 사용하려면 `diffusers` 폴더를 유지해야 합니다.
-
-</Tip>
+> [!WARNING]
+> 라이브러리를 계속 사용하려면 `diffusers` 폴더를 유지해야 합니다.
 
 이제 다음 명령어를 사용하여 최신 버전의 🤗 Diffusers로 쉽게 업데이트할 수 있습니다:
 

@@ -1,6 +1,6 @@
 # LoRA finetuning example for CogVideoX
 
-Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
+Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://huggingface.co/papers/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
 
 In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 
@@ -125,10 +125,10 @@ When running `accelerate config`, if we specify torch compile mode to True there
 If you would like to push your model to the HF Hub after training is completed with a neat model card, make sure you're logged in:
 
 ```
-huggingface-cli login
+hf auth login
 
 # Alternatively, you could upload your model manually using:
-# huggingface-cli upload my-cool-account-name/my-cool-lora-name /path/to/awesome/lora
+# hf upload my-cool-account-name/my-cool-lora-name /path/to/awesome/lora
 ```
 
 Make sure your data is prepared as described in [Data Preparation](#data-preparation). When ready, you can begin training!

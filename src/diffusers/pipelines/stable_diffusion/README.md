@@ -10,7 +10,7 @@ The summary of the model is the following:
 
 ## Tips:
 
-- Stable Diffusion has the same architecture as [Latent Diffusion](https://arxiv.org/abs/2112.10752) but uses a frozen CLIP Text Encoder instead of training the text encoder jointly with the diffusion model.
+- Stable Diffusion has the same architecture as [Latent Diffusion](https://huggingface.co/papers/2112.10752) but uses a frozen CLIP Text Encoder instead of training the text encoder jointly with the diffusion model.
 - An in-detail explanation of the Stable Diffusion model can be found under [Stable Diffusion with 🧨 Diffusers](https://huggingface.co/blog/stable_diffusion).
 - If you don't want to rely on the Hugging Face Hub and having to pass a authentication token, you can
 download the weights with `git lfs install; git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5` and instead pass the local path to the cloned folder to `from_pretrained` as shown below.
@@ -28,7 +28,7 @@ download the weights with `git lfs install; git clone https://huggingface.co/sta
 
 ### Using Stable Diffusion without being logged into the Hub.
 
-If you want to download the model weights using a single Python line, you need to be logged in via `huggingface-cli login`.
+If you want to download the model weights using a single Python line, you need to be logged in via `hf auth login`.
 
 ```python
 from diffusers import DiffusionPipeline
@@ -54,7 +54,7 @@ pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
 ### Text-to-Image with default PLMS scheduler
 
 ```python
-# make sure you're logged in with `huggingface-cli login`
+# make sure you're logged in with `hf auth login`
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
@@ -69,7 +69,7 @@ image.save("astronaut_rides_horse.png")
 ### Text-to-Image with DDIM scheduler
 
 ```python
-# make sure you're logged in with `huggingface-cli login`
+# make sure you're logged in with `hf auth login`
 from diffusers import StableDiffusionPipeline, DDIMScheduler
 
 scheduler =  DDIMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
@@ -88,7 +88,7 @@ image.save("astronaut_rides_horse.png")
 ### Text-to-Image with K-LMS scheduler
 
 ```python
-# make sure you're logged in with `huggingface-cli login`
+# make sure you're logged in with `hf auth login`
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
 lms = LMSDiscreteScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
@@ -118,7 +118,7 @@ from diffusers import CycleDiffusionPipeline, DDIMScheduler
 # load the scheduler. CycleDiffusion only supports stochastic schedulers.
 
 # load the pipeline
-# make sure you're logged in with `huggingface-cli login`
+# make sure you're logged in with `hf auth login`
 model_id_or_path = "CompVis/stable-diffusion-v1-4"
 scheduler = DDIMScheduler.from_pretrained(model_id_or_path, subfolder="scheduler")
 pipe = CycleDiffusionPipeline.from_pretrained(model_id_or_path, scheduler=scheduler).to("cuda")

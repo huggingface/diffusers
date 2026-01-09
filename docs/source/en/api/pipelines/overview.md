@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -16,15 +16,12 @@ Pipelines provide a simple way to run state-of-the-art diffusion models in infer
 
 All pipelines are built from the base [`DiffusionPipeline`] class which provides basic functionality for loading, downloading, and saving all the components. Specific pipeline types (for example [`StableDiffusionPipeline`]) loaded with [`~DiffusionPipeline.from_pretrained`] are automatically detected and the pipeline components are loaded and passed to the `__init__` function of the pipeline.
 
-<Tip warning={true}>
-
-You shouldn't use the [`DiffusionPipeline`] class for training. Individual components (for example, [`UNet2DModel`] and [`UNet2DConditionModel`]) of diffusion pipelines are usually trained individually, so we suggest directly working with them instead.
-
-<br>
-
-Pipelines do not offer any training functionality. You'll notice PyTorch's autograd is disabled by decorating the [`~DiffusionPipeline.__call__`] method with a [`torch.no_grad`](https://pytorch.org/docs/stable/generated/torch.no_grad.html) decorator because pipelines should not be used for training. If you're interested in training, please take a look at the [Training](../../training/overview) guides instead!
-
-</Tip>
+> [!WARNING]
+> You shouldn't use the [`DiffusionPipeline`] class for training. Individual components (for example, [`UNet2DModel`] and [`UNet2DConditionModel`]) of diffusion pipelines are usually trained individually, so we suggest directly working with them instead.
+>
+> <br>
+>
+> Pipelines do not offer any training functionality. You'll notice PyTorch's autograd is disabled by decorating the [`~DiffusionPipeline.__call__`] method with a [`torch.no_grad`](https://pytorch.org/docs/stable/generated/torch.no_grad.html) decorator because pipelines should not be used for training. If you're interested in training, please take a look at the [Training](../../training/overview) guides instead!
 
 The table below lists all the pipelines currently available in 🤗 Diffusers and the tasks they support. Click on a pipeline to view its abstract and published paper.
 
@@ -35,8 +32,9 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Attend-and-Excite](attend_and_excite) | text2image |
 | [AudioLDM](audioldm) | text2audio |
 | [AudioLDM2](audioldm2) | text2audio |
-| [AuraFlow](auraflow) | text2image |
+| [AuraFlow](aura_flow) | text2image |
 | [BLIP Diffusion](blip_diffusion) | text2image |
+| [Bria 3.2](bria_3_2) | text2image |
 | [CogVideoX](cogvideox) | text2video |
 | [Consistency Models](consistency_models) | unconditional image generation |
 | [ControlNet](controlnet) | text2image, image2image, inpainting |
@@ -105,10 +103,20 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 
 [[autodoc]] pipelines.StableDiffusionMixin.disable_freeu
 
-## FlaxDiffusionPipeline
-
-[[autodoc]] pipelines.pipeline_flax_utils.FlaxDiffusionPipeline
-
 ## PushToHubMixin
 
 [[autodoc]] utils.PushToHubMixin
+
+## Callbacks
+
+[[autodoc]] callbacks.PipelineCallback
+
+[[autodoc]] callbacks.SDCFGCutoffCallback
+
+[[autodoc]] callbacks.SDXLCFGCutoffCallback
+
+[[autodoc]] callbacks.SDXLControlnetCFGCutoffCallback
+
+[[autodoc]] callbacks.IPAdapterScaleCutoffCallback
+
+[[autodoc]] callbacks.SD3CFGCutoffCallback
