@@ -113,7 +113,9 @@ def get_timesteps(scheduler, num_inference_steps, strength):
     return timesteps, num_inference_steps - t_start
 
 
-# Prepare Latents steps
+# ====================
+# 1. PREPARE LATENTS
+# ====================
 
 
 class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
@@ -443,7 +445,9 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-# Set Timesteps steps
+# ====================
+# 2. SET TIMESTEPS
+# ====================
 
 
 class QwenImageSetTimestepsStep(ModularPipelineBlocks):
@@ -643,10 +647,11 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
         return components, state
 
 
-# other inputs for denoiser
+# ====================
+# 3. OTHER INPUTS FOR DENOISER
+# ====================
 
 ## RoPE inputs for denoiser
-
 
 class QwenImageRoPEInputsStep(ModularPipelineBlocks):
     model_name = "qwenimage"
@@ -792,8 +797,6 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
 
 
 class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
-    """RoPE inputs step for Edit Plus that handles lists of image heights/widths."""
-
     model_name = "qwenimage-edit-plus"
 
     @property
@@ -930,7 +933,6 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
 ## ControlNet inputs for denoiser
 class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
     model_name = "qwenimage"
-
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [

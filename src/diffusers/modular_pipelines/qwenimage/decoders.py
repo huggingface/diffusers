@@ -30,6 +30,7 @@ from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier, Qwen
 logger = logging.get_logger(__name__)
 
 
+# after denoising loop (unpack latents)
 class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -72,7 +73,6 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
 
 
 class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
-    """Unpack latents after denoising for Layered."""
 
     model_name = "qwenimage-layered"
 
@@ -111,7 +111,7 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
-
+# decode step
 class QwenImageDecoderStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -177,8 +177,6 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
 
 
 class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
-    """Decode unpacked layered latents into multiple layer images."""
-
     model_name = "qwenimage-layered"
 
     @property
@@ -242,7 +240,6 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
 
         # 5. Postprocess - returns flat list of B*layers images
         image = components.image_processor.postprocess(image, output_type=block_state.output_type)
-        
 
         # 6. Chunk into list per batch item
         images = []
@@ -255,6 +252,7 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
         return components, state
 
 
+# postprocess the decoded images
 class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 

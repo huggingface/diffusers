@@ -256,6 +256,9 @@ def encode_vae_image(
     return image_latents
 
 
+# ====================
+# 1. RESIZE
+# ====================
 class QwenImageEditResizeStep(ModularPipelineBlocks):
     model_name = "qwenimage-edit"
 
@@ -517,7 +520,9 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
         return components, state
 
 
-
+# ====================
+# 2. GET IMAGE PROMPT
+# ====================
 class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
     """
     Auto-caption step that generates a text prompt from the input image if none is provided.
@@ -602,7 +607,9 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
         return components, state
 
 
-
+# ====================
+# 3. TEXT ENCODER
+# ====================
 class QwenImageTextEncoderStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -972,7 +979,9 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
-
+# ====================
+# 4. IMAGE PREPROCESS
+# ====================
 class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -1257,6 +1266,9 @@ class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
+# ====================
+# 5. VAE ENCODER
+# ====================
 class QwenImageVaeEncoderStep(ModularPipelineBlocks):
     """VAE encoder that handles both single images and lists of images with varied resolutions."""
 
@@ -1451,7 +1463,9 @@ class QwenImageControlNetVaeEncoderStep(ModularPipelineBlocks):
 
         return components, state
 
-
+# ====================
+# 6. PERMUTE LATENTS
+# ====================
 class QwenImageLayeredPermuteLatentsStep(ModularPipelineBlocks):
     """Permute image latents from VAE format to Layered format."""
 
