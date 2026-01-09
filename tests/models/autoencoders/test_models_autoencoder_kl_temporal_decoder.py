@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,19 +16,20 @@
 import unittest
 
 from diffusers import AutoencoderKLTemporalDecoder
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
     floats_tensor,
     torch_device,
 )
-
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLTemporalDecoderTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderKLTemporalDecoderTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLTemporalDecoder
     main_input_name = "sample"
     base_precision = 1e-2
@@ -67,7 +68,3 @@ class AutoencoderKLTemporalDecoderTests(ModelTesterMixin, UNetTesterMixin, unitt
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Encoder", "TemporalDecoder", "UNetMidBlock2D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-    @unittest.skip("Test unsupported.")
-    def test_forward_with_norm_groups(self):
-        pass

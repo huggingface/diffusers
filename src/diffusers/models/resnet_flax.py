@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,12 +15,22 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
+from ..utils import logging
+
+
+logger = logging.get_logger(__name__)
+
 
 class FlaxUpsample2D(nn.Module):
     out_channels: int
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         self.conv = nn.Conv(
             self.out_channels,
             kernel_size=(3, 3),
@@ -45,6 +55,11 @@ class FlaxDownsample2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         self.conv = nn.Conv(
             self.out_channels,
             kernel_size=(3, 3),
@@ -68,6 +83,11 @@ class FlaxResnetBlock2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         out_channels = self.in_channels if self.out_channels is None else self.out_channels
 
         self.norm1 = nn.GroupNorm(num_groups=32, epsilon=1e-5)

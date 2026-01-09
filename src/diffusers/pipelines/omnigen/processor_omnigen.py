@@ -1,4 +1,4 @@
-# Copyright 2024 OmniGen team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 OmniGen team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,12 @@ from typing import Dict, List
 import numpy as np
 import torch
 from PIL import Image
-from torchvision import transforms
+
+from ...utils import is_torchvision_available
+
+
+if is_torchvision_available():
+    from torchvision import transforms
 
 
 def crop_image(pil_image, max_image_size):

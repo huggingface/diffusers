@@ -1,4 +1,4 @@
-# Copyright 2024 DiffEdit Authors and Pix2Pix Zero Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2025 DiffEdit Authors and Pix2Pix Zero Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -249,11 +249,7 @@ class StableDiffusionDiffEditPipeline(
     StableDiffusionLoraLoaderMixin,
 ):
     r"""
-    <Tip warning={true}>
-
-    This is an experimental feature!
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature!
 
     Pipeline for text-guided image inpainting using Stable Diffusion and DiffEdit.
 

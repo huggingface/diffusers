@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -95,11 +95,8 @@ images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generato
 
 다양한 모델을 사용하여 모든 프롬프트에서 생성된 여러 이미지들이 생성되면 (평가 과정에서) 이러한 결과물들은 사람 평가자들에게 점수를 매기기 위해 제시됩니다. DrawBench와 PartiPrompts 벤치마크에 대한 자세한 내용은 각각의 논문을 참조하십시오.
 
-<Tip>
-
-모델이 훈련 중일 때 추론 샘플을 살펴보는 것은 훈련 진행 상황을 측정하는 데 유용합니다. [훈련 스크립트](https://github.com/huggingface/diffusers/tree/main/examples/)에서는 TensorBoard와 Weights & Biases에 대한 추가 지원과 함께 이 유틸리티를 지원합니다.
-
-</Tip>
+> [!TIP]
+> 모델이 훈련 중일 때 추론 샘플을 살펴보는 것은 훈련 진행 상황을 측정하는 데 유용합니다. [훈련 스크립트](https://github.com/huggingface/diffusers/tree/main/examples/)에서는 TensorBoard와 Weights & Biases에 대한 추가 지원과 함께 이 유틸리티를 지원합니다.
 
 ## 정량적 평가[[quantitative-evaluation]]
 
@@ -193,11 +190,8 @@ print(f"CLIP Score with v-1-5: {sd_clip_score_1_5}")
 
 [v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) 체크포인트가 이전 버전보다 더 나은 성능을 보이는 것 같습니다. 그러나 CLIP 점수를 계산하기 위해 사용한 프롬프트의 수가 상당히 적습니다. 보다 실용적인 평가를 위해서는 이 수를 훨씬 높게 설정하고, 프롬프트를 다양하게 사용해야 합니다.
 
-<Tip warning={true}>
-
-이 점수에는 몇 가지 제한 사항이 있습니다. 훈련 데이터셋의 캡션은 웹에서 크롤링되어 이미지와 관련된 `alt` 및 유사한 태그에서 추출되었습니다. 이들은 인간이 이미지를 설명하는 데 사용할 수 있는 것과 일치하지 않을 수 있습니다. 따라서 여기서는 몇 가지 프롬프트를 "엔지니어링"해야 했습니다.
-
-</Tip>
+> [!WARNING]
+> 이 점수에는 몇 가지 제한 사항이 있습니다. 훈련 데이터셋의 캡션은 웹에서 크롤링되어 이미지와 관련된 `alt` 및 유사한 태그에서 추출되었습니다. 이들은 인간이 이미지를 설명하는 데 사용할 수 있는 것과 일치하지 않을 수 있습니다. 따라서 여기서는 몇 가지 프롬프트를 "엔지니어링"해야 했습니다.
 
 ### 이미지 조건화된 텍스트-이미지 생성[[image-conditioned-text-to-image-generation]]
 
@@ -405,11 +399,8 @@ CLIP 점수와 마찬가지로, CLIP 방향 유사성이 높을수록 좋습니�
 
 [`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline)와 같은 유사한 파이프라인에도 이러한 메트릭을 사용할 수 있습니다.
 
-<Tip>
-
-CLIP 점수와 CLIP 방향 유사성 모두 CLIP 모델에 의존하기 때문에 평가가 편향될 수 있습니다
-
-</Tip>
+> [!TIP]
+> CLIP 점수와 CLIP 방향 유사성 모두 CLIP 모델에 의존하기 때문에 평가가 편향될 수 있습니다
 
 ***IS, FID (나중에 설명할 예정), 또는 KID와 같은 메트릭을 확장하는 것은 어려울 수 있습니다***. 평가 중인 모델이 대규모 이미지 캡셔닝 데이터셋 (예: [LAION-5B 데이터셋](https://laion.ai/blog/laion-5b/))에서 사전 훈련되었을 때 이는 문제가 될 수 있습니다. 왜냐하면 이러한 메트릭의 기반에는 중간 이미지 특징을 추출하기 위해 ImageNet-1k 데이터셋에서 사전 훈련된 InceptionNet이 사용되기 때문입니다. Stable Diffusion의 사전 훈련 데이터셋은 InceptionNet의 사전 훈련 데이터셋과 겹치는 부분이 제한적일 수 있으므로 따라서 여기에는 좋은 후보가 아닙니다.
 
@@ -532,19 +523,16 @@ FID는 낮을수록 좋습니다. 여러 가지 요소가 FID에 영향을 줄 �
 
 마지막 두 가지 요소에 대해서는, 다른 시드와 추론 단계에서 평가를 실행하고 평균 결과를 보고하는 것은 좋은 실천 방법입니다
 
-<Tip warning={true}>
-
-FID 결과는 많은 요소에 의존하기 때문에 취약할 수 있습니다:
-
-* 계산 중 사용되는 특정 Inception 모델.
-* 계산의 구현 정확도.
-* 이미지 형식 (PNG 또는 JPG에서 시작하는 경우가 다릅니다).
-
-이러한 사항을 염두에 두면, FID는 유사한 실행을 비교할 때 가장 유용하지만, 저자가 FID 측정 코드를 주의 깊게 공개하지 않는 한 논문 결과를 재현하기는 어렵습니다.
-
-이러한 사항은 KID 및 IS와 같은 다른 관련 메트릭에도 적용됩니다.
-
-</Tip>
+> [!WARNING]
+> FID 결과는 많은 요소에 의존하기 때문에 취약할 수 있습니다:
+>
+> * 계산 중 사용되는 특정 Inception 모델.
+> * 계산의 구현 정확도.
+> * 이미지 형식 (PNG 또는 JPG에서 시작하는 경우가 다릅니다).
+>
+> 이러한 사항을 염두에 두면, FID는 유사한 실행을 비교할 때 가장 유용하지만, 저자가 FID 측정 코드를 주의 깊게 공개하지 않는 한 논문 결과를 재현하기는 어렵습니다.
+>
+> 이러한 사항은 KID 및 IS와 같은 다른 관련 메트릭에도 적용됩니다.
 
 마지막 단계로, `fake_images`를 시각적으로 검사해 봅시다.
 

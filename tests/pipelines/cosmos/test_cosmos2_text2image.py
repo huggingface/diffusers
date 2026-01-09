@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,8 +28,8 @@ from diffusers import (
     CosmosTransformer3DModel,
     FlowMatchEulerDiscreteScheduler,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
+from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 from .cosmos_guardrail import DummyCosmosSafetyChecker
@@ -140,11 +140,15 @@ class Cosmos2TextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
         generated_image = image[0]
-
         self.assertEqual(generated_image.shape, (3, 32, 32))
-        expected_video = torch.randn(3, 32, 32)
-        max_diff = np.abs(generated_image - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.451, 0.451, 0.4471, 0.451, 0.451, 0.451, 0.451, 0.451, 0.4784, 0.4784, 0.4784, 0.4784, 0.4784, 0.4902, 0.4588, 0.5333])
+        # fmt: on
+
+        generated_slice = generated_image.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
 
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)

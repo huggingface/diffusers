@@ -151,11 +151,8 @@ images = pipe(prompt, guidance_scale=guidance_scale, num_inference_steps=64, fra
 
 메시 출력을 `ply` 파일로 저장하려면 [`~utils.export_to_ply`] 함수를 사용합니다:
 
-<Tip>
-
-선택적으로 [`~utils.export_to_obj`] 함수를 사용하여 메시 출력을 `obj` 파일로 저장할 수 있습니다. 다양한 형식으로 메시 출력을 저장할 수 있어 다운스트림에서 더욱 유연하게 사용할 수 있습니다!
-
-</Tip>
+> [!TIP]
+> 선택적으로 [`~utils.export_to_obj`] 함수를 사용하여 메시 출력을 `obj` 파일로 저장할 수 있습니다. 다양한 형식으로 메시 출력을 저장할 수 있어 다운스트림에서 더욱 유연하게 사용할 수 있습니다!
 
 ```py
 from diffusers.utils import export_to_ply

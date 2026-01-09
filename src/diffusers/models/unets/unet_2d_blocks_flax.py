@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,8 +15,12 @@
 import flax.linen as nn
 import jax.numpy as jnp
 
+from ...utils import logging
 from ..attention_flax import FlaxTransformer2DModel
 from ..resnet_flax import FlaxDownsample2D, FlaxResnetBlock2D, FlaxUpsample2D
+
+
+logger = logging.get_logger(__name__)
 
 
 class FlaxCrossAttnDownBlock2D(nn.Module):
@@ -60,6 +64,11 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
     transformer_layers_per_block: int = 1
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         resnets = []
         attentions = []
 
@@ -135,6 +144,11 @@ class FlaxDownBlock2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         resnets = []
 
         for i in range(self.num_layers):
@@ -208,6 +222,11 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
     transformer_layers_per_block: int = 1
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         resnets = []
         attentions = []
 
@@ -288,6 +307,11 @@ class FlaxUpBlock2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         resnets = []
 
         for i in range(self.num_layers):
@@ -356,6 +380,11 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
     transformer_layers_per_block: int = 1
 
     def setup(self):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         # there is always at least one resnet
         resnets = [
             FlaxResnetBlock2D(

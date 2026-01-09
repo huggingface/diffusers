@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -16,11 +16,8 @@ Textual Inversion is a training method for personalizing models by learning new 
 
 [`TextualInversionLoaderMixin`] provides a function for loading Textual Inversion embeddings from Diffusers and Automatic1111 into the text encoder and loading a special token to activate the embeddings.
 
-<Tip>
-
-To learn more about how to load Textual Inversion embeddings, see the [Textual Inversion](../../using-diffusers/loading_adapters#textual-inversion) loading guide.
-
-</Tip>
+> [!TIP]
+> To learn more about how to load Textual Inversion embeddings, see the [Textual Inversion](../../using-diffusers/textual_inversion_inference) loading guide.
 
 ## TextualInversionLoaderMixin
 

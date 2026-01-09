@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -18,7 +18,7 @@ Trajectory Consistency Distillation (TCD) enables a model to generate higher qua
 
 The major advantages of TCD are:
 
-- Better than Teacher: TCD demonstrates superior generative quality at both small and large inference steps and exceeds the performance of [DPM-Solver++(2S)](../../api/schedulers/multistep_dpm_solver) with Stable Diffusion XL (SDXL). There is no additional discriminator or LPIPS supervision included during TCD training.
+- Better than Teacher: TCD demonstrates superior generative quality at both small and large inference steps and exceeds the performance of [DPM-Solver++(2S)](../api/schedulers/multistep_dpm_solver) with Stable Diffusion XL (SDXL). There is no additional discriminator or LPIPS supervision included during TCD training.
 
 - Flexible Inference Steps: The inference steps for TCD sampling can be freely adjusted without adversely affecting the image quality.
 
@@ -166,7 +166,7 @@ image = pipe(
 TCD-LoRA also supports other LoRAs trained on different styles. For example, let's load the [TheLastBen/Papercut_SDXL](https://huggingface.co/TheLastBen/Papercut_SDXL) LoRA and fuse it with the TCD-LoRA with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method.
 
 > [!TIP]
-> Check out the [Merge LoRAs](merge_loras) guide to learn more about efficient merging methods.
+> Check out the [Merge LoRAs](../tutorials/using_peft_for_inference#merge) guide to learn more about efficient merging methods.
 
 ```python
 import torch
@@ -335,9 +335,8 @@ grid_image = make_image_grid([canny_image, image], rows=1, cols=2)
 ```
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/controlnet_canny_tcd.png)
 
-<Tip>
-The inference parameters in this example might not work for all examples, so we recommend you to try different values for `num_inference_steps`, `guidance_scale`, `controlnet_conditioning_scale` and `cross_attention_kwargs` parameters and choose the best one.
-</Tip>
+> [!TIP]
+> The inference parameters in this example might not work for all examples, so we recommend you to try different values for `num_inference_steps`, `guidance_scale`, `controlnet_conditioning_scale` and `cross_attention_kwargs` parameters and choose the best one.
 
 </hfoption>
 <hfoption id="IP-Adapter">

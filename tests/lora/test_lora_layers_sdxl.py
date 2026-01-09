@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,7 +35,8 @@ from diffusers import (
 )
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     is_flaky,
@@ -51,7 +52,7 @@ from diffusers.utils.testing_utils import (
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set, state_dicts_almost_equal  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set, state_dicts_almost_equal  # noqa: E402
 
 
 if is_accelerate_available():

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ class FP16SafetensorsCommand(BaseDiffusersCLICommand):
         conversion_parser.add_argument(
             "--use_auth_token",
             action="store_true",
-            help="When working with checkpoints having private visibility. When used `huggingface-cli login` needs to be run beforehand.",
+            help="When working with checkpoints having private visibility. When used `hf auth login` needs to be run beforehand.",
         )
         conversion_parser.set_defaults(func=conversion_command_factory)
 

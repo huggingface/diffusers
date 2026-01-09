@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,8 @@ from ..models.embeddings import (
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta, load_state_dict
+from ..models.model_loading_utils import load_model_dict_into_meta
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -43,6 +44,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
+from ..utils.torch_utils import empty_device_cache
 from .lora_base import _func_optionally_disable_offloading
 from .lora_pipeline import LORA_WEIGHT_NAME, LORA_WEIGHT_NAME_SAFE, TEXT_ENCODER_NAME, UNET_NAME
 from .utils import AttnProcsLayers
@@ -131,6 +133,8 @@ class UNet2DConditionLoadersMixin:
         )
         ```
         """
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -203,6 +207,7 @@ class UNet2DConditionLoadersMixin:
         is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
+        is_group_offload = False
 
         if is_lora:
             deprecation_message = "Using the `load_attn_procs()` method has been deprecated and will be removed in a future version. Please use `load_lora_adapter()`."
@@ -211,7 +216,7 @@ class UNet2DConditionLoadersMixin:
         if is_custom_diffusion:
             attn_processors = self._process_custom_diffusion(state_dict=state_dict)
         elif is_lora:
-            is_model_cpu_offload, is_sequential_cpu_offload = self._process_lora(
+            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._process_lora(
                 state_dict=state_dict,
                 unet_identifier_key=self.unet_name,
                 network_alphas=network_alphas,
@@ -230,7 +235,9 @@ class UNet2DConditionLoadersMixin:
 
         # For LoRA, the UNet is already offloaded at this stage as it is handled inside `_process_lora`.
         if is_custom_diffusion and _pipeline is not None:
-            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline=_pipeline)
+            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
+                _pipeline=_pipeline
+            )
 
             # only custom diffusion needs to set attn processors
             self.set_attn_processor(attn_processors)
@@ -241,6 +248,10 @@ class UNet2DConditionLoadersMixin:
             _pipeline.enable_model_cpu_offload()
         elif is_sequential_cpu_offload:
             _pipeline.enable_sequential_cpu_offload()
+        elif is_group_offload:
+            for component in _pipeline.components.values():
+                if isinstance(component, torch.nn.Module):
+                    _maybe_remove_and_reapply_group_offloading(component)
         # Unsafe code />
 
     def _process_custom_diffusion(self, state_dict):
@@ -307,6 +318,7 @@ class UNet2DConditionLoadersMixin:
 
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
+        is_group_offload = False
         state_dict_to_be_used = unet_state_dict if len(unet_state_dict) > 0 else state_dict
 
         if len(state_dict_to_be_used) > 0:
@@ -356,7 +368,9 @@ class UNet2DConditionLoadersMixin:
 
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error
-            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
+                _pipeline
+            )
             peft_kwargs = {}
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
@@ -389,22 +403,11 @@ class UNet2DConditionLoadersMixin:
             if warn_msg:
                 logger.warning(warn_msg)
 
-        return is_model_cpu_offload, is_sequential_cpu_offload
+        return is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload
 
     @classmethod
     # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
     def _optionally_disable_offloading(cls, _pipeline):
-        """
-        Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
-
-        Args:
-            _pipeline (`DiffusionPipeline`):
-                The pipeline to disable offloading for.
-
-        Returns:
-            tuple:
-                A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
-        """
         return _func_optionally_disable_offloading(_pipeline=_pipeline)
 
     def save_attn_procs(
@@ -752,6 +755,7 @@ class UNet2DConditionLoadersMixin:
         else:
             device_map = {"": self.device}
             load_model_dict_into_meta(image_projection, updated_state_dict, device_map=device_map, dtype=self.dtype)
+            empty_device_cache()
 
         return image_projection
 
@@ -848,6 +852,8 @@ class UNet2DConditionLoadersMixin:
                     load_model_dict_into_meta(attn_procs[name], value_dict, device_map=device_map, dtype=dtype)
 
                 key_id += 2
+
+        empty_device_cache()
 
         return attn_procs
 

@@ -1,4 +1,4 @@
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,15 +18,23 @@ import unittest
 
 import numpy as np
 import torch
+from parameterized import parameterized
 from transformers import AutoTokenizer, GlmModel
 
 from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, skip_mps, torch_device
+
+from ..testing_utils import (
+    floats_tensor,
+    require_peft_backend,
+    require_torch_accelerator,
+    skip_mps,
+    torch_device,
+)
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 class TokenizerWrapper:
@@ -42,7 +50,6 @@ class TokenizerWrapper:
 class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = CogView4Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {
@@ -116,30 +123,33 @@ class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         """
         Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
         """
-        for scheduler_cls in self.scheduler_classes:
-            components, _, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            self.assertTrue(output_no_lora.shape == self.output_shape)
+        images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                pipe.save_pretrained(tmpdirname)
+            pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
+            pipe_from_pretrained.to(torch_device)
 
-                pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
-                pipe_from_pretrained.to(torch_device)
+        images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
 
-            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
+        self.assertTrue(
+            np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
+            "Loading from saved checkpoints should give same results.",
+        )
 
-            self.assertTrue(
-                np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
-                "Loading from saved checkpoints should give same results.",
-            )
+    @parameterized.expand([("block_level", True), ("leaf_level", False)])
+    @require_torch_accelerator
+    def test_group_offloading_inference_denoiser(self, offload_type, use_stream):
+        # TODO: We don't run the (leaf_level, True) test here that is enabled for other models.
+        # The reason for this can be found here: https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
+        super()._test_group_offloading_inference_denoiser(offload_type, use_stream)
 
     @unittest.skip("Not supported in CogView4.")
     def test_simple_inference_with_text_denoiser_block_scale(self):

@@ -1,4 +1,4 @@
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,19 +24,19 @@ from diffusers import (
     LTXPipeline,
     LTXVideoTransformer3DModel,
 )
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
+
+from ..testing_utils import floats_tensor, require_peft_backend
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
 class LTXVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = LTXPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {

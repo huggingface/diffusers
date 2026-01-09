@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import is_compiled_module, randn_tensor
+from ...utils.torch_utils import empty_device_cache, is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
@@ -146,16 +146,13 @@ class StableDiffusionControlNetInpaintPipeline(
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
-    <Tip>
-
-    This pipeline can be used with checkpoints that have been specifically fine-tuned for inpainting
+    > [!TIP] > This pipeline can be used with checkpoints that have been specifically fine-tuned for inpainting >
     ([stable-diffusion-v1-5/stable-diffusion-inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting))
-    as well as default text-to-image Stable Diffusion checkpoints
+    > as well as default text-to-image Stable Diffusion checkpoints >
     ([stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)).
-    Default text-to-image Stable Diffusion checkpoints might be preferable for ControlNets that have been fine-tuned on
-    those, such as [lllyasviel/control_v11p_sd15_inpaint](https://huggingface.co/lllyasviel/control_v11p_sd15_inpaint).
-
-    </Tip>
+    > Default text-to-image Stable Diffusion checkpoints might be preferable for ControlNets that have been fine-tuned
+    on > those, such as
+    [lllyasviel/control_v11p_sd15_inpaint](https://huggingface.co/lllyasviel/control_v11p_sd15_inpaint).
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -1500,7 +1497,7 @@ class StableDiffusionControlNetInpaintPipeline(
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")
             self.controlnet.to("cpu")
-            torch.cuda.empty_cache()
+            empty_device_cache()
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[

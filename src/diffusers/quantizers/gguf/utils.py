@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team and City96. All rights reserved.
+# Copyright 2025 The HuggingFace Team and City96. All rights reserved.
 # #
 # # Licensed under the Apache License, Version 2.0 (the "License");
 # # you may not use this file except in compliance with the License.
@@ -12,21 +12,97 @@
 # # See the License for the specific language governing permissions and
 # # limitations under the License.
 
-
 import inspect
+import os
 from contextlib import nullcontext
 
 import gguf
 import torch
 import torch.nn as nn
 
-from ...utils import is_accelerate_available
+from ...utils import is_accelerate_available, is_kernels_available
 
 
 if is_accelerate_available():
     import accelerate
     from accelerate import init_empty_weights
     from accelerate.hooks import add_hook_to_module, remove_hook_from_module
+
+
+can_use_cuda_kernels = (
+    os.getenv("DIFFUSERS_GGUF_CUDA_KERNELS", "false").lower() in ["1", "true", "yes"]
+    and torch.cuda.is_available()
+    and torch.cuda.get_device_capability()[0] >= 7
+)
+if can_use_cuda_kernels and is_kernels_available():
+    from kernels import get_kernel
+
+    ops = get_kernel("Isotr0py/ggml")
+else:
+    ops = None
+
+UNQUANTIZED_TYPES = {gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16, gguf.GGMLQuantizationType.BF16}
+STANDARD_QUANT_TYPES = {
+    gguf.GGMLQuantizationType.Q4_0,
+    gguf.GGMLQuantizationType.Q4_1,
+    gguf.GGMLQuantizationType.Q5_0,
+    gguf.GGMLQuantizationType.Q5_1,
+    gguf.GGMLQuantizationType.Q8_0,
+    gguf.GGMLQuantizationType.Q8_1,
+}
+KQUANT_TYPES = {
+    gguf.GGMLQuantizationType.Q2_K,
+    gguf.GGMLQuantizationType.Q3_K,
+    gguf.GGMLQuantizationType.Q4_K,
+    gguf.GGMLQuantizationType.Q5_K,
+    gguf.GGMLQuantizationType.Q6_K,
+}
+IMATRIX_QUANT_TYPES = {
+    gguf.GGMLQuantizationType.IQ1_M,
+    gguf.GGMLQuantizationType.IQ1_S,
+    gguf.GGMLQuantizationType.IQ2_XXS,
+    gguf.GGMLQuantizationType.IQ2_XS,
+    gguf.GGMLQuantizationType.IQ2_S,
+    gguf.GGMLQuantizationType.IQ3_XXS,
+    gguf.GGMLQuantizationType.IQ3_S,
+    gguf.GGMLQuantizationType.IQ4_XS,
+    gguf.GGMLQuantizationType.IQ4_NL,
+}
+# TODO(Isotr0py): Currently, we don't have MMQ kernel for I-Matrix quantization.
+# Consolidate DEQUANT_TYPES, MMVQ_QUANT_TYPES and MMQ_QUANT_TYPES after we add
+# MMQ kernel for I-Matrix quantization.
+DEQUANT_TYPES = STANDARD_QUANT_TYPES | KQUANT_TYPES | IMATRIX_QUANT_TYPES
+MMVQ_QUANT_TYPES = STANDARD_QUANT_TYPES | KQUANT_TYPES | IMATRIX_QUANT_TYPES
+MMQ_QUANT_TYPES = STANDARD_QUANT_TYPES | KQUANT_TYPES
+
+
+def _fused_mul_mat_gguf(x: torch.Tensor, qweight: torch.Tensor, qweight_type: int) -> torch.Tensor:
+    # there is no need to call any kernel for fp16/bf16
+    if qweight_type in UNQUANTIZED_TYPES:
+        return x @ qweight.T
+
+    # TODO(Isotr0py): GGUF's MMQ and MMVQ implementation are designed for
+    # contiguous batching and inefficient with diffusers' batching,
+    # so we disabled it now.
+
+    # elif qweight_type in MMVQ_QUANT_TYPES:
+    #     y = ops.ggml_mul_mat_vec_a8(qweight, x, qweight_type, qweight.shape[0])
+    # elif qweight_type in MMQ_QUANT_TYPES:
+    #     y = ops.ggml_mul_mat_a8(qweight, x, qweight_type, qweight.shape[0])
+
+    # If there is no available MMQ kernel, fallback to dequantize
+    if qweight_type in DEQUANT_TYPES:
+        block_size, type_size = gguf.GGML_QUANT_SIZES[qweight_type]
+        shape = (qweight.shape[0], qweight.shape[1] // type_size * block_size)
+        weight = ops.ggml_dequantize(qweight, qweight_type, *shape)
+        y = x @ weight.to(x.dtype).T
+    else:
+        # Raise an error if the quantization type is not supported.
+        # Might be useful if llama.cpp adds a new quantization type.
+        # Wrap to GGMLQuantizationType IntEnum to make sure it's a valid type.
+        qweight_type = gguf.GGMLQuantizationType(qweight_type)
+        raise NotImplementedError(f"Unsupported GGUF quantization type: {qweight_type}")
+    return y.as_tensor()
 
 
 # Copied from diffusers.quantizers.bitsandbytes.utils._create_accelerate_new_hook
@@ -353,8 +429,64 @@ def dequantize_blocks_BF16(blocks, block_size, type_size, dtype=None):
     return (blocks.view(torch.int16).to(torch.int32) << 16).view(torch.float32)
 
 
+# this part from calcuis (gguf.org)
+# more info: https://github.com/calcuis/gguf-connector/blob/main/src/gguf_connector/quant2c.py
+
+
+def dequantize_blocks_IQ4_NL(blocks, block_size, type_size, dtype=None):
+    kvalues = torch.tensor(
+        [-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113],
+        dtype=torch.float32,
+        device=blocks.device,
+    )
+    n_blocks = blocks.shape[0]
+    d, qs = split_block_dims(blocks, 2)
+    d = d.view(torch.float16).to(dtype)
+    qs = qs.reshape((n_blocks, -1, 1, block_size // 2)) >> torch.tensor(
+        [0, 4], device=blocks.device, dtype=torch.uint8
+    ).reshape((1, 1, 2, 1))
+    qs = (qs & 15).reshape((n_blocks, -1)).to(torch.int64)
+    kvalues = kvalues.view(1, 1, 16)
+    qs = qs.unsqueeze(-1)
+    qs = torch.gather(kvalues.expand(qs.shape[0], qs.shape[1], 16), 2, qs)
+    qs = qs.squeeze(-1).to(dtype)
+    return d * qs
+
+
+def dequantize_blocks_IQ4_XS(blocks, block_size, type_size, dtype=None):
+    kvalues = torch.tensor(
+        [-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113],
+        dtype=torch.float32,
+        device=blocks.device,
+    )
+    n_blocks = blocks.shape[0]
+    d, scales_h, scales_l, qs = split_block_dims(blocks, 2, 2, QK_K // 64)
+    d = d.view(torch.float16).to(dtype)
+    scales_h = scales_h.view(torch.int16)
+    scales_l = scales_l.reshape((n_blocks, -1, 1)) >> torch.tensor(
+        [0, 4], device=blocks.device, dtype=torch.uint8
+    ).reshape((1, 1, 2))
+    scales_h = scales_h.reshape((n_blocks, 1, -1)) >> torch.tensor(
+        [2 * i for i in range(QK_K // 32)], device=blocks.device, dtype=torch.uint8
+    ).reshape((1, -1, 1))
+    scales_l = scales_l.reshape((n_blocks, -1)) & 0x0F
+    scales_h = scales_h.reshape((n_blocks, -1)) & 0x03
+    scales = (scales_l | (scales_h << 4)) - 32
+    dl = (d * scales.to(dtype)).reshape((n_blocks, -1, 1))
+    shifts_q = torch.tensor([0, 4], device=blocks.device, dtype=torch.uint8).reshape(1, 1, 2, 1)
+    qs = qs.reshape((n_blocks, -1, 1, 16)) >> shifts_q
+    qs = (qs & 15).reshape((n_blocks, -1, 32)).to(torch.int64)
+    kvalues = kvalues.view(1, 1, 1, 16)
+    qs = qs.unsqueeze(-1)
+    qs = torch.gather(kvalues.expand(qs.shape[0], qs.shape[1], qs.shape[2], 16), 3, qs)
+    qs = qs.squeeze(-1).to(dtype)
+    return (dl * qs).reshape(n_blocks, -1)
+
+
 GGML_QUANT_SIZES = gguf.GGML_QUANT_SIZES
 dequantize_functions = {
+    gguf.GGMLQuantizationType.IQ4_NL: dequantize_blocks_IQ4_NL,
+    gguf.GGMLQuantizationType.IQ4_XS: dequantize_blocks_IQ4_XS,
     gguf.GGMLQuantizationType.BF16: dequantize_blocks_BF16,
     gguf.GGMLQuantizationType.Q8_0: dequantize_blocks_Q8_0,
     gguf.GGMLQuantizationType.Q5_1: dequantize_blocks_Q5_1,
@@ -451,11 +583,24 @@ class GGUFLinear(nn.Linear):
     ) -> None:
         super().__init__(in_features, out_features, bias, device)
         self.compute_dtype = compute_dtype
+        self.device = device
 
-    def forward(self, inputs):
+    def forward(self, inputs: torch.Tensor):
+        if ops is not None and self.weight.is_cuda and inputs.is_cuda:
+            return self.forward_cuda(inputs)
+        return self.forward_native(inputs)
+
+    def forward_native(self, inputs: torch.Tensor):
         weight = dequantize_gguf_tensor(self.weight)
         weight = weight.to(self.compute_dtype)
         bias = self.bias.to(self.compute_dtype) if self.bias is not None else None
 
         output = torch.nn.functional.linear(inputs, weight, bias)
+        return output
+
+    def forward_cuda(self, inputs: torch.Tensor):
+        quant_type = self.weight.quant_type
+        output = _fused_mul_mat_gguf(inputs.to(self.compute_dtype), self.weight, quant_type)
+        if self.bias is not None:
+            output += self.bias.to(self.compute_dtype)
         return output

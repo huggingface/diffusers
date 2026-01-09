@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,8 @@ from diffusers.models.attention_processor import (
 from diffusers.models.embeddings import ImageProjection, IPAdapterFaceIDImageProjection, IPAdapterPlusImageProjection
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -46,13 +47,11 @@ from diffusers.utils.testing_utils import (
     require_peft_backend,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
-    require_torch_gpu,
     skip_mps,
     slow,
     torch_all_close,
     torch_device,
 )
-
 from ..test_modeling_common import (
     LoraHotSwappingForModelTesterMixin,
     ModelTesterMixin,
@@ -359,7 +358,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     model_class = UNet2DConditionModel
     main_input_name = "sample"
     # We override the items here because the unet under consideration is small.
-    model_split_percents = [0.5, 0.3, 0.4]
+    model_split_percents = [0.5, 0.34, 0.4]
 
     @property
     def dummy_input(self):
@@ -1083,42 +1082,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         assert loaded_model
         assert new_output.sample.shape == (4, 4, 16, 16)
-
-    @parameterized.expand(
-        [
-            (-1, "You can't pass device_map as a negative int"),
-            ("foo", "When passing device_map as a string, the value needs to be a device name"),
-        ]
-    )
-    def test_wrong_device_map_raises_error(self, device_map, msg_substring):
-        with self.assertRaises(ValueError) as err_ctx:
-            _ = self.model_class.from_pretrained(
-                "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map=device_map
-            )
-
-        assert msg_substring in str(err_ctx.exception)
-
-    @parameterized.expand([0, "cuda", torch.device("cuda"), torch.device("cuda:0")])
-    @require_torch_gpu
-    def test_passing_non_dict_device_map_works(self, device_map):
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained(
-            "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map=device_map
-        )
-        output = loaded_model(**inputs_dict)
-        assert output.sample.shape == (4, 4, 16, 16)
-
-    @parameterized.expand([("", "cuda"), ("", torch.device("cuda"))])
-    @require_torch_gpu
-    def test_passing_dict_device_map_works(self, name, device_map):
-        # There are other valid dict-based `device_map` values too. It's best to refer to
-        # the docs for those: https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap.
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained(
-            "hf-internal-testing/unet2d-sharded-dummy-subfolder", subfolder="unet", device_map={name: device_map}
-        )
-        output = loaded_model(**inputs_dict)
-        assert output.sample.shape == (4, 4, 16, 16)
 
     @require_peft_backend
     def test_load_attn_procs_raise_warning(self):

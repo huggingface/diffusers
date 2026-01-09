@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,9 +18,42 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from ..utils.logging import get_logger
+from ..utils.torch_utils import unwrap_module
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class BaseState:
+    def reset(self, *args, **kwargs) -> None:
+        raise NotImplementedError(
+            "BaseState::reset is not implemented. Please implement this method in the derived class."
+        )
+
+
+class StateManager:
+    def __init__(self, state_cls: BaseState, init_args=None, init_kwargs=None):
+        self._state_cls = state_cls
+        self._init_args = init_args if init_args is not None else ()
+        self._init_kwargs = init_kwargs if init_kwargs is not None else {}
+        self._state_cache = {}
+        self._current_context = None
+
+    def get_state(self):
+        if self._current_context is None:
+            raise ValueError("No context is set. Please set a context before retrieving the state.")
+        if self._current_context not in self._state_cache.keys():
+            self._state_cache[self._current_context] = self._state_cls(*self._init_args, **self._init_kwargs)
+        return self._state_cache[self._current_context]
+
+    def set_context(self, name: str) -> None:
+        self._current_context = name
+
+    def reset(self, *args, **kwargs) -> None:
+        for name, state in list(self._state_cache.items()):
+            state.reset(*args, **kwargs)
+            self._state_cache.pop(name)
+        self._current_context = None
 
 
 class ModelHook:
@@ -97,6 +130,14 @@ class ModelHook:
     def reset_state(self, module: torch.nn.Module):
         if self._is_stateful:
             raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
+        return module
+
+    def _set_context(self, module: torch.nn.Module, name: str) -> None:
+        # Iterate over all attributes of the hook to see if any of them have the type `StateManager`. If so, call `set_context` on them.
+        for attr_name in dir(self):
+            attr = getattr(self, attr_name)
+            if isinstance(attr, StateManager):
+                attr.set_context(name)
         return module
 
 
@@ -211,9 +252,10 @@ class HookRegistry:
                 hook.reset_state(self._module_ref)
 
         if recurse:
-            for module_name, module in self._module_ref.named_modules():
+            for module_name, module in unwrap_module(self._module_ref).named_modules():
                 if module_name == "":
                     continue
+                module = unwrap_module(module)
                 if hasattr(module, "_diffusers_hook"):
                     module._diffusers_hook.reset_stateful_hooks(recurse=False)
 
@@ -222,6 +264,19 @@ class HookRegistry:
         if not hasattr(module, "_diffusers_hook"):
             module._diffusers_hook = cls(module)
         return module._diffusers_hook
+
+    def _set_context(self, name: Optional[str] = None) -> None:
+        for hook_name in reversed(self._hook_order):
+            hook = self.hooks[hook_name]
+            if hook._is_stateful:
+                hook._set_context(self._module_ref, name)
+
+        for module_name, module in unwrap_module(self._module_ref).named_modules():
+            if module_name == "":
+                continue
+            module = unwrap_module(module)
+            if hasattr(module, "_diffusers_hook"):
+                module._diffusers_hook._set_context(name)
 
     def __repr__(self) -> str:
         registry_repr = ""

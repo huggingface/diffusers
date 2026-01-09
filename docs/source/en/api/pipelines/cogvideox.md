@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ from diffusers.utils import export_to_video
 pipeline_quant_config = PipelineQuantizationConfig(
   quant_backend="torchao",
   quant_kwargs={"quant_type": "int8wo"},
-  components_to_quantize=["transformer"]
+  components_to_quantize="transformer"
 )
 
 # fp8 layerwise weight-casting

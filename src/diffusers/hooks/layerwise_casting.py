@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ from typing import Optional, Tuple, Type, Union
 import torch
 
 from ..utils import get_logger, is_peft_available, is_peft_version
+from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
 
@@ -27,12 +28,6 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 # fmt: off
 _LAYERWISE_CASTING_HOOK = "layerwise_casting"
 _PEFT_AUTOCAST_DISABLE_HOOK = "peft_autocast_disable"
-SUPPORTED_PYTORCH_LAYERS = (
-    torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d,
-    torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d, torch.nn.ConvTranspose3d,
-    torch.nn.Linear,
-)
-
 DEFAULT_SKIP_MODULES_PATTERN = ("pos_embed", "patch_embed", "norm", "^proj_in$", "^proj_out$")
 # fmt: on
 
@@ -186,7 +181,7 @@ def _apply_layerwise_casting(
         logger.debug(f'Skipping layerwise casting for layer "{_prefix}"')
         return
 
-    if isinstance(module, SUPPORTED_PYTORCH_LAYERS):
+    if isinstance(module, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
         logger.debug(f'Applying layerwise casting to layer "{_prefix}"')
         apply_layerwise_casting_hook(module, storage_dtype, compute_dtype, non_blocking)
         return

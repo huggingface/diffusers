@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -151,11 +151,8 @@ images = pipe(prompt, guidance_scale=guidance_scale, num_inference_steps=64, fra
 
 Use the [`~utils.export_to_ply`] function to save the mesh output as a `ply` file:
 
-<Tip>
-
-You can optionally save the mesh output as an `obj` file with the [`~utils.export_to_obj`] function. The ability to save the mesh output in a variety of formats makes it more flexible for downstream usage!
-
-</Tip>
+> [!TIP]
+> You can optionally save the mesh output as an `obj` file with the [`~utils.export_to_obj`] function. The ability to save the mesh output in a variety of formats makes it more flexible for downstream usage!
 
 ```py
 from diffusers.utils import export_to_ply

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,16 +20,16 @@ import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLLTXVideo, FlowMatchEulerDiscreteScheduler, LTXPipeline, LTXVideoTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
+from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import FirstBlockCacheTesterMixin, PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
 
 
-class LTXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class LTXPipelineFastTests(PipelineTesterMixin, FirstBlockCacheTesterMixin, unittest.TestCase):
     pipeline_class = LTXPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -49,7 +49,7 @@ class LTXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_layerwise_casting = True
     test_group_offloading = True
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1):
         torch.manual_seed(0)
         transformer = LTXVideoTransformer3DModel(
             in_channels=8,
@@ -59,7 +59,7 @@ class LTXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_attention_heads=4,
             attention_head_dim=8,
             cross_attention_dim=32,
-            num_layers=1,
+            num_layers=num_layers,
             caption_channels=32,
         )
 

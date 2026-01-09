@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import jax.numpy as jnp
 from flax.core.frozen_dict import FrozenDict
 
 from ...configuration_utils import ConfigMixin, flax_register_to_config
-from ...utils import BaseOutput
+from ...utils import BaseOutput, logging
 from ..embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
 from ..modeling_flax_utils import FlaxModelMixin
 from ..unets.unet_2d_blocks_flax import (
@@ -28,6 +28,9 @@ from ..unets.unet_2d_blocks_flax import (
     FlaxDownBlock2D,
     FlaxUNetMidBlock2DCrossAttn,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -50,6 +53,11 @@ class FlaxControlNetConditioningEmbedding(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self) -> None:
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         self.conv_in = nn.Conv(
             self.block_out_channels[0],
             kernel_size=(3, 3),
@@ -184,6 +192,11 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         return self.init(rngs, sample, timesteps, encoder_hidden_states, controlnet_cond)["params"]
 
     def setup(self) -> None:
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         block_out_channels = self.block_out_channels
         time_embed_dim = block_out_channels[0] * 4
 

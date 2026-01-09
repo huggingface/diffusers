@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@ from diffusers import (
     AuraFlowTransformer2DModel,
     FlowMatchEulerDiscreteScheduler,
 )
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     floats_tensor,
     is_peft_available,
     require_peft_backend,
@@ -35,14 +36,13 @@ if is_peft_available():
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
 class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = AuraFlowPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {

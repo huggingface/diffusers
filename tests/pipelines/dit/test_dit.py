@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,8 @@ import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DiTTransformer2DModel, DPMSolverMultistepScheduler
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     load_numpy,
@@ -30,7 +31,6 @@ from diffusers.utils.testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
-
 from ..pipeline_params import (
     CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,
     CLASS_CONDITIONED_IMAGE_GENERATION_PARAMS,

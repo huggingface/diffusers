@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ import sys
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
@@ -29,7 +28,8 @@ from diffusers import (
 )
 from diffusers.utils import load_image
 from diffusers.utils.import_utils import is_accelerate_available
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     is_flaky,
     nightly,
@@ -43,7 +43,7 @@ from diffusers.utils.testing_utils import (
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 if is_accelerate_available():
@@ -55,7 +55,6 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = StableDiffusion3Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     transformer_kwargs = {
         "sample_size": 32,
         "patch_size": 1,
@@ -139,7 +138,6 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @require_torch_accelerator
 @require_peft_backend
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class SD3LoraIntegrationTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Img2ImgPipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"

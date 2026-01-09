@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -10,314 +10,223 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-[[open-in-colab]]
+# Quickstart
 
-# Quicktour
+Diffusers is a library for developers and researchers that provides an easy inference API for generating images, videos and audio, as well as the building blocks for implementing new workflows.
 
-Diffusion models are trained to denoise random Gaussian noise step-by-step to generate a sample of interest, such as an image or audio. This has sparked a tremendous amount of interest in generative AI, and you have probably seen examples of diffusion generated images on the internet. 🧨 Diffusers is a library aimed at making diffusion models widely accessible to everyone.
+Diffusers provides many optimizations out-of-the-box that makes it possible to load and run large models on setups with limited memory or to accelerate inference.
 
-Whether you're a developer or an everyday user, this quicktour will introduce you to 🧨 Diffusers and help you get up and generating quickly! There are three main components of the library to know about:
+This Quickstart will give you an overview of Diffusers and get you up and generating quickly.
 
-* The [`DiffusionPipeline`] is a high-level end-to-end class designed to rapidly generate samples from pretrained diffusion models for inference.
-* Popular pretrained [model](./api/models) architectures and modules that can be used as building blocks for creating diffusion systems.
-* Many different [schedulers](./api/schedulers/overview) - algorithms that control how noise is added for training, and how to generate denoised images during inference.
+> [!TIP]
+> Before you begin, make sure you have a Hugging Face [account](https://huggingface.co/join) in order to use gated models like [Flux](https://huggingface.co/black-forest-labs/FLUX.1-dev).
 
-The quicktour will show you how to use the [`DiffusionPipeline`] for inference, and then walk you through how to combine a model and scheduler to replicate what's happening inside the [`DiffusionPipeline`].
-
-<Tip>
-
-The quicktour is a simplified version of the introductory 🧨 Diffusers [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) to help you get started quickly. If you want to learn more about 🧨 Diffusers' goal, design philosophy, and additional details about its core API, check out the notebook!
-
-</Tip>
-
-Before you begin, make sure you have all the necessary libraries installed:
-
-```py
-# uncomment to install the necessary libraries in Colab
-#!pip install --upgrade diffusers accelerate transformers
-```
-
-- [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) speeds up model loading for inference and training.
-- [🤗 Transformers](https://huggingface.co/docs/transformers/index) is required to run the most popular diffusion models, such as [Stable Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/overview).
+Follow the [Installation](./installation) guide to install Diffusers if it's not already installed.
 
 ## DiffusionPipeline
 
-The [`DiffusionPipeline`] is the easiest way to use a pretrained diffusion system for inference. It is an end-to-end system containing the model and the scheduler. You can use the [`DiffusionPipeline`] out-of-the-box for many tasks. Take a look at the table below for some supported tasks, and for a complete list of supported tasks, check out the [🧨 Diffusers Summary](./api/pipelines/overview#diffusers-summary) table.
+A diffusion model combines multiple components to generate outputs in any modality based on an input, such as a text description, image or both.
 
-| **Task**                     | **Description**                                                                                              | **Pipeline**
-|------------------------------|--------------------------------------------------------------------------------------------------------------|-----------------|
-| Unconditional Image Generation          | generate an image from Gaussian noise | [unconditional_image_generation](./using-diffusers/unconditional_image_generation) |
-| Text-Guided Image Generation | generate an image given a text prompt | [conditional_image_generation](./using-diffusers/conditional_image_generation) |
-| Text-Guided Image-to-Image Translation     | adapt an image guided by a text prompt | [img2img](./using-diffusers/img2img) |
-| Text-Guided Image-Inpainting          | fill the masked part of an image given the image, the mask and a text prompt | [inpaint](./using-diffusers/inpaint) |
-| Text-Guided Depth-to-Image Translation | adapt parts of an image guided by a text prompt while preserving structure via depth estimation | [depth2img](./using-diffusers/depth2img) |
+For a standard text-to-image model:
 
-Start by creating an instance of a [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download.
-You can use the [`DiffusionPipeline`] for any [checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads) stored on the Hugging Face Hub.
-In this quicktour, you'll load the [`stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) checkpoint for text-to-image generation.
+1. A text encoder turns a prompt into embeddings that guide the denoising process. Some models have more than one text encoder.
+2. A scheduler contains the algorithmic specifics for gradually denoising initial random noise into clean outputs. Different schedulers affect generation speed and quality.
+3. A UNet or diffusion transformer (DiT) is the workhorse of a diffusion model.
 
-<Tip warning={true}>
+  At each step, it performs the denoising predictions, such as how much noise to remove or the general direction in which to steer the noise to generate better quality outputs.
 
-For [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) models, please carefully read the [license](https://huggingface.co/spaces/CompVis/stable-diffusion-license) first before running the model. 🧨 Diffusers implements a [`safety_checker`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py) to prevent offensive or harmful content, but the model's improved image generation capabilities can still produce potentially harmful content.
+  The UNet or DiT repeats this loop for a set amount of steps to generate the final output.
+  
+4. A variational autoencoder (VAE) encodes and decodes pixels to a spatially compressed latent-space. *Latents* are compressed representations of an image and are more efficient to work with. The UNet or DiT operates on latents, and the clean latents at the end are decoded back into images.
 
-</Tip>
+The [`DiffusionPipeline`] packages all these components into a single class for inference. There are several arguments in [`~DiffusionPipeline.__call__`] you can change, such as `num_inference_steps`, that affect the diffusion process. Try different values and arguments to see how they change generation quality or speed.
 
-Load the model with the [`~DiffusionPipeline.from_pretrained`] method:
+Load a model with [`~DiffusionPipeline.from_pretrained`] and describe what you'd like to generate. The example below uses the default argument values.
 
-```python
->>> from diffusers import DiffusionPipeline
+<hfoptions id="diffusionpipeline">
+<hfoption id="text-to-image">
 
->>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
-```
-
-The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. You'll see that the Stable Diffusion pipeline is composed of the [`UNet2DConditionModel`] and [`PNDMScheduler`] among other things:
+Use `.images[0]` to access the generated image output.
 
 ```py
->>> pipeline
-StableDiffusionPipeline {
-  "_class_name": "StableDiffusionPipeline",
-  "_diffusers_version": "0.21.4",
-  ...,
-  "scheduler": [
-    "diffusers",
-    "PNDMScheduler"
-  ],
-  ...,
-  "unet": [
-    "diffusers",
-    "UNet2DConditionModel"
-  ],
-  "vae": [
-    "diffusers",
-    "AutoencoderKL"
-  ]
-}
+import torch
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained(
+  "Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+
+prompt = """
+cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+"""
+pipeline(prompt).images[0]
 ```
 
-We strongly recommend running the pipeline on a GPU because the model consists of roughly 1.4 billion parameters.
-You can move the generator object to a GPU, just like you would in PyTorch:
+</hfoption>
+<hfoption id="text-to-video">
 
-```python
->>> pipeline.to("cuda")
-```
-
-Now you can pass a text prompt to the `pipeline` to generate an image, and then access the denoised image. By default, the image output is wrapped in a [`PIL.Image`](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class) object.
-
-```python
->>> image = pipeline("An image of a squirrel in Picasso style").images[0]
->>> image
-```
-
-<div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/image_of_squirrel_painting.png"/>
-</div>
-
-Save the image by calling `save`:
-
-```python
->>> image.save("image_of_squirrel_painting.png")
-```
-
-### Local pipeline
-
-You can also use the pipeline locally. The only difference is you need to download the weights first:
-
-```bash
-!git lfs install
-!git clone https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
-```
-
-Then load the saved weights into the pipeline:
-
-```python
->>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", use_safetensors=True)
-```
-
-Now, you can run the pipeline as you would in the section above.
-
-### Swapping schedulers
-
-Different schedulers come with different denoising speeds and quality trade-offs. The best way to find out which one works best for you is to try them out! One of the main features of 🧨 Diffusers is to allow you to easily switch between schedulers. For example, to replace the default [`PNDMScheduler`] with the [`EulerDiscreteScheduler`], load it with the [`~diffusers.ConfigMixin.from_config`] method:
+Use `.frames[0]` to access the generated video output and [`~utils.export_to_video`] to save the video.
 
 ```py
->>> from diffusers import EulerDiscreteScheduler
+import torch
+from diffusers import AutoencoderKLWan, DiffusionPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
+from diffusers.utils import export_to_video
 
->>> pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", use_safetensors=True)
->>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+vae = AutoencoderKLWan.from_pretrained(
+  "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+  subfolder="vae",
+  torch_dtype=torch.float32
+)
+pipeline = DiffusionPipeline.from_pretrained(
+  "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+  vae=vae
+  torch_dtype=torch.bfloat16,
+  device_map="cuda"
+)
+
+prompt = """
+Cinematic video of a sleek cat lounging on a colorful inflatable in a crystal-clear turquoise pool in Palm Springs, 
+sipping a salt-rimmed margarita through a straw. Golden-hour sunlight glows over mid-century modern homes and swaying palms. 
+Shot in rich Sony a7S III: with moody, glamorous color grading, subtle lens flares, and soft vintage film grain. 
+Ripples shimmer as a warm desert breeze stirs the water, blending luxury and playful charm in an epic, gorgeously composed frame.
+"""
+video = pipeline(prompt=prompt, num_frames=81, num_inference_steps=40).frames[0]
+export_to_video(video, "output.mp4", fps=16)
 ```
 
-Try generating an image with the new scheduler and see if you notice a difference!
+</hfoption>
+</hfoptions>
 
-In the next section, you'll take a closer look at the components - the model and scheduler - that make up the [`DiffusionPipeline`] and learn how to use these components to generate an image of a cat.
+## LoRA
 
-## Models
+Adapters insert a small number of trainable parameters to the original base model. Only the inserted parameters are fine-tuned while the rest of the model weights remain frozen. This makes it fast and cheap to fine-tune a model on a new style. Among adapters, [LoRA's](./tutorials/using_peft_for_inference) are the most popular.
 
-Most models take a noisy sample, and at each timestep it predicts the *noise residual* (other models learn to predict the previous sample directly or the velocity or [`v-prediction`](https://github.com/huggingface/diffusers/blob/5e5ce13e2f89ac45a0066cb3f369462a3cf1d9ef/src/diffusers/schedulers/scheduling_ddim.py#L110)), the difference between a less noisy image and the input image. You can mix and match models to create other diffusion systems.
-
-Models are initiated with the [`~ModelMixin.from_pretrained`] method which also locally caches the model weights so it is faster the next time you load the model. For the quicktour, you'll load the [`UNet2DModel`], a basic unconditional image generation model with a checkpoint trained on cat images:
+Add a LoRA to a pipeline with the [`~loaders.QwenImageLoraLoaderMixin.load_lora_weights`] method. Some LoRA's require a special word to trigger it, such as `Realism`, in the example below. Check a LoRA's model card to see if it requires a trigger word.
 
 ```py
->>> from diffusers import UNet2DModel
+import torch
+from diffusers import DiffusionPipeline
 
->>> repo_id = "google/ddpm-cat-256"
->>> model = UNet2DModel.from_pretrained(repo_id, use_safetensors=True)
+pipeline = DiffusionPipeline.from_pretrained(
+  "Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+pipeline.load_lora_weights(
+  "flymy-ai/qwen-image-realism-lora",
+)
+
+prompt = """
+super Realism cinematic film still of a cat sipping a margarita in a pool in Palm Springs in the style of umempart, California
+highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+"""
+pipeline(prompt).images[0]
 ```
+
+Check out the [LoRA](./tutorials/using_peft_for_inference) docs or Adapters section to learn more.
+
+## Quantization
+
+[Quantization](./quantization/overview) stores data in fewer bits to reduce memory usage. It may also speed up inference because it takes less time to perform calculations with fewer bits.
+
+Diffusers provides several quantization backends and picking one depends on your use case. For example, [bitsandbytes](./quantization/bitsandbytes) and [torchao](./quantization/torchao) are both simple and easy to use for inference, but torchao supports more [quantization types](./quantization/torchao#supported-quantization-types) like fp8.
+
+Configure [`PipelineQuantizationConfig`] with the backend to use, the specific arguments (refer to the [API](./api/quantization) reference for available arguments) for that backend, and which components to quantize. The example below quantizes the model to 4-bits and only uses 14.93GB of memory.
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
+
+quant_config = PipelineQuantizationConfig(
+  quant_backend="bitsandbytes_4bit",
+  quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
+  components_to_quantize=["transformer", "text_encoder"],
+)
+pipeline = DiffusionPipeline.from_pretrained(
+  "Qwen/Qwen-Image",
+  torch_dtype=torch.bfloat16,
+  quantization_config=quant_config,
+  device_map="cuda"
+)
+
+prompt = """
+cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+"""
+pipeline(prompt).images[0]
+print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+```
+
+Take a look at the [Quantization](./quantization/overview) section for more details.
+
+## Optimizations
 
 > [!TIP]
-> Use the [`AutoModel`] API to automatically select a model class if you're unsure of which one to use.
+> Optimization is dependent on hardware specs such as memory. Use this [Space](https://huggingface.co/spaces/diffusers/optimized-diffusers-code) to generate code examples that include all of Diffusers' available memory and speed optimization techniques for any model you're using.
 
-To access the model parameters, call `model.config`:
+Modern diffusion models are very large and have billions of parameters. The iterative denoising process is also computationally intensive and slow. Diffusers provides techniques for reducing memory usage and boosting inference speed. These techniques can be combined with quantization to optimize for both memory usage and inference speed.
 
-```py
->>> model.config
-```
+### Memory usage
 
-The model configuration is a 🧊 frozen 🧊 dictionary, which means those parameters can't be changed after the model is created. This is intentional and ensures that the parameters used to define the model architecture at the start remain the same, while other parameters can still be adjusted during inference.
+The text encoders and UNet or DiT can use up as much as ~30GB of memory, exceeding the amount available on many free-tier or consumer GPUs.
 
-Some of the most important parameters are:
+Offloading stores weights that aren't currently used on the CPU and only moves them to the GPU when they're needed. There are a few offloading types and the example below uses [model offloading](./optimization/memory#model-offloading). This moves an entire model, like a text encoder or transformer, to the CPU when it isn't actively being used.
 
-* `sample_size`: the height and width dimension of the input sample.
-* `in_channels`: the number of input channels of the input sample.
-* `down_block_types` and `up_block_types`: the type of down- and upsampling blocks used to create the UNet architecture.
-* `block_out_channels`: the number of output channels of the downsampling blocks; also used in reverse order for the number of input channels of the upsampling blocks.
-* `layers_per_block`: the number of ResNet blocks present in each UNet block.
-
-To use the model for inference, create the image shape with random Gaussian noise. It should have a `batch` axis because the model can receive multiple random noises, a `channel` axis corresponding to the number of input channels, and a `sample_size` axis for the height and width of the image:
+Call [`~DiffusionPipeline.enable_model_cpu_offload`] to activate it. By combining quantization and offloading, the following example only requires ~12.54GB of memory.
 
 ```py
->>> import torch
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.quantizers import PipelineQuantizationConfig
 
->>> torch.manual_seed(0)
+quant_config = PipelineQuantizationConfig(
+  quant_backend="bitsandbytes_4bit",
+  quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
+  components_to_quantize=["transformer", "text_encoder"],
+)
+pipeline = DiffusionPipeline.from_pretrained(
+  "Qwen/Qwen-Image",
+  torch_dtype=torch.bfloat16,
+  quantization_config=quant_config,
+  device_map="cuda"
+)
+pipeline.enable_model_cpu_offload()
 
->>> noisy_sample = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
->>> noisy_sample.shape
-torch.Size([1, 3, 256, 256])
+prompt = """
+cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+"""
+pipeline(prompt).images[0]
+print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
 ```
 
-For inference, pass the noisy image and a `timestep` to the model. The `timestep` indicates how noisy the input image is, with more noise at the beginning and less at the end. This helps the model determine its position in the diffusion process, whether it is closer to the start or the end. Use the `sample` method to get the model output:
+Refer to the [Reduce memory usage](./optimization/memory) docs to learn more about other memory reducing techniques.
+
+### Inference speed
+
+The denoising loop performs a lot of computations and can be slow. Methods like [torch.compile](./optimization/fp16#torchcompile) increases inference speed by compiling the computations into an optimized kernel. Compilation is slow for the first generation but successive generations should be much faster.
+
+The example below uses [regional compilation](./optimization/fp16#regional-compilation) to only compile small regions of a model. It reduces cold-start latency while also providing a runtime speed up.
+
+Call [`~ModelMixin.compile_repeated_blocks`] on the model to activate it.
 
 ```py
->>> with torch.no_grad():
-...     noisy_residual = model(sample=noisy_sample, timestep=2).sample
+import torch
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained(
+  "Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+
+pipeline.transformer.compile_repeated_blocks(
+    fullgraph=True,
+)
+prompt = """
+cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+"""
+pipeline(prompt).images[0]
 ```
 
-To generate actual examples though, you'll need a scheduler to guide the denoising process. In the next section, you'll learn how to couple a model with a scheduler.
-
-## Schedulers
-
-Schedulers manage going from a noisy sample to a less noisy sample given the model output - in this case, it is the `noisy_residual`.
-
-<Tip>
-
-🧨 Diffusers is a toolbox for building diffusion systems. While the [`DiffusionPipeline`] is a convenient way to get started with a pre-built diffusion system, you can also choose your own model and scheduler components separately to build a custom diffusion system.
-
-</Tip>
-
-For the quicktour, you'll instantiate the [`DDPMScheduler`] with its [`~diffusers.ConfigMixin.from_config`] method:
-
-```py
->>> from diffusers import DDPMScheduler
-
->>> scheduler = DDPMScheduler.from_pretrained(repo_id)
->>> scheduler
-DDPMScheduler {
-  "_class_name": "DDPMScheduler",
-  "_diffusers_version": "0.21.4",
-  "beta_end": 0.02,
-  "beta_schedule": "linear",
-  "beta_start": 0.0001,
-  "clip_sample": true,
-  "clip_sample_range": 1.0,
-  "dynamic_thresholding_ratio": 0.995,
-  "num_train_timesteps": 1000,
-  "prediction_type": "epsilon",
-  "sample_max_value": 1.0,
-  "steps_offset": 0,
-  "thresholding": false,
-  "timestep_spacing": "leading",
-  "trained_betas": null,
-  "variance_type": "fixed_small"
-}
-```
-
-<Tip>
-
-💡 Unlike a model, a scheduler does not have trainable weights and is parameter-free!
-
-</Tip>
-
-Some of the most important parameters are:
-
-* `num_train_timesteps`: the length of the denoising process or, in other words, the number of timesteps required to process random Gaussian noise into a data sample.
-* `beta_schedule`: the type of noise schedule to use for inference and training.
-* `beta_start` and `beta_end`: the start and end noise values for the noise schedule.
-
-To predict a slightly less noisy image, pass the following to the scheduler's [`~diffusers.DDPMScheduler.step`] method: model output, `timestep`, and current `sample`.
-
-```py
->>> less_noisy_sample = scheduler.step(model_output=noisy_residual, timestep=2, sample=noisy_sample).prev_sample
->>> less_noisy_sample.shape
-torch.Size([1, 3, 256, 256])
-```
-
-The `less_noisy_sample` can be passed to the next `timestep` where it'll get even less noisy! Let's bring it all together now and visualize the entire denoising process.
-
-First, create a function that postprocesses and displays the denoised image as a `PIL.Image`:
-
-```py
->>> import PIL.Image
->>> import numpy as np
-
-
->>> def display_sample(sample, i):
-...     image_processed = sample.cpu().permute(0, 2, 3, 1)
-...     image_processed = (image_processed + 1.0) * 127.5
-...     image_processed = image_processed.numpy().astype(np.uint8)
-
-...     image_pil = PIL.Image.fromarray(image_processed[0])
-...     display(f"Image at step {i}")
-...     display(image_pil)
-```
-
-To speed up the denoising process, move the input and model to a GPU:
-
-```py
->>> model.to("cuda")
->>> noisy_sample = noisy_sample.to("cuda")
-```
-
-Now create a denoising loop that predicts the residual of the less noisy sample, and computes the less noisy sample with the scheduler:
-
-```py
->>> import tqdm
-
->>> sample = noisy_sample
-
->>> for i, t in enumerate(tqdm.tqdm(scheduler.timesteps)):
-...     # 1. predict noise residual
-...     with torch.no_grad():
-...         residual = model(sample, t).sample
-
-...     # 2. compute less noisy image and set x_t -> x_t-1
-...     sample = scheduler.step(residual, t, sample).prev_sample
-
-...     # 3. optionally look at image
-...     if (i + 1) % 50 == 0:
-...         display_sample(sample, i + 1)
-```
-
-Sit back and watch as a cat is generated from nothing but noise! 😻
-
-<div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/diffusion-quicktour.png"/>
-</div>
-
-## Next steps
-
-Hopefully, you generated some cool images with 🧨 Diffusers in this quicktour! For your next steps, you can:
-
-* Train or finetune a model to generate your own images in the [training](./tutorials/basic_training) tutorial.
-* See example official and community [training or finetuning scripts](https://github.com/huggingface/diffusers/tree/main/examples#-diffusers-examples) for a variety of use cases.
-* Learn more about loading, accessing, changing, and comparing schedulers in the [Using different Schedulers](./using-diffusers/schedulers) guide.
-* Explore prompt engineering, speed and memory optimizations, and tips and tricks for generating higher-quality images with the [Stable Diffusion](./stable_diffusion) guide.
-* Dive deeper into speeding up 🧨 Diffusers with guides on [optimized PyTorch on a GPU](./optimization/fp16), and inference guides for running [Stable Diffusion on Apple Silicon (M1/M2)](./optimization/mps) and [ONNX Runtime](./optimization/onnx).
+Check out the [Accelerate inference](./optimization/fp16) or [Caching](./optimization/cache) docs for more methods that speed up inference.
