@@ -17,13 +17,16 @@ import gc
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadePriorPipeline
 from diffusers.models import StableCascadeUNet
+from diffusers.utils import is_transformers_version
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     load_numpy,
@@ -153,6 +156,11 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         }
         return inputs
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">=", "4.57.1"),
+        reason="Test fails with the latest transformers version",
+        strict=False,
+    )
     def test_wuerstchen_prior(self):
         device = "cpu"
 

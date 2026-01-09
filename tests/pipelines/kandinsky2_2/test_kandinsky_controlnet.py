@@ -27,7 +27,9 @@ from diffusers import (
     UNet2DConditionModel,
     VQModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -38,7 +40,6 @@ from diffusers.utils.testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -289,6 +290,12 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-
         max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
-        assert max_diff < 1e-4
+        expected_max_diffs = Expectations(
+            {
+                ("xpu", 3): 2e-3,
+                ("cuda", 7): 2e-4,
+            }
+        )
+        expected_max_diff = expected_max_diffs.get_expectation()
+        assert max_diff < expected_max_diff

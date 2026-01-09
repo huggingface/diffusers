@@ -20,7 +20,8 @@ import torch
 from diffusers.hooks import HookRegistry, ModelHook
 from diffusers.training_utils import free_memory
 from diffusers.utils.logging import get_logger
-from diffusers.utils.testing_utils import CaptureLogger, torch_device
+
+from ..testing_utils import CaptureLogger, torch_device
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -219,6 +220,7 @@ class HookTests(unittest.TestCase):
 
         self.assertAlmostEqual(output1, output2, places=5)
         self.assertAlmostEqual(output1, output3, places=5)
+        self.assertAlmostEqual(output2, output3, places=5)
 
     def test_skip_layer_hook(self):
         registry = HookRegistry.check_if_exists_or_initialize(self.model)

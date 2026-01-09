@@ -28,6 +28,16 @@ print("Python version:", sys.version)
 
 print("OS platform:", platform.platform())
 print("OS architecture:", platform.machine())
+try:
+    import psutil
+
+    vm = psutil.virtual_memory()
+    total_gb = vm.total / (1024**3)
+    available_gb = vm.available / (1024**3)
+    print(f"Total RAM:     {total_gb:.2f} GB")
+    print(f"Available RAM: {available_gb:.2f} GB")
+except ImportError:
+    pass
 
 try:
     import torch

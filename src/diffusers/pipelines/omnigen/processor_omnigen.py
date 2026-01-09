@@ -18,7 +18,12 @@ from typing import Dict, List
 import numpy as np
 import torch
 from PIL import Image
-from torchvision import transforms
+
+from ...utils import is_torchvision_available
+
+
+if is_torchvision_available():
+    from torchvision import transforms
 
 
 def crop_image(pil_image, max_image_size):

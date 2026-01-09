@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -139,7 +139,7 @@ class HunyuanVideoFramepackTransformer3DModel(
         text_embed_dim: int = 4096,
         pooled_projection_dim: int = 768,
         rope_theta: float = 256.0,
-        rope_axes_dim: Tuple[int] = (16, 56, 56),
+        rope_axes_dim: Tuple[int, ...] = (16, 56, 56),
         image_condition_type: Optional[str] = None,
         has_image_proj: int = False,
         image_proj_dim: int = 1152,
@@ -216,7 +216,7 @@ class HunyuanVideoFramepackTransformer3DModel(
         indices_latents_history_4x: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ):
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)

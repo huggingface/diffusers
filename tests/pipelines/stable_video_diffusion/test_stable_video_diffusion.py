@@ -20,7 +20,8 @@ from diffusers import (
 )
 from diffusers.utils import load_image, logging
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     enable_full_determinism,
@@ -32,7 +33,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 

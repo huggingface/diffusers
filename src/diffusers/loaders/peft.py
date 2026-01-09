@@ -22,10 +22,12 @@ from typing import Dict, List, Literal, Optional, Union
 import safetensors
 import torch
 
+from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
     check_peft_version,
+    convert_sai_sd_control_lora_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
     delete_adapter_layers,
     get_adapter_name,
@@ -61,6 +63,9 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "HunyuanVideoFramepackTransformer3DModel": lambda model_cls, weights: weights,
     "WanVACETransformer3DModel": lambda model_cls, weights: weights,
     "ChromaTransformer2DModel": lambda model_cls, weights: weights,
+    "QwenImageTransformer2DModel": lambda model_cls, weights: weights,
+    "Flux2Transformer2DModel": lambda model_cls, weights: weights,
+    "ZImageTransformer2DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -85,17 +90,6 @@ class PeftAdapterMixin:
     @classmethod
     # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
     def _optionally_disable_offloading(cls, _pipeline):
-        """
-        Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
-
-        Args:
-            _pipeline (`DiffusionPipeline`):
-                The pipeline to disable offloading for.
-
-        Returns:
-            tuple:
-                A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
-        """
         return _func_optionally_disable_offloading(_pipeline=_pipeline)
 
     def load_lora_adapter(
@@ -174,6 +168,8 @@ class PeftAdapterMixin:
         from peft import inject_adapter_in_model, set_peft_model_state_dict
         from peft.tuners.tuners_utils import BaseTunerLayer
 
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -237,6 +233,13 @@ class PeftAdapterMixin:
             if "lora_A" not in first_key:
                 state_dict = convert_unet_state_dict_to_peft(state_dict)
 
+            # Control LoRA from SAI is different from BFL Control LoRA
+            # https://huggingface.co/stabilityai/control-lora
+            # https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors
+            is_sai_sd_control_lora = "lora_controlnet" in state_dict
+            if is_sai_sd_control_lora:
+                state_dict = convert_sai_sd_control_lora_state_dict_to_peft(state_dict)
+
             rank = {}
             for key, val in state_dict.items():
                 # Cannot figure out rank from lora layers that don't have at least 2 dimensions.
@@ -254,12 +257,27 @@ class PeftAdapterMixin:
                     k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys
                 }
 
-            # create LoraConfig
-            lora_config = _create_lora_config(state_dict, network_alphas, metadata, rank)
-
             # adapter_name
             if adapter_name is None:
                 adapter_name = get_adapter_name(self)
+
+            # create LoraConfig
+            lora_config = _create_lora_config(
+                state_dict,
+                network_alphas,
+                metadata,
+                rank,
+                model_state_dict=self.state_dict(),
+                adapter_name=adapter_name,
+            )
+
+            # Adjust LoRA config for Control LoRA
+            if is_sai_sd_control_lora:
+                lora_config.lora_alpha = lora_config.r
+                lora_config.alpha_pattern = lora_config.rank_pattern
+                lora_config.bias = "all"
+                lora_config.modules_to_save = lora_config.exclude_modules
+                lora_config.exclude_modules = None
 
             # <Unsafe code
             # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
@@ -267,7 +285,9 @@ class PeftAdapterMixin:
 
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error.
-            is_model_cpu_offload, is_sequential_cpu_offload = self._optionally_disable_offloading(_pipeline)
+            is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
+                _pipeline
+            )
             peft_kwargs = {}
             if is_peft_version(">=", "0.13.1"):
                 peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
@@ -292,7 +312,7 @@ class PeftAdapterMixin:
                     # For hotswapping, we need the adapter name to be present in the state dict keys
                     new_sd = {}
                     for k, v in sd.items():
-                        if k.endswith("lora_A.weight") or key.endswith("lora_B.weight"):
+                        if k.endswith("lora_A.weight") or k.endswith("lora_B.weight"):
                             k = k[: -len(".weight")] + f".{adapter_name}.weight"
                         elif k.endswith("lora_B.bias"):  # lora_bias=True option
                             k = k[: -len(".bias")] + f".{adapter_name}.bias"
@@ -319,7 +339,9 @@ class PeftAdapterMixin:
                     # it to None
                     incompatible_keys = None
                 else:
-                    inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+                    inject_adapter_in_model(
+                        lora_config, self, adapter_name=adapter_name, state_dict=state_dict, **peft_kwargs
+                    )
                     incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
 
                     if self._prepare_lora_hotswap_kwargs is not None:
@@ -358,6 +380,10 @@ class PeftAdapterMixin:
                 _pipeline.enable_model_cpu_offload()
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
+            elif is_group_offload:
+                for component in _pipeline.components.values():
+                    if isinstance(component, torch.nn.Module):
+                        _maybe_remove_and_reapply_group_offloading(component)
             # Unsafe code />
 
         if prefix is not None and not state_dict:
@@ -444,7 +470,7 @@ class PeftAdapterMixin:
         weights: Optional[Union[float, Dict, List[float], List[Dict], List[None]]] = None,
     ):
         """
-        Set the currently active adapters for use in the UNet.
+        Set the currently active adapters for use in the diffusion network (e.g. unet, transformer, etc.).
 
         Args:
             adapter_names (`List[str]` or `str`):
@@ -466,7 +492,7 @@ class PeftAdapterMixin:
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
+        pipeline.unet.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -692,11 +718,16 @@ class PeftAdapterMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for `unload_lora()`.")
 
+        from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
         from ..utils import recurse_remove_peft_layers
 
         recurse_remove_peft_layers(self)
         if hasattr(self, "peft_config"):
             del self.peft_config
+        if hasattr(self, "_hf_peft_config_loaded"):
+            self._hf_peft_config_loaded = None
+
+        _maybe_remove_and_reapply_group_offloading(self)
 
     def disable_lora(self):
         """
@@ -714,7 +745,7 @@ class PeftAdapterMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
-        pipeline.disable_lora()
+        pipeline.unet.disable_lora()
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -737,7 +768,7 @@ class PeftAdapterMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
-        pipeline.enable_lora()
+        pipeline.unet.enable_lora()
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -764,7 +795,7 @@ class PeftAdapterMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_names="cinematic"
         )
-        pipeline.delete_adapters("cinematic")
+        pipeline.unet.delete_adapters("cinematic")
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -779,6 +810,8 @@ class PeftAdapterMixin:
             # Pop also the corresponding adapter from the config
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
+
+        _maybe_remove_and_reapply_group_offloading(self)
 
     def enable_lora_hotswap(
         self, target_rank: int = 128, check_compiled: Literal["error", "warn", "ignore"] = "error"
