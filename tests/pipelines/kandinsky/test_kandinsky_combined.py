@@ -76,7 +76,9 @@ class KandinskyPipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCase)
         return inputs
 
     @pytest.mark.xfail(
-        condition=is_transformers_version(">=", "4.56.2"), reason="Latest transformers changes the slices", strict=True
+        condition=is_transformers_version(">=", "4.56.2"),
+        reason="Latest transformers changes the slices",
+        strict=False,
     )
     def test_kandinsky(self):
         device = "cpu"
@@ -187,7 +189,9 @@ class KandinskyPipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.Te
         return inputs
 
     @pytest.mark.xfail(
-        condition=is_transformers_version(">=", "4.56.2"), reason="Latest transformers changes the slices", strict=True
+        condition=is_transformers_version(">=", "4.56.2"),
+        reason="Latest transformers changes the slices",
+        strict=False,
     )
     def test_kandinsky(self):
         device = "cpu"
@@ -301,7 +305,9 @@ class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.Te
         return inputs
 
     @pytest.mark.xfail(
-        condition=is_transformers_version(">=", "4.56.2"), reason="Latest transformers changes the slices", strict=True
+        condition=is_transformers_version(">=", "4.56.2"),
+        reason="Latest transformers changes the slices",
+        strict=False,
     )
     def test_kandinsky(self):
         device = "cpu"

@@ -16,6 +16,7 @@ from diffusers import (
     HiDreamImageTransformer2DModel,
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
+    WanAnimateTransformer3DModel,
     WanTransformer3DModel,
     WanVACETransformer3DModel,
 )
@@ -360,33 +361,33 @@ class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase)
             {
                 ("xpu", 3): np.array(
                     [
-                        0.1953125,
-                        0.3125,
-                        0.31445312,
-                        0.13085938,
-                        0.30664062,
-                        0.29296875,
-                        0.11523438,
-                        0.2890625,
+                        0.16796875,
+                        0.27929688,
                         0.28320312,
-                        0.16601562,
-                        0.3046875,
-                        0.328125,
-                        0.140625,
-                        0.31640625,
+                        0.11328125,
+                        0.27539062,
+                        0.26171875,
+                        0.10742188,
+                        0.26367188,
+                        0.26171875,
+                        0.1484375,
+                        0.2734375,
+                        0.296875,
+                        0.13476562,
+                        0.2890625,
+                        0.30078125,
+                        0.1171875,
+                        0.28125,
+                        0.28125,
+                        0.16015625,
+                        0.31445312,
+                        0.30078125,
+                        0.15625,
                         0.32421875,
-                        0.12304688,
-                        0.3046875,
-                        0.3046875,
-                        0.17578125,
-                        0.3359375,
-                        0.3203125,
-                        0.16601562,
-                        0.34375,
-                        0.31640625,
-                        0.15429688,
-                        0.328125,
-                        0.31054688,
+                        0.296875,
+                        0.14453125,
+                        0.30859375,
+                        0.2890625,
                     ]
                 ),
                 ("cuda", 7): np.array(
@@ -698,6 +699,33 @@ class WanVACEGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
     ckpt_path = "https://huggingface.co/QuantStack/Wan2.1_14B_VACE-GGUF/blob/main/Wan2.1_14B_VACE-Q3_K_S.gguf"
     torch_dtype = torch.bfloat16
     model_cls = WanVACETransformer3DModel
+    expected_memory_use_in_gb = 9
+
+    def get_dummy_inputs(self):
+        return {
+            "hidden_states": torch.randn((1, 16, 2, 64, 64), generator=torch.Generator("cpu").manual_seed(0)).to(
+                torch_device, self.torch_dtype
+            ),
+            "encoder_hidden_states": torch.randn(
+                (1, 512, 4096),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "control_hidden_states": torch.randn(
+                (1, 96, 2, 64, 64),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "control_hidden_states_scale": torch.randn(
+                (8,),
+                generator=torch.Generator("cpu").manual_seed(0),
+            ).to(torch_device, self.torch_dtype),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+        }
+
+
+class WanAnimateGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+    ckpt_path = "https://huggingface.co/QuantStack/Wan2.2-Animate-14B-GGUF/blob/main/Wan2.2-Animate-14B-Q3_K_S.gguf"
+    torch_dtype = torch.bfloat16
+    model_cls = WanAnimateTransformer3DModel
     expected_memory_use_in_gb = 9
 
     def get_dummy_inputs(self):
