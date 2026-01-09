@@ -1,3 +1,4 @@
+
 name: Fast PR tests for Modular
 
 on:
@@ -77,23 +78,13 @@ jobs:
 
   run_fast_tests:
     needs: [check_code_quality, check_repository_consistency]
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - name: Fast PyTorch Modular Pipeline CPU tests
-            framework: pytorch_pipelines
-            runner: aws-highmemory-32-plus
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_modular_pipelines
-
-    name: ${{ matrix.config.name }}
+    name: Fast PyTorch Modular Pipeline CPU tests
 
     runs-on:
-      group: ${{ matrix.config.runner }}
+      group: aws-highmemory-32-plus
 
     container:
-      image: ${{ matrix.config.image }}
+      image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
 
     defaults:
@@ -118,22 +109,19 @@ jobs:
         python utils/print_env.py
 
     - name: Run fast PyTorch Pipeline CPU tests
-      if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
         pytest -n 8 --max-worker-restart=0 --dist=loadfile \
           -k "not Flax and not Onnx" \
-          --make-reports=tests_${{ matrix.config.report }} \
+          --make-reports=tests_torch_cpu_modular_pipelines \
           tests/modular_pipelines
 
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+      run: cat reports/tests_torch_cpu_modular_pipelines_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v6
       with:
-        name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
+        name: pr_pytorch_pipelines_torch_cpu_modular_pipelines_test_reports
         path: reports
-
-
