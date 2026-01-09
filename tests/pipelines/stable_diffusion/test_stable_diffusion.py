@@ -538,7 +538,7 @@ class StableDiffusionPipelineFastTests(
         do_classifier_free_guidance = True
         negative_prompt = None
         num_images_per_prompt = 1
-        logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
+        logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils")
         logger.setLevel(logging.WARNING)
 
         prompt = 100 * "@"
