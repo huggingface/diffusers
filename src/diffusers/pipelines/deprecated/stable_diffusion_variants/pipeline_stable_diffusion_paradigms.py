@@ -46,10 +46,12 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import DDPMParallelScheduler
         >>> from diffusers import StableDiffusionParadigmsPipeline
 
-        >>> scheduler = DDPMParallelScheduler.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+        >>> scheduler = DDPMParallelScheduler.from_pretrained(
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="scheduler"
+        ... )
 
         >>> pipe = StableDiffusionParadigmsPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", scheduler=scheduler, torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", scheduler=scheduler, torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
@@ -95,8 +97,8 @@ class StableDiffusionParadigmsPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for
+            more details about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """

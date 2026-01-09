@@ -28,13 +28,12 @@ jobs:
       test_map: ${{ steps.set_matrix.outputs.test_map }}
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
+        uv pip install -e ".[quality]"
     - name: Environment
       run: |
         python utils/print_env.py
@@ -43,7 +42,7 @@ jobs:
       run: |
         python utils/tests_fetcher.py | tee test_preparation.txt
     - name: Report fetched tests
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: test_fetched
         path: test_preparation.txt
@@ -84,25 +83,22 @@ jobs:
         shell: bash
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 2
 
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pip install -e [quality,test]
-        python -m pip install accelerate
+        uv pip install -e ".[quality]"
+        uv pip install accelerate
 
     - name: Environment
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run all selected tests on CPU
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --dist=loadfile -v --make-reports=${{ matrix.modules }}_tests_cpu ${{ fromJson(needs.setup_pr_tests.outputs.test_map)[matrix.modules] }}
+        pytest -n 2 --dist=loadfile -v --make-reports=${{ matrix.modules }}_tests_cpu ${{ fromJson(needs.setup_pr_tests.outputs.test_map)[matrix.modules] }}
 
     - name: Failure short reports
       if: ${{ failure() }}
@@ -113,7 +109,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
           name: ${{ matrix.modules }}_test_reports
           path: reports
@@ -142,25 +138,22 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 2
 
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pip install -e [quality,test]
+        pip install -e [quality]
 
     - name: Environment
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run Hub tests for models, schedulers, and pipelines on a staging env
       if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        HUGGINGFACE_CO_STAGING=true python -m pytest \
+        HUGGINGFACE_CO_STAGING=true pytest \
           -m "is_staging_test" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests
@@ -171,7 +164,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports

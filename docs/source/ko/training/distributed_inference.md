@@ -32,9 +32,8 @@ Use the `--num_processes` argument to specify the number of GPUs to use, and cal
 accelerate launch run_distributed.py --num_processes=2
 ```
 
-<Tip>자세한 내용은 [🤗 Accelerate를 사용한 분산 추론](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) 가이드를 참조하세요.
-
-</Tip>
+> [!TIP]
+> 자세한 내용은 [🤗 Accelerate를 사용한 분산 추론](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) 가이드를 참조하세요.
 
 ## Pytoerch 분산
 

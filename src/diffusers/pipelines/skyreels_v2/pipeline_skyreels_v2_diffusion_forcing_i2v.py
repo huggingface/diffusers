@@ -698,11 +698,11 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, defaults to `5.0`):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality. (**6.0 for T2V**, **5.0 for I2V**)
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality. (**6.0 for T2V**, **5.0 for I2V**)
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -966,25 +966,28 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                         )
                         timestep[:, valid_interval_start:prefix_video_latents_frames] = addnoise_condition
 
-                    noise_pred = self.transformer(
-                        hidden_states=latent_model_input,
-                        timestep=timestep,
-                        encoder_hidden_states=prompt_embeds,
-                        enable_diffusion_forcing=True,
-                        fps=fps_embeds,
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )[0]
-                    if self.do_classifier_free_guidance:
-                        noise_uncond = self.transformer(
+                    with self.transformer.cache_context("cond"):
+                        noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
-                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_hidden_states=prompt_embeds,
                             enable_diffusion_forcing=True,
                             fps=fps_embeds,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
+
+                    if self.do_classifier_free_guidance:
+                        with self.transformer.cache_context("uncond"):
+                            noise_uncond = self.transformer(
+                                hidden_states=latent_model_input,
+                                timestep=timestep,
+                                encoder_hidden_states=negative_prompt_embeds,
+                                enable_diffusion_forcing=True,
+                                fps=fps_embeds,
+                                attention_kwargs=attention_kwargs,
+                                return_dict=False,
+                            )[0]
                         noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
                     update_mask_i = step_update_mask[i]

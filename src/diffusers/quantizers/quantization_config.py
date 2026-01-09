@@ -21,19 +21,20 @@ https://github.com/huggingface/transformers/blob/52cb4034ada381fe1ffe8d428a1076e
 """
 
 import copy
+import dataclasses
 import importlib.metadata
 import inspect
 import json
 import os
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass
 from enum import Enum
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from packaging import version
 
-from ..utils import is_torch_available, is_torchao_available, logging
+from ..utils import is_torch_available, is_torchao_available, is_torchao_version, logging
 
 
 if is_torch_available():
@@ -443,7 +444,7 @@ class TorchAoConfig(QuantizationConfigMixin):
     """This is a config class for torchao quantization/sparsity techniques.
 
     Args:
-        quant_type (`str`):
+        quant_type (Union[`str`, AOBaseConfig]):
             The type of quantization we want to use, currently supporting:
                 - **Integer quantization:**
                     - Full function names: `int4_weight_only`, `int8_dynamic_activation_int4_weight`,
@@ -456,7 +457,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                     - Shorthands: `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`,
                       `float8_e4m3_tensor`, `float8_e4m3_row`,
 
-                - **Floating point X-bit quantization:**
+                - **Floating point X-bit quantization:** (in torchao <= 0.14.1, not supported in torchao >= 0.15.0)
                     - Full function names: `fpx_weight_only`
                     - Shorthands: `fpX_eAwB`, where `X` is the number of bits (between `1` to `7`), `A` is the number
                       of exponent bits and `B` is the number of mantissa bits. The constraint of `X == A + B + 1` must
@@ -465,6 +466,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 - **Unsigned Integer quantization:**
                     - Full function names: `uintx_weight_only`
                     - Shorthands: `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo`
+                - An AOBaseConfig instance: for more advanced configuration options.
         modules_to_not_convert (`List[str]`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
             modules left in their original precision.
@@ -478,6 +480,12 @@ class TorchAoConfig(QuantizationConfigMixin):
         ```python
         from diffusers import FluxTransformer2DModel, TorchAoConfig
 
+        # AOBaseConfig-based configuration
+        from torchao.quantization import Int8WeightOnlyConfig
+
+        quantization_config = TorchAoConfig(Int8WeightOnlyConfig())
+
+        # String-based config
         quantization_config = TorchAoConfig("int8wo")
         transformer = FluxTransformer2DModel.from_pretrained(
             "black-forest-labs/Flux.1-Dev",
@@ -490,7 +498,7 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     def __init__(
         self,
-        quant_type: str,
+        quant_type: Union[str, "AOBaseConfig"],  # noqa: F821
         modules_to_not_convert: Optional[List[str]] = None,
         **kwargs,
     ) -> None:
@@ -504,34 +512,109 @@ class TorchAoConfig(QuantizationConfigMixin):
         else:
             self.quant_type_kwargs = kwargs
 
-        TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
-        if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
-            is_floating_quant_type = self.quant_type.startswith("float") or self.quant_type.startswith("fp")
-            if is_floating_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
+        self.post_init()
+
+    def post_init(self):
+        if not isinstance(self.quant_type, str):
+            if is_torchao_version("<=", "0.9.0"):
                 raise ValueError(
-                    f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
-                    f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
+                    f"torchao <= 0.9.0 only supports string quant_type, got {type(self.quant_type).__name__}. "
+                    f"Upgrade to torchao > 0.9.0 to use AOBaseConfig."
                 )
 
-            raise ValueError(
-                f"Requested quantization type: {self.quant_type} is not supported or is an incorrect `quant_type` name. If you think the "
-                f"provided quantization type should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
-            )
+            from torchao.quantization.quant_api import AOBaseConfig
 
-        method = TORCHAO_QUANT_TYPE_METHODS[self.quant_type]
-        signature = inspect.signature(method)
-        all_kwargs = {
-            param.name
-            for param in signature.parameters.values()
-            if param.kind in [inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD]
-        }
-        unsupported_kwargs = list(self.quant_type_kwargs.keys() - all_kwargs)
+            if not isinstance(self.quant_type, AOBaseConfig):
+                raise TypeError(f"quant_type must be a AOBaseConfig instance, got {type(self.quant_type).__name__}")
 
-        if len(unsupported_kwargs) > 0:
-            raise ValueError(
-                f'The quantization method "{quant_type}" does not support the following keyword arguments: '
-                f"{unsupported_kwargs}. The following keywords arguments are supported: {all_kwargs}."
-            )
+        elif isinstance(self.quant_type, str):
+            TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
+
+            if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
+                is_floatx_quant_type = self.quant_type.startswith("fp")
+                is_float_quant_type = self.quant_type.startswith("float") or is_floatx_quant_type
+                if is_float_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
+                    raise ValueError(
+                        f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
+                        f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
+                    )
+                elif is_floatx_quant_type and not is_torchao_version("<=", "0.14.1"):
+                    raise ValueError(
+                        f"Requested quantization type: {self.quant_type} is only supported in torchao <= 0.14.1. "
+                        f"Please downgrade to torchao <= 0.14.1 to use this quantization type."
+                    )
+
+                raise ValueError(
+                    f"Requested quantization type: {self.quant_type} is not supported or is an incorrect `quant_type` name. If you think the "
+                    f"provided quantization type should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
+                )
+
+            method = TORCHAO_QUANT_TYPE_METHODS[self.quant_type]
+            signature = inspect.signature(method)
+            all_kwargs = {
+                param.name
+                for param in signature.parameters.values()
+                if param.kind in [inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD]
+            }
+            unsupported_kwargs = list(self.quant_type_kwargs.keys() - all_kwargs)
+
+            if len(unsupported_kwargs) > 0:
+                raise ValueError(
+                    f'The quantization method "{self.quant_type}" does not support the following keyword arguments: '
+                    f"{unsupported_kwargs}. The following keywords arguments are supported: {all_kwargs}."
+                )
+
+    def to_dict(self):
+        """Convert configuration to a dictionary."""
+        d = super().to_dict()
+
+        if isinstance(self.quant_type, str):
+            # Handle layout serialization if present
+            if "quant_type_kwargs" in d and "layout" in d["quant_type_kwargs"]:
+                if is_dataclass(d["quant_type_kwargs"]["layout"]):
+                    d["quant_type_kwargs"]["layout"] = [
+                        d["quant_type_kwargs"]["layout"].__class__.__name__,
+                        dataclasses.asdict(d["quant_type_kwargs"]["layout"]),
+                    ]
+                if isinstance(d["quant_type_kwargs"]["layout"], list):
+                    assert len(d["quant_type_kwargs"]["layout"]) == 2, "layout saves layout name and layout kwargs"
+                    assert isinstance(d["quant_type_kwargs"]["layout"][0], str), "layout name must be a string"
+                    assert isinstance(d["quant_type_kwargs"]["layout"][1], dict), "layout kwargs must be a dict"
+                else:
+                    raise ValueError("layout must be a list")
+        else:
+            # Handle AOBaseConfig serialization
+            from torchao.core.config import config_to_dict
+
+            # For now we assume there is 1 config per Transformer, however in the future
+            # We may want to support a config per fqn.
+            d["quant_type"] = {"default": config_to_dict(self.quant_type)}
+
+        return d
+
+    @classmethod
+    def from_dict(cls, config_dict, return_unused_kwargs=False, **kwargs):
+        """Create configuration from a dictionary."""
+        if not is_torchao_version(">", "0.9.0"):
+            raise NotImplementedError("TorchAoConfig requires torchao > 0.9.0 for construction from dict")
+        config_dict = config_dict.copy()
+        quant_type = config_dict.pop("quant_type")
+
+        if isinstance(quant_type, str):
+            return cls(quant_type=quant_type, **config_dict)
+        # Check if we only have one key which is "default"
+        # In the future we may update this
+        assert len(quant_type) == 1 and "default" in quant_type, (
+            "Expected only one key 'default' in quant_type dictionary"
+        )
+        quant_type = quant_type["default"]
+
+        # Deserialize quant_type if needed
+        from torchao.core.config import config_from_dict
+
+        quant_type = config_from_dict(quant_type)
+
+        return cls(quant_type=quant_type, **config_dict)
 
     @classmethod
     def _get_torchao_quant_type_to_method(cls):
@@ -545,7 +628,6 @@ class TorchAoConfig(QuantizationConfigMixin):
                 float8_dynamic_activation_float8_weight,
                 float8_static_activation_float8_weight,
                 float8_weight_only,
-                fpx_weight_only,
                 int4_weight_only,
                 int8_dynamic_activation_int4_weight,
                 int8_dynamic_activation_int8_weight,
@@ -553,6 +635,8 @@ class TorchAoConfig(QuantizationConfigMixin):
                 uintx_weight_only,
             )
 
+            if is_torchao_version("<=", "0.14.1"):
+                from torchao.quantization import fpx_weight_only
             # TODO(aryan): Add a note on how to use PerAxis and PerGroup observers
             from torchao.quantization.observer import PerRow, PerTensor
 
@@ -573,18 +657,21 @@ class TorchAoConfig(QuantizationConfigMixin):
                 return types
 
             def generate_fpx_quantization_types(bits: int):
-                types = {}
+                if is_torchao_version("<=", "0.14.1"):
+                    types = {}
 
-                for ebits in range(1, bits):
-                    mbits = bits - ebits - 1
-                    types[f"fp{bits}_e{ebits}m{mbits}"] = partial(fpx_weight_only, ebits=ebits, mbits=mbits)
+                    for ebits in range(1, bits):
+                        mbits = bits - ebits - 1
+                        types[f"fp{bits}_e{ebits}m{mbits}"] = partial(fpx_weight_only, ebits=ebits, mbits=mbits)
 
-                non_sign_bits = bits - 1
-                default_ebits = (non_sign_bits + 1) // 2
-                default_mbits = non_sign_bits - default_ebits
-                types[f"fp{bits}"] = partial(fpx_weight_only, ebits=default_ebits, mbits=default_mbits)
+                    non_sign_bits = bits - 1
+                    default_ebits = (non_sign_bits + 1) // 2
+                    default_mbits = non_sign_bits - default_ebits
+                    types[f"fp{bits}"] = partial(fpx_weight_only, ebits=default_ebits, mbits=default_mbits)
 
-                return types
+                    return types
+                else:
+                    raise ValueError("Floating point X-bit quantization is not supported in torchao >= 0.15.0")
 
             INT4_QUANTIZATION_TYPES = {
                 # int4 weight + bfloat16/float16 activation
@@ -633,14 +720,14 @@ class TorchAoConfig(QuantizationConfigMixin):
                 **generate_float8dq_types(torch.float8_e4m3fn),
                 # float8 weight + float8 activation (static)
                 "float8_static_activation_float8_weight": float8_static_activation_float8_weight,
-                # For fpx, only x <= 8 is supported by default. Other dtypes can be explored by users directly
-                # fpx weight + bfloat16/float16 activation
-                **generate_fpx_quantization_types(3),
-                **generate_fpx_quantization_types(4),
-                **generate_fpx_quantization_types(5),
-                **generate_fpx_quantization_types(6),
-                **generate_fpx_quantization_types(7),
             }
+
+            if is_torchao_version("<=", "0.14.1"):
+                FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(3))
+                FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(4))
+                FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(5))
+                FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(6))
+                FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(7))
 
             UINTX_QUANTIZATION_DTYPES = {
                 "uintx_weight_only": uintx_weight_only,
@@ -681,8 +768,38 @@ class TorchAoConfig(QuantizationConfigMixin):
             raise RuntimeError("TorchAO requires a CUDA compatible GPU or Intel XPU and installation of PyTorch.")
 
     def get_apply_tensor_subclass(self):
-        TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
-        return TORCHAO_QUANT_TYPE_METHODS[self.quant_type](**self.quant_type_kwargs)
+        """Create the appropriate quantization method based on configuration."""
+        if not isinstance(self.quant_type, str):
+            return self.quant_type
+        else:
+            methods = self._get_torchao_quant_type_to_method()
+            quant_type_kwargs = self.quant_type_kwargs.copy()
+            if (
+                not torch.cuda.is_available()
+                and is_torchao_available()
+                and self.quant_type == "int4_weight_only"
+                and version.parse(importlib.metadata.version("torchao")) >= version.parse("0.8.0")
+                and quant_type_kwargs.get("layout", None) is None
+            ):
+                if torch.xpu.is_available():
+                    if version.parse(importlib.metadata.version("torchao")) >= version.parse(
+                        "0.11.0"
+                    ) and version.parse(importlib.metadata.version("torch")) > version.parse("2.7.9"):
+                        from torchao.dtypes import Int4XPULayout
+                        from torchao.quantization.quant_primitives import ZeroPointDomain
+
+                        quant_type_kwargs["layout"] = Int4XPULayout()
+                        quant_type_kwargs["zero_point_domain"] = ZeroPointDomain.INT
+                    else:
+                        raise ValueError(
+                            "TorchAoConfig requires torchao >= 0.11.0 and torch >= 2.8.0 for XPU support. Please upgrade the version or use run on CPU with the cpu version pytorch."
+                        )
+                else:
+                    from torchao.dtypes import Int4CPULayout
+
+                    quant_type_kwargs["layout"] = Int4CPULayout()
+
+            return methods[self.quant_type](**quant_type_kwargs)
 
     def __repr__(self):
         r"""
