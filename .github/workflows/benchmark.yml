@@ -28,7 +28,7 @@ jobs:
       options: --shm-size "16gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           fetch-depth: 2
       - name: NVIDIA-SMI
@@ -58,7 +58,7 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: benchmark_test_reports
           path: benchmarks/${{ env.BASE_PATH }}
