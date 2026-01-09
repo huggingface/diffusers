@@ -719,7 +719,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
         # `prompt` needs more sophisticated handling when there are multiple
         # conditionings.
         if isinstance(self.controlnet, SD3MultiControlNetModel):
-            if isinstance(prompt, list):
+            if isinstance(prompt, list) and len(prompt) > 1:
                 logger.warning(
                     f"You have {len(self.controlnet.nets)} ControlNets and you have passed {len(prompt)}"
                     " prompts. The conditionings will be fixed across the prompts."
