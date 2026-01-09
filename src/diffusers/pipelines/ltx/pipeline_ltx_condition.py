@@ -1111,7 +1111,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
             timestep_device = "cpu"
         else:
             timestep_device = device
-    
+
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
