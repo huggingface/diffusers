@@ -3073,6 +3073,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
+        final_state_dict = state_dict
         is_non_diffusers_format = any(k.startswith("diffusion_model.") for k in state_dict)
         has_connector = any(k.startswith("text_embedding_projection.") for k in state_dict)
         if is_non_diffusers_format:
@@ -3081,7 +3082,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
             connectors_state_dict = _convert_non_diffusers_ltx2_lora_to_diffusers(
                 state_dict, "text_embedding_projection"
             )
-        final_state_dict.update(connectors_state_dict)
+            final_state_dict.update(connectors_state_dict)
         out = (final_state_dict, metadata) if return_lora_metadata else final_state_dict
         return out
 
