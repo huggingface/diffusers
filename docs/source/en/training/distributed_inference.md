@@ -263,8 +263,8 @@ def main():
     world_size = dist.get_world_size()
 
     pipeline = DiffusionPipeline.from_pretrained(
-        "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16, device_map=device
-    )
+        "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+    ).to(device)
     pipeline.transformer.set_attention_backend("_native_cudnn")
 
     cp_config = ContextParallelConfig(ring_degree=world_size)
@@ -297,9 +297,9 @@ if __name__ == "__main__":
 
 The script above needs to be run with a distributed launcher, such as [torchrun](https://docs.pytorch.org/docs/stable/elastic/run.html), that is compatible with PyTorch. `--nproc-per-node` is set to the number of GPUs available.
 
-/```shell
-`torchrun --nproc-per-node 2 above_script.py`. 
-/```
+```shell
+torchrun --nproc-per-node 2 above_script.py
+```
 
 ### Ulysses Attention
 
