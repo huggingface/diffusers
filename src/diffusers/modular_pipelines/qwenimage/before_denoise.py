@@ -23,7 +23,7 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier, QwenImageLayeredPachifier
+from .modular_pipeline import QwenImageLayeredPachifier, QwenImageModularPipeline, QwenImagePachifier
 
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
@@ -653,6 +653,7 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
 
 ## RoPE inputs for denoiser
 
+
 class QwenImageRoPEInputsStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -877,7 +878,9 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that prepares the RoPE inputs for the denoising process. Should be place after prepare_latents step"
+        return (
+            "Step that prepares the RoPE inputs for the denoising process. Should be place after prepare_latents step"
+        )
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -893,10 +896,30 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="img_shapes", type_hint=List[List[Tuple[int, int, int]]], kwargs_type="denoiser_input_fields", description="The shapes of the image latents, used for RoPE calculation"),
-            OutputParam(name="txt_seq_lens", type_hint=List[int], kwargs_type="denoiser_input_fields", description="The sequence lengths of the prompt embeds, used for RoPE calculation"),
-            OutputParam(name="negative_txt_seq_lens", type_hint=List[int], kwargs_type="denoiser_input_fields", description="The sequence lengths of the negative prompt embeds, used for RoPE calculation"),
-            OutputParam(name="additional_t_cond", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields", description="The additional t cond, used for RoPE calculation"),
+            OutputParam(
+                name="img_shapes",
+                type_hint=List[List[Tuple[int, int, int]]],
+                kwargs_type="denoiser_input_fields",
+                description="The shapes of the image latents, used for RoPE calculation",
+            ),
+            OutputParam(
+                name="txt_seq_lens",
+                type_hint=List[int],
+                kwargs_type="denoiser_input_fields",
+                description="The sequence lengths of the prompt embeds, used for RoPE calculation",
+            ),
+            OutputParam(
+                name="negative_txt_seq_lens",
+                type_hint=List[int],
+                kwargs_type="denoiser_input_fields",
+                description="The sequence lengths of the negative prompt embeds, used for RoPE calculation",
+            ),
+            OutputParam(
+                name="additional_t_cond",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="The additional t cond, used for RoPE calculation",
+            ),
         ]
 
     @torch.no_grad()
@@ -906,24 +929,25 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
         device = components._execution_device
 
         # All shapes are the same for Layered
-        shape = (1, block_state.height // components.vae_scale_factor // 2, block_state.width // components.vae_scale_factor // 2)
-        
+        shape = (
+            1,
+            block_state.height // components.vae_scale_factor // 2,
+            block_state.width // components.vae_scale_factor // 2,
+        )
+
         # layers+1 output shapes + 1 condition shape (all same)
-        block_state.img_shapes = [
-            [shape] * (block_state.layers + 2)
-        ] * block_state.batch_size
+        block_state.img_shapes = [[shape] * (block_state.layers + 2)] * block_state.batch_size
 
         # txt_seq_lens
         block_state.txt_seq_lens = (
-            block_state.prompt_embeds_mask.sum(dim=1).tolist() 
-            if block_state.prompt_embeds_mask is not None else None
+            block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
         )
         block_state.negative_txt_seq_lens = (
             block_state.negative_prompt_embeds_mask.sum(dim=1).tolist()
-            if block_state.negative_prompt_embeds_mask is not None else None
+            if block_state.negative_prompt_embeds_mask is not None
+            else None
         )
 
-    
         block_state.additional_t_cond = torch.tensor([0] * block_state.batch_size).to(device=device, dtype=torch.long)
 
         self.set_block_state(state, block_state)
@@ -933,6 +957,7 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
 ## ControlNet inputs for denoiser
 class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
     model_name = "qwenimage"
+
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [

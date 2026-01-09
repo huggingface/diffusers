@@ -93,7 +93,7 @@ class QwenImagePachifier(ConfigMixin):
 class QwenImageLayeredPachifier(ConfigMixin):
     """
     A class to pack and unpack latents for QwenImage Layered.
-    
+
     Unlike QwenImagePachifier, this handles 5D latents with shape (B, layers+1, C, H, W).
     """
 

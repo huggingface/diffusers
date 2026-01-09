@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from ...utils import logging
-from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks, ConditionalPipelineBlocks
+from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     QwenImageControlNetBeforeDenoiserStep,
@@ -35,7 +35,6 @@ from .denoise import (
     QwenImageDenoiseStep,
     QwenImageInpaintControlNetDenoiseStep,
     QwenImageInpaintDenoiseStep,
-    QwenImageLoopBeforeDenoiserControlNet,
 )
 from .encoders import (
     QwenImageControlNetVaeEncoderStep,
@@ -45,8 +44,8 @@ from .encoders import (
     QwenImageVaeEncoderStep,
 )
 from .inputs import (
-    QwenImageControlNetInputsStep,
     QwenImageAdditionalInputsStep,
+    QwenImageControlNetInputsStep,
     QwenImageTextInputsStep,
 )
 
@@ -57,6 +56,7 @@ logger = logging.get_logger(__name__)
 # ====================
 # 1. VAE ENCODER
 # ====================
+
 
 class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
@@ -82,6 +82,7 @@ class QwenImageImg2ImgVaeEncoderStep(SequentialPipelineBlocks):
     @property
     def description(self) -> str:
         return "Vae encoder step that preprocess andencode the image inputs into their latent representations."
+
 
 # Auto VAE encoder
 class QwenImageAutoVaeEncoderStep(AutoPipelineBlocks):
@@ -115,9 +116,11 @@ class QwenImageOptionalControlNetVaeEncoderStep(AutoPipelineBlocks):
             + " - if `control_image` is not provided, step will be skipped."
         )
 
+
 # ====================
 # 2. DENOISE (input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise)
 # ====================
+
 
 # assemble input steps
 class QwenImageImg2ImgInputStep(SequentialPipelineBlocks):
@@ -134,7 +137,12 @@ class QwenImageImg2ImgInputStep(SequentialPipelineBlocks):
 
 class QwenImageInpaintInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
-    block_classes = [QwenImageTextInputsStep(), QwenImageAdditionalInputsStep(image_latent_inputs=["image_latents"], additional_batch_inputs=["processed_mask_image"])]
+    block_classes = [
+        QwenImageTextInputsStep(),
+        QwenImageAdditionalInputsStep(
+            image_latent_inputs=["image_latents"], additional_batch_inputs=["processed_mask_image"]
+        ),
+    ]
     block_names = ["text_inputs", "additional_inputs"]
 
     @property
@@ -142,6 +150,7 @@ class QwenImageInpaintInputStep(SequentialPipelineBlocks):
         return "Input step that prepares the inputs for the inpainting denoising step. It:\n"
         " - make sure the text embeddings have consistent batch size as well as the additional inputs (`image_latents` and `processed_mask_image`).\n"
         " - update height/width based `image_latents`, patchify `image_latents`."
+
 
 # assemble prepare latents steps
 class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
@@ -157,25 +166,27 @@ class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
             " - Create the pachified latents `mask` based on the processedmask image.\n"
         )
 
+
 # assemble denoising steps
+
 
 # Qwen Image (text2image)
 class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
     block_classes = [
         QwenImageTextInputsStep(),
-        QwenImagePrepareLatentsStep(), 
-        QwenImageSetTimestepsStep(), 
-        QwenImageRoPEInputsStep(), 
+        QwenImagePrepareLatentsStep(),
+        QwenImageSetTimestepsStep(),
+        QwenImageRoPEInputsStep(),
         QwenImageDenoiseStep(),
         QwenImageAfterDenoiseStep(),
     ]
     block_names = [
         "input",
-        "prepare_latents", 
-        "set_timesteps", 
-        "prepare_rope_inputs", 
-        "denoise", 
+        "prepare_latents",
+        "set_timesteps",
+        "prepare_rope_inputs",
+        "denoise",
         "after_denoise",
     ]
 
@@ -189,22 +200,22 @@ class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
     block_classes = [
         QwenImageInpaintInputStep(),
-        QwenImagePrepareLatentsStep(), 
-        QwenImageSetTimestepsWithStrengthStep(), 
-        QwenImageInpaintPrepareLatentsStep(), 
+        QwenImagePrepareLatentsStep(),
+        QwenImageSetTimestepsWithStrengthStep(),
+        QwenImageInpaintPrepareLatentsStep(),
         QwenImageRoPEInputsStep(),
         QwenImageInpaintDenoiseStep(),
         QwenImageAfterDenoiseStep(),
-        ]
+    ]
     block_names = [
         "input",
         "prepare_latents",
-        "set_timesteps", 
-        "prepare_inpaint_latents", 
+        "set_timesteps",
+        "prepare_inpaint_latents",
         "prepare_rope_inputs",
         "denoise",
         "after_denoise",
-        ]
+    ]
 
     @property
     def description(self):
@@ -216,27 +227,26 @@ class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
     block_classes = [
         QwenImageImg2ImgInputStep(),
-        QwenImagePrepareLatentsStep(), 
-        QwenImageSetTimestepsWithStrengthStep(), 
-        QwenImagePrepareLatentsWithStrengthStep(), 
+        QwenImagePrepareLatentsStep(),
+        QwenImageSetTimestepsWithStrengthStep(),
+        QwenImagePrepareLatentsWithStrengthStep(),
         QwenImageRoPEInputsStep(),
         QwenImageDenoiseStep(),
         QwenImageAfterDenoiseStep(),
-        ]
+    ]
     block_names = [
         "input",
-        "prepare_latents", 
-        "set_timesteps", 
-        "prepare_img2img_latents", 
+        "prepare_latents",
+        "set_timesteps",
+        "prepare_img2img_latents",
         "prepare_rope_inputs",
         "denoise",
         "after_denoise",
-        ]
+    ]
 
     @property
     def description(self):
         return "Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img task."
-
 
 
 # Qwen Image (text2image) with controlnet
@@ -245,9 +255,9 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         QwenImageTextInputsStep(),
         QwenImageControlNetInputsStep(),
-        QwenImagePrepareLatentsStep(), 
-        QwenImageSetTimestepsStep(), 
-        QwenImageRoPEInputsStep(), 
+        QwenImagePrepareLatentsStep(),
+        QwenImageSetTimestepsStep(),
+        QwenImageRoPEInputsStep(),
         QwenImageControlNetBeforeDenoiserStep(),
         QwenImageControlNetDenoiseStep(),
         QwenImageAfterDenoiseStep(),
@@ -255,9 +265,9 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
     block_names = [
         "input",
         "controlnet_input",
-        "prepare_latents", 
-        "set_timesteps", 
-        "prepare_rope_inputs", 
+        "prepare_latents",
+        "set_timesteps",
+        "prepare_rope_inputs",
         "controlnet_before_denoise",
         "controlnet_denoise",
         "after_denoise",
@@ -274,25 +284,25 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         QwenImageInpaintInputStep(),
         QwenImageControlNetInputsStep(),
-        QwenImagePrepareLatentsStep(), 
-        QwenImageSetTimestepsWithStrengthStep(), 
-        QwenImageInpaintPrepareLatentsStep(), 
+        QwenImagePrepareLatentsStep(),
+        QwenImageSetTimestepsWithStrengthStep(),
+        QwenImageInpaintPrepareLatentsStep(),
         QwenImageRoPEInputsStep(),
         QwenImageControlNetBeforeDenoiserStep(),
         QwenImageInpaintControlNetDenoiseStep(),
         QwenImageAfterDenoiseStep(),
-        ]
+    ]
     block_names = [
         "input",
         "controlnet_input",
         "prepare_latents",
-        "set_timesteps", 
-        "prepare_inpaint_latents", 
+        "set_timesteps",
+        "prepare_inpaint_latents",
         "prepare_rope_inputs",
         "controlnet_before_denoise",
         "controlnet_denoise",
         "after_denoise",
-        ]
+    ]
 
     @property
     def description(self):
@@ -305,25 +315,25 @@ class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         QwenImageImg2ImgInputStep(),
         QwenImageControlNetInputsStep(),
-        QwenImagePrepareLatentsStep(), 
-        QwenImageSetTimestepsWithStrengthStep(), 
-        QwenImagePrepareLatentsWithStrengthStep(), 
+        QwenImagePrepareLatentsStep(),
+        QwenImageSetTimestepsWithStrengthStep(),
+        QwenImagePrepareLatentsWithStrengthStep(),
         QwenImageRoPEInputsStep(),
         QwenImageControlNetBeforeDenoiserStep(),
         QwenImageControlNetDenoiseStep(),
         QwenImageAfterDenoiseStep(),
-        ]
+    ]
     block_names = [
         "input",
         "controlnet_input",
-        "prepare_latents", 
-        "set_timesteps", 
-        "prepare_img2img_latents", 
+        "prepare_latents",
+        "set_timesteps",
+        "prepare_img2img_latents",
         "prepare_rope_inputs",
         "controlnet_before_denoise",
         "controlnet_denoise",
         "after_denoise",
-        ]
+    ]
 
     @property
     def description(self):
@@ -334,7 +344,7 @@ class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
 class QwenImageAutoCoreDenoiseStep(ConditionalPipelineBlocks):
     block_classes = [
         QwenImageCoreDenoiseStep,
-        QwenImageInpaintCoreDenoiseStep, 
+        QwenImageInpaintCoreDenoiseStep,
         QwenImageImg2ImgCoreDenoiseStep,
         QwenImageControlNetCoreDenoiseStep,
         QwenImageControlNetInpaintCoreDenoiseStep,
@@ -346,12 +356,12 @@ class QwenImageAutoCoreDenoiseStep(ConditionalPipelineBlocks):
         "img2img",
         "controlnet_text2image",
         "controlnet_inpaint",
-        "controlnet_img2img"]
+        "controlnet_img2img",
+    ]
     block_trigger_inputs = ["control_image_latents", "processed_mask_image", "image_latents"]
     default_block_name = "text2image"
 
     def select_block(self, control_image_latents=None, processed_mask_image=None, image_latents=None):
-
         if control_image_latents is not None:
             if processed_mask_image is not None:
                 return "controlnet_inpaint"
@@ -399,7 +409,6 @@ class QwenImageDecodeStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return "Decode step that decodes the latents to images and postprocess the generated image."
-
 
 
 # Inpaint decode step

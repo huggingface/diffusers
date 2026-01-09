@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from ...utils import logging
-from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
+from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     QwenImageEditPlusRoPEInputsStep,
@@ -29,9 +29,9 @@ from .denoise import (
     QwenImageEditDenoiseStep,
 )
 from .encoders import (
+    QwenImageEditPlusProcessImagesInputStep,
     QwenImageEditPlusResizeStep,
     QwenImageEditPlusTextEncoderStep,
-    QwenImageEditPlusProcessImagesInputStep,
     QwenImageVaeEncoderStep,
 )
 from .inputs import (
@@ -47,8 +47,10 @@ logger = logging.get_logger(__name__)
 # 1. TEXT ENCODER
 # ====================
 
+
 class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
     """VL encoder that takes both image and text prompts. Uses 384x384 target area."""
+
     model_name = "qwenimage-edit-plus"
     block_classes = [
         QwenImageEditPlusResizeStep(target_area=384 * 384, output_name="resized_cond_image"),
@@ -65,8 +67,10 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
 # 2. VAE ENCODER
 # ====================
 
+
 class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
     """VAE encoder that handles multiple images with different sizes. Uses 1024x1024 target area."""
+
     model_name = "qwenimage-edit-plus"
     block_classes = [
         QwenImageEditPlusResizeStep(target_area=1024 * 1024, output_name="resized_image"),
@@ -86,6 +90,7 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
 # ====================
 # 3. DENOISE (input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise)
 # ====================
+
 
 # assemble input steps
 class QwenImageEditPlusInputStep(SequentialPipelineBlocks):
@@ -135,6 +140,7 @@ class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
 # ====================
 # 4. DECODE
 # ====================
+
 
 class QwenImageEditPlusDecodeStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit-plus"

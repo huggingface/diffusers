@@ -530,8 +530,8 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
 class ConditionalPipelineBlocks(ModularPipelineBlocks):
     """
-    A Pipeline Blocks that conditionally selects a block to run based on the inputs.
-    Subclasses must implement the `select_block` method to define the logic for selecting the block.
+    A Pipeline Blocks that conditionally selects a block to run based on the inputs. Subclasses must implement the
+    `select_block` method to define the logic for selecting the block.
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
@@ -547,7 +547,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
     block_classes = []
     block_names = []
     block_trigger_inputs = []
-    default_block_name = None # name of the default block if no trigger inputs are provided, if None, this block can be skipped if no trigger inputs are provided
+    default_block_name = None  # name of the default block if no trigger inputs are provided, if None, this block can be skipped if no trigger inputs are provided
 
     def __init__(self):
         sub_blocks = InsertableDict()
@@ -594,11 +594,10 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
     @property
     def required_inputs(self) -> List[str]:
-
         # no default block means this conditional block can be skipped entirely
         if self.default_block_name is None:
             return []
-        
+
         first_block = next(iter(self.sub_blocks.values()))
         required_by_all = set(getattr(first_block, "required_inputs", set()))
 
@@ -608,7 +607,6 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             required_by_all.intersection_update(block_required)
 
         return list(required_by_all)
-
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
@@ -656,7 +654,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             return trigger_values
 
         # Start with this block's block_trigger_inputs
-        all_triggers = set(t for t in self.block_trigger_inputs if t is not None)
+        all_triggers = {t for t in self.block_trigger_inputs if t is not None}
         # Add nested triggers
         all_triggers.update(fn_recursive_get_trigger(self.sub_blocks))
 
@@ -669,8 +667,8 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
     def select_block(self, **kwargs) -> Optional[str]:
         """
-        Select the block to run based on the trigger inputs.
-        Subclasses must implement this method to define the logic for selecting the block.
+        Select the block to run based on the trigger inputs. Subclasses must implement this method to define the logic
+        for selecting the block.
 
         Args:
             **kwargs: Trigger input names and their values from the state.
@@ -682,7 +680,6 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> PipelineState:
-        
         trigger_kwargs = {name: state.get(name) for name in self.block_trigger_inputs if name is not None}
         block_name = self.select_block(**trigger_kwargs)
 
@@ -692,7 +689,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         if block_name is None:
             logger.info(f"skipping conditional block: {self.__class__.__name__}")
             return pipeline, state
-        
+
         block = self.sub_blocks[block_name]
 
         try:
@@ -739,11 +736,11 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         expected_configs = getattr(self, "expected_configs", [])
         configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
 
-        # Blocks section 
+        # Blocks section
         blocks_str = "  Sub-Blocks:\n"
         for i, (name, block) in enumerate(self.sub_blocks.items()):
             if name == self.default_block_name:
-                addtional_str  = " [default]"
+                addtional_str = " [default]"
             else:
                 addtional_str = ""
             blocks_str += f"    • {name}{addtional_str} ({block.__class__.__name__})\n"
@@ -1069,17 +1066,16 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
         Returns:
             SequentialPipelineBlocks containing only the blocks that would execute
-        
+
         Example:
-            # Get blocks for inpainting workflow
-            blocks = pipeline.get_execution_blocks(prompt="a cat", mask=mask, image=image)
-            
-            # Get blocks for text2image workflow
-            blocks = pipeline.get_execution_blocks(prompt="a cat")
+            # Get blocks for inpainting workflow blocks = pipeline.get_execution_blocks(prompt="a cat", mask=mask,
+            image=image)
+
+            # Get blocks for text2image workflow blocks = pipeline.get_execution_blocks(prompt="a cat")
         """
         # Filter out None values
         active_inputs = {k: v for k, v in kwargs.items() if v is not None}
-        
+
         blocks_triggered = self._traverse_trigger_blocks(active_inputs)
         return SequentialPipelineBlocks.from_blocks_dict(blocks_triggered)
 
@@ -1121,7 +1117,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         # Blocks section - moved to the end with simplified format
         blocks_str = "  Sub-Blocks:\n"
         for i, (name, block) in enumerate(self.sub_blocks.items()):
-
             # show execution order
             blocks_str += f"    [{i}] {name} ({block.__class__.__name__})\n"
 

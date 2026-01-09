@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
 
 from ...utils import logging
-from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, SequentialPipelineBlocks
+from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     QwenImageLayeredPrepareLatentsStep,
@@ -30,15 +29,14 @@ from .denoise import (
     QwenImageLayeredDenoiseStep,
 )
 from .encoders import (
-    QwenImageLayeredResizeStep,
-    QwenImageTextEncoderStep,
     QwenImageEditProcessImagesInputStep,
-    QwenImageVaeEncoderStep,
     QwenImageLayeredGetImagePromptStep,
     QwenImageLayeredPermuteLatentsStep,
+    QwenImageLayeredResizeStep,
+    QwenImageTextEncoderStep,
+    QwenImageVaeEncoderStep,
 )
 from .inputs import (
-    QwenImageAdditionalInputsStep,
     QwenImageLayeredAdditionalInputsStep,
     QwenImageTextInputsStep,
 )
@@ -51,8 +49,10 @@ logger = logging.get_logger(__name__)
 # 1. TEXT ENCODER
 # ====================
 
+
 class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
     """Text encoder that takes text prompt, will generate a prompt based on image if not provided."""
+
     model_name = "qwenimage-layered"
     block_classes = [
         QwenImageLayeredResizeStep(),
@@ -70,6 +70,7 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
 # 2. VAE ENCODER
 # ====================
 
+
 # Edit VAE encoder
 class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "qwenimage-layered"
@@ -86,12 +87,10 @@ class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
         return "Vae encoder step that encode the image inputs into their latent representations."
 
 
-
-
-
 # ====================
 # 3. DENOISE (input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise)
 # ====================
+
 
 # assemble input steps
 class QwenImageLayeredInputStep(SequentialPipelineBlocks):
@@ -136,7 +135,6 @@ class QwenImageLayeredCoreDenoiseStep(SequentialPipelineBlocks):
         return "Core denoising workflow for QwenImage-Layered img2img task."
 
 
-
 # ====================
 # 4. AUTO BLOCKS & PRESETS
 # ====================
@@ -149,6 +147,7 @@ LAYERED_AUTO_BLOCKS = InsertableDict(
         ("decode", QwenImageLayeredDecoderStep()),
     ]
 )
+
 
 class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
     model_name = "qwenimage-layered"

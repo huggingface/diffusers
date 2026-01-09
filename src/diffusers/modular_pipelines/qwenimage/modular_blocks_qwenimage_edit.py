@@ -36,10 +36,10 @@ from .denoise import (
     QwenImageEditInpaintDenoiseStep,
 )
 from .encoders import (
-    QwenImageEditResizeStep,
-    QwenImageEditTextEncoderStep,
     QwenImageEditInpaintProcessImagesInputStep,
     QwenImageEditProcessImagesInputStep,
+    QwenImageEditResizeStep,
+    QwenImageEditTextEncoderStep,
     QwenImageVaeEncoderStep,
 )
 from .inputs import (
@@ -55,8 +55,10 @@ logger = logging.get_logger(__name__)
 # 1. TEXT ENCODER
 # ====================
 
+
 class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
     """VL encoder that takes both image and text prompts."""
+
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditResizeStep(),
@@ -72,6 +74,7 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
 # ====================
 # 2. VAE ENCODER
 # ====================
+
 
 # Edit VAE encoder
 class QwenImageEditVaeEncoderStep(SequentialPipelineBlocks):
@@ -129,6 +132,7 @@ class QwenImageEditAutoVaeEncoderStep(AutoPipelineBlocks):
 # 3. DENOISE (input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise)
 # ====================
 
+
 # assemble input steps
 class QwenImageEditInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
@@ -151,7 +155,9 @@ class QwenImageEditInpaintInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageTextInputsStep(),
-        QwenImageAdditionalInputsStep(image_latent_inputs=["image_latents"], additional_batch_inputs=["processed_mask_image"]),
+        QwenImageAdditionalInputsStep(
+            image_latent_inputs=["image_latents"], additional_batch_inputs=["processed_mask_image"]
+        ),
     ]
     block_names = ["text_inputs", "additional_inputs"]
 
@@ -262,6 +268,7 @@ class QwenImageEditAutoCoreDenoiseStep(ConditionalPipelineBlocks):
 # ====================
 # 4. DECODE
 # ====================
+
 
 # Decode step (standard)
 class QwenImageEditDecodeStep(SequentialPipelineBlocks):

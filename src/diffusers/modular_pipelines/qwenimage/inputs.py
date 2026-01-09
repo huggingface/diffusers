@@ -19,7 +19,7 @@ import torch
 from ...models import QwenImageMultiControlNetModel
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier, QwenImageLayeredPachifier
+from .modular_pipeline import QwenImageLayeredPachifier, QwenImageModularPipeline, QwenImagePachifier
 
 
 def repeat_tensor_to_batch_size(
@@ -286,8 +286,16 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="image_height", type_hint=int, description="The image height calculated from the image latents dimension"),
-            OutputParam(name="image_width", type_hint=int, description="The image width calculated from the image latents dimension"),
+            OutputParam(
+                name="image_height",
+                type_hint=int,
+                description="The image height calculated from the image latents dimension",
+            ),
+            OutputParam(
+                name="image_width",
+                type_hint=int,
+                description="The image width calculated from the image latents dimension",
+            ),
         ]
 
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -407,8 +415,16 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="image_height", type_hint=List[int], description="The image heights calculated from the image latents dimension"),
-            OutputParam(name="image_width", type_hint=List[int], description="The image widths calculated from the image latents dimension"),
+            OutputParam(
+                name="image_height",
+                type_hint=List[int],
+                description="The image heights calculated from the image latents dimension",
+            ),
+            OutputParam(
+                name="image_width",
+                type_hint=List[int],
+                description="The image widths calculated from the image latents dimension",
+            ),
         ]
 
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -477,6 +493,7 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
+
 # YiYi TODO: support define config default component from the ModularPipeline level.
 # it is same as QwenImageAdditionalInputsStep, but with layered pachifier.
 class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
@@ -542,8 +559,16 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="image_height", type_hint=int, description="The image height calculated from the image latents dimension"),
-            OutputParam(name="image_width", type_hint=int, description="The image width calculated from the image latents dimension"),
+            OutputParam(
+                name="image_height",
+                type_hint=int,
+                description="The image height calculated from the image latents dimension",
+            ),
+            OutputParam(
+                name="image_width",
+                type_hint=int,
+                description="The image width calculated from the image latents dimension",
+            ),
             OutputParam(name="height", type_hint=int, description="The height of the image output"),
             OutputParam(name="width", type_hint=int, description="The width of the image output"),
         ]

@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from typing import List, Tuple
 
 import torch
-import inspect
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
@@ -32,6 +32,7 @@ logger = logging.get_logger(__name__)
 # ====================
 # 1. LOOP STEPS (run at each denoising step)
 # ====================
+
 
 # loop step:before denoiser
 class QwenImageLoopBeforeDenoiser(ModularPipelineBlocks):
@@ -266,7 +267,6 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
                 additional_cond_kwargs[field_name] = field_value
         block_state.additional_cond_kwargs.update(additional_cond_kwargs)
 
-
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         guider_state = components.guider.prepare_inputs(guider_inputs)
 
@@ -401,6 +401,7 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
         block_state.noise_pred = pred * (pred_cond_norm / pred_norm)
 
         return components, block_state
+
 
 # loop step:after denoiser
 class QwenImageLoopAfterDenoiser(ModularPipelineBlocks):
@@ -563,6 +564,7 @@ class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 # 3. DENOISE STEPS: compose the denoising loop with loop wrapper + loop steps
 # ====================
 
+
 # Qwen Image (text2image, image2image)
 class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
     model_name = "qwenimage"
@@ -585,6 +587,7 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
             " - `QwenImageLoopAfterDenoiser`\n"
             "This block supports text2image and image2image tasks for QwenImage."
         )
+
 
 # Qwen Image (inpainting)
 class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):

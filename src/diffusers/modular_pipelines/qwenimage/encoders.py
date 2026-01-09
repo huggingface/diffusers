@@ -33,15 +33,15 @@ from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import QwenImageModularPipeline
 from .prompt_templates import (
-    QWENIMAGE_PROMPT_TEMPLATE,
-    QWENIMAGE_PROMPT_TEMPLATE_START_IDX,
+    QWENIMAGE_EDIT_PLUS_IMG_TEMPLATE,
+    QWENIMAGE_EDIT_PLUS_PROMPT_TEMPLATE,
+    QWENIMAGE_EDIT_PLUS_PROMPT_TEMPLATE_START_IDX,
     QWENIMAGE_EDIT_PROMPT_TEMPLATE,
     QWENIMAGE_EDIT_PROMPT_TEMPLATE_START_IDX,
-    QWENIMAGE_EDIT_PLUS_PROMPT_TEMPLATE,
-    QWENIMAGE_EDIT_PLUS_IMG_TEMPLATE,
-    QWENIMAGE_EDIT_PLUS_PROMPT_TEMPLATE_START_IDX,
-    QWENIMAGE_LAYERED_CAPTION_PROMPT_EN,
     QWENIMAGE_LAYERED_CAPTION_PROMPT_CN,
+    QWENIMAGE_LAYERED_CAPTION_PROMPT_EN,
+    QWENIMAGE_PROMPT_TEMPLATE,
+    QWENIMAGE_PROMPT_TEMPLATE_START_IDX,
 )
 
 
@@ -263,11 +263,12 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
     model_name = "qwenimage-edit"
 
     def __init__(
-        self, 
-        input_name: str = "image", 
+        self,
+        input_name: str = "image",
         output_name: str = "resized_image",
     ):
         """Create a configurable step for resizing images to the target area while maintaining the aspect ratio.
+
         Args:
             input_name (str, optional): Name of the image field to read from the
                 pipeline state. Defaults to "image".
@@ -342,11 +343,12 @@ class QwenImageLayeredResizeStep(ModularPipelineBlocks):
     model_name = "qwenimage-layered"
 
     def __init__(
-        self, 
-        input_name: str = "image", 
+        self,
+        input_name: str = "image",
         output_name: str = "resized_image",
     ):
         """Create a configurable step for resizing images to the target area while maintaining the aspect ratio.
+
         Args:
             input_name (str, optional): Name of the image field to read from the
                 pipeline state. Defaults to "image".
@@ -383,7 +385,10 @@ class QwenImageLayeredResizeStep(ModularPipelineBlocks):
                 name=self._image_input_name, required=True, type_hint=torch.Tensor, description="The image to resize"
             ),
             InputParam(
-                name="resolution", default=640, type_hint=int, description="The target area to resize the image to, can be 1024 or 640"
+                name="resolution",
+                default=640,
+                type_hint=int,
+                description="The target area to resize the image to, can be 1024 or 640",
             ),
         ]
 
@@ -434,15 +439,15 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
     model_name = "qwenimage-edit-plus"
 
     def __init__(
-        self, 
-        input_name: str = "image", 
+        self,
+        input_name: str = "image",
         output_name: str = "resized_image",
         target_area: int = 1024 * 1024,
     ):
         """Create a step for resizing images to a target area.
 
-        Each image is resized independently based on its own aspect ratio.
-        This is suitable for Edit Plus where multiple reference images can have different dimensions.
+        Each image is resized independently based on its own aspect ratio. This is suitable for Edit Plus where
+        multiple reference images can have different dimensions.
 
         Args:
             input_name (str, optional): Name of the image field to read. Defaults to "image".
@@ -480,7 +485,10 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(
-                name=self._image_input_name, required=True, type_hint=torch.Tensor, description="The image(s) to resize"
+                name=self._image_input_name,
+                required=True,
+                type_hint=torch.Tensor,
+                description="The image(s) to resize",
             ),
         ]
 
@@ -525,8 +533,8 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
 # ====================
 class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
     """
-    Auto-caption step that generates a text prompt from the input image if none is provided.
-    Uses the VL model to generate a description of the image.
+    Auto-caption step that generates a text prompt from the input image if none is provided. Uses the VL model to
+    generate a description of the image.
     """
 
     model_name = "qwenimage-layered"
@@ -559,7 +567,7 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
             InputParam(name="prompt", type_hint=str, description="The prompt to encode"),
             InputParam(
                 name="resized_image",
-                required=True, 
+                required=True,
                 type_hint=PIL.Image.Image,
                 description="The image to generate caption from, should be resized use the resize step",
             ),
@@ -571,7 +579,6 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
             ),
         ]
 
-
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -580,7 +587,6 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
 
         # If prompt is empty or None, generate caption from image
         if block_state.prompt is None or block_state.prompt == "" or block_state.prompt == " ":
-
             if block_state.use_en_prompt:
                 caption_prompt = components.config.image_caption_prompt_en
             else:
@@ -595,7 +601,7 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
 
             generated_ids = components.text_encoder.generate(**model_inputs, max_new_tokens=512)
             generated_ids_trimmed = [
-                out_ids[len(in_ids):] for in_ids, out_ids in zip(model_inputs.input_ids, generated_ids)
+                out_ids[len(in_ids) :] for in_ids, out_ids in zip(model_inputs.input_ids, generated_ids)
             ]
             output_text = components.processor.batch_decode(
                 generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
@@ -979,6 +985,7 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
+
 # ====================
 # 4. IMAGE PREPROCESS
 # ====================
@@ -1133,8 +1140,8 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("image", required=True), 
-            InputParam("height"), 
+            InputParam("image", required=True),
+            InputParam("height"),
             InputParam("width"),
         ]
 
@@ -1159,7 +1166,6 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
         )
         height = block_state.height or components.default_height
         width = block_state.width or components.default_width
-
 
         block_state.processed_image = components.image_processor.preprocess(
             image=block_state.image,
@@ -1245,8 +1251,6 @@ class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-
-
         image = block_state.resized_image
 
         is_image_list = isinstance(image, list)
@@ -1256,7 +1260,9 @@ class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
         processed_images = []
         for img in image:
             img_width, img_height = img.size
-            processed_images.append(components.image_processor.preprocess(image=img, height=img_height, width=img_width))
+            processed_images.append(
+                components.image_processor.preprocess(image=img, height=img_height, width=img_width)
+            )
         block_state.processed_image = processed_images
         if is_image_list:
             block_state.processed_image = processed_images
@@ -1265,6 +1271,7 @@ class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
 
 # ====================
 # 5. VAE ENCODER
@@ -1281,8 +1288,8 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
     ):
         """Initialize a VAE encoder step for converting images to latent representations.
 
-        Handles both single images and lists of images. When input is a list, outputs a list of latents.
-        When input is a single tensor, outputs a single latent tensor.
+        Handles both single images and lists of images. When input is a list, outputs a list of latents. When input is
+        a single tensor, outputs a single latent tensor.
 
         Args:
             input_name (str, optional): Name of the input image tensor or list. Defaults to "processed_image".
@@ -1346,7 +1353,6 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
             image_latents = image_latents[0]
 
         setattr(block_state, self._image_latents_output_name, image_latents)
-
 
         self.set_block_state(state, block_state)
 
@@ -1462,6 +1468,7 @@ class QwenImageControlNetVaeEncoderStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
 
         return components, state
+
 
 # ====================
 # 6. PERMUTE LATENTS

@@ -24,7 +24,7 @@ from ...models import AutoencoderKLQwenImage
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier, QwenImageLayeredPachifier
+from .modular_pipeline import QwenImageLayeredPachifier, QwenImageModularPipeline, QwenImagePachifier
 
 
 logger = logging.get_logger(__name__)
@@ -73,7 +73,6 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
 
 
 class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
-
     model_name = "qwenimage-layered"
 
     @property
@@ -110,6 +109,7 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
 
 # decode step
 class QwenImageDecoderStep(ModularPipelineBlocks):
@@ -221,11 +221,9 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
             .view(1, components.vae.config.z_dim, 1, 1, 1)
             .to(latents.device, latents.dtype)
         )
-        latents_std = (
-            1.0 / torch.tensor(components.vae.config.latents_std)
-            .view(1, components.vae.config.z_dim, 1, 1, 1)
-            .to(latents.device, latents.dtype)
-        )
+        latents_std = 1.0 / torch.tensor(components.vae.config.latents_std).view(
+            1, components.vae.config.z_dim, 1, 1, 1
+        ).to(latents.device, latents.dtype)
         latents = latents / latents_std + latents_mean
 
         # 2. Reshape for batch decoding: (B, C, layers+1, H, W) -> (B*layers, C, 1, H, W)

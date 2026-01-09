@@ -70,8 +70,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipeline import (
             QwenImageEditModularPipeline,
             QwenImageEditPlusModularPipeline,
-            QwenImageModularPipeline,
             QwenImageLayeredModularPipeline,
+            QwenImageModularPipeline,
         )
 else:
     import sys
