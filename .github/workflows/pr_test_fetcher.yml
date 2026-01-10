@@ -28,7 +28,7 @@ jobs:
       test_map: ${{ steps.set_matrix.outputs.test_map }}
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
     - name: Install dependencies
@@ -42,7 +42,7 @@ jobs:
       run: |
         python utils/tests_fetcher.py | tee test_preparation.txt
     - name: Report fetched tests
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: test_fetched
         path: test_preparation.txt
@@ -83,7 +83,7 @@ jobs:
         shell: bash
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 2
 
@@ -109,7 +109,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
           name: ${{ matrix.modules }}_test_reports
           path: reports
@@ -138,7 +138,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 2
 
@@ -164,7 +164,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports

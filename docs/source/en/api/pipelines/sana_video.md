@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License. -->
 
-# SanaVideoPipeline
+# Sana-Video
 
 <div class="flex flex-wrap space-x-1">
   <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
@@ -36,6 +36,86 @@ Available models:
 Refer to [this](https://huggingface.co/collections/Efficient-Large-Model/sana-video) collection for more information.
 
 Note: The recommended dtype mentioned is for the transformer weights. The text encoder and VAE weights must stay in `torch.bfloat16` or `torch.float32` for the model to work correctly. Please refer to the inference example below to see how to load the model with the recommended dtype. 
+
+
+## Generation Pipelines
+
+<hfoptions id="generation pipelines">`
+<hfoption id="Text-to-Video">
+
+The example below demonstrates how to use the text-to-video pipeline to generate a video using a text description.
+
+```python
+pipe = SanaVideoPipeline.from_pretrained(
+    "Efficient-Large-Model/SANA-Video_2B_480p_diffusers", 
+    torch_dtype=torch.bfloat16,
+)
+pipe.text_encoder.to(torch.bfloat16)
+pipe.vae.to(torch.float32)
+pipe.to("cuda")
+
+prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
+negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
+motion_scale = 30
+motion_prompt = f" motion score: {motion_scale}."
+prompt = prompt + motion_prompt
+
+video = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=480,
+    width=832,
+    frames=81,
+    guidance_scale=6,
+    num_inference_steps=50,
+    generator=torch.Generator(device="cuda").manual_seed(0),
+).frames[0]
+
+export_to_video(video, "sana_video.mp4", fps=16)
+```
+
+</hfoption>
+<hfoption id="Image-to-Video">
+
+The example below demonstrates how to use the image-to-video pipeline to generate a video using a text description and a starting frame.
+
+```python
+pipe = SanaImageToVideoPipeline.from_pretrained(
+    "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
+    torch_dtype=torch.bfloat16,
+)
+pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipe.scheduler.config, flow_shift=8.0)
+pipe.vae.to(torch.float32)
+pipe.text_encoder.to(torch.bfloat16)
+pipe.to("cuda")
+
+image = load_image("https://raw.githubusercontent.com/NVlabs/Sana/refs/heads/main/asset/samples/i2v-1.png")
+prompt = "A woman stands against a stunning sunset backdrop, her long, wavy brown hair gently blowing in the breeze. She wears a sleeveless, light-colored blouse with a deep V-neckline, which accentuates her graceful posture. The warm hues of the setting sun cast a golden glow across her face and hair, creating a serene and ethereal atmosphere. The background features a blurred landscape with soft, rolling hills and scattered clouds, adding depth to the scene. The camera remains steady, capturing the tranquil moment from a medium close-up angle."
+negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
+motion_scale = 30
+motion_prompt = f" motion score: {motion_scale}."
+prompt = prompt + motion_prompt
+
+motion_scale = 30.0
+
+video = pipe(
+    image=image,
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=480,
+    width=832,
+    frames=81,
+    guidance_scale=6,
+    num_inference_steps=50,
+    generator=torch.Generator(device="cuda").manual_seed(0),
+).frames[0]
+
+export_to_video(video, "sana-i2v.mp4", fps=16)
+```
+
+</hfoption>
+</hfoptions>
+
 
 ## Quantization
 
@@ -97,6 +177,13 @@ export_to_video(output, "sana-video-output.mp4", fps=16)
   - __call__
 
 
+## SanaImageToVideoPipeline
+
+[[autodoc]] SanaImageToVideoPipeline
+  - all
+  - __call__
+
+
 ## SanaVideoPipelineOutput
 
-[[autodoc]] pipelines.sana.pipeline_sana_video.SanaVideoPipelineOutput
+[[autodoc]] pipelines.sana_video.pipeline_sana_video.SanaVideoPipelineOutput
