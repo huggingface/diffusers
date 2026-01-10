@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List
-
-import PIL.Image
-import torch
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, SequentialPipelineBlocks
@@ -62,6 +58,7 @@ logger = logging.get_logger(__name__)
 # 1. TEXT ENCODER
 # ====================
 
+
 class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
     model_name = "qwenimage"
     block_classes = [QwenImageTextEncoderStep()]
@@ -73,6 +70,7 @@ class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
         return "Text encoder step that encodes the text prompt into a text embedding. This is an auto pipeline block."
         " - `QwenImageTextEncoderStep` (text_encoder) is used when `prompt` is provided."
         " - if `prompt` is not provided, step will be skipped."
+
 
 # ====================
 # 2. VAE ENCODER

@@ -228,7 +228,9 @@ class QwenImageLayeredPrepareLatentsStep(ModularPipelineBlocks):
             InputParam.latents(),
             InputParam.height(),
             InputParam.width(),
-            InputParam(name="layers", type_hint=int, default=4, description="Number of layers to extract from the image"),
+            InputParam(
+                name="layers", type_hint=int, default=4, description="Number of layers to extract from the image"
+            ),
             InputParam.num_images_per_prompt(),
             InputParam.generator(),
             InputParam(

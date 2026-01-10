@@ -17,6 +17,7 @@ import re
 from collections import OrderedDict
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Type, Union
+
 import PIL.Image
 import torch
 
@@ -342,7 +343,6 @@ class InputParam:
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
 
-
     @classmethod
     def template(cls, name: str) -> Optional["InputParam"]:
         """Get template for name if exists, otherwise None."""
@@ -356,119 +356,172 @@ class InputParam:
 
     @classmethod
     def prompt(cls) -> "InputParam":
-        return cls(name="prompt", type_hint=str, required=True,
-                   description="The prompt or prompts to guide image generation.")
-    
+        return cls(
+            name="prompt", type_hint=str, required=True, description="The prompt or prompts to guide image generation."
+        )
+
     @classmethod
     def negative_prompt(cls) -> "InputParam":
-        return cls(name="negative_prompt", type_hint=str, default=None,
-                   description="The prompt or prompts not to guide the image generation.")
-    
+        return cls(
+            name="negative_prompt",
+            type_hint=str,
+            default=None,
+            description="The prompt or prompts not to guide the image generation.",
+        )
+
     @classmethod
     def max_sequence_length(cls, default: int = 512) -> "InputParam":
-        return cls(name="max_sequence_length", type_hint=int, default=default,
-                   description="Maximum sequence length for prompt encoding.")
-    
+        return cls(
+            name="max_sequence_length",
+            type_hint=int,
+            default=default,
+            description="Maximum sequence length for prompt encoding.",
+        )
+
     @classmethod
     def height(cls, default: Optional[int] = None) -> "InputParam":
-        return cls(name="height", type_hint=int, default=default,
-                   description="The height in pixels of the generated image.")
-    
+        return cls(
+            name="height", type_hint=int, default=default, description="The height in pixels of the generated image."
+        )
+
     @classmethod
     def width(cls, default: Optional[int] = None) -> "InputParam":
-        return cls(name="width", type_hint=int, default=default,
-                   description="The width in pixels of the generated image.")
+        return cls(
+            name="width", type_hint=int, default=default, description="The width in pixels of the generated image."
+        )
 
     @classmethod
     def num_inference_steps(cls, default: int = 50) -> "InputParam":
-        return cls(name="num_inference_steps", type_hint=int, default=default,
-                   description="The number of denoising steps.")
-    
-    
+        return cls(
+            name="num_inference_steps", type_hint=int, default=default, description="The number of denoising steps."
+        )
+
     @classmethod
     def num_images_per_prompt(cls, default: int = 1) -> "InputParam":
-        return cls(name="num_images_per_prompt", type_hint=int, default=default,
-                   description="The number of images to generate per prompt.")
-    
+        return cls(
+            name="num_images_per_prompt",
+            type_hint=int,
+            default=default,
+            description="The number of images to generate per prompt.",
+        )
+
     @classmethod
     def generator(cls) -> "InputParam":
-        return cls(name="generator", type_hint=torch.Generator, default=None,
-                   description="Torch generator for deterministic generation.")
-    
+        return cls(
+            name="generator",
+            type_hint=torch.Generator,
+            default=None,
+            description="Torch generator for deterministic generation.",
+        )
+
     @classmethod
     def sigmas(cls) -> "InputParam":
-        return cls(name="sigmas", type_hint=List[float], default=None,
-                   description="Custom sigmas for the denoising process.")
-    
+        return cls(
+            name="sigmas", type_hint=List[float], default=None, description="Custom sigmas for the denoising process."
+        )
+
     @classmethod
     def strength(cls, default: float = 0.9) -> "InputParam":
-        return cls(name="strength", type_hint=float, default=default,
-                   description="Strength for img2img/inpainting.")
-    
+        return cls(name="strength", type_hint=float, default=default, description="Strength for img2img/inpainting.")
+
     # images
     @classmethod
     def image(cls) -> "InputParam":
-        return cls(name="image", type_hint=PIL.Image.Image, required=True,
-                   description="Input image for img2img, editing, or conditioning.")
-    
+        return cls(
+            name="image",
+            type_hint=PIL.Image.Image,
+            required=True,
+            description="Input image for img2img, editing, or conditioning.",
+        )
+
     @classmethod
     def mask_image(cls) -> "InputParam":
-        return cls(name="mask_image", type_hint=PIL.Image.Image, required=True,
-                   description="Mask image for inpainting.")
-    
+        return cls(
+            name="mask_image", type_hint=PIL.Image.Image, required=True, description="Mask image for inpainting."
+        )
+
     @classmethod
     def control_image(cls) -> "InputParam":
-        return cls(name="control_image", type_hint=PIL.Image.Image, required=True,
-                   description="Control image for ControlNet conditioning.")
-    
+        return cls(
+            name="control_image",
+            type_hint=PIL.Image.Image,
+            required=True,
+            description="Control image for ControlNet conditioning.",
+        )
+
     @classmethod
     def padding_mask_crop(cls) -> "InputParam":
-        return cls(name="padding_mask_crop", type_hint=int, default=None,
-                   description="Padding for mask cropping in inpainting.")
-    
+        return cls(
+            name="padding_mask_crop",
+            type_hint=int,
+            default=None,
+            description="Padding for mask cropping in inpainting.",
+        )
 
     @classmethod
     def latents(cls) -> "InputParam":
-        return cls(name="latents", type_hint=torch.Tensor, default=None,
-                   description="Pre-generated noisy latents for image generation.")
-    
-    
+        return cls(
+            name="latents",
+            type_hint=torch.Tensor,
+            default=None,
+            description="Pre-generated noisy latents for image generation.",
+        )
+
     @classmethod
     def timesteps(cls) -> "InputParam":
-        return cls(name="timesteps", type_hint=torch.Tensor, default=None,
-                   description="Timesteps for the denoising process.")
+        return cls(
+            name="timesteps", type_hint=torch.Tensor, default=None, description="Timesteps for the denoising process."
+        )
 
     @classmethod
     def output_type(cls) -> "InputParam":
-        return cls(name="output_type", type_hint=str, default="pil",
-                   description="Output format: 'pil', 'np', 'pt''.")
-    
+        return cls(name="output_type", type_hint=str, default="pil", description="Output format: 'pil', 'np', 'pt''.")
+
     @classmethod
     def attention_kwargs(cls) -> "InputParam":
-        return cls(name="attention_kwargs", type_hint=Dict[str, Any], default=None,
-                   description="Additional kwargs for attention processors.")
+        return cls(
+            name="attention_kwargs",
+            type_hint=Dict[str, Any],
+            default=None,
+            description="Additional kwargs for attention processors.",
+        )
 
     @classmethod
     def denoiser_input_fields(cls) -> "InputParam":
-        return cls(kwargs_type="denoiser_input_fields", type_hint=torch.Tensor,
-                   description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.")
-
+        return cls(
+            kwargs_type="denoiser_input_fields",
+            type_hint=torch.Tensor,
+            description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
+        )
 
     # ControlNet
     @classmethod
     def control_guidance_start(cls, default: float = 0.0) -> "InputParam":
-        return cls(name="control_guidance_start", type_hint=float, default=default,
-                   description="When to start applying ControlNet.")
-    
+        return cls(
+            name="control_guidance_start",
+            type_hint=float,
+            default=default,
+            description="When to start applying ControlNet.",
+        )
+
     @classmethod
     def control_guidance_end(cls, default: float = 1.0) -> "InputParam":
-        return cls(name="control_guidance_end", type_hint=float, default=default,
-                   description="When to stop applying ControlNet.")
-    
+        return cls(
+            name="control_guidance_end",
+            type_hint=float,
+            default=default,
+            description="When to stop applying ControlNet.",
+        )
+
     @classmethod
     def controlnet_conditioning_scale(cls, default: float = 1.0) -> "InputParam":
-        return cls(name="controlnet_conditioning_scale", type_hint=float, default=default,
-                   description="Scale for ControlNet conditioning.")
+        return cls(
+            name="controlnet_conditioning_scale",
+            type_hint=float,
+            default=default,
+            description="Scale for ControlNet conditioning.",
+        )
+
 
 @dataclass
 class OutputParam:
@@ -497,13 +550,11 @@ class OutputParam:
 
     @classmethod
     def images(cls) -> "OutputParam":
-        return cls(name="images", type_hint=List[PIL.Image.Image],
-                   description="Generated images.")
-    
+        return cls(name="images", type_hint=List[PIL.Image.Image], description="Generated images.")
+
     @classmethod
     def latents(cls) -> "OutputParam":
-        return cls(name="latents", type_hint=torch.Tensor,
-                   description="Denoised latents.")
+        return cls(name="latents", type_hint=torch.Tensor, description="Denoised latents.")
 
 
 def format_inputs_short(inputs):

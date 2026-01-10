@@ -13,11 +13,6 @@
 # limitations under the License.
 
 
-from typing import List
-
-import PIL.Image
-import torch
-
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict, OutputParam

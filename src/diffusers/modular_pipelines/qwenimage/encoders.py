@@ -301,8 +301,12 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam.template(self._image_input_name) or InputParam(
-                name=self._image_input_name, required=True, type_hint=torch.Tensor, description="Input image for conditioning"
+            InputParam.template(self._image_input_name)
+            or InputParam(
+                name=self._image_input_name,
+                required=True,
+                type_hint=torch.Tensor,
+                description="Input image for conditioning",
             ),
         ]
 
@@ -381,7 +385,8 @@ class QwenImageLayeredResizeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam.template(self._image_input_name) or InputParam(
+            InputParam.template(self._image_input_name)
+            or InputParam(
                 name=self._image_input_name, required=True, type_hint=torch.Tensor, description="The image to resize"
             ),
             InputParam(
@@ -484,7 +489,8 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam.template(self._image_input_name) or InputParam(
+            InputParam.template(self._image_input_name)
+            or InputParam(
                 name=self._image_input_name,
                 required=True,
                 type_hint=torch.Tensor,
@@ -564,7 +570,9 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="prompt", type_hint=str, description="The prompt to encode"), # it is not required for qwenimage-layered, unlike other pipelines
+            InputParam(
+                name="prompt", type_hint=str, description="The prompt to encode"
+            ),  # it is not required for qwenimage-layered, unlike other pipelines
             InputParam(
                 name="resized_image",
                 required=True,
@@ -1081,7 +1089,12 @@ class QwenImageEditInpaintProcessImagesInputStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam.mask_image(),
-            InputParam("resized_image", required=True, type_hint=PIL.Image.Image, description="The resized image. should be generated using a resize step"),
+            InputParam(
+                "resized_image",
+                required=True,
+                type_hint=PIL.Image.Image,
+                description="The resized image. should be generated using a resize step",
+            ),
             InputParam.padding_mask_crop(),
         ]
 
@@ -1311,7 +1324,7 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam.template(self._image_input_name) or InputParam(name=self._image_input_name, required=True), 
+            InputParam.template(self._image_input_name) or InputParam(name=self._image_input_name, required=True),
             InputParam.generator(),
         ]
 

@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Union
+from typing import List
 
-import numpy as np
-import PIL
 import torch
 
 from ...configuration_utils import FrozenDict
@@ -140,9 +138,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> List[str]:
-        return [
-            OutputParam.images()
-        ]
+        return [OutputParam.images()]
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -194,7 +190,12 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor, description="The latents to decode, can be generated in the denoise step"),
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The latents to decode, can be generated in the denoise step",
+            ),
             InputParam.output_type(),
         ]
 
