@@ -85,6 +85,8 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     text_encoder_target_modules = ["q", "k", "v", "o"]
 
+    supports_text_encoder_loras = False
+
     @property
     def output_shape(self):
         return (1, 9, 16, 16, 3)
@@ -137,26 +139,6 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @unittest.skip("Not supported in Wan VACE.")
     def test_modify_padding_mode(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
-    def test_simple_inference_with_partial_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
-    def test_simple_inference_with_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
-    def test_simple_inference_with_text_lora_and_scale(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
-    def test_simple_inference_with_text_lora_fused(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
-    def test_simple_inference_with_text_lora_save_load(self):
         pass
 
     def test_layerwise_casting_inference_denoiser(self):

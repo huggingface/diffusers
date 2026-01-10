@@ -117,6 +117,7 @@ class PeftLoraLoaderMixinTests:
     tokenizer_cls, tokenizer_id, tokenizer_subfolder = None, None, ""
     tokenizer_2_cls, tokenizer_2_id, tokenizer_2_subfolder = None, None, ""
     tokenizer_3_cls, tokenizer_3_id, tokenizer_3_subfolder = None, None, ""
+    supports_text_encoder_loras = True
 
     unet_kwargs = None
     transformer_cls = None
@@ -333,6 +334,9 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached on the text encoder
         and makes sure it works as expected
         """
+        if not self.supports_text_encoder_loras:
+            pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
+
         components, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -457,6 +461,9 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached on the text encoder + scale argument
         and makes sure it works as expected
         """
+        if not self.supports_text_encoder_loras:
+            pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
+
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
         components, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -494,6 +501,9 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
         and makes sure it works as expected
         """
+        if not self.supports_text_encoder_loras:
+            pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
+
         components, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -555,6 +565,9 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple usecase where users could use saving utilities for LoRA.
         """
+        if not self.supports_text_encoder_loras:
+            pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
+
         components, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -593,6 +606,9 @@ class PeftLoraLoaderMixinTests:
         with different ranks and some adapters removed
         and makes sure it works as expected
         """
+        if not self.supports_text_encoder_loras:
+            pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
+
         components, _, _ = self.get_dummy_components()
         # Verify `StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder` handles different ranks per module (PR#8324).
         text_lora_config = LoraConfig(
@@ -651,6 +667,9 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
         """
+        if not self.supports_text_encoder_loras:
+            pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
+
         components, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
