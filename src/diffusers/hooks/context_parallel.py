@@ -154,7 +154,7 @@ class ContextParallelSplitHook(ModelHook):
             # The input_val may be a tensor or list/tuple of tensors. In certain cases, user may specify to shard
             # the output instead of input for a particular layer by setting split_output=True
             if isinstance(input_val, torch.Tensor):
-                input_val = self._prepare_cp_input(input_val, cpm)
+                input_val = self._prepare_cp_input(input_val, cpm, name)
             elif isinstance(input_val, (list, tuple)):
                 if len(input_val) != len(cpm):
                     raise ValueError(
@@ -201,14 +201,41 @@ class ContextParallelSplitHook(ModelHook):
 
         return output[0] if is_tensor else tuple(output)
 
-    def _prepare_cp_input(self, x: torch.Tensor, cp_input: ContextParallelInput) -> torch.Tensor:
+    def _prepare_cp_input(self, x: torch.Tensor, cp_input: ContextParallelInput, name: str) -> torch.Tensor:
         if cp_input.expected_dims is not None and x.dim() != cp_input.expected_dims:
             logger.warning_once(
                 f"Expected input tensor to have {cp_input.expected_dims} dimensions, but got {x.dim()} dimensions, split will not be applied."
             )
             return x
-        else:
-            return EquipartitionSharder.shard(x, cp_input.split_dim, self.parallel_config._flattened_mesh)
+
+        mesh = self.parallel_config._flattened_mesh
+        world_size = mesh.size()
+        dim = cp_input.split_dim
+        seq_len = x.size(dim)
+
+        if world_size > 1 and seq_len % world_size != 0:
+            pad_len = (world_size - seq_len % world_size) % world_size
+
+            # Determine pad_value based on name convention
+            if "mask" in name.lower():
+                pad_value = 0
+            else:
+                pad_value = 0.0
+
+            pad_width = [0] * (2 * x.dim())
+            # The pad_width tuple is read from last dim to first dim
+            pad_idx = x.dim() - 1 - dim
+            # We want to pad the right side
+            pad_width[2 * pad_idx + 1] = pad_len
+
+            x = torch.nn.functional.pad(x, tuple(pad_width), mode="constant", value=pad_value)
+
+            # Store original size for trimming in the gather hook
+            if "hidden_states" in name.lower():
+                self.module_forward_metadata._cp_original_s = seq_len
+                self.module_forward_metadata._cp_pad_dim = dim
+
+        return EquipartitionSharder.shard(x, dim, mesh)
 
 
 class ContextParallelGatherHook(ModelHook):
@@ -233,7 +260,20 @@ class ContextParallelGatherHook(ModelHook):
         for i, cpm in enumerate(self.metadata):
             if cpm is None:
                 continue
-            output[i] = EquipartitionSharder.unshard(output[i], cpm.gather_dim, self.parallel_config._flattened_mesh)
+
+            x = output[i]
+            x = EquipartitionSharder.unshard(x, cpm.gather_dim, self.parallel_config._flattened_mesh)
+
+            # Trim if padded info exists
+            if hasattr(module, "_forward_metadata") and hasattr(module._forward_metadata, "_cp_original_s"):
+                if cpm.gather_dim == module._forward_metadata._cp_pad_dim:
+                    original_s = module._forward_metadata._cp_original_s
+                    x = x.narrow(cpm.gather_dim, 0, original_s)
+                    # Clean up the stored attributes
+                    del module._forward_metadata._cp_original_s
+                    del module._forward_metadata._cp_pad_dim
+
+            output[i] = x
 
         return output[0] if is_tensor else tuple(output)
 
