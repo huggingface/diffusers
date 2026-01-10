@@ -310,6 +310,7 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     def check_inputs(
         self,
         prompt,
+        image,
         strength,
         height,
         width,
@@ -321,6 +322,9 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
+        if image is None:
+            raise ValueError("`image` input cannot be undefined for img2img generation.")
+
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
@@ -651,6 +655,7 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
+            image,
             strength,
             height,
             width,
