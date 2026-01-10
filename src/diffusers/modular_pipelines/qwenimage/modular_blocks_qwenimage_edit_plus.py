@@ -69,11 +69,10 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
-    <|im_start|>user
-    {}<|im_end|>
-    <|im_start|>assistant
-    )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
+    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
+    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
+    {}<|im_end|> <|im_start|>assistant )
 
           img_template_encode (default: Picture {}: <|vision_start|><|image_pad|><|vision_end|>)
 
@@ -130,8 +129,8 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
     """
     class QwenImageEditPlusVaeEncoderStep
 
-      VAE encoder step that encodes image inputs into latent representations.
-      Each image is resized independently based on its own aspect ratio to 1024x1024 target area.
+      VAE encoder step that encodes image inputs into latent representations. Each image is resized independently based
+      on its own aspect ratio to 1024x1024 target area.
 
       Components:
 
@@ -397,6 +396,7 @@ EDIT_PLUS_AUTO_BLOCKS = InsertableDict(
     ]
 )
 
+
 # auto_docstring
 class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
     """
@@ -430,11 +430,10 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
-    <|im_start|>user
-    {}<|im_end|>
-    <|im_start|>assistant
-    )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
+    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
+    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
+    {}<|im_end|> <|im_start|>assistant )
 
           img_template_encode (default: Picture {}: <|vision_start|><|image_pad|><|vision_end|>)
 
@@ -486,6 +485,7 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
           images (`List`):
               Generated images.
     """
+
     model_name = "qwenimage-edit-plus"
     block_classes = EDIT_PLUS_AUTO_BLOCKS.values()
     block_names = EDIT_PLUS_AUTO_BLOCKS.keys()
