@@ -69,6 +69,10 @@ class MellonParam:
         return cls(name="image_latents", label="Image Latents", type="latents", display=display)
 
     @classmethod
+    def first_frame_latents(cls, display: str = "input") -> "MellonParam":
+        return cls(name="first_frame_latents", label="First Frame Latents", type="latents", display=display)
+
+    @classmethod
     def image_latents_with_strength(cls) -> "MellonParam":
         return cls(
             name="image_latents",
@@ -88,6 +92,10 @@ class MellonParam:
     @classmethod
     def embeddings(cls, display: str = "output") -> "MellonParam":
         return cls(name="embeddings", label="Text Embeddings", type="embeddings", display=display)
+
+    @classmethod
+    def image_embeds(cls, display: str = "output") -> "MellonParam":
+        return cls(name="image_embeds", label="Image Embeddings", type="image_embeds", display=display)
 
     @classmethod
     def controlnet_conditioning_scale(cls, default: float = 0.5) -> "MellonParam":
@@ -185,6 +193,16 @@ class MellonParam:
         the actual model.
         """
         return cls(name="vae", label="VAE", type="diffusers_auto_model", display="input")
+
+    @classmethod
+    def image_encoder(cls) -> "MellonParam":
+        """
+        Image Encoder model info dict.
+
+        Contains keys like 'model_id', 'repo_id', 'execution_device' etc. Use components.get_one(model_id) to retrieve
+        the actual model.
+        """
+        return cls(name="image_encoder", label="Image Encoder", type="diffusers_auto_model", display="input")
 
     @classmethod
     def unet(cls) -> "MellonParam":
