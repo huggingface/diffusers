@@ -37,11 +37,8 @@ prompt = "portrait photo of a old warrior chief"
 
 ## Speed
 
-<Tip>
-
-💡 GPUを利用できない場合は、[Colab](https://colab.research.google.com/)のようなGPUプロバイダーから無料で利用できます！
-
-</Tip>
+> [!TIP]
+> 💡 GPUを利用できない場合は、[Colab](https://colab.research.google.com/)のようなGPUプロバイダーから無料で利用できます！
 
 画像生成を高速化する最も簡単な方法の1つは、PyTorchモジュールと同じようにGPU上にパイプラインを配置することです：
 
@@ -88,11 +85,8 @@ image
 
 今回、画像生成にかかった時間はわずか11秒で、以前より3倍近く速くなりました！
 
-<Tip>
-
-💡 パイプラインは常に `float16` で実行することを強くお勧めします。
-
-</Tip>
+> [!TIP]
+> 💡 パイプラインは常に `float16` で実行することを強くお勧めします。
 
 生成ステップ数を減らすという方法もあります。より効率的なスケジューラを選択することで、出力品質を犠牲にすることなくステップ数を減らすことができます。`compatibles`メソッドを呼び出すことで、[`DiffusionPipeline`]の現在のモデルと互換性のあるスケジューラを見つけることができます：
 

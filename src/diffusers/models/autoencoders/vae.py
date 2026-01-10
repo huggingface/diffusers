@@ -286,11 +286,9 @@ class Decoder(nn.Module):
 
         sample = self.conv_in(sample)
 
-        upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             # middle
             sample = self._gradient_checkpointing_func(self.mid_block, sample, latent_embeds)
-            sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:
@@ -298,7 +296,6 @@ class Decoder(nn.Module):
         else:
             # middle
             sample = self.mid_block(sample, latent_embeds)
-            sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:
@@ -894,3 +891,38 @@ class DecoderTiny(nn.Module):
 
         # scale image from [0, 1] to [-1, 1] to match diffusers convention
         return x.mul(2).sub(1)
+
+
+class AutoencoderMixin:
+    def enable_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        if not hasattr(self, "use_tiling"):
+            raise NotImplementedError(f"Tiling doesn't seem to be implemented for {self.__class__.__name__}.")
+        self.use_tiling = True
+
+    def disable_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_tiling = False
+
+    def enable_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        if not hasattr(self, "use_slicing"):
+            raise NotImplementedError(f"Slicing doesn't seem to be implemented for {self.__class__.__name__}.")
+        self.use_slicing = True
+
+    def disable_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_slicing = False

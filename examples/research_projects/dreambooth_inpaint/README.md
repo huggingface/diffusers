@@ -5,7 +5,7 @@ This script was added by @thedarkzeno .
 Please note that this script is not actively maintained, you can open an issue and tag @thedarkzeno or @patil-suraj though.
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-inpainting"
 export INSTANCE_DIR="path-to-instance-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -29,7 +29,7 @@ Prior-preservation is used to avoid overfitting and language-drift. Refer to the
 According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases.
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-inpainting"
 export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
@@ -60,7 +60,7 @@ With the help of gradient checkpointing and the 8-bit optimizer from bitsandbyte
 To install `bitandbytes` please refer to this [readme](https://github.com/TimDettmers/bitsandbytes#requirements--installation).
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-inpainting"
 export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
@@ -92,7 +92,7 @@ Pass the `--train_text_encoder` argument to the script to enable training `text_
 ___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-inpainting"
 export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"

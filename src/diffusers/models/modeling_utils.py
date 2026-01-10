@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import copy
+import functools
 import inspect
 import itertools
 import json
@@ -42,6 +43,7 @@ from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
+    HF_ENABLE_PARALLEL_LOADING,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
@@ -57,21 +59,18 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import (
-    PushToHubMixin,
-    load_or_create_model_card,
-    populate_model_card,
-)
+from ..utils.distributed_utils import is_torch_dist_rank_zero
+from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache
+from ._modeling_parallel import ContextParallelConfig, ContextParallelModelPlan, ParallelConfig
 from .model_loading_utils import (
     _caching_allocator_warmup,
     _determine_device_map,
     _expand_device_map,
     _fetch_index_file,
     _fetch_index_file_legacy,
-    _find_mismatched_keys,
-    _load_state_dict_into_model,
-    load_model_dict_into_meta,
+    _load_shard_file,
+    _load_shard_files_with_threadpool,
     load_state_dict,
 )
 
@@ -208,34 +207,6 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
         return last_tuple[1].dtype
 
 
-def check_support_param_buffer_assignment(model_to_load, state_dict, start_prefix=""):
-    """
-    Checks if `model_to_load` supports param buffer assignment (such as when loading in empty weights) by first
-    checking if the model explicitly disables it, then by ensuring that the state dict keys are a subset of the model's
-    parameters.
-
-    """
-    if model_to_load.device.type == "meta":
-        return False
-
-    if len([key for key in state_dict if key.startswith(start_prefix)]) == 0:
-        return False
-
-    # Some models explicitly do not support param buffer assignment
-    if not getattr(model_to_load, "_supports_param_buffer_assignment", True):
-        logger.debug(
-            f"{model_to_load.__class__.__name__} does not support param buffer assignment, loading will be slower"
-        )
-        return False
-
-    # If the model does, the incoming `state_dict` and the `model_to_load` must be the same dtype
-    first_key = next(iter(model_to_load.state_dict().keys()))
-    if start_prefix + first_key in state_dict:
-        return state_dict[start_prefix + first_key].dtype == model_to_load.state_dict()[first_key].dtype
-
-    return False
-
-
 @contextmanager
 def no_init_weights():
     """
@@ -275,6 +246,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _skip_layerwise_casting_patterns = None
     _supports_group_offloading = True
     _repeated_blocks = []
+    _parallel_config = None
+    _cp_plan = None
+    _skip_keys = None
 
     def __init__(self):
         super().__init__()
@@ -427,12 +401,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         When this option is enabled, you should observe lower GPU memory usage and a potential speed up during
         inference. Speed up during training is not guaranteed.
 
-        <Tip warning={true}>
-
-        ⚠️ When memory efficient attention and sliced attention are both enabled, memory efficient attention takes
-        precedent.
-
-        </Tip>
+        > [!WARNING] > ⚠️ When memory efficient attention and sliced attention are both enabled, memory efficient
+        attention takes > precedent.
 
         Parameters:
             attention_op (`Callable`, *optional*):
@@ -558,6 +528,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         record_stream: bool = False,
         low_cpu_mem_usage=False,
         offload_to_disk_path: Optional[str] = None,
+        block_modules: Optional[str] = None,
+        exclude_kwargs: Optional[str] = None,
     ) -> None:
         r"""
         Activates group offloading for the current model.
@@ -597,6 +569,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"`_supports_group_offloading` to `True` in the class definition. If you believe this is a mistake, please "
                 f"open an issue at https://github.com/huggingface/diffusers/issues."
             )
+
         apply_group_offloading(
             module=self,
             onload_device=onload_device,
@@ -608,6 +581,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
             offload_to_disk_path=offload_to_disk_path,
+            block_modules=block_modules,
+            exclude_kwargs=exclude_kwargs,
         )
 
     def set_attention_backend(self, backend: str) -> None:
@@ -622,7 +597,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 attention as backend.
         """
         from .attention import AttentionModuleMixin
-        from .attention_dispatch import AttentionBackendName, _check_attention_backend_requirements
+        from .attention_dispatch import (
+            AttentionBackendName,
+            _check_attention_backend_requirements,
+            _maybe_download_kernel_for_backend,
+        )
 
         # TODO: the following will not be required when everything is refactored to AttentionModuleMixin
         from .attention_processor import Attention, MochiAttention
@@ -633,8 +612,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         available_backends = {x.value for x in AttentionBackendName.__members__.values()}
         if backend not in available_backends:
             raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
+
         backend = AttentionBackendName(backend)
         _check_attention_backend_requirements(backend)
+        _maybe_download_kernel_for_backend(backend)
 
         attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
         for module in self.modules():
@@ -647,8 +628,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def reset_attention_backend(self) -> None:
         """
-        Resets the attention backend for the model. Following calls to `forward` will use the environment default or
-        the torch native scaled dot product attention.
+        Resets the attention backend for the model. Following calls to `forward` will use the environment default, if
+        set, or the torch native scaled dot product attention.
         """
         from .attention import AttentionModuleMixin
         from .attention_processor import Attention, MochiAttention
@@ -941,27 +922,23 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
 
-        <Tip>
-
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`. You can also activate the special
-        ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
+        > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
+        with `hf > auth login`. You can also activate the special >
+        ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a >
         firewalled environment.
-
-        </Tip>
 
         Example:
 
         ```py
         from diffusers import UNet2DConditionModel
 
-        unet = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet")
+        unet = UNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet")
         ```
 
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```bash
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
@@ -987,6 +964,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
+        parallel_config: Optional[Union[ParallelConfig, ContextParallelConfig]] = kwargs.pop("parallel_config", None)
+
+        is_parallel_loading_enabled = HF_ENABLE_PARALLEL_LOADING
+        if is_parallel_loading_enabled and not low_cpu_mem_usage:
+            raise NotImplementedError("Parallel loading is not supported when not using `low_cpu_mem_usage`.")
 
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
@@ -1323,6 +1305,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer=hf_quantizer,
             keep_in_fp32_modules=keep_in_fp32_modules,
             dduf_entries=dduf_entries,
+            is_parallel_loading_enabled=is_parallel_loading_enabled,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1361,6 +1344,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
+
+        if parallel_config is not None:
+            model.enable_parallelism(config=parallel_config)
 
         if output_loading_info:
             return model, loading_info
@@ -1500,6 +1486,93 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"Regional compilation failed because {repeated_blocks} classes are not found in the model. "
             )
 
+    def enable_parallelism(
+        self,
+        *,
+        config: Union[ParallelConfig, ContextParallelConfig],
+        cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None,
+    ):
+        logger.warning(
+            "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
+        )
+
+        if not torch.distributed.is_available() and not torch.distributed.is_initialized():
+            raise RuntimeError(
+                "torch.distributed must be available and initialized before calling `enable_parallelism`."
+            )
+
+        from ..hooks.context_parallel import apply_context_parallel
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+        from .attention_processor import Attention, MochiAttention
+
+        if isinstance(config, ContextParallelConfig):
+            config = ParallelConfig(context_parallel_config=config)
+
+        rank = torch.distributed.get_rank()
+        world_size = torch.distributed.get_world_size()
+        device_type = torch._C._get_accelerator().type
+        device_module = torch.get_device_module(device_type)
+        device = torch.device(device_type, rank % device_module.device_count())
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        if config.context_parallel_config is not None:
+            for module in self.modules():
+                if not isinstance(module, attention_classes):
+                    continue
+
+                processor = module.processor
+                if processor is None or not hasattr(processor, "_attention_backend"):
+                    continue
+
+                attention_backend = processor._attention_backend
+                if attention_backend is None:
+                    attention_backend, _ = _AttentionBackendRegistry.get_active_backend()
+                else:
+                    attention_backend = AttentionBackendName(attention_backend)
+
+                if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
+                    compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
+                    raise ValueError(
+                        f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
+                        f"is using backend '{attention_backend.value}' which does not support context parallelism. "
+                        f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
+                        f"calling `enable_parallelism()`."
+                    )
+
+                # All modules use the same attention processor and backend. We don't need to
+                # iterate over all modules after checking the first processor
+                break
+
+        mesh = None
+        if config.context_parallel_config is not None:
+            cp_config = config.context_parallel_config
+            mesh = torch.distributed.device_mesh.init_device_mesh(
+                device_type=device_type,
+                mesh_shape=cp_config.mesh_shape,
+                mesh_dim_names=cp_config.mesh_dim_names,
+            )
+
+        config.setup(rank, world_size, device, mesh=mesh)
+        self._parallel_config = config
+
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_parallel_config"):
+                continue
+            processor._parallel_config = config
+
+        if config.context_parallel_config is not None:
+            if cp_plan is None and self._cp_plan is None:
+                raise ValueError(
+                    "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
+                )
+            cp_plan = cp_plan if cp_plan is not None else self._cp_plan
+            apply_context_parallel(self, config.context_parallel_config, cp_plan)
+
     @classmethod
     def _load_pretrained_model(
         cls,
@@ -1518,6 +1591,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         offload_state_dict: Optional[bool] = None,
         offload_folder: Optional[Union[str, os.PathLike]] = None,
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+        is_parallel_loading_enabled: Optional[bool] = False,
     ):
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
@@ -1530,6 +1604,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if cls._keys_to_ignore_on_load_unexpected is not None:
             for pat in cls._keys_to_ignore_on_load_unexpected:
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        mismatched_keys = []
+        error_msgs = []
 
         # Deal with offload
         if device_map is not None and "disk" in device_map.values():
@@ -1550,10 +1627,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # tensors using their expected shape and not performing any initialization of the memory (empty data).
         # When the actual device allocations happen, the allocator already has a pool of unused device memory
         # that it can re-use for faster loading of the model.
-        # TODO: add support for warmup with hf_quantizer
-        if device_map is not None and hf_quantizer is None:
+        if device_map is not None:
             expanded_device_map = _expand_device_map(device_map, expected_keys)
-            _caching_allocator_warmup(model, expanded_device_map, dtype)
+            _caching_allocator_warmup(model, expanded_device_map, dtype, hf_quantizer)
 
         offload_index = {} if device_map is not None and "disk" in device_map.values() else None
         state_dict_folder, state_dict_index = None, None
@@ -1566,37 +1642,42 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             # if state dict is not None, it means that we don't need to read the files from resolved_model_file also
             resolved_model_file = [state_dict]
 
-        if len(resolved_model_file) > 1:
-            resolved_model_file = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
+        # Prepare the loading function sharing the attributes shared between them.
+        load_fn = functools.partial(
+            _load_shard_files_with_threadpool if is_parallel_loading_enabled else _load_shard_file,
+            model=model,
+            model_state_dict=model_state_dict,
+            device_map=device_map,
+            dtype=dtype,
+            hf_quantizer=hf_quantizer,
+            keep_in_fp32_modules=keep_in_fp32_modules,
+            dduf_entries=dduf_entries,
+            loaded_keys=loaded_keys,
+            unexpected_keys=unexpected_keys,
+            offload_index=offload_index,
+            offload_folder=offload_folder,
+            state_dict_index=state_dict_index,
+            state_dict_folder=state_dict_folder,
+            ignore_mismatched_sizes=ignore_mismatched_sizes,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
-        mismatched_keys = []
-        assign_to_params_buffers = None
-        error_msgs = []
+        if is_parallel_loading_enabled:
+            offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(resolved_model_file)
+            error_msgs += _error_msgs
+            mismatched_keys += _mismatched_keys
+        else:
+            shard_files = resolved_model_file
+            if len(resolved_model_file) > 1:
+                shard_tqdm_kwargs = {"desc": "Loading checkpoint shards"}
+                if not is_torch_dist_rank_zero():
+                    shard_tqdm_kwargs["disable"] = True
+                shard_files = logging.tqdm(resolved_model_file, **shard_tqdm_kwargs)
 
-        for shard_file in resolved_model_file:
-            state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
-            mismatched_keys += _find_mismatched_keys(
-                state_dict, model_state_dict, loaded_keys, ignore_mismatched_sizes
-            )
-
-            if low_cpu_mem_usage:
-                offload_index, state_dict_index = load_model_dict_into_meta(
-                    model,
-                    state_dict,
-                    device_map=device_map,
-                    dtype=dtype,
-                    hf_quantizer=hf_quantizer,
-                    keep_in_fp32_modules=keep_in_fp32_modules,
-                    unexpected_keys=unexpected_keys,
-                    offload_folder=offload_folder,
-                    offload_index=offload_index,
-                    state_dict_index=state_dict_index,
-                    state_dict_folder=state_dict_folder,
-                )
-            else:
-                if assign_to_params_buffers is None:
-                    assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
-                error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
+            for shard_file in shard_files:
+                offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(shard_file)
+                error_msgs += _error_msgs
+                mismatched_keys += _mismatched_keys
 
         empty_device_cache()
 
@@ -1751,7 +1832,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         ```py
         from diffusers import UNet2DConditionModel
 
-        model_id = "runwayml/stable-diffusion-v1-5"
+        model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet")
         unet.num_parameters(only_trainable=True)
         859520964

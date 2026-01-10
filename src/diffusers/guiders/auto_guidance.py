@@ -20,7 +20,7 @@ import torch
 from ..configuration_utils import register_to_config
 from ..hooks import HookRegistry, LayerSkipConfig
 from ..hooks.layer_skip import _apply_layer_skip_hook
-from .guider_utils import BaseGuidance, rescale_noise_cfg
+from .guider_utils import BaseGuidance, GuiderOutput, rescale_noise_cfg
 
 
 if TYPE_CHECKING:
@@ -72,8 +72,9 @@ class AutoGuidance(BaseGuidance):
         use_original_formulation: bool = False,
         start: float = 0.0,
         stop: float = 1.0,
+        enabled: bool = True,
     ):
-        super().__init__(start, stop)
+        super().__init__(start, stop, enabled)
 
         self.guidance_scale = guidance_scale
         self.auto_guidance_layers = auto_guidance_layers
@@ -82,15 +83,15 @@ class AutoGuidance(BaseGuidance):
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-        if auto_guidance_layers is None and auto_guidance_config is None:
+        is_layer_or_config_provided = auto_guidance_layers is not None or auto_guidance_config is not None
+        is_layer_and_config_provided = auto_guidance_layers is not None and auto_guidance_config is not None
+        if not is_layer_or_config_provided:
             raise ValueError(
-                "Either `auto_guidance_layers` or `auto_guidance_config` must be provided to enable Skip Layer Guidance."
+                "Either `auto_guidance_layers` or `auto_guidance_config` must be provided to enable AutoGuidance."
             )
-        if auto_guidance_layers is not None and auto_guidance_config is not None:
+        if is_layer_and_config_provided:
             raise ValueError("Only one of `auto_guidance_layers` or `auto_guidance_config` can be provided.")
-        if (dropout is None and auto_guidance_layers is not None) or (
-            dropout is not None and auto_guidance_layers is None
-        ):
+        if auto_guidance_config is None and dropout is None:
             raise ValueError("`dropout` must be provided if `auto_guidance_layers` is provided.")
 
         if auto_guidance_layers is not None:
@@ -132,20 +133,25 @@ class AutoGuidance(BaseGuidance):
                 registry = HookRegistry.check_if_exists_or_initialize(denoiser)
                 registry.remove_hook(name, recurse=True)
 
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
-
+    def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
-        for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], self._input_predictions[i])
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
+    ) -> List["BlockState"]:
+        tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
+        data_batches = []
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch_from_block_state(input_fields, data, tuple_idx, input_prediction)
+            data_batches.append(data_batch)
+        return data_batches
+
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
         pred = None
 
         if not self._is_ag_enabled():
@@ -158,7 +164,7 @@ class AutoGuidance(BaseGuidance):
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
-        return pred, {}
+        return GuiderOutput(pred=pred, pred_cond=pred_cond, pred_uncond=pred_uncond)
 
     @property
     def is_conditional(self) -> bool:

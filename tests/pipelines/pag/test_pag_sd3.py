@@ -12,10 +12,10 @@ from diffusers import (
     StableDiffusion3PAGPipeline,
     StableDiffusion3Pipeline,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     torch_device,
 )
-
 from ..test_pipelines_common import (
     PipelineTesterMixin,
     check_qkv_fusion_matches_attn_procs_length,

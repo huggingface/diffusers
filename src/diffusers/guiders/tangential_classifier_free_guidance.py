@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 import torch
 
 from ..configuration_utils import register_to_config
-from .guider_utils import BaseGuidance, rescale_noise_cfg
+from .guider_utils import BaseGuidance, GuiderOutput, rescale_noise_cfg
 
 
 if TYPE_CHECKING:
@@ -58,27 +58,33 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
         use_original_formulation: bool = False,
         start: float = 0.0,
         stop: float = 1.0,
+        enabled: bool = True,
     ):
-        super().__init__(start, stop)
+        super().__init__(start, stop, enabled)
 
         self.guidance_scale = guidance_scale
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
-
+    def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
-        for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], self._input_predictions[i])
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
+    ) -> List["BlockState"]:
+        tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
+        data_batches = []
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch_from_block_state(input_fields, data, tuple_idx, input_prediction)
+            data_batches.append(data_batch)
+        return data_batches
+
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
         pred = None
 
         if not self._is_tcfg_enabled():
@@ -89,7 +95,7 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
         if self.guidance_rescale > 0.0:
             pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale)
 
-        return pred, {}
+        return GuiderOutput(pred=pred, pred_cond=pred_cond, pred_uncond=pred_uncond)
 
     @property
     def is_conditional(self) -> bool:

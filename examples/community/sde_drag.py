@@ -114,7 +114,7 @@ class SdeDragPipeline(DiffusionPipeline):
         >>> from diffusers import DDIMScheduler, DiffusionPipeline
 
         >>> # Load the pipeline
-        >>> model_path = "runwayml/stable-diffusion-v1-5"
+        >>> model_path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         >>> scheduler = DDIMScheduler.from_pretrained(model_path, subfolder="scheduler")
         >>> pipe = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler, custom_pipeline="sde_drag")
         >>> pipe.to('cuda')
