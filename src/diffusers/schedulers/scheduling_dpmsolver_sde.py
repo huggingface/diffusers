@@ -143,6 +143,13 @@ def betas_for_alpha_bar(
         def alpha_bar_fn(t):
             return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
 
+    elif alpha_transform_type == "laplace":
+
+        def alpha_bar_fn(t):
+            lmb = -0.5 * math.copysign(1, 0.5 - t) * math.log(1 - 2 * math.fabs(0.5 - t) + 1e-6)
+            snr = math.exp(lmb)
+            return math.sqrt(snr / (1 + snr))
+
     elif alpha_transform_type == "exp":
 
         def alpha_bar_fn(t):
@@ -182,7 +189,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
+            Video](https://huggingface.co/papers/2210.02303) paper).
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
             the sigmas are determined according to a sequence of noise levels {σi}.
@@ -488,9 +495,20 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         t = t.reshape(sigma.shape)
         return t
 
-    # copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
+    # Copied from diffusers.schedulers.scheduling_lms_discrete.LMSDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.Tensor) -> torch.Tensor:
-        """Constructs the noise schedule of Karras et al. (2022)."""
+        """
+        Construct the noise schedule as proposed in [Elucidating the Design Space of Diffusion-Based Generative
+        Models](https://huggingface.co/papers/2206.00364).
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following the Karras noise schedule.
+        """
 
         sigma_min: float = in_sigmas[-1].item()
         sigma_max: float = in_sigmas[0].item()
