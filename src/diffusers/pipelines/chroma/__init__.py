@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_chroma"] = ["ChromaPipeline"]
     _import_structure["pipeline_chroma_img2img"] = ["ChromaImg2ImgPipeline"]
+    _import_structure["pipeline_chroma_inpainting"] = ["ChromaInpaintPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -33,6 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_chroma import ChromaPipeline
         from .pipeline_chroma_img2img import ChromaImg2ImgPipeline
+        from .pipeline_chroma_inpainting import ChromaInpaintPipeline
 else:
     import sys
 
