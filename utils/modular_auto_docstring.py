@@ -36,7 +36,7 @@ Usage in code:
     # auto_docstring
     class QwenImageAutoVaeEncoderStep(AutoPipelineBlocks):
         # docstring will be automatically inserted here
-        
+
         @property
         def doc(self):
             return "Your docstring content..."
@@ -69,13 +69,13 @@ def setup_diffusers_import():
 def get_module_from_filepath(filepath: str) -> str:
     """Convert a filepath to a module name."""
     filepath = os.path.normpath(filepath)
-    
+
     if filepath.startswith("src" + os.sep):
         filepath = filepath[4:]
-    
+
     if filepath.endswith(".py"):
         filepath = filepath[:-3]
-    
+
     module_name = filepath.replace(os.sep, ".")
     return module_name
 
@@ -84,7 +84,7 @@ def load_module(filepath: str):
     """Load a module from filepath."""
     setup_diffusers_import()
     module_name = get_module_from_filepath(filepath)
-    
+
     try:
         module = importlib.import_module(module_name)
         return module
@@ -97,30 +97,30 @@ def get_doc_from_class(module, class_name: str) -> str:
     """Get the doc property from an instantiated class."""
     if module is None:
         return None
-    
+
     cls = getattr(module, class_name, None)
     if cls is None:
         return None
-    
+
     try:
         instance = cls()
         if hasattr(instance, "doc"):
             return instance.doc
     except Exception as e:
         print(f"Warning: Could not instantiate {class_name}: {e}")
-    
+
     return None
 
 
 def find_auto_docstring_classes(filepath: str) -> list:
     """
     Find all classes in a file that have # auto_docstring comment above them.
-    
+
     Returns list of (class_name, class_line_number, has_existing_docstring, docstring_end_line)
     """
     with open(filepath, "r", encoding="utf-8", newline="\n") as f:
         lines = f.readlines()
-    
+
     # Parse AST to find class locations and their docstrings
     content = "".join(lines)
     try:
@@ -128,25 +128,25 @@ def find_auto_docstring_classes(filepath: str) -> list:
     except SyntaxError as e:
         print(f"Syntax error in {filepath}: {e}")
         return []
-    
+
     # Build a map of class_name -> (class_line, has_docstring, docstring_end_line)
     class_info = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             has_docstring = False
             docstring_end_line = node.lineno  # default to class line
-            
+
             if node.body and isinstance(node.body[0], ast.Expr):
                 first_stmt = node.body[0]
                 if isinstance(first_stmt.value, ast.Constant) and isinstance(first_stmt.value.value, str):
                     has_docstring = True
                     docstring_end_line = first_stmt.end_lineno or first_stmt.lineno
-            
+
             class_info[node.name] = (node.lineno, has_docstring, docstring_end_line)
-    
+
     # Now scan for # auto_docstring comments
     classes_to_update = []
-    
+
     for i, line in enumerate(lines):
         if AUTO_DOCSTRING_PATTERN.match(line):
             # Found the marker, look for class definition on next non-empty, non-comment line
@@ -156,7 +156,7 @@ def find_auto_docstring_classes(filepath: str) -> list:
                 if next_line and not next_line.startswith("#"):
                     break
                 j += 1
-            
+
             if j < len(lines) and lines[j].strip().startswith("class "):
                 # Extract class name
                 match = re.match(r"class\s+(\w+)", lines[j].strip())
@@ -164,20 +164,15 @@ def find_auto_docstring_classes(filepath: str) -> list:
                     class_name = match.group(1)
                     if class_name in class_info:
                         class_line, has_docstring, docstring_end_line = class_info[class_name]
-                        classes_to_update.append((
-                            class_name,
-                            class_line,
-                            has_docstring,
-                            docstring_end_line
-                        ))
-    
+                        classes_to_update.append((class_name, class_line, has_docstring, docstring_end_line))
+
     return classes_to_update
 
 
 def format_docstring(doc: str, indent: str = "    ") -> str:
     """Format a doc string as a properly indented docstring."""
     lines = doc.strip().split("\n")
-    
+
     if len(lines) == 1:
         return f'{indent}"""{lines[0]}"""\n'
     else:
@@ -194,36 +189,36 @@ def format_docstring(doc: str, indent: str = "    ") -> str:
 def process_file(filepath: str, overwrite: bool = False) -> list:
     """
     Process a file and find/insert docstrings for # auto_docstring marked classes.
-    
+
     Returns list of classes that need updating.
     """
     classes_to_update = find_auto_docstring_classes(filepath)
-    
+
     if not classes_to_update:
         return []
-    
+
     if not overwrite:
         # Just return the list of classes that need updating
         return [(filepath, cls_name, line) for cls_name, line, _, _ in classes_to_update]
-    
+
     # Load the module to get doc properties
     module = load_module(filepath)
-    
+
     with open(filepath, "r", encoding="utf-8", newline="\n") as f:
         lines = f.readlines()
-    
+
     # Process in reverse order to maintain line numbers
     updated = False
     for class_name, class_line, has_docstring, docstring_end_line in reversed(classes_to_update):
         doc = get_doc_from_class(module, class_name)
-        
+
         if doc is None:
             print(f"Warning: Could not get doc for {class_name} in {filepath}")
             continue
-        
+
         # Format the new docstring with 4-space indent
         new_docstring = format_docstring(doc, "    ")
-        
+
         if has_docstring:
             # Replace existing docstring (line after class definition to docstring_end_line)
             # class_line is 1-indexed, we want to replace from class_line+1 to docstring_end_line
@@ -233,14 +228,14 @@ def process_file(filepath: str, overwrite: bool = False) -> list:
             # class_line is 1-indexed, so lines[class_line-1] is the class line
             # Insert at position class_line (which is right after the class line)
             lines = lines[:class_line] + [new_docstring] + lines[class_line:]
-        
+
         updated = True
         print(f"Updated docstring for {class_name} in {filepath}")
-    
+
     if updated:
         with open(filepath, "w", encoding="utf-8", newline="\n") as f:
             f.writelines(lines)
-    
+
     return [(filepath, cls_name, line) for cls_name, line, _, _ in classes_to_update]
 
 
@@ -250,25 +245,25 @@ def check_auto_docstrings(path: str = None, overwrite: bool = False):
     """
     if path is None:
         path = DIFFUSERS_PATH
-    
+
     if os.path.isfile(path):
         all_files = [path]
     else:
         all_files = glob.glob(os.path.join(path, "**/*.py"), recursive=True)
-    
+
     all_markers = []
-    
+
     for filepath in all_files:
         markers = process_file(filepath, overwrite)
         all_markers.extend(markers)
-    
+
     if not overwrite and len(all_markers) > 0:
         message = "\n".join([f"- {f}: {cls} at line {line}" for f, cls, line in all_markers])
         raise ValueError(
             f"Found the following # auto_docstring markers that need docstrings:\n{message}\n\n"
             f"Run `python utils/modular_auto_docstring.py --fix_and_overwrite` to fix them."
         )
-    
+
     if overwrite and len(all_markers) > 0:
         print(f"\nUpdated {len(all_markers)} docstring(s).")
     elif len(all_markers) == 0:
@@ -279,18 +274,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Check and fix # auto_docstring markers in modular pipeline blocks",
     )
-    parser.add_argument(
-        "path",
-        nargs="?",
-        default=None,
-        help="File or directory to process (default: src/diffusers)"
-    )
+    parser.add_argument("path", nargs="?", default=None, help="File or directory to process (default: src/diffusers)")
     parser.add_argument(
         "--fix_and_overwrite",
         action="store_true",
         help="Whether to fix the docstrings by inserting them from doc property.",
     )
-    
+
     args = parser.parse_args()
-    
+
     check_auto_docstrings(args.path, args.fix_and_overwrite)
