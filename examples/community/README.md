@@ -5630,3 +5630,49 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 result.images[0].save(f"flux_fill_controlnet_inpaint_depth{timestamp}.jpg")
 ```
 
+
+# PhotoDoodle Pipeline
+
+Learning Artistic Image Editing from Few-Shot Pairwise Data
+
+We propose PhotoDoodle, a framework for photo doodling that enables seamless integration of decorative elements into photographs. The task is challenging due to the need for realistic blending, perspective alignment, background preservation, and learning artist-specific styles from limited data. PhotoDoodle uses a two-stage training strategy: pretraining a general image editor (OmniEditor) on large-scale data, followed by style-specific fine-tuning with EditLoRA on a small curated dataset. We further introduce positional encoding reuse to improve consistency and release a dataset with six high-quality styles. Experiments show that PhotoDoodle delivers strong and robust performance in customized image editing.ween the mask and the control input.
+
+## Example Usage
+
+
+```python
+import torch
+from diffusers import FluxKontextPipeline
+from diffusers.utils import load_image
+
+pipe = FluxKontextPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+pipe = pipe.to("cuda")
+
+pipe.load_lora_weights(
+    "nicolaus-huang/PhotoDoodle", adapter_name="pretrain", weight_name="pretrain.safetensors"
+)
+pipe.load_lora_weights(
+    "nicolaus-huang/PhotoDoodle", adapter_name="magiceffects", weight_name="sksmagiceffects.safetensors"
+)
+pipe.set_adapters(["pretrain", "magiceffects"], [1.0, 1.0])
+
+image = load_image(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+)
+prompt = "add a halo and wings for the astronaut by sksmagiceffects"
+
+output_image = pipe(
+    image=image,
+    prompt=prompt,
+    height=image.height,
+    width=image.width,
+    num_inference_steps=28,
+    guidance_scale=3.5,
+    generator=torch.Generator().manual_seed(42),
+).images[0]
+
+output_image.save("photodoodle_results.png")
+```
+|Example Image||
+|---|---|
+|![Original image](https://github.com/showlab/PhotoDoodle/blob/main/assets/R-F.jpg?raw=true)|
