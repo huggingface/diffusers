@@ -134,11 +134,11 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents"),
-            InputParam(name="height"),
-            InputParam(name="width"),
-            InputParam(name="num_images_per_prompt", default=1),
-            InputParam(name="generator"),
+            InputParam.latents(),
+            InputParam.height(),
+            InputParam.width(),
+            InputParam.num_images_per_prompt(),
+            InputParam.generator(),
             InputParam(
                 name="batch_size",
                 required=True,
@@ -225,12 +225,12 @@ class QwenImageLayeredPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents"),
-            InputParam(name="height"),
-            InputParam(name="width"),
-            InputParam(name="layers", default=4),
-            InputParam(name="num_images_per_prompt", default=1),
-            InputParam(name="generator"),
+            InputParam.latents(),
+            InputParam.height(),
+            InputParam.width(),
+            InputParam(name="layers", type_hint=int, default=4),
+            InputParam.num_images_per_prompt(),
+            InputParam.generator(),
             InputParam(
                 name="batch_size",
                 required=True,
@@ -466,8 +466,8 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="num_inference_steps", default=50),
-            InputParam(name="sigmas"),
+            InputParam.num_inference_steps(),
+            InputParam.sigmas(),
             InputParam(
                 name="latents",
                 required=True,
@@ -532,8 +532,8 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("num_inference_steps", default=50, type_hint=int),
-            InputParam("sigmas", type_hint=List[float]),
+            InputParam.num_inference_steps(),
+            InputParam.sigmas(),
             InputParam("image_latents", required=True, type_hint=torch.Tensor),
         ]
 
@@ -590,8 +590,8 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="num_inference_steps", default=50),
-            InputParam(name="sigmas"),
+            InputParam.num_inference_steps(),
+            InputParam.sigmas(),
             InputParam(
                 name="latents",
                 required=True,
@@ -971,9 +971,9 @@ class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("control_guidance_start", default=0.0),
-            InputParam("control_guidance_end", default=1.0),
-            InputParam("controlnet_conditioning_scale", default=1.0),
+            InputParam.control_guidance_start(),
+            InputParam.control_guidance_end(),
+            InputParam.controlnet_conditioning_scale(),
             InputParam("control_image_latents", required=True),
             InputParam(
                 "timesteps",
