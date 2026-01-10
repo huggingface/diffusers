@@ -342,6 +342,18 @@ class InputParam:
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
 
+
+    @classmethod
+    def template(cls, name: str) -> Optional["InputParam"]:
+        """Get template for name if exists, otherwise None."""
+        if hasattr(cls, name) and callable(getattr(cls, name)):
+            return getattr(cls, name)()
+        return None
+
+    # ======================================================
+    # InputParam templates
+    # ======================================================
+
     @classmethod
     def prompt(cls) -> "InputParam":
         return cls(name="prompt", type_hint=str, required=True,
@@ -383,7 +395,6 @@ class InputParam:
         return cls(name="generator", type_hint=torch.Generator, default=None,
                    description="Torch generator for deterministic generation.")
     
-    
     @classmethod
     def sigmas(cls) -> "InputParam":
         return cls(name="sigmas", type_hint=List[float], default=None,
@@ -394,6 +405,7 @@ class InputParam:
         return cls(name="strength", type_hint=float, default=default,
                    description="Strength for img2img/inpainting.")
     
+    # images
     @classmethod
     def image(cls) -> "InputParam":
         return cls(name="image", type_hint=PIL.Image.Image, required=True,
@@ -425,12 +437,24 @@ class InputParam:
     def timesteps(cls) -> "InputParam":
         return cls(name="timesteps", type_hint=torch.Tensor, default=None,
                    description="Timesteps for the denoising process.")
-    
-    
-    # =====================================================================
-    # ControlNet
-    # =====================================================================
 
+    @classmethod
+    def output_type(cls) -> "InputParam":
+        return cls(name="output_type", type_hint=str, default="pil",
+                   description="Output format: 'pil', 'np', 'pt''.")
+    
+    @classmethod
+    def attention_kwargs(cls) -> "InputParam":
+        return cls(name="attention_kwargs", type_hint=Dict[str, Any], default=None,
+                   description="Additional kwargs for attention processors.")
+
+    @classmethod
+    def denoiser_input_fields(cls) -> "InputParam":
+        return cls(kwargs_type="denoiser_input_fields", type_hint=torch.Tensor,
+                   description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.")
+
+
+    # ControlNet
     @classmethod
     def control_guidance_start(cls, default: float = 0.0) -> "InputParam":
         return cls(name="control_guidance_start", type_hint=float, default=default,
@@ -446,18 +470,6 @@ class InputParam:
         return cls(name="controlnet_conditioning_scale", type_hint=float, default=default,
                    description="Scale for ControlNet conditioning.")
 
-    
-    @classmethod
-    def output_type(cls) -> "InputParam":
-        return cls(name="output_type", type_hint=str, default="pil",
-                   description="Output format: 'pil', 'np', 'pt', or 'latent'.")
-    
-    @classmethod
-    def attention_kwargs(cls) -> "InputParam":
-        return cls(name="attention_kwargs", type_hint=Dict[str, Any], default=None,
-                   description="Additional kwargs for attention processors.")
-
-
 @dataclass
 class OutputParam:
     """Specification for an output parameter."""
@@ -471,6 +483,17 @@ class OutputParam:
         return (
             f"<{self.name}: {self.type_hint.__name__ if hasattr(self.type_hint, '__name__') else str(self.type_hint)}>"
         )
+
+    @classmethod
+    def template(cls, name: str) -> Optional["OutputParam"]:
+        """Get template for name if exists, otherwise None."""
+        if hasattr(cls, name) and callable(getattr(cls, name)):
+            return getattr(cls, name)()
+        return None
+
+    # ======================================================
+    # OutputParam templates
+    # ======================================================
 
     @classmethod
     def images(cls) -> "OutputParam":

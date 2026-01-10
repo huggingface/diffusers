@@ -228,7 +228,7 @@ class QwenImageLayeredPrepareLatentsStep(ModularPipelineBlocks):
             InputParam.latents(),
             InputParam.height(),
             InputParam.width(),
-            InputParam(name="layers", type_hint=int, default=4),
+            InputParam(name="layers", type_hint=int, default=4, description="Number of layers to extract from the image"),
             InputParam.num_images_per_prompt(),
             InputParam.generator(),
             InputParam(
@@ -598,7 +598,7 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The latents to use for the denoising process, used to calculate the image sequence length.",
             ),
-            InputParam(name="strength", default=0.9),
+            InputParam.strength(0.9),
         ]
 
     @property
@@ -886,7 +886,7 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(name="batch_size", required=True),
-            InputParam(name="layers", required=True),
+            InputParam(name="layers", default=4, description="Number of layers to extract from the image"),
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
             InputParam(name="prompt_embeds_mask"),

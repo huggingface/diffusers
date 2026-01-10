@@ -129,7 +129,7 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="num_images_per_prompt", default=1),
+            InputParam.num_images_per_prompt(),
             InputParam(name="prompt_embeds", required=True, kwargs_type="denoiser_input_fields"),
             InputParam(name="prompt_embeds_mask", required=True, kwargs_type="denoiser_input_fields"),
             InputParam(name="negative_prompt_embeds", kwargs_type="denoiser_input_fields"),
@@ -269,17 +269,17 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         inputs = [
-            InputParam(name="num_images_per_prompt", default=1),
+            InputParam.num_images_per_prompt(),
             InputParam(name="batch_size", required=True),
-            InputParam(name="height"),
-            InputParam(name="width"),
+            InputParam.height(),
+            InputParam.width(),
         ]
 
         for image_latent_input_name in self._image_latent_inputs:
-            inputs.append(InputParam(name=image_latent_input_name))
+            inputs.append(InputParam.template(image_latent_input_name) or InputParam(name=image_latent_input_name))
 
         for input_name in self._additional_batch_inputs:
-            inputs.append(InputParam(name=input_name))
+            inputs.append(InputParam.template(input_name) or InputParam(name=input_name))
 
         return inputs
 
@@ -398,17 +398,17 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         inputs = [
-            InputParam(name="num_images_per_prompt", default=1),
+            InputParam.num_images_per_prompt(),
             InputParam(name="batch_size", required=True),
-            InputParam(name="height"),
-            InputParam(name="width"),
+            InputParam.height(),
+            InputParam.width(),
         ]
 
         for image_latent_input_name in self._image_latent_inputs:
-            inputs.append(InputParam(name=image_latent_input_name))
+            inputs.append(InputParam.template(image_latent_input_name) or InputParam(name=image_latent_input_name))
 
         for input_name in self._additional_batch_inputs:
-            inputs.append(InputParam(name=input_name))
+            inputs.append(InputParam.template(input_name) or InputParam(name=input_name))
 
         return inputs
 
@@ -544,15 +544,15 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         inputs = [
-            InputParam(name="num_images_per_prompt", default=1),
+            InputParam.num_images_per_prompt(),
             InputParam(name="batch_size", required=True),
         ]
 
         for image_latent_input_name in self._image_latent_inputs:
-            inputs.append(InputParam(name=image_latent_input_name))
+            inputs.append(InputParam.template(image_latent_input_name) or InputParam(name=image_latent_input_name))
 
         for input_name in self._additional_batch_inputs:
-            inputs.append(InputParam(name=input_name))
+            inputs.append(InputParam.template(input_name) or InputParam(name=input_name))
 
         return inputs
 
@@ -638,9 +638,9 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
         return [
             InputParam(name="control_image_latents", required=True),
             InputParam(name="batch_size", required=True),
-            InputParam(name="num_images_per_prompt", default=1),
-            InputParam(name="height"),
-            InputParam(name="width"),
+            InputParam.num_images_per_prompt(),
+            InputParam.height(),
+            InputParam.width(),
         ]
 
     @torch.no_grad()

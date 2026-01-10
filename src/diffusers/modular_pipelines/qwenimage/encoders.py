@@ -301,8 +301,8 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(
-                name=self._image_input_name, required=True, type_hint=torch.Tensor, description="The image to resize"
+            InputParam.template(self._image_input_name) or InputParam(
+                name=self._image_input_name, required=True, type_hint=torch.Tensor, description="Input image for conditioning"
             ),
         ]
 
@@ -381,7 +381,7 @@ class QwenImageLayeredResizeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(
+            InputParam.template(self._image_input_name) or InputParam(
                 name=self._image_input_name, required=True, type_hint=torch.Tensor, description="The image to resize"
             ),
             InputParam(
@@ -484,7 +484,7 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(
+            InputParam.template(self._image_input_name) or InputParam(
                 name=self._image_input_name,
                 required=True,
                 type_hint=torch.Tensor,
@@ -564,7 +564,7 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="prompt", type_hint=str, description="The prompt to encode"),
+            InputParam(name="prompt", type_hint=str, description="The prompt to encode"), # it is not required for qwenimage-layered, unlike other pipelines
             InputParam(
                 name="resized_image",
                 required=True,
@@ -647,11 +647,9 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="prompt", required=True, type_hint=str, description="The prompt to encode"),
-            InputParam(name="negative_prompt", type_hint=str, description="The negative prompt to encode"),
-            InputParam(
-                name="max_sequence_length", type_hint=int, description="The max sequence length to use", default=1024
-            ),
+            InputParam.prompt(),
+            InputParam.negative_prompt(),
+            InputParam.max_sequence_length(1024),
         ]
 
     @property
@@ -772,8 +770,8 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="prompt", required=True, type_hint=str, description="The prompt to encode"),
-            InputParam(name="negative_prompt", type_hint=str, description="The negative prompt to encode"),
+            InputParam.prompt(),
+            InputParam.negative_prompt(),
             InputParam(
                 name="resized_image",
                 required=True,
@@ -895,8 +893,8 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="prompt", required=True, type_hint=str, description="The prompt to encode"),
-            InputParam(name="negative_prompt", type_hint=str, description="The negative prompt to encode"),
+            InputParam.prompt(),
+            InputParam.negative_prompt(),
             InputParam(
                 name="resized_cond_image",
                 required=True,
@@ -1010,11 +1008,11 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("mask_image", required=True),
-            InputParam("image", required=True),
-            InputParam("height"),
-            InputParam("width"),
-            InputParam("padding_mask_crop"),
+            InputParam.mask_image(),
+            InputParam.image(),
+            InputParam.height(),
+            InputParam.width(),
+            InputParam.padding_mask_crop(),
         ]
 
     @property
@@ -1082,9 +1080,9 @@ class QwenImageEditInpaintProcessImagesInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("mask_image", required=True),
-            InputParam("resized_image", required=True),
-            InputParam("padding_mask_crop"),
+            InputParam.mask_image(),
+            InputParam("resized_image", required=True, type_hint=PIL.Image.Image, description="The resized image. should be generated using a resize step"),
+            InputParam.padding_mask_crop(),
         ]
 
     @property
@@ -1140,9 +1138,9 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("image", required=True),
-            InputParam("height"),
-            InputParam("width"),
+            InputParam.image(),
+            InputParam.height(),
+            InputParam.width(),
         ]
 
     @property
@@ -1312,7 +1310,10 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> List[InputParam]:
-        return [InputParam(self._image_input_name, required=True), InputParam("generator")]
+        return [
+            InputParam.template(self._image_input_name) or InputParam(name=self._image_input_name, required=True), 
+            InputParam.generator(),
+        ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
@@ -1383,10 +1384,10 @@ class QwenImageControlNetVaeEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         inputs = [
-            InputParam("control_image", required=True),
-            InputParam("height"),
-            InputParam("width"),
-            InputParam("generator"),
+            InputParam.control_image(),
+            InputParam.height(),
+            InputParam.width(),
+            InputParam.generator(),
         ]
         return inputs
 

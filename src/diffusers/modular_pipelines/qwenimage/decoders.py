@@ -91,7 +91,7 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
             InputParam("latents", required=True, type_hint=torch.Tensor),
             InputParam("height", required=True, type_hint=int),
             InputParam("width", required=True, type_hint=int),
-            InputParam("layers", required=True, type_hint=int),
+            InputParam("layers", default=4, description="Number of layers to extract from the image"),
         ]
 
     @torch.no_grad()
@@ -141,11 +141,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[str]:
         return [
-            OutputParam(
-                "images",
-                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
-                description="The generated images, can be a PIL.Image.Image, torch.Tensor or a numpy array",
-            )
+            OutputParam.images()
         ]
 
     @torch.no_grad()
@@ -198,14 +194,14 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("output_type", default="pil", type_hint=str),
+            InputParam("latents", required=True, type_hint=torch.Tensor, description="The latents to decode, can be generated in the denoise step"),
+            InputParam.output_type(),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="images", type_hint=List[List[PIL.Image.Image]]),
+            OutputParam.images(),
         ]
 
     @torch.no_grad()
@@ -273,12 +269,7 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("images", required=True, description="the generated image from decoders step"),
-            InputParam(
-                name="output_type",
-                default="pil",
-                type_hint=str,
-                description="The type of the output images, can be 'pil', 'np', 'pt'",
-            ),
+            InputParam.output_type(),
         ]
 
     @staticmethod
@@ -323,12 +314,7 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("images", required=True, description="the generated image from decoders step"),
-            InputParam(
-                name="output_type",
-                default="pil",
-                type_hint=str,
-                description="The type of the output images, can be 'pil', 'np', 'pt'",
-            ),
+            InputParam.output_type(),
             InputParam("mask_overlay_kwargs"),
         ]
 
