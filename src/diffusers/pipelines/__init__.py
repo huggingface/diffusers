@@ -167,6 +167,7 @@ else:
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["cosmos"] = [
         "Cosmos2_5_PredictBasePipeline",
+        "Cosmos2_5_TransferPipeline",
         "Cosmos2TextToImagePipeline",
         "CosmosTextToWorldPipeline",
         "CosmosVideoToWorldPipeline",
@@ -630,6 +631,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .cosmos import (
             Cosmos2_5_PredictBasePipeline,
+            Cosmos2_5_TransferPipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             CosmosTextToWorldPipeline,
