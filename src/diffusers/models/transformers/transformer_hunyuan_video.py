@@ -312,7 +312,6 @@ class HunyuanVideoConditionEmbedding(nn.Module):
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=pooled_projection.dtype))  # (N, D)
         pooled_projections = self.text_embedder(pooled_projection)
-        conditioning = timesteps_emb + pooled_projections
 
         token_replace_emb = None
         if self.image_condition_type == "token_replace":
@@ -324,8 +323,9 @@ class HunyuanVideoConditionEmbedding(nn.Module):
         if self.guidance_embedder is not None:
             guidance_proj = self.time_proj(guidance)
             guidance_emb = self.guidance_embedder(guidance_proj.to(dtype=pooled_projection.dtype))
-            conditioning = conditioning + guidance_emb
-
+            conditioning = timesteps_emb + guidance_emb + pooled_projections
+        else:
+            conditioning = timesteps_emb + pooled_projections
         return conditioning, token_replace_emb
 
 
