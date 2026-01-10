@@ -70,4 +70,15 @@ pipeline.transformer.enable_cache(config)
 
 ## FirstBlockCache
 
-[FirstBlock Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) builds on the ideas of [TeaCache](https://huggingface.co/papers/2411.19108). It is much simpler to implement generically for a wide range of models and has been integrated first for experimental purposes.
+[FirstBlock Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) checks how much the early layers of the denoiser changes from one timestep to the next. If the change is small, the model skips the expensive later layers and reuses the previous output.
+
+\```py
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.hooks import apply_first_block_cache, FirstBlockCacheConfig
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "Qwen/Qwen-Image", torch_dtype=torch.bfloat16
+)
+apply_first_block_cache(pipeline.transformer, FirstBlockCacheConfig(threshold=0.2))
+\```
