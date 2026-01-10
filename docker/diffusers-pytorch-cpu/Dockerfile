@@ -31,7 +31,7 @@ RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.
 RUN uv pip install --no-cache-dir \
     accelerate \
     numpy==1.26.4 \
-    hf_transfer
+    hf_xet
 
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* && apt-get autoremove && apt-get autoclean
 

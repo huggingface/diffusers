@@ -44,7 +44,7 @@ RUN uv pip install --no-cache-dir \
     accelerate \
     numpy==1.26.4 \
     pytorch-lightning \
-    hf_transfer \
+    hf_xet \
     xformers
 
 CMD ["/bin/bash"]

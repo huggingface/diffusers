@@ -20,7 +20,7 @@ from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTo
 from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_torch_version, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
 from .pipeline_stable_cascade import StableCascadeDecoderPipeline
 from .pipeline_stable_cascade_prior import StableCascadePriorPipeline
@@ -42,7 +42,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
 """
 
 
-class StableCascadeCombinedPipeline(DiffusionPipeline):
+class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Combined Pipeline for text-to-image generation using Stable Cascade.
 
@@ -73,6 +73,8 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         prior_image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen CLIP image-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
     """
+
+    _last_supported_version = "0.35.2"
 
     _load_connected_pipes = True
     _optional_components = ["prior_feature_extractor", "prior_image_encoder"]
