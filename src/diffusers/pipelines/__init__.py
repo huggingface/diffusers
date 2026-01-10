@@ -197,6 +197,7 @@ else:
             "StableDiffusionPAGImg2ImgPipeline",
             "StableDiffusionPAGInpaintPipeline",
             "StableDiffusionControlNetPAGPipeline",
+            "StableDiffusionControlNetPAGImg2ImgPipeline",
             "StableDiffusionXLPAGPipeline",
             "StableDiffusionXLPAGInpaintPipeline",
             "StableDiffusionXLControlNetPAGImg2ImgPipeline",
@@ -752,6 +753,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .omnigen import OmniGenPipeline
         from .ovis_image import OvisImagePipeline
         from .pag import (
+            StableDiffusionControlNetPAGImg2ImgPipeline,
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
             KolorsPAGPipeline,
