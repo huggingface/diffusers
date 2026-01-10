@@ -58,8 +58,59 @@ logger = logging.get_logger(__name__)
 # 1. TEXT ENCODER
 # ====================
 
-
+#auto_docstring
 class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
+    """
+    class QwenImageAutoTextEncoderStep
+
+      Text encoder step that encodes the text prompt into a text embedding. This is an auto pipeline block.
+
+      Components:
+
+          text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use [subfolder=]
+
+          tokenizer (`Qwen2Tokenizer`): The tokenizer to use [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+      Configs:
+
+          prompt_template_encode (default: <|im_start|>system
+    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>
+    <|im_start|>user
+    {}<|im_end|>
+    <|im_start|>assistant
+    )
+
+          prompt_template_encode_start_idx (default: 34)
+
+          tokenizer_max_length (default: 1024)
+
+      Inputs:
+
+          prompt (`str`, *optional*):
+              The prompt or prompts to guide image generation.
+
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
+
+          max_sequence_length (`int`, *optional*, defaults to 1024):
+              Maximum sequence length for prompt encoding.
+
+      Outputs:
+
+          prompt_embeds (`Tensor`):
+              The prompt embeddings
+
+          prompt_embeds_mask (`Tensor`):
+              The encoder attention mask
+
+          negative_prompt_embeds (`Tensor`):
+              The negative prompt embeddings
+
+          negative_prompt_embeds_mask (`Tensor`):
+              The negative prompt embeddings mask
+    """
     model_name = "qwenimage"
     block_classes = [QwenImageTextEncoderStep()]
     block_names = ["text_encoder"]
@@ -76,8 +127,54 @@ class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
 # 2. VAE ENCODER
 # ====================
 
-
+#auto_docstring
 class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
+    """
+    class QwenImageInpaintVaeEncoderStep
+
+      This step is used for processing image and mask inputs for inpainting tasks. It:
+       - Resizes the image to the target size, based on `height` and `width`.
+       - Processes and updates `image` and `mask_image`.
+       - Creates `image_latents`.
+
+      Components:
+
+          image_mask_processor (`InpaintProcessor`) [subfolder=]
+
+          vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+      Inputs:
+
+          mask_image (`Image`):
+              Mask image for inpainting.
+
+          image (`Image`):
+              Input image for img2img, editing, or conditioning.
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          padding_mask_crop (`int`, *optional*):
+              Padding for mask cropping in inpainting.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+      Outputs:
+
+          processed_image (`None`):
+
+          processed_mask_image (`None`):
+
+          mask_overlay_kwargs (`Dict`):
+              The kwargs for the postprocess step to apply the mask overlay
+
+          image_latents (`Tensor`):
+              The latents representing the reference image(s). Single tensor or list depending on input.
+    """
     model_name = "qwenimage"
     block_classes = [QwenImageInpaintProcessImagesInputStep(), QwenImageVaeEncoderStep()]
     block_names = ["preprocess", "encode"]
@@ -92,7 +189,40 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
         )
 
 
+#auto_docstring
 class QwenImageImg2ImgVaeEncoderStep(SequentialPipelineBlocks):
+    """
+    class QwenImageImg2ImgVaeEncoderStep
+
+      Vae encoder step that preprocess andencode the image inputs into their latent representations.
+
+      Components:
+
+          image_processor (`VaeImageProcessor`) [subfolder=]
+
+          vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+      Inputs:
+
+          image (`Image`):
+              Input image for img2img, editing, or conditioning.
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+      Outputs:
+
+          processed_image (`None`):
+
+          image_latents (`Tensor`):
+              The latents representing the reference image(s). Single tensor or list depending on input.
+    """
     model_name = "qwenimage"
 
     block_classes = [QwenImageProcessImagesInputStep(), QwenImageVaeEncoderStep()]
@@ -103,7 +233,6 @@ class QwenImageImg2ImgVaeEncoderStep(SequentialPipelineBlocks):
         return "Vae encoder step that preprocess andencode the image inputs into their latent representations."
 
 
-# Auto VAE encoder
 class QwenImageAutoVaeEncoderStep(AutoPipelineBlocks):
     block_classes = [QwenImageInpaintVaeEncoderStep, QwenImageImg2ImgVaeEncoderStep]
     block_names = ["inpaint", "img2img"]
@@ -121,7 +250,43 @@ class QwenImageAutoVaeEncoderStep(AutoPipelineBlocks):
 
 
 # optional controlnet vae encoder
+#auto_docstring
 class QwenImageOptionalControlNetVaeEncoderStep(AutoPipelineBlocks):
+    """
+    class QwenImageOptionalControlNetVaeEncoderStep
+
+      Vae encoder step that encode the image inputs into their latent representations.
+      This is an auto pipeline block.
+       - `QwenImageControlNetVaeEncoderStep` (controlnet) is used when `control_image` is provided.
+       - if `control_image` is not provided, step will be skipped.
+
+      Components:
+
+          vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+          controlnet (`QwenImageControlNetModel`) [subfolder=]
+
+          control_image_processor (`VaeImageProcessor`) [subfolder=]
+
+      Inputs:
+
+          control_image (`Image`, *optional*):
+              Control image for ControlNet conditioning.
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+      Outputs:
+
+          control_image_latents (`Tensor`):
+              The latents representing the control image
+    """
     block_classes = [QwenImageControlNetVaeEncoderStep]
     block_names = ["controlnet"]
     block_trigger_inputs = ["control_image"]
@@ -142,7 +307,52 @@ class QwenImageOptionalControlNetVaeEncoderStep(AutoPipelineBlocks):
 
 
 # assemble input steps
+#auto_docstring
 class QwenImageImg2ImgInputStep(SequentialPipelineBlocks):
+    """
+    class QwenImageImg2ImgInputStep
+
+      Input step that prepares the inputs for the img2img denoising step. It:
+
+      Components:
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+      Inputs:
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          prompt_embeds (`None`):
+
+          prompt_embeds_mask (`None`):
+
+          negative_prompt_embeds (`None`, *optional*):
+
+          negative_prompt_embeds_mask (`None`, *optional*):
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          image_latents (`None`, *optional*):
+
+      Outputs:
+
+          batch_size (`int`):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt
+
+          dtype (`dtype`):
+              Data type of model tensor inputs (determined by `prompt_embeds`)
+
+          image_height (`int`):
+              The image height calculated from the image latents dimension
+
+          image_width (`int`):
+              The image width calculated from the image latents dimension
+    """
     model_name = "qwenimage"
     block_classes = [QwenImageTextInputsStep(), QwenImageAdditionalInputsStep(image_latent_inputs=["image_latents"])]
     block_names = ["text_inputs", "additional_inputs"]
@@ -154,7 +364,54 @@ class QwenImageImg2ImgInputStep(SequentialPipelineBlocks):
         " - update height/width based `image_latents`, patchify `image_latents`."
 
 
+#auto_docstring
 class QwenImageInpaintInputStep(SequentialPipelineBlocks):
+    """
+    class QwenImageInpaintInputStep
+
+      Input step that prepares the inputs for the inpainting denoising step. It:
+
+      Components:
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+      Inputs:
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          prompt_embeds (`None`):
+
+          prompt_embeds_mask (`None`):
+
+          negative_prompt_embeds (`None`, *optional*):
+
+          negative_prompt_embeds_mask (`None`, *optional*):
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          image_latents (`None`, *optional*):
+
+          processed_mask_image (`None`, *optional*):
+
+      Outputs:
+
+          batch_size (`int`):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt
+
+          dtype (`dtype`):
+              Data type of model tensor inputs (determined by `prompt_embeds`)
+
+          image_height (`int`):
+              The image height calculated from the image latents dimension
+
+          image_width (`int`):
+              The image width calculated from the image latents dimension
+    """
     model_name = "qwenimage"
     block_classes = [
         QwenImageTextInputsStep(),
@@ -172,7 +429,49 @@ class QwenImageInpaintInputStep(SequentialPipelineBlocks):
 
 
 # assemble prepare latents steps
+#auto_docstring
 class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
+    """
+    class QwenImageInpaintPrepareLatentsStep
+
+      This step prepares the latents/image_latents and mask inputs for the inpainting denoising step. It:
+       - Add noise to the image latents to create the latents input for the denoiser.
+       - Create the pachified latents `mask` based on the processedmask image.
+
+      Components:
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+      Inputs:
+
+          latents (`Tensor`):
+              The initial random noised, can be generated in prepare latent step.
+
+          image_latents (`Tensor`):
+              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input step.
+
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+
+          processed_mask_image (`Tensor`):
+              The processed mask to use for the inpainting process.
+
+          height (`None`):
+
+          width (`None`):
+
+          dtype (`None`):
+
+      Outputs:
+
+          initial_noise (`Tensor`):
+              The initial random noised used for inpainting denoising.
+
+          mask (`Tensor`):
+              The mask to use for the inpainting process.
+    """
     model_name = "qwenimage"
     block_classes = [QwenImagePrepareLatentsWithStrengthStep(), QwenImageCreateMaskLatentsStep()]
     block_names = ["add_noise_to_latents", "create_mask_latents"]
@@ -190,7 +489,66 @@ class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
 
 
 # Qwen Image (text2image)
+#auto_docstring
 class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    class QwenImageCoreDenoiseStep
+
+      step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs (timesteps, latents, rope inputs etc.).
+
+      Components:
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+          transformer (`QwenImageTransformer2DModel`) [subfolder=]
+
+      Inputs:
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          prompt_embeds (`None`):
+
+          prompt_embeds_mask (`None`):
+
+          negative_prompt_embeds (`None`, *optional*):
+
+          negative_prompt_embeds_mask (`None`, *optional*):
+
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+
+          **denoiser_input_fields (`Tensor`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+
+      Outputs:
+
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "qwenimage"
     block_classes = [
         QwenImageTextInputsStep(),
@@ -212,10 +570,81 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return "step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs (timesteps, latents, rope inputs etc.)."
-
+    
+    @property
+    def outputs(self):
+        return [
+            OutputParam.latents(),
+        ]
 
 # Qwen Image (inpainting)
+#auto_docstring
 class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    class QwenImageInpaintCoreDenoiseStep
+
+      Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint task.
+
+      Components:
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+          transformer (`QwenImageTransformer2DModel`) [subfolder=]
+
+      Inputs:
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          prompt_embeds (`None`):
+
+          prompt_embeds_mask (`None`):
+
+          negative_prompt_embeds (`None`, *optional*):
+
+          negative_prompt_embeds_mask (`None`, *optional*):
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          image_latents (`None`, *optional*):
+
+          processed_mask_image (`None`, *optional*):
+
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+
+          strength (`float`, *optional*, defaults to 0.9):
+              Strength for img2img/inpainting.
+
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+
+          **denoiser_input_fields (`Tensor`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+
+      Outputs:
+
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "qwenimage"
     block_classes = [
         QwenImageInpaintInputStep(),
@@ -240,9 +669,78 @@ class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     def description(self):
         return "Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint task."
 
+    @property
+    def outputs(self):
+        return [
+            OutputParam.latents(),
+        ]
 
 # Qwen Image (image2image)
+#auto_docstring
 class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    class QwenImageImg2ImgCoreDenoiseStep
+
+      Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img task.
+
+      Components:
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+          transformer (`QwenImageTransformer2DModel`) [subfolder=]
+
+      Inputs:
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          prompt_embeds (`None`):
+
+          prompt_embeds_mask (`None`):
+
+          negative_prompt_embeds (`None`, *optional*):
+
+          negative_prompt_embeds_mask (`None`, *optional*):
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          image_latents (`None`, *optional*):
+
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+
+          strength (`float`, *optional*, defaults to 0.9):
+              Strength for img2img/inpainting.
+
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+
+          **denoiser_input_fields (`Tensor`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+
+      Outputs:
+
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "qwenimage"
     block_classes = [
         QwenImageImg2ImgInputStep(),
@@ -267,9 +765,87 @@ class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     def description(self):
         return "Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img task."
 
+    @property
+    def outputs(self):
+        return [
+            OutputParam.latents(),
+        ]
 
 # Qwen Image (text2image) with controlnet
+#auto_docstring
 class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    class QwenImageControlNetCoreDenoiseStep
+
+      step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs (timesteps, latents, rope inputs etc.).
+
+      Components:
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          controlnet (`QwenImageControlNetModel`) [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+          transformer (`QwenImageTransformer2DModel`) [subfolder=]
+
+      Inputs:
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          prompt_embeds (`None`):
+
+          prompt_embeds_mask (`None`):
+
+          negative_prompt_embeds (`None`, *optional*):
+
+          negative_prompt_embeds_mask (`None`, *optional*):
+
+          control_image_latents (`None`):
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+
+          control_guidance_start (`float`, *optional*, defaults to 0.0):
+              When to start applying ControlNet.
+
+          control_guidance_end (`float`, *optional*, defaults to 1.0):
+              When to stop applying ControlNet.
+
+          controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
+              Scale for ControlNet conditioning.
+
+          **denoiser_input_fields (`None`, *optional*):
+              All conditional model inputs for the denoiser. It should contain prompt_embeds/negative_prompt_embeds,
+              txt_seq_lens/negative_txt_seq_lens.
+
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+
+      Outputs:
+
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "qwenimage"
     block_classes = [
         QwenImageTextInputsStep(),
@@ -295,10 +871,95 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return "step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs (timesteps, latents, rope inputs etc.)."
-
+ 
+    @property
+    def outputs(self):
+        return [
+            OutputParam.latents(),
+        ]
 
 # Qwen Image (inpainting) with controlnet
+#auto_docstring
 class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    class QwenImageControlNetInpaintCoreDenoiseStep
+
+      Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint task.
+
+      Components:
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          controlnet (`QwenImageControlNetModel`) [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+          transformer (`QwenImageTransformer2DModel`) [subfolder=]
+
+      Inputs:
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          prompt_embeds (`None`):
+
+          prompt_embeds_mask (`None`):
+
+          negative_prompt_embeds (`None`, *optional*):
+
+          negative_prompt_embeds_mask (`None`, *optional*):
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          image_latents (`None`, *optional*):
+
+          processed_mask_image (`None`, *optional*):
+
+          control_image_latents (`None`):
+
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+
+          strength (`float`, *optional*, defaults to 0.9):
+              Strength for img2img/inpainting.
+
+          control_guidance_start (`float`, *optional*, defaults to 0.0):
+              When to start applying ControlNet.
+
+          control_guidance_end (`float`, *optional*, defaults to 1.0):
+              When to stop applying ControlNet.
+
+          controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
+              Scale for ControlNet conditioning.
+
+          **denoiser_input_fields (`None`, *optional*):
+              All conditional model inputs for the denoiser. It should contain prompt_embeds/negative_prompt_embeds,
+              txt_seq_lens/negative_txt_seq_lens.
+
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+
+      Outputs:
+
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "qwenimage"
     block_classes = [
         QwenImageInpaintInputStep(),
@@ -327,9 +988,93 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     def description(self):
         return "Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint task."
 
+    @property
+    def outputs(self):
+        return [
+            OutputParam.latents(),
+        ]
+
 
 # Qwen Image (image2image) with controlnet
+#auto_docstring
 class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    class QwenImageControlNetImg2ImgCoreDenoiseStep
+
+      Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img task.
+
+      Components:
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          controlnet (`QwenImageControlNetModel`) [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+          transformer (`QwenImageTransformer2DModel`) [subfolder=]
+
+      Inputs:
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          prompt_embeds (`None`):
+
+          prompt_embeds_mask (`None`):
+
+          negative_prompt_embeds (`None`, *optional*):
+
+          negative_prompt_embeds_mask (`None`, *optional*):
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          image_latents (`None`, *optional*):
+
+          control_image_latents (`None`):
+
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+
+          strength (`float`, *optional*, defaults to 0.9):
+              Strength for img2img/inpainting.
+
+          control_guidance_start (`float`, *optional*, defaults to 0.0):
+              When to start applying ControlNet.
+
+          control_guidance_end (`float`, *optional*, defaults to 1.0):
+              When to stop applying ControlNet.
+
+          controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
+              Scale for ControlNet conditioning.
+
+          **denoiser_input_fields (`None`, *optional*):
+              All conditional model inputs for the denoiser. It should contain prompt_embeds/negative_prompt_embeds,
+              txt_seq_lens/negative_txt_seq_lens.
+
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+
+      Outputs:
+
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "qwenimage"
     block_classes = [
         QwenImageImg2ImgInputStep(),
@@ -357,7 +1102,12 @@ class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return "Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img task."
-
+    
+    @property
+    def outputs(self):
+        return [
+            OutputParam.latents(),
+        ]
 
 # Auto denoise step for QwenImage
 class QwenImageAutoCoreDenoiseStep(ConditionalPipelineBlocks):
@@ -426,7 +1176,32 @@ class QwenImageAutoCoreDenoiseStep(ConditionalPipelineBlocks):
 
 
 # standard decode step works for most tasks except for inpaint
+#auto_docstring
 class QwenImageDecodeStep(SequentialPipelineBlocks):
+    """
+    class QwenImageDecodeStep
+
+      Decode step that decodes the latents to images and postprocess the generated image.
+
+      Components:
+
+          vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+          image_processor (`VaeImageProcessor`) [subfolder=]
+
+      Inputs:
+
+          latents (`Tensor`):
+              The latents to decode, can be generated in the denoise step
+
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt''.
+
+      Outputs:
+
+          images (`List`):
+              Generated images.
+    """
     model_name = "qwenimage"
     block_classes = [QwenImageDecoderStep(), QwenImageProcessImagesOutputStep()]
     block_names = ["decode", "postprocess"]
@@ -437,7 +1212,34 @@ class QwenImageDecodeStep(SequentialPipelineBlocks):
 
 
 # Inpaint decode step
+#auto_docstring
 class QwenImageInpaintDecodeStep(SequentialPipelineBlocks):
+    """
+    class QwenImageInpaintDecodeStep
+
+      Decode step that decodes the latents to images and postprocess the generated image, optional apply the mask overally to the original image.
+
+      Components:
+
+          vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+          image_mask_processor (`InpaintProcessor`) [subfolder=]
+
+      Inputs:
+
+          latents (`Tensor`):
+              The latents to decode, can be generated in the denoise step
+
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt''.
+
+          mask_overlay_kwargs (`None`, *optional*):
+
+      Outputs:
+
+          images (`List`):
+              Generated images.
+    """
     model_name = "qwenimage"
     block_classes = [QwenImageDecoderStep(), QwenImageInpaintProcessImagesOutputStep()]
     block_names = ["decode", "postprocess"]
