@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -263,6 +263,7 @@ class CosmosTransformerBlock(nn.Module):
         image_rotary_emb: Optional[torch.Tensor] = None,
         extra_pos_emb: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        controlnet_residual: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if extra_pos_emb is not None:
             hidden_states = hidden_states + extra_pos_emb
@@ -283,6 +284,9 @@ class CosmosTransformerBlock(nn.Module):
         norm_hidden_states, gate = self.norm3(hidden_states, embedded_timestep, temb)
         ff_output = self.ff(norm_hidden_states)
         hidden_states = hidden_states + gate * ff_output
+
+        if controlnet_residual is not None:
+            hidden_states = hidden_states + controlnet_residual
 
         return hidden_states
 
@@ -416,6 +420,12 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             Whether to concatenate the padding mask to the input latent tensors.
         extra_pos_embed_type (`str`, *optional*, defaults to `learnable`):
             The type of extra positional embeddings to use. Can be one of `None` or `learnable`.
+        n_control_net_blocks (`int`, defaults to `0`):
+            Number of control residual slots expected from an accompanying ControlNet model. Primarily informational for
+            Transfer2.5 checkpoints.
+        controlnet_block_every_n (`int`, *optional*):
+            Interval between transformer blocks that should receive control residuals (for example, `7` to inject after
+            every seventh block). Required for Cosmos Transfer2.5.
     """
 
     _supports_gradient_checkpointing = True
@@ -442,6 +452,8 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         use_crossattn_projection: bool = False,
         crossattn_proj_in_channels: int = 1024,
         encoder_hidden_states_channels: int = 1024,
+        n_control_net_blocks: int = 0,
+        controlnet_block_every_n: Optional[int] = None,
     ) -> None:
         super().__init__()
         hidden_size = num_attention_heads * attention_head_dim
@@ -501,12 +513,36 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
+        block_controlnet_hidden_states: Optional[List[torch.Tensor]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         fps: Optional[int] = None,
         condition_mask: Optional[torch.Tensor] = None,
         padding_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
+        r"""
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, channels, num_frames, height, width)`):
+                Latent inputs to the transformer.
+            timestep (`torch.Tensor`):
+                Current diffusion timestep.
+            encoder_hidden_states (`torch.Tensor`):
+                Conditional text/video embeddings.
+            block_controlnet_hidden_states (`List[torch.Tensor]`, *optional*):
+                A list of residual tensors produced by a ControlNet that are injected into the transformer blocks.
+                When provided, indices are derived from `self.config.controlnet_block_every_n`.
+            attention_mask (`torch.Tensor`, *optional*):
+                Attention mask applied to cross-attention.
+            fps (`int`, *optional*):
+                Frames per second for rotary embeddings on video inputs.
+            condition_mask (`torch.Tensor`, *optional*):
+                Additional per-pixel conditioning flags.
+            padding_mask (`torch.Tensor`, *optional*):
+                Mask highlighting padded spatial regions.
+            return_dict (`bool`, defaults to `True`):
+                Whether or not to return a [`~models.modeling_outputs.Transformer2DModelOutput`] instead of a plain
+                tuple.
+        """
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
         # 1. Concatenate padding mask if needed & prepare attention mask
@@ -559,8 +595,23 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if self.config.use_crossattn_projection:
             encoder_hidden_states = self.crossattn_proj(encoder_hidden_states)
 
+        controlnet_block_index_map = {}
+        if block_controlnet_hidden_states:
+            if isinstance(block_controlnet_hidden_states, torch.Tensor):
+                block_controlnet_hidden_states = [block_controlnet_hidden_states]
+            else:
+                block_controlnet_hidden_states = list(block_controlnet_hidden_states)
+
+            resolved_indices = self._resolve_controlnet_block_indices(len(block_controlnet_hidden_states))
+            controlnet_block_index_map = {
+                block_idx: block_controlnet_hidden_states[idx]
+                for idx, block_idx in enumerate(resolved_indices)
+                if block_idx is not None
+            }
+
         # 5. Transformer blocks
-        for block in self.transformer_blocks:
+        for index_block, block in enumerate(self.transformer_blocks):
+            controlnet_residual = controlnet_block_index_map.get(index_block)
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
                     block,
@@ -571,6 +622,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     image_rotary_emb,
                     extra_pos_emb,
                     attention_mask,
+                    controlnet_residual,
                 )
             else:
                 hidden_states = block(
@@ -581,6 +633,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     image_rotary_emb=image_rotary_emb,
                     extra_pos_emb=extra_pos_emb,
                     attention_mask=attention_mask,
+                    controlnet_residual=controlnet_residual,
                 )
 
         # 6. Output norm & projection & unpatchify
@@ -597,3 +650,17 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return (hidden_states,)
 
         return Transformer2DModelOutput(sample=hidden_states)
+
+    # TODO: removeme this is too complicated
+    def _resolve_controlnet_block_indices(self, residual_count: int) -> Tuple[int, ...]:
+        if residual_count == 0:
+            return tuple()
+
+        block_every_n = getattr(self.config, "controlnet_block_every_n", None)
+        if block_every_n is None or block_every_n <= 0:
+            raise ValueError("`controlnet_block_every_n` must be set for Cosmos Transfer2.5 control hooks.")
+
+        indices = list(range(0, len(self.transformer_blocks), block_every_n))
+        if not indices:
+            indices = [0]
+        return tuple(indices[:residual_count])
