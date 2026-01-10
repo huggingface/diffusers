@@ -69,10 +69,11 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
-    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
-    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
-    {}<|im_end|> <|im_start|>assistant )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
+    <|im_start|>user
+    {}<|im_end|>
+    <|im_start|>assistant
+    )
 
           img_template_encode (default: Picture {}: <|vision_start|><|image_pad|><|vision_end|>)
 
@@ -129,8 +130,8 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
     """
     class QwenImageEditPlusVaeEncoderStep
 
-      VAE encoder step that encodes image inputs into latent representations. Each image is resized independently based
-      on its own aspect ratio to 1024x1024 target area.
+      VAE encoder step that encodes image inputs into latent representations.
+      Each image is resized independently based on its own aspect ratio to 1024x1024 target area.
 
       Components:
 
@@ -396,8 +397,95 @@ EDIT_PLUS_AUTO_BLOCKS = InsertableDict(
     ]
 )
 
-
+# auto_docstring
 class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
+    """
+    class QwenImageEditPlusAutoBlocks
+
+      Auto Modular pipeline for edit (img2img) tasks using QwenImage-Edit Plus.
+      - `image` is required input (can be single image or list of images).
+      - Each image is resized independently based on its own aspect ratio.
+      - VL encoder uses 384x384 target area, VAE encoder uses 1024x1024 target area.
+
+      Components:
+
+          image_resize_processor (`VaeImageProcessor`) [subfolder=]
+
+          text_encoder (`Qwen2_5_VLForConditionalGeneration`) [subfolder=]
+
+          processor (`Qwen2VLProcessor`) [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+          image_processor (`VaeImageProcessor`) [subfolder=]
+
+          vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          transformer (`QwenImageTransformer2DModel`) [subfolder=]
+
+      Configs:
+
+          prompt_template_encode (default: <|im_start|>system
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
+    <|im_start|>user
+    {}<|im_end|>
+    <|im_start|>assistant
+    )
+
+          img_template_encode (default: Picture {}: <|vision_start|><|image_pad|><|vision_end|>)
+
+          prompt_template_encode_start_idx (default: 64)
+
+      Inputs:
+
+          image (`Image`):
+              Input image for img2img, editing, or conditioning.
+
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
+
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+
+          **denoiser_input_fields (`Tensor`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt''.
+
+      Outputs:
+
+          images (`List`):
+              Generated images.
+    """
     model_name = "qwenimage-edit-plus"
     block_classes = EDIT_PLUS_AUTO_BLOCKS.values()
     block_names = EDIT_PLUS_AUTO_BLOCKS.keys()

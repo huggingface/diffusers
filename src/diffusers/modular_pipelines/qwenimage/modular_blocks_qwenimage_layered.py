@@ -55,8 +55,7 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
     """
     class QwenImageLayeredTextEncoderStep
 
-      QwenImage-Layered Text encoder step that encode the text prompt, will generate a prompt based on image if not
-      provided.
+      QwenImage-Layered Text encoder step that encode the text prompt, will generate a prompt based on image if not provided.
 
       Components:
 
@@ -73,23 +72,28 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
       Configs:
 
           image_caption_prompt_en (default: <|im_start|>system
-    You are a helpful assistant.<|im_end|> <|im_start|>user # Image Annotator You are a professional image annotator.
-    Please write an image caption based on the input image:
+    You are a helpful assistant.<|im_end|>
+    <|im_start|>user
+    # Image Annotator
+    You are a professional image annotator. Please write an image caption based on the input image:
     1. Write the caption using natural, descriptive language without structured formats or rich text.
     2. Enrich caption details by including:
      - Object attributes, such as quantity, color, shape, size, material, state, position, actions, and so on
-     - Vision Relations between objects, such as spatial relations, functional relations, possessive relations,
-       attachment relations, action relations, comparative relations, causal relations, and so on
+     - Vision Relations between objects, such as spatial relations, functional relations, possessive relations, attachment relations, action relations, comparative relations, causal relations, and so on
      - Environmental details, such as weather, lighting, colors, textures, atmosphere, and so on
-     - Identify the text clearly visible in the image, without translation or explanation, and highlight it in the
-       caption with quotation marks
+     - Identify the text clearly visible in the image, without translation or explanation, and highlight it in the caption with quotation marks
     3. Maintain authenticity and accuracy:
      - Avoid generalizations
      - Describe all visible information in the image, while do not add information not explicitly shown in the image
-    <|vision_start|><|image_pad|><|vision_end|><|im_end|> <|im_start|>assistant )
+    <|vision_start|><|image_pad|><|vision_end|><|im_end|>
+    <|im_start|>assistant
+    )
 
           image_caption_prompt_cn (default: <|im_start|>system
-    You are a helpful assistant.<|im_end|> <|im_start|>user # 图像标注器 你是一个专业的图像标注器。请基于输入图像，撰写图注:
+    You are a helpful assistant.<|im_end|>
+    <|im_start|>user
+    # 图像标注器
+    你是一个专业的图像标注器。请基于输入图像，撰写图注:
     1. 使用自然、描述性的语言撰写图注，不要使用结构化形式或富文本形式。
     2. 通过加入以下内容，丰富图注细节：
      - 对象的属性：如数量、颜色、形状、大小、位置、材质、状态、动作等
@@ -99,11 +103,16 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
     3. 保持真实性与准确性：
      - 不要使用笼统的描述
      - 描述图像中所有可见的信息，但不要加入没有在图像中出现的内容
-    <|vision_start|><|image_pad|><|vision_end|><|im_end|> <|im_start|>assistant )
+    <|vision_start|><|image_pad|><|vision_end|><|im_end|>
+    <|im_start|>assistant
+    )
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the
-    objects and background:<|im_end|> <|im_start|>user {}<|im_end|> <|im_start|>assistant )
+    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>
+    <|im_start|>user
+    {}<|im_end|>
+    <|im_start|>assistant
+    )
 
           prompt_template_encode_start_idx (default: 34)
 
@@ -390,8 +399,136 @@ LAYERED_AUTO_BLOCKS = InsertableDict(
     ]
 )
 
-
+# auto_docstring
 class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
+    """
+    class QwenImageLayeredAutoBlocks
+
+      Auto Modular pipeline for layered denoising tasks using QwenImage-Layered.
+
+      Components:
+
+          image_resize_processor (`VaeImageProcessor`) [subfolder=]
+
+          text_encoder (`Qwen2_5_VLForConditionalGeneration`) [subfolder=]
+
+          processor (`Qwen2VLProcessor`) [subfolder=]
+
+          tokenizer (`Qwen2Tokenizer`): The tokenizer to use [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+          image_processor (`VaeImageProcessor`) [subfolder=]
+
+          vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+          pachifier (`QwenImageLayeredPachifier`) [subfolder=]
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          transformer (`QwenImageTransformer2DModel`) [subfolder=]
+
+      Configs:
+
+          image_caption_prompt_en (default: <|im_start|>system
+    You are a helpful assistant.<|im_end|>
+    <|im_start|>user
+    # Image Annotator
+    You are a professional image annotator. Please write an image caption based on the input image:
+    1. Write the caption using natural, descriptive language without structured formats or rich text.
+    2. Enrich caption details by including:
+     - Object attributes, such as quantity, color, shape, size, material, state, position, actions, and so on
+     - Vision Relations between objects, such as spatial relations, functional relations, possessive relations, attachment relations, action relations, comparative relations, causal relations, and so on
+     - Environmental details, such as weather, lighting, colors, textures, atmosphere, and so on
+     - Identify the text clearly visible in the image, without translation or explanation, and highlight it in the caption with quotation marks
+    3. Maintain authenticity and accuracy:
+     - Avoid generalizations
+     - Describe all visible information in the image, while do not add information not explicitly shown in the image
+    <|vision_start|><|image_pad|><|vision_end|><|im_end|>
+    <|im_start|>assistant
+    )
+
+          image_caption_prompt_cn (default: <|im_start|>system
+    You are a helpful assistant.<|im_end|>
+    <|im_start|>user
+    # 图像标注器
+    你是一个专业的图像标注器。请基于输入图像，撰写图注:
+    1. 使用自然、描述性的语言撰写图注，不要使用结构化形式或富文本形式。
+    2. 通过加入以下内容，丰富图注细节：
+     - 对象的属性：如数量、颜色、形状、大小、位置、材质、状态、动作等
+     - 对象间的视觉关系：如空间关系、功能关系、动作关系、从属关系、比较关系、因果关系等
+     - 环境细节：例如天气、光照、颜色、纹理、气氛等
+     - 文字内容：识别图像中清晰可见的文字，不做翻译和解释，用引号在图注中强调
+    3. 保持真实性与准确性：
+     - 不要使用笼统的描述
+     - 描述图像中所有可见的信息，但不要加入没有在图像中出现的内容
+    <|vision_start|><|image_pad|><|vision_end|><|im_end|>
+    <|im_start|>assistant
+    )
+
+          prompt_template_encode (default: <|im_start|>system
+    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>
+    <|im_start|>user
+    {}<|im_end|>
+    <|im_start|>assistant
+    )
+
+          prompt_template_encode_start_idx (default: 34)
+
+          tokenizer_max_length (default: 1024)
+
+      Inputs:
+
+          image (`Image`):
+              Input image for img2img, editing, or conditioning.
+
+          resolution (`int`, *optional*, defaults to 640):
+              The target area to resize the image to, can be 1024 or 640
+
+          prompt (`str`, *optional*):
+              The prompt to encode
+
+          use_en_prompt (`bool`, *optional*, defaults to False):
+              Whether to use English prompt template
+
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
+
+          max_sequence_length (`int`, *optional*, defaults to 1024):
+              Maximum sequence length for prompt encoding.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+
+          layers (`int`, *optional*, defaults to 4):
+              Number of layers to extract from the image
+
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+
+          **denoiser_input_fields (`Tensor`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt''.
+
+      Outputs:
+
+          images (`List`):
+              Generated images.
+    """
     model_name = "qwenimage-layered"
     block_classes = LAYERED_AUTO_BLOCKS.values()
     block_names = LAYERED_AUTO_BLOCKS.keys()

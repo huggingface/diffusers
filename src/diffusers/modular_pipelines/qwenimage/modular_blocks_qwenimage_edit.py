@@ -76,10 +76,11 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
-    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
-    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
-    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|> <|im_start|>assistant )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
+    <|im_start|>user
+    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>
+    <|im_start|>assistant
+    )
 
           prompt_template_encode_start_idx (default: 64)
 
@@ -423,8 +424,7 @@ class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
               The initial random noised, can be generated in prepare latent step.
 
           image_latents (`Tensor`):
-              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input
-              step.
+              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input step.
 
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
@@ -733,8 +733,7 @@ class QwenImageEditInpaintDecodeStep(SequentialPipelineBlocks):
     """
     class QwenImageEditInpaintDecodeStep
 
-      Decode step that decodes the latents to images and postprocess the generated image, optionally apply the mask
-      overlay to the original image.
+      Decode step that decodes the latents to images and postprocess the generated image, optionally apply the mask overlay to the original image.
 
       Components:
 
@@ -802,8 +801,109 @@ EDIT_AUTO_BLOCKS = InsertableDict(
     ]
 )
 
-
+# auto_docstring
 class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
+    """
+    class QwenImageEditAutoBlocks
+
+      Auto Modular pipeline for edit (img2img) and edit inpaint tasks using QwenImage-Edit.
+      - for edit (img2img) generation, you need to provide `image`
+      - for edit inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop`
+
+      Components:
+
+          image_resize_processor (`VaeImageProcessor`) [subfolder=]
+
+          text_encoder (`Qwen2_5_VLForConditionalGeneration`) [subfolder=]
+
+          processor (`Qwen2VLProcessor`) [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+          image_mask_processor (`InpaintProcessor`) [subfolder=]
+
+          vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+          image_processor (`VaeImageProcessor`) [subfolder=]
+
+          pachifier (`QwenImagePachifier`) [subfolder=]
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          transformer (`QwenImageTransformer2DModel`) [subfolder=]
+
+      Configs:
+
+          prompt_template_encode (default: <|im_start|>system
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
+    <|im_start|>user
+    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>
+    <|im_start|>assistant
+    )
+
+          prompt_template_encode_start_idx (default: 64)
+
+      Inputs:
+
+          image (`Image`):
+              Input image for img2img, editing, or conditioning.
+
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
+
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
+
+          mask_image (`Image`, *optional*):
+              Mask image for inpainting.
+
+          padding_mask_crop (`int`, *optional*):
+              Padding for mask cropping in inpainting.
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          height (`int`):
+              The height in pixels of the generated image.
+
+          width (`int`):
+              The width in pixels of the generated image.
+
+          image_latents (`None`):
+
+          processed_mask_image (`None`, *optional*):
+
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
+
+          num_inference_steps (`int`):
+              The number of denoising steps.
+
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+
+          strength (`float`, *optional*, defaults to 0.9):
+              Strength for img2img/inpainting.
+
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+
+          **denoiser_input_fields (`Tensor`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt''.
+
+          mask_overlay_kwargs (`None`, *optional*):
+
+      Outputs:
+
+          images (`List`):
+              Generated images.
+    """
     model_name = "qwenimage-edit"
     block_classes = EDIT_AUTO_BLOCKS.values()
     block_names = EDIT_AUTO_BLOCKS.keys()
