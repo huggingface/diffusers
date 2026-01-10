@@ -260,7 +260,7 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             text = self.text_processor.apply_chat_template(message, tokenize=False, add_generation_prompt=True)
             all_text.append(text)
 
-        inputs = self.text_processor(text=all_text, padding=True, return_tensors="pt").to(device)
+        inputs = self.text_processor(text=all_text, padding=True, return_tensors="pt").to(self.text_encoder.device)
 
         generated_ids = self.text_encoder.generate(**inputs, max_new_tokens=self.tokenizer_max_length)
         generated_ids.to(device)
