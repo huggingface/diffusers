@@ -104,6 +104,8 @@ To use your own dataset, there are 2 ways:
 - you can either provide your own folder as `--train_data_dir`
 - or you can upload your dataset to the hub (possibly as a private repo, if you prefer so), and simply pass the `--dataset_name` argument.
 
+If your dataset contains 16 or 32-bit channels (for example, medical TIFFs), add the `--preserve_input_precision` flag so the preprocessing keeps the original precision while still training a 3-channel model. Precision still depends on the decoder: Pillow keeps 16-bit grayscale and float inputs, but many 16-bit RGB files are decoded as 8-bit RGB, and the flag cannot recover precision lost at load time.
+
 Below, we explain both in more detail.
 
 #### Provide the dataset as a folder

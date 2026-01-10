@@ -22,7 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DecoderTiny, EncoderTiny
+from .vae import AutoencoderMixin, DecoderOutput, DecoderTiny, EncoderTiny
 
 
 @dataclass
@@ -38,7 +38,7 @@ class AutoencoderTinyOutput(BaseOutput):
     latents: torch.Tensor
 
 
-class AutoencoderTiny(ModelMixin, ConfigMixin):
+class AutoencoderTiny(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A tiny distilled VAE model for encoding images into latents and decoding latent representations into images.
 
@@ -161,35 +161,6 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
     def unscale_latents(self, x: torch.Tensor) -> torch.Tensor:
         """[0, 1] -> raw latents"""
         return x.sub(self.latent_shift).mul(2 * self.latent_magnitude)
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
-
-    def enable_tiling(self, use_tiling: bool = True) -> None:
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.use_tiling = use_tiling
-
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.enable_tiling(False)
 
     def _tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
