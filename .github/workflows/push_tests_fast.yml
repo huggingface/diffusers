@@ -54,7 +54,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 2
 
@@ -70,7 +70,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
+          -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
@@ -88,7 +88,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports

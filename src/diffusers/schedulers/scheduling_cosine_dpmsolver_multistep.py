@@ -53,7 +53,7 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`str`, defaults to `v_prediction`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
+            Video](https://huggingface.co/papers/2210.02303) paper).
         solver_type (`str`, defaults to `midpoint`):
             Solver type for the second-order solver; can be `midpoint` or `heun`. The solver type slightly affects the
             sample quality, especially for a small number of steps. It is recommended to use `midpoint` solvers.
@@ -137,13 +137,26 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_inputs
-    def precondition_inputs(self, sample, sigma):
+    def precondition_inputs(self, sample: torch.Tensor, sigma: Union[float, torch.Tensor]) -> torch.Tensor:
+        """
+        Precondition the input sample by scaling it according to the EDM formulation.
+
+        Args:
+            sample (`torch.Tensor`):
+                The input sample tensor to precondition.
+            sigma (`float` or `torch.Tensor`):
+                The current sigma (noise level) value.
+
+        Returns:
+            `torch.Tensor`:
+                The scaled input sample.
+        """
         c_in = self._get_conditioning_c_in(sigma)
         scaled_sample = sample * c_in
         return scaled_sample
@@ -155,7 +168,27 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         return sigma.atan() / math.pi * 2
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_outputs
-    def precondition_outputs(self, sample, model_output, sigma):
+    def precondition_outputs(
+        self,
+        sample: torch.Tensor,
+        model_output: torch.Tensor,
+        sigma: Union[float, torch.Tensor],
+    ) -> torch.Tensor:
+        """
+        Precondition the model outputs according to the EDM formulation.
+
+        Args:
+            sample (`torch.Tensor`):
+                The input sample tensor.
+            model_output (`torch.Tensor`):
+                The direct output from the learned diffusion model.
+            sigma (`float` or `torch.Tensor`):
+                The current sigma (noise level) value.
+
+        Returns:
+            `torch.Tensor`:
+                The denoised sample computed by combining the skip connection and output scaling.
+        """
         sigma_data = self.config.sigma_data
         c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
 
@@ -173,13 +206,13 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.scale_model_input
     def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
         """
-        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
-        current timestep. Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
+        Scale the denoising model input to match the Euler algorithm. Ensures interchangeability with schedulers that
+        need to scale the denoising model input depending on the current timestep.
 
         Args:
             sample (`torch.Tensor`):
-                The input sample.
-            timestep (`int`, *optional*):
+                The input sample tensor.
+            timestep (`float` or `torch.Tensor`):
                 The current timestep in the diffusion chain.
 
         Returns:
@@ -242,8 +275,27 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.noise_sampler = None
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._compute_karras_sigmas
-    def _compute_karras_sigmas(self, ramp, sigma_min=None, sigma_max=None) -> torch.Tensor:
-        """Constructs the noise schedule of Karras et al. (2022)."""
+    def _compute_karras_sigmas(
+        self,
+        ramp: torch.Tensor,
+        sigma_min: Optional[float] = None,
+        sigma_max: Optional[float] = None,
+    ) -> torch.Tensor:
+        """
+        Construct the noise schedule of [Karras et al. (2022)](https://huggingface.co/papers/2206.00364).
+
+        Args:
+            ramp (`torch.Tensor`):
+                A tensor of values in [0, 1] representing the interpolation positions.
+            sigma_min (`float`, *optional*):
+                Minimum sigma value. If `None`, uses `self.config.sigma_min`.
+            sigma_max (`float`, *optional*):
+                Maximum sigma value. If `None`, uses `self.config.sigma_max`.
+
+        Returns:
+            `torch.Tensor`:
+                The computed Karras sigma schedule.
+        """
         sigma_min = sigma_min or self.config.sigma_min
         sigma_max = sigma_max or self.config.sigma_max
 
@@ -254,10 +306,27 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         return sigmas
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._compute_exponential_sigmas
-    def _compute_exponential_sigmas(self, ramp, sigma_min=None, sigma_max=None) -> torch.Tensor:
-        """Implementation closely follows k-diffusion.
-
+    def _compute_exponential_sigmas(
+        self,
+        ramp: torch.Tensor,
+        sigma_min: Optional[float] = None,
+        sigma_max: Optional[float] = None,
+    ) -> torch.Tensor:
+        """
+        Compute the exponential sigma schedule. Implementation closely follows k-diffusion:
         https://github.com/crowsonkb/k-diffusion/blob/6ab5146d4a5ef63901326489f31f1d8e7dd36b48/k_diffusion/sampling.py#L26
+
+        Args:
+            ramp (`torch.Tensor`):
+                A tensor of values representing the interpolation positions.
+            sigma_min (`float`, *optional*):
+                Minimum sigma value. If `None`, uses `self.config.sigma_min`.
+            sigma_max (`float`, *optional*):
+                Maximum sigma value. If `None`, uses `self.config.sigma_max`.
+
+        Returns:
+            `torch.Tensor`:
+                The computed exponential sigma schedule.
         """
         sigma_min = sigma_min or self.config.sigma_min
         sigma_max = sigma_max or self.config.sigma_max
@@ -266,6 +335,19 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
+        """
+        Convert sigma values to corresponding timestep values through interpolation.
+
+        Args:
+            sigma (`np.ndarray`):
+                The sigma value(s) to convert to timestep(s).
+            log_sigmas (`np.ndarray`):
+                The logarithm of the sigma schedule used for interpolation.
+
+        Returns:
+            `np.ndarray`:
+                The interpolated timestep value(s) corresponding to the input sigma(s).
+        """
         # get log sigma
         log_sigma = np.log(np.maximum(sigma, 1e-10))
 
@@ -341,7 +423,10 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             `torch.Tensor`:
                 The sample tensor at the previous timestep.
         """
-        sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
+        sigma_t, sigma_s = (
+            self.sigmas[self.step_index + 1],
+            self.sigmas[self.step_index],
+        )
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s, sigma_s = self._sigma_to_alpha_sigma_t(sigma_s)
         lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
@@ -416,7 +501,22 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         return x_t
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self, timestep: Union[int, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+    ) -> int:
+        """
+        Find the index for a given timestep in the schedule.
+
+        Args:
+            timestep (`int` or `torch.Tensor`):
+                The timestep for which to find the index.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule.
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -439,6 +539,10 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def _init_step_index(self, timestep):
         """
         Initialize the step_index counter for the scheduler.
+
+        Args:
+            timestep (`int` or `torch.Tensor`):
+                The current timestep for which to initialize the step index.
         """
 
         if self.begin_index is None:
@@ -508,7 +612,10 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                     [g.initial_seed() for g in generator] if isinstance(generator, list) else generator.initial_seed()
                 )
             self.noise_sampler = BrownianTreeNoiseSampler(
-                model_output, sigma_min=self.config.sigma_min, sigma_max=self.config.sigma_max, seed=seed
+                model_output,
+                sigma_min=self.config.sigma_min,
+                sigma_max=self.config.sigma_max,
+                seed=seed,
             )
         noise = self.noise_sampler(self.sigmas[self.step_index], self.sigmas[self.step_index + 1]).to(
             model_output.device
@@ -537,6 +644,21 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.Tensor,
     ) -> torch.Tensor:
+        """
+        Add noise to the original samples according to the noise schedule at the specified timesteps.
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to which noise will be added.
+            noise (`torch.Tensor`):
+                The noise tensor to add to the original samples.
+            timesteps (`torch.Tensor`):
+                The timesteps at which to add noise, determining the noise level from the schedule.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples with added noise scaled according to the timestep schedule.
+        """
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
@@ -565,7 +687,18 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         return noisy_samples
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._get_conditioning_c_in
-    def _get_conditioning_c_in(self, sigma):
+    def _get_conditioning_c_in(self, sigma: Union[float, torch.Tensor]) -> Union[float, torch.Tensor]:
+        """
+        Compute the input conditioning factor for the EDM formulation.
+
+        Args:
+            sigma (`float` or `torch.Tensor`):
+                The current sigma (noise level) value.
+
+        Returns:
+            `float` or `torch.Tensor`:
+                The input conditioning factor `c_in`.
+        """
         c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
         return c_in
 

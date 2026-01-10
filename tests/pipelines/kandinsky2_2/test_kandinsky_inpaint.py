@@ -37,6 +37,7 @@ from ...testing_utils import (
     load_image,
     load_numpy,
     numpy_cosine_similarity_distance,
+    require_accelerator,
     require_torch_accelerator,
     slow,
     torch_device,
@@ -254,6 +255,7 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=5e-4)
 
+    @require_accelerator
     def test_sequential_cpu_offload_forward_pass(self):
         super().test_sequential_cpu_offload_forward_pass(expected_max_diff=5e-4)
 
