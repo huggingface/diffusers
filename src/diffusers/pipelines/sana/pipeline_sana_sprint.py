@@ -1,4 +1,4 @@
-# Copyright 2025 PixArt-Sigma Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2025 SANA-Sprint Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -790,10 +790,14 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         )
 
         # 4. Prepare timesteps
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
-            device,
+            timestep_device,
             timesteps,
             sigmas=None,
             max_timesteps=max_timesteps,

@@ -95,7 +95,7 @@ class FluxProcessImagesInputStep(ModularPipelineBlocks):
             ComponentSpec(
                 "image_processor",
                 VaeImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16}),
+                config=FrozenDict({"vae_scale_factor": 16, "vae_latent_channels": 16}),
                 default_creation_method="from_config",
             ),
         ]
@@ -143,10 +143,6 @@ class FluxProcessImagesInputStep(ModularPipelineBlocks):
 class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
     model_name = "flux-kontext"
 
-    def __init__(self, _auto_resize=True):
-        self._auto_resize = _auto_resize
-        super().__init__()
-
     @property
     def description(self) -> str:
         return (
@@ -167,7 +163,7 @@ class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> List[InputParam]:
-        return [InputParam("image")]
+        return [InputParam("image"), InputParam("_auto_resize", type_hint=bool, default=True)]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
@@ -195,7 +191,8 @@ class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
             img = images[0]
             image_height, image_width = components.image_processor.get_default_height_width(img)
             aspect_ratio = image_width / image_height
-            if self._auto_resize:
+            _auto_resize = block_state._auto_resize
+            if _auto_resize:
                 # Kontext is trained on specific resolutions, using one of them is recommended
                 _, image_width, image_height = min(
                     (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_KONTEXT_RESOLUTIONS

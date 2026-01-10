@@ -21,7 +21,7 @@ from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_torch_version, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
 
 
@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableCascadeDecoderPipeline(DiffusionPipeline):
+class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Pipeline for generating images from the Stable Cascade model.
 
@@ -78,6 +78,8 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             height=24 and width=24, the VQ latent shape needs to be height=int(24*10.67)=256 and
             width=int(24*10.67)=256 in order to match the training conditions.
     """
+
+    _last_supported_version = "0.35.2"
 
     unet_name = "decoder"
     text_encoder_name = "text_encoder"

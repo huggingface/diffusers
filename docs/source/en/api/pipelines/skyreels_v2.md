@@ -37,7 +37,8 @@ The following SkyReels-V2 models are supported in Diffusers:
 - [SkyReels-V2 I2V 1.3B - 540P](https://huggingface.co/Skywork/SkyReels-V2-I2V-1.3B-540P-Diffusers)
 - [SkyReels-V2 I2V 14B - 540P](https://huggingface.co/Skywork/SkyReels-V2-I2V-14B-540P-Diffusers)
 - [SkyReels-V2 I2V 14B - 720P](https://huggingface.co/Skywork/SkyReels-V2-I2V-14B-720P-Diffusers)
-- [SkyReels-V2 FLF2V 1.3B - 540P](https://huggingface.co/Skywork/SkyReels-V2-FLF2V-1.3B-540P-Diffusers)
+
+This model was contributed by [M. Tolga Cangöz](https://github.com/tolgacangoz).
 
 > [!TIP]
 > Click on the SkyReels-V2 models in the right sidebar for more examples of video generation.

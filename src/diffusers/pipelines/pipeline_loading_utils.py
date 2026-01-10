@@ -33,6 +33,7 @@ from ..utils import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    _maybe_remap_transformers_class,
     deprecate,
     get_class_from_dynamic_module,
     is_accelerate_available,
@@ -75,6 +76,7 @@ LOADABLE_CLASSES = {
         "SchedulerMixin": ["save_pretrained", "from_pretrained"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
         "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
+        "BaseGuidance": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
@@ -356,6 +358,11 @@ def maybe_raise_or_warn(
     """Simple helper method to raise or warn in case incorrect module has been passed"""
     if not is_pipeline_module:
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
+
         class_obj = getattr(library, class_name)
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
@@ -390,6 +397,11 @@ def simple_get_class_obj(library_name, class_name):
         class_obj = getattr(pipeline_module, class_name)
     else:
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
+
         class_obj = getattr(library, class_name)
 
     return class_obj
@@ -415,6 +427,10 @@ def get_class_obj_and_candidates(
     else:
         # else we just import it from the library.
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
 
         class_obj = getattr(library, class_name)
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
@@ -785,12 +801,6 @@ def load_sub_model(
     # add kwargs to loading method
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     loading_kwargs = {}
-    if issubclass(class_obj, torch.nn.Module):
-        loading_kwargs["torch_dtype"] = torch_dtype
-    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
-        loading_kwargs["provider"] = provider
-        loading_kwargs["sess_options"] = sess_options
-        loading_kwargs["provider_options"] = provider_options
 
     is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
@@ -804,6 +814,17 @@ def load_sub_model(
         and issubclass(class_obj, PreTrainedModel)
         and transformers_version >= version.parse("4.20.0")
     )
+
+    # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
+    if issubclass(class_obj, torch.nn.Module):
+        if is_transformers_model and transformers_version >= version.parse("4.56.0"):
+            loading_kwargs["dtype"] = torch_dtype
+        else:
+            loading_kwargs["torch_dtype"] = torch_dtype
+    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
+        loading_kwargs["provider"] = provider
+        loading_kwargs["sess_options"] = sess_options
+        loading_kwargs["provider_options"] = provider_options
 
     # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
     # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
@@ -866,6 +887,9 @@ def load_sub_model(
         # remove hooks
         remove_hook_from_module(loaded_sub_model, recurse=True)
         needs_offloading_to_cpu = device_map[""] == "cpu"
+        skip_keys = None
+        if hasattr(loaded_sub_model, "_skip_keys") and loaded_sub_model._skip_keys is not None:
+            skip_keys = loaded_sub_model._skip_keys
 
         if needs_offloading_to_cpu:
             dispatch_model(
@@ -874,9 +898,10 @@ def load_sub_model(
                 device_map=device_map,
                 force_hooks=True,
                 main_device=0,
+                skip_keys=skip_keys,
             )
         else:
-            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
+            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True, skip_keys=skip_keys)
 
     return loaded_sub_model
 

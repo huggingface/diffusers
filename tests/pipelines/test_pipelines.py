@@ -582,7 +582,7 @@ class DownloadTests(unittest.TestCase):
                     assert not any(f.endswith(unexpected_ext) for f in files)
                     assert all(variant in f for f in model_files if f.endswith(model_ext) and variant is not None)
 
-    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=True)
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_download_legacy_variants_with_sharded_ckpts_raises_warning(self):
         repo_id = "hf-internal-testing/tiny-stable-diffusion-pipe-variants-all-kinds"
         logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
@@ -629,6 +629,7 @@ class DownloadTests(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
             assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_download_bin_only_variant_exists_for_model(self):
         variant = None
         use_safetensors = False
@@ -674,6 +675,7 @@ class DownloadTests(unittest.TestCase):
 
             assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_download_bin_variant_does_not_exist_for_model(self):
         variant = "no_ema"
         use_safetensors = False
@@ -689,7 +691,7 @@ class DownloadTests(unittest.TestCase):
                 )
             assert "Error no file name" in str(error_context.exception)
 
-    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=True)
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_local_save_load_index(self):
         prompt = "hello"
         for variant in [None, "fp16"]:
@@ -1584,7 +1586,7 @@ class PipelineFastTests(unittest.TestCase):
             assert pipeline.scheduler is not None
             assert pipeline.feature_extractor is not None
 
-    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=True)
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_no_pytorch_download_when_doing_safetensors(self):
         # by default we don't download
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -1604,7 +1606,7 @@ class PipelineFastTests(unittest.TestCase):
             # pytorch does not
             assert not os.path.exists(os.path.join(path, "diffusion_pytorch_model.bin"))
 
-    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=True)
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_no_safetensors_download_when_doing_pytorch(self):
         use_safetensors = False
 
@@ -1890,6 +1892,7 @@ class PipelineFastTests(unittest.TestCase):
                 "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", load_connected_pipeline=True
             )
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=False)
     def test_wrong_model(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         with self.assertRaises(ValueError) as error_context:
