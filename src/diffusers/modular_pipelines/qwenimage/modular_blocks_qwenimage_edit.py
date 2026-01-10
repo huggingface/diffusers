@@ -55,7 +55,8 @@ logger = logging.get_logger(__name__)
 # 1. TEXT ENCODER
 # ====================
 
-#auto_docstring
+
+# auto_docstring
 class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
     """
     class QwenImageEditVLEncoderStep
@@ -75,11 +76,10 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
-    <|im_start|>user
-    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>
-    <|im_start|>assistant
-    )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
+    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
+    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
+    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|> <|im_start|>assistant )
 
           prompt_template_encode_start_idx (default: 64)
 
@@ -130,7 +130,7 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
 
 
 # Edit VAE encoder
-#auto_docstring
+# auto_docstring
 class QwenImageEditVaeEncoderStep(SequentialPipelineBlocks):
     """
     class QwenImageEditVaeEncoderStep
@@ -163,6 +163,7 @@ class QwenImageEditVaeEncoderStep(SequentialPipelineBlocks):
           image_latents (`Tensor`):
               The latents representing the reference image(s). Single tensor or list depending on input.
     """
+
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditResizeStep(),
@@ -177,7 +178,7 @@ class QwenImageEditVaeEncoderStep(SequentialPipelineBlocks):
 
 
 # Edit Inpaint VAE encoder
-#auto_docstring
+# auto_docstring
 class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
     """
     class QwenImageEditInpaintVaeEncoderStep
@@ -224,6 +225,7 @@ class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
           image_latents (`Tensor`):
               The latents representing the reference image(s). Single tensor or list depending on input.
     """
+
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditResizeStep(),
@@ -265,7 +267,7 @@ class QwenImageEditAutoVaeEncoderStep(AutoPipelineBlocks):
 
 
 # assemble input steps
-#auto_docstring
+# auto_docstring
 class QwenImageEditInputStep(SequentialPipelineBlocks):
     """
     class QwenImageEditInputStep
@@ -313,6 +315,7 @@ class QwenImageEditInputStep(SequentialPipelineBlocks):
           image_width (`int`):
               The image width calculated from the image latents dimension
     """
+
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageTextInputsStep(),
@@ -329,7 +332,7 @@ class QwenImageEditInputStep(SequentialPipelineBlocks):
         )
 
 
-#auto_docstring
+# auto_docstring
 class QwenImageEditInpaintInputStep(SequentialPipelineBlocks):
     """
     class QwenImageEditInpaintInputStep
@@ -379,6 +382,7 @@ class QwenImageEditInpaintInputStep(SequentialPipelineBlocks):
           image_width (`int`):
               The image width calculated from the image latents dimension
     """
+
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageTextInputsStep(),
@@ -398,7 +402,7 @@ class QwenImageEditInpaintInputStep(SequentialPipelineBlocks):
 
 
 # assemble prepare latents steps
-#auto_docstring
+# auto_docstring
 class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
     """
     class QwenImageEditInpaintPrepareLatentsStep
@@ -419,7 +423,8 @@ class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
               The initial random noised, can be generated in prepare latent step.
 
           image_latents (`Tensor`):
-              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input step.
+              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input
+              step.
 
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
@@ -441,6 +446,7 @@ class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
           mask (`Tensor`):
               The mask to use for the inpainting process.
     """
+
     model_name = "qwenimage-edit"
     block_classes = [QwenImagePrepareLatentsWithStrengthStep(), QwenImageCreateMaskLatentsStep()]
     block_names = ["add_noise_to_latents", "create_mask_latents"]
@@ -455,7 +461,7 @@ class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
 
 
 # Qwen Image Edit (image2image) core denoise step
-#auto_docstring
+# auto_docstring
 class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
     """
     class QwenImageEditCoreDenoiseStep
@@ -547,7 +553,7 @@ class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
 
 
 # Qwen Image Edit (inpainting) core denoise step
-#auto_docstring
+# auto_docstring
 class QwenImageEditInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     """
     class QwenImageEditInpaintCoreDenoiseStep
@@ -671,12 +677,13 @@ class QwenImageEditAutoCoreDenoiseStep(ConditionalPipelineBlocks):
             " - `QwenImageEditCoreDenoiseStep` when `image_latents` is provided\n"
             "Supports edit (img2img) and edit inpainting tasks for QwenImage-Edit."
         )
-    
+
     @property
     def outputs(self):
         return [
             OutputParam.latents(),
         ]
+
 
 # ====================
 # 4. DECODE
@@ -684,7 +691,7 @@ class QwenImageEditAutoCoreDenoiseStep(ConditionalPipelineBlocks):
 
 
 # Decode step (standard)
-#auto_docstring
+# auto_docstring
 class QwenImageEditDecodeStep(SequentialPipelineBlocks):
     """
     class QwenImageEditDecodeStep
@@ -710,6 +717,7 @@ class QwenImageEditDecodeStep(SequentialPipelineBlocks):
           images (`List`):
               Generated images.
     """
+
     model_name = "qwenimage-edit"
     block_classes = [QwenImageDecoderStep(), QwenImageProcessImagesOutputStep()]
     block_names = ["decode", "postprocess"]
@@ -720,12 +728,13 @@ class QwenImageEditDecodeStep(SequentialPipelineBlocks):
 
 
 # Inpaint decode step
-#auto_docstring
+# auto_docstring
 class QwenImageEditInpaintDecodeStep(SequentialPipelineBlocks):
     """
     class QwenImageEditInpaintDecodeStep
 
-      Decode step that decodes the latents to images and postprocess the generated image, optionally apply the mask overlay to the original image.
+      Decode step that decodes the latents to images and postprocess the generated image, optionally apply the mask
+      overlay to the original image.
 
       Components:
 
@@ -748,6 +757,7 @@ class QwenImageEditInpaintDecodeStep(SequentialPipelineBlocks):
           images (`List`):
               Generated images.
     """
+
     model_name = "qwenimage-edit"
     block_classes = [QwenImageDecoderStep(), QwenImageInpaintProcessImagesOutputStep()]
     block_names = ["decode", "postprocess"]

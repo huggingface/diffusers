@@ -49,7 +49,7 @@ logger = logging.get_logger(__name__)
 # ====================
 
 
-#auto_docstring
+# auto_docstring
 class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
     """
     class QwenImageEditPlusVLEncoderStep
@@ -69,11 +69,10 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
-    <|im_start|>user
-    {}<|im_end|>
-    <|im_start|>assistant
-    )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
+    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
+    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
+    {}<|im_end|> <|im_start|>assistant )
 
           img_template_encode (default: Picture {}: <|vision_start|><|image_pad|><|vision_end|>)
 
@@ -125,13 +124,13 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
 # ====================
 
 
-#auto_docstring
+# auto_docstring
 class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
     """
     class QwenImageEditPlusVaeEncoderStep
 
-      VAE encoder step that encodes image inputs into latent representations.
-      Each image is resized independently based on its own aspect ratio to 1024x1024 target area.
+      VAE encoder step that encodes image inputs into latent representations. Each image is resized independently based
+      on its own aspect ratio to 1024x1024 target area.
 
       Components:
 
@@ -182,7 +181,7 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
 
 
 # assemble input steps
-#auto_docstring
+# auto_docstring
 class QwenImageEditPlusInputStep(SequentialPipelineBlocks):
     """
     class QwenImageEditPlusInputStep
@@ -232,6 +231,7 @@ class QwenImageEditPlusInputStep(SequentialPipelineBlocks):
           image_width (`List`):
               The image widths calculated from the image latents dimension
     """
+
     model_name = "qwenimage-edit-plus"
     block_classes = [
         QwenImageTextInputsStep(),
@@ -251,7 +251,7 @@ class QwenImageEditPlusInputStep(SequentialPipelineBlocks):
 
 
 # Qwen Image Edit Plus (image2image) core denoise step
-#auto_docstring
+# auto_docstring
 class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
     """
     class QwenImageEditPlusCoreDenoiseStep
@@ -312,6 +312,7 @@ class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
           latents (`Tensor`):
               Denoised latents.
     """
+
     model_name = "qwenimage-edit-plus"
     block_classes = [
         QwenImageEditPlusInputStep(),
@@ -346,7 +347,7 @@ class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
 # ====================
 
 
-#auto_docstring
+# auto_docstring
 class QwenImageEditPlusDecodeStep(SequentialPipelineBlocks):
     """
     class QwenImageEditPlusDecodeStep
@@ -372,6 +373,7 @@ class QwenImageEditPlusDecodeStep(SequentialPipelineBlocks):
           images (`List`):
               Generated images.
     """
+
     model_name = "qwenimage-edit-plus"
     block_classes = [QwenImageDecoderStep(), QwenImageProcessImagesOutputStep()]
     block_names = ["decode", "postprocess"]
