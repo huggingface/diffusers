@@ -49,9 +49,111 @@ logger = logging.get_logger(__name__)
 # 1. TEXT ENCODER
 # ====================
 
-
+#auto_docstring
 class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
-    """Text encoder that takes text prompt, will generate a prompt based on image if not provided."""
+    """
+    class QwenImageLayeredTextEncoderStep
+
+      QwenImage-Layered Text encoder step that encode the text prompt, will generate a prompt based on image if not provided.
+
+      Components:
+
+          image_resize_processor (`VaeImageProcessor`) [subfolder=]
+
+          text_encoder (`Qwen2_5_VLForConditionalGeneration`) [subfolder=]
+
+          processor (`Qwen2VLProcessor`) [subfolder=]
+
+          tokenizer (`Qwen2Tokenizer`): The tokenizer to use [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+      Configs:
+
+          image_caption_prompt_en (default: <|im_start|>system
+    You are a helpful assistant.<|im_end|>
+    <|im_start|>user
+    # Image Annotator
+    You are a professional image annotator. Please write an image caption based on the input image:
+    1. Write the caption using natural, descriptive language without structured formats or rich text.
+    2. Enrich caption details by including:
+     - Object attributes, such as quantity, color, shape, size, material, state, position, actions, and so on
+     - Vision Relations between objects, such as spatial relations, functional relations, possessive relations, attachment relations, action relations, comparative relations, causal relations, and so on
+     - Environmental details, such as weather, lighting, colors, textures, atmosphere, and so on
+     - Identify the text clearly visible in the image, without translation or explanation, and highlight it in the caption with quotation marks
+    3. Maintain authenticity and accuracy:
+     - Avoid generalizations
+     - Describe all visible information in the image, while do not add information not explicitly shown in the image
+    <|vision_start|><|image_pad|><|vision_end|><|im_end|>
+    <|im_start|>assistant
+    )
+
+          image_caption_prompt_cn (default: <|im_start|>system
+    You are a helpful assistant.<|im_end|>
+    <|im_start|>user
+    # 图像标注器
+    你是一个专业的图像标注器。请基于输入图像，撰写图注:
+    1. 使用自然、描述性的语言撰写图注，不要使用结构化形式或富文本形式。
+    2. 通过加入以下内容，丰富图注细节：
+     - 对象的属性：如数量、颜色、形状、大小、位置、材质、状态、动作等
+     - 对象间的视觉关系：如空间关系、功能关系、动作关系、从属关系、比较关系、因果关系等
+     - 环境细节：例如天气、光照、颜色、纹理、气氛等
+     - 文字内容：识别图像中清晰可见的文字，不做翻译和解释，用引号在图注中强调
+    3. 保持真实性与准确性：
+     - 不要使用笼统的描述
+     - 描述图像中所有可见的信息，但不要加入没有在图像中出现的内容
+    <|vision_start|><|image_pad|><|vision_end|><|im_end|>
+    <|im_start|>assistant
+    )
+
+          prompt_template_encode (default: <|im_start|>system
+    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>
+    <|im_start|>user
+    {}<|im_end|>
+    <|im_start|>assistant
+    )
+
+          prompt_template_encode_start_idx (default: 34)
+
+          tokenizer_max_length (default: 1024)
+
+      Inputs:
+
+          image (`Image`):
+              Input image for img2img, editing, or conditioning.
+
+          resolution (`int`, *optional*, defaults to 640):
+              The target area to resize the image to, can be 1024 or 640
+
+          prompt (`str`, *optional*):
+              The prompt to encode
+
+          use_en_prompt (`bool`, *optional*, defaults to False):
+              Whether to use English prompt template
+
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
+
+          max_sequence_length (`int`, *optional*, defaults to 1024):
+              Maximum sequence length for prompt encoding.
+
+      Outputs:
+
+          resized_image (`List`):
+              The resized images
+
+          prompt_embeds (`Tensor`):
+              The prompt embeddings
+
+          prompt_embeds_mask (`Tensor`):
+              The encoder attention mask
+
+          negative_prompt_embeds (`Tensor`):
+              The negative prompt embeddings
+
+          negative_prompt_embeds_mask (`Tensor`):
+              The negative prompt embeddings mask
+    """
 
     model_name = "qwenimage-layered"
     block_classes = [
@@ -72,7 +174,42 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
 
 
 # Edit VAE encoder
+#auto_docstring
 class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
+    """
+    class QwenImageLayeredVaeEncoderStep
+
+      Vae encoder step that encode the image inputs into their latent representations.
+
+      Components:
+
+          image_resize_processor (`VaeImageProcessor`) [subfolder=]
+
+          image_processor (`VaeImageProcessor`) [subfolder=]
+
+          vae (`AutoencoderKLQwenImage`) [subfolder=]
+
+      Inputs:
+
+          image (`Image`):
+              Input image for img2img, editing, or conditioning.
+
+          resolution (`int`, *optional*, defaults to 640):
+              The target area to resize the image to, can be 1024 or 640
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+      Outputs:
+
+          resized_image (`List`):
+              The resized images
+
+          processed_image (`None`):
+
+          image_latents (`Tensor`):
+              The latents representing the reference image(s). Single tensor or list depending on input.
+    """
     model_name = "qwenimage-layered"
     block_classes = [
         QwenImageLayeredResizeStep(),
@@ -93,7 +230,54 @@ class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
 
 
 # assemble input steps
+#auto_docstring
 class QwenImageLayeredInputStep(SequentialPipelineBlocks):
+    """
+    class QwenImageLayeredInputStep
+
+      Input step that prepares the inputs for the layered denoising step. It:
+       - make sure the text embeddings have consistent batch size as well as the additional inputs.
+       - update height/width based `image_latents`, patchify `image_latents`.
+
+      Components:
+
+          pachifier (`QwenImageLayeredPachifier`) [subfolder=]
+
+      Inputs:
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          prompt_embeds (`None`):
+
+          prompt_embeds_mask (`None`):
+
+          negative_prompt_embeds (`None`, *optional*):
+
+          negative_prompt_embeds_mask (`None`, *optional*):
+
+          image_latents (`None`, *optional*):
+
+      Outputs:
+
+          batch_size (`int`):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt
+
+          dtype (`dtype`):
+              Data type of model tensor inputs (determined by `prompt_embeds`)
+
+          image_height (`int`):
+              The image height calculated from the image latents dimension
+
+          image_width (`int`):
+              The image width calculated from the image latents dimension
+
+          height (`int`):
+              The height of the image output
+
+          width (`int`):
+              The width of the image output
+    """
     model_name = "qwenimage-layered"
     block_classes = [
         QwenImageTextInputsStep(),
@@ -111,7 +295,64 @@ class QwenImageLayeredInputStep(SequentialPipelineBlocks):
 
 
 # Qwen Image Layered (image2image) core denoise step
+#auto_docstring
 class QwenImageLayeredCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    class QwenImageLayeredCoreDenoiseStep
+
+      Core denoising workflow for QwenImage-Layered img2img task.
+
+      Components:
+
+          pachifier (`QwenImageLayeredPachifier`) [subfolder=]
+
+          scheduler (`FlowMatchEulerDiscreteScheduler`) [subfolder=]
+
+          guider (`ClassifierFreeGuidance`) [subfolder=]
+
+          transformer (`QwenImageTransformer2DModel`) [subfolder=]
+
+      Inputs:
+
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+
+          prompt_embeds (`None`):
+
+          prompt_embeds_mask (`None`):
+
+          negative_prompt_embeds (`None`, *optional*):
+
+          negative_prompt_embeds_mask (`None`, *optional*):
+
+          image_latents (`None`, *optional*):
+
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+
+          layers (`int`, *optional*, defaults to 4):
+              Number of layers to extract from the image
+
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+
+          **denoiser_input_fields (`Tensor`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+
+      Outputs:
+
+          latents (`Tensor`):
+              Denoised latents.
+    """
     model_name = "qwenimage-layered"
     block_classes = [
         QwenImageLayeredInputStep(),
