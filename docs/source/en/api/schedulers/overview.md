@@ -55,9 +55,15 @@ Many schedulers are implemented from the [k-diffusion](https://github.com/crowso
 | beta                     | init with `timestep_spacing="linspace"`, `use_beta_sigmas=True`            |
 
 ## Token diffusion schedulers
-- [TokenDiffusionScheduler](token_diffusion)
-- [BlockTokenDiffusionScheduler](block_token_diffusion)
-- [HybridTokenDiffusionScheduler](hybrid_token_diffusion)
+
+These schedulers operate over categorical token IDs instead of continuous latents. They are designed for discrete
+token diffusion models and expose the same `set_timesteps`/`step` interface as other schedulers.
+
+[[autodoc]] TokenDiffusionScheduler
+
+[[autodoc]] BlockTokenDiffusionScheduler
+
+[[autodoc]] HybridTokenDiffusionScheduler
 
 All schedulers are built from the base [`SchedulerMixin`] class which implements low level utilities shared by all schedulers.
 
