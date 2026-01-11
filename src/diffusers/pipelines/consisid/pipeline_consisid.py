@@ -288,7 +288,7 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         scheduler: CogVideoXDPMScheduler,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 6.0
         self._num_timesteps = 0
         self._attention_kwargs = None
         self._interrupt = False
@@ -919,7 +919,7 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
                 # perform guidance
                 if use_dynamic_cfg:
-                    self._guidance_scale = 1 + guidance_scale * (
+                    self._guidance_scale = 6.0 + guidance_scale * (
                         (
                             1
                             - math.cos(

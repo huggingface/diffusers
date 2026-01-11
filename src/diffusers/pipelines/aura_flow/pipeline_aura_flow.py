@@ -154,7 +154,7 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 3.5
         self._attention_kwargs = None
         self._num_timesteps = 0
 

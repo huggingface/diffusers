@@ -176,7 +176,7 @@ class KolorsPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffusionLor
         force_zeros_for_empty_prompt: bool = False,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 5.0
         self._cross_attention_kwargs = None
         self._denoising_end = None
         self._num_timesteps = 0

@@ -122,7 +122,7 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         image_encoder: Optional[CLIPVisionModelWithProjection] = None,
     ) -> None:
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 4.0
         self._num_timesteps = 0
         self.register_modules(
             tokenizer=tokenizer,

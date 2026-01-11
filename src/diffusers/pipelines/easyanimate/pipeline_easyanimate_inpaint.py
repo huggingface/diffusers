@@ -361,7 +361,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 5.0
         self._guidance_rescale = 0.0
         self._num_timesteps = 0
         self._interrupt = False

@@ -173,7 +173,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         force_zeros_for_empty_prompt: bool = False,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 4.5
         self._num_timesteps = 0
         self._attention_kwargs = None
         self._current_timestep = None

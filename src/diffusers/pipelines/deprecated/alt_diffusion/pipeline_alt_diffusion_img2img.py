@@ -237,7 +237,7 @@ class AltDiffusionImg2ImgPipeline(
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 7.5
         self._cross_attention_kwargs = None
         self._num_timesteps = 0
 

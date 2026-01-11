@@ -198,7 +198,7 @@ class AllegroPipeline(DiffusionPipeline):
         scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 7.5
         self._num_timesteps = 0
         self._current_timestep = None
         self._interrupt = False

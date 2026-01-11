@@ -299,7 +299,7 @@ class AnimateDiffSDXLPipeline(
         force_zeros_for_empty_prompt: bool = True,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 5.0
         self._guidance_rescale = 0.0
         self._cross_attention_kwargs = None
         self._denoising_end = None

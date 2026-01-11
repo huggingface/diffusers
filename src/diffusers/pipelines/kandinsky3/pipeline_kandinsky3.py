@@ -75,7 +75,7 @@ class Kandinsky3Pipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
         movq: VQModel,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 3.0
         self._num_timesteps = 0
 
         self.register_modules(

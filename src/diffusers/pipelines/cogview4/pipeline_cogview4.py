@@ -168,7 +168,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 5.0
         self._num_timesteps = 0
         self._attention_kwargs = None
         self._current_timestep = None

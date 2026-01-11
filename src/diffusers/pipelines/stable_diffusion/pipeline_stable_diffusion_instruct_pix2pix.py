@@ -138,7 +138,7 @@ class StableDiffusionInstructPix2PixPipeline(
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 7.5
         self._num_timesteps = 0
 
         if safety_checker is None and requires_safety_checker:

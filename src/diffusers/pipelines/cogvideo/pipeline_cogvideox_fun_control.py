@@ -192,7 +192,7 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 6
         self._num_timesteps = 0
         self._attention_kwargs = None
         self._current_timestep = None
@@ -806,7 +806,7 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
                 # perform guidance
                 if use_dynamic_cfg:
-                    self._guidance_scale = 1 + guidance_scale * (
+                    self._guidance_scale = 6 + guidance_scale * (
                         (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
                     )
                 if do_classifier_free_guidance:

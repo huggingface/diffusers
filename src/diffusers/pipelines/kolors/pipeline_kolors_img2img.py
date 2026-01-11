@@ -195,7 +195,7 @@ class KolorsImg2ImgPipeline(DiffusionPipeline, StableDiffusionMixin, StableDiffu
         force_zeros_for_empty_prompt: bool = False,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 5.0
         self._cross_attention_kwargs = None
         self._denoising_start = None
         self._denoising_end = None

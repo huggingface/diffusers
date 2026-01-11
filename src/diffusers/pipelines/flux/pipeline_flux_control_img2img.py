@@ -217,7 +217,7 @@ class FluxControlImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSin
         transformer: FluxTransformer2DModel,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 7.0
         self._joint_attention_kwargs = None
         self._num_timesteps = 0
         self._interrupt = False

@@ -176,7 +176,7 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
         transformer: HiDreamImageTransformer2DModel,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 5.0
         self._attention_kwargs = None
         self._num_timesteps = 0
         self._interrupt = False

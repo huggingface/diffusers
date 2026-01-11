@@ -274,7 +274,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 5.0
         self._cross_attention_kwargs = None
         self._num_timesteps = 0
         self._interrupt = False

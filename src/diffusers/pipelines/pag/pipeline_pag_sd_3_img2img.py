@@ -204,7 +204,7 @@ class StableDiffusion3PAGImg2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         pag_applied_layers: Union[str, List[str]] = "blocks.1",  # 1st transformer block
     ):
         super().__init__()
-        self._guidance_scale = 1.0
+        self._guidance_scale = 7.0
         self._joint_attention_kwargs = None
         self._num_timesteps = 0
         self._interrupt = False
