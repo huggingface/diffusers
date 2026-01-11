@@ -412,6 +412,7 @@ else:
         "Kandinsky5T2IPipeline",
         "Kandinsky5I2IPipeline",
     ]
+    _import_structure["dflash"] = ["DFlashPipeline", "DFlashPipelineOutput"]
     _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
     _import_structure["z_image"] = [
         "ZImageImg2ImgPipeline",
@@ -663,6 +664,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
+        from .dflash import DFlashPipeline, DFlashPipelineOutput
         from .easyanimate import (
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,

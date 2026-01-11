@@ -152,7 +152,11 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
 
         if messages is not None:
             encoded = self.tokenizer.apply_chat_template(
-                messages, add_generation_prompt=add_generation_prompt, tokenize=True, return_tensors="pt"
+                messages,
+                add_generation_prompt=add_generation_prompt,
+                tokenize=True,
+                return_tensors="pt",
+                return_dict=True,
             )
             return _extract_input_ids(encoded)
 
@@ -167,6 +171,7 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
                 add_generation_prompt=add_generation_prompt,
                 tokenize=True,
                 return_tensors="pt",
+                return_dict=True,
             )
             return _extract_input_ids(encoded)
 

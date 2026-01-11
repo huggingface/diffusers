@@ -111,6 +111,20 @@ python examples/discrete_diffusion/sample_block_refinement.py \
   --gen_length 128
 ```
 
+## DFlash speculative decoding
+
+Use a diffusion draft model with a target causal LM for block-wise speculative decoding.
+
+```bash
+python examples/discrete_diffusion/sample_dflash.py \
+  --draft_model_id z-lab/Qwen3-8B-DFlash-b16 \
+  --target_model_id Qwen/Qwen3-8B \
+  --prompt "How many positive whole-number divisors does 196 have?" \
+  --max_new_tokens 256 \
+  --use_chat_template \
+  --add_generation_prompt
+```
+
 ## Hybrid sampling
 
 Hybrid sampling uses a different transition kernel than absorbing/uniform diffusion and requires a compatible scheduler

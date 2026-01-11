@@ -65,6 +65,8 @@ token diffusion models and expose the same `set_timesteps`/`step` interface as o
 
 [[autodoc]] HybridTokenDiffusionScheduler
 
+[[autodoc]] DFlashTokenDiffusionScheduler
+
 All schedulers are built from the base [`SchedulerMixin`] class which implements low level utilities shared by all schedulers.
 
 ## SchedulerMixin
