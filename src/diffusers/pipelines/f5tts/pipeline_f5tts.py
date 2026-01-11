@@ -131,7 +131,7 @@ class F5FlowPipeline(DiffusionPipeline):
         return seq[None, :] < t[:, None]
     
     
-    def check_inputs(self, ref_audio: torch.Tensor | None, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], duration: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None): 
+    def check_inputs(self, ref_audio: torch.Tensor | None, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], speed: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None): 
         if ref_audio is None:
             raise ValueError("`ref_audio` must be provided.")
         if not isinstance(ref_text, (str, list)):
@@ -148,21 +148,21 @@ class F5FlowPipeline(DiffusionPipeline):
         if  len(ref_text) != len(gen_text):
             raise ValueError("`ref_text` and `gen_text` must have the same length.")
 
-        # check if duration is non negative
-        if duration is not None:
-            if not isinstance(duration, torch.Tensor) and not isinstance(duration, List):
-                raise ValueError("`duration` must be a torch.Tensor or a list of torch.Tensors.")
-            if isinstance(duration, List):
-                duration = torch.stack(duration)
-                duration = duration.squeeze(-1)
-            if (duration < 0).any():
-                raise ValueError("`duration` must be non-negative.")
-            if duration.ndim != 1:
-                raise ValueError("`duration` must be a 1D tensor.")
-            if duration.shape[0] != len(ref_text):
-                raise ValueError("`duration` must have the same length as `ref_text` and `gen_text`.")
+        # check if speed is non negative
+        if speed is not None:
+            if not isinstance(speed, torch.Tensor) and not isinstance(speed, List):
+                raise ValueError("`speed` must be a torch.Tensor or a list of torch.Tensors.")
+            if isinstance(speed, List):
+                speed = torch.stack(speed)
+                speed = speed.squeeze(-1)
+            if (speed < 0).any():
+                raise ValueError("`speed` must be non-negative.")
+            if speed.ndim != 1:
+                raise ValueError("`speed` must be a 1D tensor.")
+            if speed.shape[0] != len(ref_text):
+                raise ValueError("`speed` must have the same length as `ref_text` and `gen_text`.")
             
-    def prepare_latents(self, ref_audio:torch.Tensor, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], duration: Optional[torch.Tensor] = None, guidance_scale=2.0, generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None):
+    def prepare_latents(self, ref_audio:torch.Tensor, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], speed: Optional[torch.Tensor] = None, guidance_scale=2.0, generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None):
         # each text in text_list is a combination of ref_text and gen_text
         if isinstance(ref_text, str):
             ref_text = [ref_text]
@@ -171,20 +171,21 @@ class F5FlowPipeline(DiffusionPipeline):
         text_list = [f"{r} {g}" for r, g in zip(ref_text, gen_text)]
         ref_audio_len = ref_audio.shape[-1] // self.mel_spec.hop_length
         
-        if isinstance(duration, List):
-            duration = torch.stack(duration)
-            duration = duration.squeeze(-1)
+        if isinstance(speed, List):
+            speed = torch.stack(speed)
+            speed = speed.squeeze(-1)
 
-        if duration is None:
-            # Calculate duration
-            duration_list = []
-            
-            for i in range(len(ref_text)):
-                ref_text_len = len(ref_text[i].encode("utf-8"))
-                gen_text_len = len(gen_text[i].encode("utf-8"))
-                duration = ref_audio_len + int(ref_audio_len / ref_text_len * gen_text_len)
-                duration_list.append(duration)
-            duration = torch.tensor(duration_list, dtype=torch.long, device=ref_audio.device)
+        if speed is None:
+            speed = torch.ones(len(ref_text), device=ref_audio.device)
+        # Calculate duration from speed
+        duration_list = []
+        
+        for i in range(len(ref_text)):
+            ref_text_len = len(ref_text[i].encode("utf-8"))
+            gen_text_len = len(gen_text[i].encode("utf-8"))
+            duration = ref_audio_len + int((ref_audio_len * speed[i]) * ((ref_text_len + gen_text_len + 1)/ ref_text_len ))
+            duration_list.append(duration)
+        duration = torch.tensor(duration_list, dtype=torch.long, device=ref_audio.device)
 
         cond = ref_audio
         if cond.ndim == 2:
@@ -246,21 +247,20 @@ class F5FlowPipeline(DiffusionPipeline):
         guidance_scale=2.0,
         sway_sampling_coef=-1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        duration: Optional[torch.Tensor] = None,
-        seed=None,
+        speed: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
 
 
         # Check inputs
-        self.check_inputs(ref_audio, ref_text, gen_text, duration)
+        self.check_inputs(ref_audio, ref_text, gen_text, speed)
         device = self._execution_device
 
         y0, step_cond_input, text, cond, cond_mask, mask = self.prepare_latents(
             ref_audio=ref_audio,
             ref_text=ref_text,
             gen_text=gen_text,
-            duration=duration,
+            speed=speed,
             guidance_scale=guidance_scale,
             generator=generator,
         )
