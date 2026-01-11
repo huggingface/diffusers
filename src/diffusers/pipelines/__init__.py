@@ -413,6 +413,7 @@ else:
         "Kandinsky5I2IPipeline",
     ]
     _import_structure["dflash"] = ["DFlashPipeline", "DFlashPipelineOutput"]
+    _import_structure["sdar"] = ["SDARPipeline", "SDARPipelineOutput"]
     _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
     _import_structure["z_image"] = [
         "ZImageImg2ImgPipeline",
@@ -804,6 +805,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaSprintPipeline,
         )
         from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
+        from .sdar import SDARPipeline, SDARPipelineOutput
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel

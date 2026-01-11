@@ -125,6 +125,36 @@ python examples/discrete_diffusion/sample_dflash.py \
   --add_generation_prompt
 ```
 
+## SDAR block diffusion decoding
+
+Run SDAR-style block diffusion sampling with remasking strategies.
+
+```bash
+python examples/discrete_diffusion/sample_sdar.py \
+  --model_id JetLM/SDAR-1.7B-Chat \
+  --prompt "Explain what reinforcement learning is in simple terms." \
+  --max_new_tokens 256 \
+  --block_length 4 \
+  --denoising_steps 4 \
+  --remasking_strategy low_confidence_dynamic \
+  --confidence_threshold 0.9 \
+  --use_chat_template \
+  --add_generation_prompt
+```
+
+### Fine-tune (draft model)
+
+```bash
+accelerate launch examples/discrete_diffusion/train_dflash.py \
+  --draft_model_id z-lab/Qwen3-4B-DFlash-b16 \
+  --target_model_id Qwen/Qwen3-4B \
+  --dataset_name wikitext \
+  --dataset_config_name wikitext-2-raw-v1 \
+  --output_dir dflash-output \
+  --max_train_steps 100 \
+  --logging_steps 10
+```
+
 ## Hybrid sampling
 
 Hybrid sampling uses a different transition kernel than absorbing/uniform diffusion and requires a compatible scheduler

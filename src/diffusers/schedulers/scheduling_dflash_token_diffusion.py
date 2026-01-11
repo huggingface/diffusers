@@ -81,7 +81,10 @@ class DFlashTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         *,
         temperature: float = 0.0,
         return_dict: bool = True,
-    ) -> Union[DFlashTokenDiffusionSchedulerOutput, Tuple[torch.LongTensor, torch.LongTensor, torch.LongTensor, torch.LongTensor]]:
+    ) -> Union[
+        DFlashTokenDiffusionSchedulerOutput,
+        Tuple[torch.LongTensor, torch.LongTensor, torch.LongTensor, torch.LongTensor],
+    ]:
         posterior = self.sample(target_logits, temperature=temperature)
         if draft_tokens.shape[1] > 1:
             matches = draft_tokens[:, 1:] == posterior[:, :-1]

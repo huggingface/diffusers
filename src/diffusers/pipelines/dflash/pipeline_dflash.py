@@ -15,11 +15,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer, DynamicCache
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...schedulers import DFlashTokenDiffusionScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
@@ -78,6 +79,7 @@ class DFlashPipeline(DiffusionPipeline):
     target_model: torch.nn.Module
     tokenizer: Optional[object]
     scheduler: DFlashTokenDiffusionScheduler
+    _callback_tensor_inputs = ["block_output_ids", "draft_logits", "accepted_length", "next_token", "output_ids"]
 
     def __init__(
         self,
@@ -94,7 +96,9 @@ class DFlashPipeline(DiffusionPipeline):
         super().__init__()
         if scheduler is None:
             scheduler = DFlashTokenDiffusionScheduler()
-        self.register_modules(draft_model=draft_model, target_model=target_model, tokenizer=tokenizer, scheduler=scheduler)
+        self.register_modules(
+            draft_model=draft_model, target_model=target_model, tokenizer=tokenizer, scheduler=scheduler
+        )
         self.register_to_config(
             max_new_tokens=max_new_tokens,
             temperature=temperature,
@@ -164,6 +168,10 @@ class DFlashPipeline(DiffusionPipeline):
         chat_template_kwargs: Optional[Dict[str, object]] = None,
         return_text: bool = True,
         return_dict: bool = True,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ) -> Union[DFlashPipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
         """
         Generate text using block-diffusion speculative decoding.
@@ -178,6 +186,20 @@ class DFlashPipeline(DiffusionPipeline):
             use_chat_template = bool(self.config.use_chat_template)
         if add_generation_prompt is None:
             add_generation_prompt = bool(self.config.add_generation_prompt)
+
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is None:
+            callback_on_step_end_tensor_inputs = ["block_output_ids"]
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
 
         input_ids = self._prepare_input_ids(
             prompt=prompt,
@@ -250,6 +272,7 @@ class DFlashPipeline(DiffusionPipeline):
         target_hidden = _extract_context_feature(output.hidden_states, target_layer_ids)
 
         start = num_input_tokens
+        global_step = 0
         stop_tensor = None
         if stop_token_ids is not None:
             stop_tensor = torch.tensor(stop_token_ids, device=device, dtype=torch.long)
@@ -282,12 +305,24 @@ class DFlashPipeline(DiffusionPipeline):
             step_output = self.scheduler.step(
                 block_output_ids, output.logits, temperature=temperature, return_dict=True
             )
+            accepted_length = step_output.accepted_length
+            next_token = step_output.next_token
             acceptance_length = int(step_output.accepted_length[0].item())
             output_ids[:, start : start + acceptance_length + 1] = block_output_ids[:, : acceptance_length + 1]
             output_ids[:, start + acceptance_length + 1] = step_output.next_token
             start += acceptance_length + 1
             past_key_values_target.crop(start)
-            target_hidden = _extract_context_feature(output.hidden_states, target_layer_ids)[:, : acceptance_length + 1, :]
+            target_hidden = _extract_context_feature(output.hidden_states, target_layer_ids)[
+                :, : acceptance_length + 1, :
+            ]
+
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, global_step, 0, callback_kwargs)
+                output_ids = callback_outputs.pop("output_ids", output_ids)
+                global_step += 1
 
             if stop_tensor is not None and torch.isin(output_ids[:, num_input_tokens:], stop_tensor).any():
                 break

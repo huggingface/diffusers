@@ -43,10 +43,6 @@ else:
     _import_structure["scheduling_block_token_diffusion"] = ["BlockTokenDiffusionScheduler"]
     _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
-    _import_structure["scheduling_dflash_token_diffusion"] = [
-        "DFlashTokenDiffusionScheduler",
-        "DFlashTokenDiffusionSchedulerOutput",
-    ]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
     _import_structure["scheduling_ddim_cogvideox"] = ["CogVideoXDDIMScheduler"]
     _import_structure["scheduling_ddim_inverse"] = ["DDIMInverseScheduler"]
@@ -55,6 +51,10 @@ else:
     _import_structure["scheduling_ddpm_parallel"] = ["DDPMParallelScheduler"]
     _import_structure["scheduling_ddpm_wuerstchen"] = ["DDPMWuerstchenScheduler"]
     _import_structure["scheduling_deis_multistep"] = ["DEISMultistepScheduler"]
+    _import_structure["scheduling_dflash_token_diffusion"] = [
+        "DFlashTokenDiffusionScheduler",
+        "DFlashTokenDiffusionSchedulerOutput",
+    ]
     _import_structure["scheduling_dpm_cogvideox"] = ["CogVideoXDPMScheduler"]
     _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
@@ -80,6 +80,10 @@ else:
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
     _import_structure["scheduling_sasolver"] = ["SASolverScheduler"]
     _import_structure["scheduling_scm"] = ["SCMScheduler"]
+    _import_structure["scheduling_sdar_token_diffusion"] = [
+        "SDARTokenDiffusionScheduler",
+        "SDARTokenDiffusionSchedulerOutput",
+    ]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
     _import_structure["scheduling_tcd"] = ["TCDScheduler"]
     _import_structure["scheduling_token_diffusion"] = ["TokenDiffusionScheduler"]
@@ -188,6 +192,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_repaint import RePaintScheduler
         from .scheduling_sasolver import SASolverScheduler
         from .scheduling_scm import SCMScheduler
+        from .scheduling_sdar_token_diffusion import SDARTokenDiffusionScheduler, SDARTokenDiffusionSchedulerOutput
         from .scheduling_sde_ve import ScoreSdeVeScheduler
         from .scheduling_tcd import TCDScheduler
         from .scheduling_unclip import UnCLIPScheduler

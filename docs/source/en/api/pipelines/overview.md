@@ -50,6 +50,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [DDIM](ddim) | unconditional image generation |
 | [DDPM](ddpm) | unconditional image generation |
 | [DFlash](dflash) | text2text |
+| [SDAR](sdar) | text2text |
 | [DeepFloyd IF](deepfloyd_if) | text2image, image2image, inpainting, super-resolution |
 | [DiffEdit](diffedit) | inpainting |
 | [DiT](dit) | text2image |
