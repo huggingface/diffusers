@@ -1228,7 +1228,7 @@ def main(args):
         else {"device": accelerator.device, "dtype": weight_dtype}
     )
 
-    is_fsdp = accelerator.state.fsdp_plugin is not None
+    is_fsdp = getattr(accelerator.state, "fsdp_plugin", None) is not None
     if not is_fsdp:
         transformer.to(**transformer_to_kwargs)
 
