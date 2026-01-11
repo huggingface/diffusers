@@ -185,6 +185,7 @@ class StableDiffusionInpaintPipeline(
     ):
         super().__init__()
         self._guidance_scale = 7.5
+        self._clip_skip = None
         self._cross_attention_kwargs = None
         self._num_timesteps = 0
         self._interrupt = False

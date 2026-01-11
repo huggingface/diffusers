@@ -205,6 +205,7 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
     ):
         super().__init__()
         self._guidance_scale = 3
+        self._guidance_rescale = 0.0
         self._num_timesteps = 0
         self._current_timestep = None
         self._attention_kwargs = None

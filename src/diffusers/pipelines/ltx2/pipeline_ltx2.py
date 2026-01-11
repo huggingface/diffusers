@@ -226,6 +226,12 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         vocoder: LTX2Vocoder,
     ):
         super().__init__()
+        self._guidance_scale = 4.0
+        self._guidance_rescale = 0.0
+        self._attention_kwargs = None
+        self._current_timestep = None
+        self._interrupt = False
+        self._num_timesteps = 0
 
         self.register_modules(
             vae=vae,
