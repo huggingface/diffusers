@@ -165,6 +165,7 @@ else:
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["cosmos"] = [
+        "Cosmos2_5_PredictBasePipeline",
         "Cosmos2TextToImagePipeline",
         "CosmosTextToWorldPipeline",
         "CosmosVideoToWorldPipeline",
@@ -287,7 +288,9 @@ else:
         "LTXImageToVideoPipeline",
         "LTXConditionPipeline",
         "LTXLatentUpsamplePipeline",
+        "LTXI2VLongMultiPromptPipeline",
     ]
+    _import_structure["ltx2"] = ["LTX2Pipeline", "LTX2ImageToVideoPipeline", "LTX2LatentUpsamplePipeline"]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
@@ -405,7 +408,13 @@ else:
         "Kandinsky5T2IPipeline",
         "Kandinsky5I2IPipeline",
     ]
-    _import_structure["z_image"] = ["ZImageImg2ImgPipeline", "ZImagePipeline"]
+    _import_structure["z_image"] = [
+        "ZImageImg2ImgPipeline",
+        "ZImagePipeline",
+        "ZImageControlNetPipeline",
+        "ZImageControlNetInpaintPipeline",
+        "ZImageOmniPipeline",
+    ]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
         "SkyReelsV2DiffusionForcingImageToVideoPipeline",
@@ -422,6 +431,7 @@ else:
         "QwenImageEditInpaintPipeline",
         "QwenImageControlNetInpaintPipeline",
         "QwenImageControlNetPipeline",
+        "QwenImageLayeredPipeline",
     ]
     _import_structure["chronoedit"] = ["ChronoEditPipeline"]
 try:
@@ -616,6 +626,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetXSPipeline,
         )
         from .cosmos import (
+            Cosmos2_5_PredictBasePipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             CosmosTextToWorldPipeline,
@@ -720,7 +731,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .longcat_image import LongCatImageEditPipeline, LongCatImagePipeline
-        from .ltx import LTXConditionPipeline, LTXImageToVideoPipeline, LTXLatentUpsamplePipeline, LTXPipeline
+        from .ltx import (
+            LTXConditionPipeline,
+            LTXI2VLongMultiPromptPipeline,
+            LTXImageToVideoPipeline,
+            LTXLatentUpsamplePipeline,
+            LTXPipeline,
+        )
+        from .ltx2 import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2Pipeline
         from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
@@ -764,6 +782,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageEditPlusPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,
+            QwenImageLayeredPipeline,
             QwenImagePipeline,
         )
         from .sana import (
@@ -843,7 +862,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
-        from .z_image import ZImageImg2ImgPipeline, ZImagePipeline
+        from .z_image import (
+            ZImageControlNetInpaintPipeline,
+            ZImageControlNetPipeline,
+            ZImageImg2ImgPipeline,
+            ZImageOmniPipeline,
+            ZImagePipeline,
+        )
 
         try:
             if not is_onnx_available():
