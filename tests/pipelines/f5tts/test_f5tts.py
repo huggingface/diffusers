@@ -53,7 +53,7 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "guidance_scale",
         ]
     )
-    batch_params = frozenset(["ref_text", "gen_text", "duration"])
+    batch_params = frozenset(["ref_text", "gen_text", "speed"])
     required_optional_params = frozenset(
         [
             "num_inference_steps",
@@ -126,7 +126,7 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
         torch.manual_seed(0)
         ref_audio = torch.randn(1, 16000).to(torch_device)
-        duration = torch.tensor([150], device=torch_device)
+        speed = torch.tensor([1], device=torch_device)
         inputs = {
             "ref_text": "This is a test sentence",
             "gen_text": "This is another test sentence",
@@ -134,7 +134,7 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "ref_audio": ref_audio,
-            "duration": duration,
+            "speed": speed,
         }
         return inputs
 
@@ -158,7 +158,7 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio = output.audios[0]
 
         assert audio.ndim == 2
-        assert audio.shape == (100, 150)
+        assert audio.shape == (100, 204)
 
 
 
