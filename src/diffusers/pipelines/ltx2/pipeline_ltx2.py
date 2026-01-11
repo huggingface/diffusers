@@ -653,6 +653,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if latents is not None:
+            if latents.ndim == 5:
+                # latents are of shape [B, C, F, H, W], need to be packed
+                latents = self._pack_latents(
+                    latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+                )
             return latents.to(device=device, dtype=dtype)
 
         height = height // self.vae_spatial_compression_ratio
@@ -694,6 +699,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         latent_length = round(duration_s * latents_per_second)
 
         if latents is not None:
+            if latents.ndim == 4:
+                # latents are of shape [B, C, L, M], need to be packed
+                latents = self._pack_audio_latents(latents)
             return latents.to(device=device, dtype=dtype), latent_length
 
         # TODO: confirm whether this logic is correct
@@ -750,6 +758,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         num_frames: int = 121,
         frame_rate: float = 24.0,
         num_inference_steps: int = 40,
+        sigmas: Optional[List[float]] = None,
         timesteps: List[int] = None,
         guidance_scale: float = 4.0,
         guidance_rescale: float = 0.0,
@@ -788,6 +797,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             num_inference_steps (`int`, *optional*, defaults to 40):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
@@ -958,7 +971,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         )
 
         # 5. Prepare timesteps
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         mu = calculate_shift(
             video_sequence_length,
             self.scheduler.config.get("base_image_seq_len", 1024),
