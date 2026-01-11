@@ -1105,8 +1105,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             self.transformer_spatial_patch_size,
             self.transformer_temporal_patch_size,
         )
-        prenorm_latents = latents
-        prenorm_audio_latents = audio_latents
         latents = self._denormalize_latents(
             latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
         )
