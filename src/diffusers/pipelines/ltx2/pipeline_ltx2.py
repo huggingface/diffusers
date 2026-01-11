@@ -653,6 +653,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if latents is not None:
+            if latents.ndim == 5:
+                # latents are of shape [B, C, F, H, W], need to be packed
+                latents = self._pack_latents(
+                    latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+                )
             return latents.to(device=device, dtype=dtype)
 
         height = height // self.vae_spatial_compression_ratio
@@ -694,6 +699,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         latent_length = round(duration_s * latents_per_second)
 
         if latents is not None:
+            if latents.ndim == 4:
+                # latents are of shape [B, C, L, M], need to be packed
+                latents = self._pack_audio_latents(latents)
             return latents.to(device=device, dtype=dtype), latent_length
 
         # TODO: confirm whether this logic is correct
@@ -1097,6 +1105,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             self.transformer_spatial_patch_size,
             self.transformer_temporal_patch_size,
         )
+        prenorm_latents = latents
+        prenorm_audio_latents = audio_latents
         latents = self._denormalize_latents(
             latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
         )
