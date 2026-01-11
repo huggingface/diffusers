@@ -98,6 +98,9 @@ Flux.2 uses  Mistral Small 3.1 as text encoder which is quite large and can take
 This way, the text encoder model is not loaded into memory during training.
 > [!NOTE] 
 > to enable remote text encoding you must either be logged in to your HuggingFace account (`hf auth login`) OR pass a token with `--hub_token`.
+### FSDP Text Encoder 
+Flux.2 uses  Mistral Small 3.1 as text encoder which is quite large and can take up a lot of memory. To mitigate this, we can use the `--fsdp_text_encoder` flag to enable distributed computation of the prompt embeddings. 
+This way, it distributes the memory cost across multiple nodes.
 ### CPU Offloading 
 To offload parts of the model to CPU memory, you can use `--offload` flag. This will offload the vae and text encoder to CPU memory and only move them to GPU when needed.
 ### Latent Caching 
@@ -165,6 +168,26 @@ To better track our training experiments, we're using the following flags in the
 
 > [!NOTE]
 > If you want to train using long prompts with the T5 text encoder, you can use `--max_sequence_length` to set the token limit. The default is 77, but it can be increased to as high as 512. Note that this will use more resources and may slow down the training in some cases.
+
+### FSDP on the transformer
+By setting the accelerate configuration with FSDP, the transformer block will be wrapped automatically. E.g. set the configuration to:
+
+```shell
+distributed_type: FSDP
+fsdp_config:
+  fsdp_version: 2
+  fsdp_offload_params: false
+  fsdp_sharding_strategy: HYBRID_SHARD
+  fsdp_auto_wrap_policy: TRANSFOMER_BASED_WRAP
+  fsdp_transformer_layer_cls_to_wrap: Flux2TransformerBlock, Flux2SingleTransformerBlock
+  fsdp_forward_prefetch: true
+  fsdp_sync_module_states: false
+  fsdp_state_dict_type: FULL_STATE_DICT
+  fsdp_use_orig_params: false
+  fsdp_activation_checkpointing: true
+  fsdp_reshard_after_forward: true
+  fsdp_cpu_ram_efficient_loading: false
+```
 
 ## LoRA + DreamBooth
 

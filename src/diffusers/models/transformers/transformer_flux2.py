@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_npu_available, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -835,14 +835,8 @@ class Flux2Transformer2DModel(
         if txt_ids.ndim == 3:
             txt_ids = txt_ids[0]
 
-        if is_torch_npu_available():
-            freqs_cos_image, freqs_sin_image = self.pos_embed(img_ids.cpu())
-            image_rotary_emb = (freqs_cos_image.npu(), freqs_sin_image.npu())
-            freqs_cos_text, freqs_sin_text = self.pos_embed(txt_ids.cpu())
-            text_rotary_emb = (freqs_cos_text.npu(), freqs_sin_text.npu())
-        else:
-            image_rotary_emb = self.pos_embed(img_ids)
-            text_rotary_emb = self.pos_embed(txt_ids)
+        image_rotary_emb = self.pos_embed(img_ids)
+        text_rotary_emb = self.pos_embed(txt_ids)
         concat_rotary_emb = (
             torch.cat([text_rotary_emb[0], image_rotary_emb[0]], dim=0),
             torch.cat([text_rotary_emb[1], image_rotary_emb[1]], dim=0),
