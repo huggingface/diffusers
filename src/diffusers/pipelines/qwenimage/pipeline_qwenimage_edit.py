@@ -194,6 +194,11 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         transformer: QwenImageTransformer2DModel,
     ):
         super().__init__()
+        self._guidance_scale = None
+        self._attention_kwargs = None
+        self._current_timestep = None
+        self._interrupt = False
+        self._num_timesteps = 0
 
         self.register_modules(
             vae=vae,

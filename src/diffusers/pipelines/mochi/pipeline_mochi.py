@@ -173,6 +173,11 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         force_zeros_for_empty_prompt: bool = False,
     ):
         super().__init__()
+        self._guidance_scale = 4.5
+        self._num_timesteps = 0
+        self._attention_kwargs = None
+        self._current_timestep = None
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,
@@ -614,8 +619,6 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
-        self._current_timestep = None
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

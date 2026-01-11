@@ -290,6 +290,7 @@ class PRXPipeline(
     ):
         super().__init__()
 
+        self._guidance_scale = 4.0
         if PRXTransformer2DModel is None:
             raise ImportError(
                 "PRXTransformer2DModel is not available. Please ensure the transformer_prx module is properly installed."

@@ -148,6 +148,9 @@ class OmniGenPipeline(
         tokenizer: LlamaTokenizer,
     ):
         super().__init__()
+        self._guidance_scale = 2.5
+        self._num_timesteps = 0
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,
@@ -432,7 +435,6 @@ class OmniGenPipeline(
         )
 
         self._guidance_scale = guidance_scale
-        self._interrupt = False
 
         # 2. Define call parameters
         batch_size = len(prompt)
