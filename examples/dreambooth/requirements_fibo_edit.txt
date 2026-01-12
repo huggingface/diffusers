@@ -5,3 +5,4 @@ peft>=0.11.1
 ujson
 Pillow
 tqdm
+datasets
