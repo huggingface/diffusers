@@ -689,6 +689,11 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
             conditioning_mask = self._pack_latents(
                 conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
             ).squeeze(-1)
+            if latents.ndim == 5:
+                # latents are of shape [B, C, F, H, W], need to be packed
+                latents = self._pack_latents(
+                    latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+                )
             if latents.ndim != 3 or latents.shape[:2] != conditioning_mask.shape:
                 raise ValueError(
                     f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is {conditioning_mask.shape + (num_channels_latents,)}."
@@ -754,6 +759,9 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         latent_length = round(duration_s * latents_per_second)
 
         if latents is not None:
+            if latents.ndim == 4:
+                # latents are of shape [B, C, L, M], need to be packed
+                latents = self._pack_audio_latents(latents)
             return latents.to(device=device, dtype=dtype), latent_length
 
         # TODO: confirm whether this logic is correct
