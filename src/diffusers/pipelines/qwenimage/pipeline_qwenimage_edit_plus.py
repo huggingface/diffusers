@@ -315,35 +315,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # Check if image is a nested list (batch_size > 1)
-            if image is not None and isinstance(image, list) and image and isinstance(image[0], list):
-                # Process each batch item separately
-                all_prompt_embeds = []
-                all_prompt_embeds_mask = []
-                for i, (single_prompt, batch_images) in enumerate(zip(prompt, image)):
-                    embeds, mask = self._get_qwen_prompt_embeds([single_prompt], batch_images, device)
-                    all_prompt_embeds.append(embeds)
-                    all_prompt_embeds_mask.append(mask)
-
-                # Find max sequence length across all batch items
-                max_seq_len = max(e.shape[1] for e in all_prompt_embeds)
-
-                # Pad all embeddings to same length and concatenate
-                padded_embeds = []
-                padded_masks = []
-                for embeds, mask in zip(all_prompt_embeds, all_prompt_embeds_mask):
-                    if embeds.shape[1] < max_seq_len:
-                        pad_len = max_seq_len - embeds.shape[1]
-                        embeds = torch.cat([embeds, torch.zeros(embeds.shape[0], pad_len, embeds.shape[2], device=embeds.device, dtype=embeds.dtype)], dim=1)
-                        mask = torch.cat([mask, torch.zeros(mask.shape[0], pad_len, device=mask.device, dtype=mask.dtype)], dim=1)
-                    padded_embeds.append(embeds)
-                    padded_masks.append(mask)
-
-                prompt_embeds = torch.cat(padded_embeds, dim=0)
-                prompt_embeds_mask = torch.cat(padded_masks, dim=0)
-            else:
-                # Single batch or batch_size == 1
-                prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, device)
+            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, device)
 
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -612,10 +584,10 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
                 or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
-                latents as `image`, but if passing latents directly it is not encoded again.
-                For batch processing with multiple prompts (batch_size > 1), provide a nested list where each sublist
-                contains the input images for that prompt: `[[img1_for_prompt1], [img2_for_prompt2]]`. For a single
-                prompt with multiple reference images (batch_size == 1), use a flat list: `[img1, img2]`.
+                latents as `image`, but if passing latents directly it is not encoded again. For batch processing with
+                multiple prompts (batch_size > 1), provide a nested list where each sublist contains the input images
+                for that prompt: `[[img1_for_prompt1], [img2_for_prompt2]]`. For a single prompt with multiple
+                reference images (batch_size == 1), use a flat list: `[img1, img2]`.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
