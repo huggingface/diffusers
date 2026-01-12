@@ -16,7 +16,7 @@
 # The codebase is modified based on https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
 
 import math
-from typing import Literal
+from typing import Callable, Literal
 
 import numpy as np
 import torch
@@ -166,7 +166,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         predictor_order: int = 2,
         corrector_order: int = 2,
         prediction_type: str = "epsilon",
-        tau_func: callable | None = None,
+        tau_func: Callable | None = None,
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
