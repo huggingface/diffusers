@@ -42,7 +42,7 @@ def _extract_lora_scale(attention_kwargs: Optional[Dict[str, Any]]) -> Tuple[Opt
     return attention_kwargs, attention_kwargs.pop("scale", 1.0)
 
 
-def _get_model_config():
+def _get_model_config() -> Dict[str, Dict[str, Any]]:
     """Get model configuration mapping. Order matters: more specific variants before generic ones."""
     return {
         "FluxKontext": {
@@ -84,7 +84,7 @@ def _get_model_config():
     }
 
 
-def _auto_detect_model_type(module):
+def _auto_detect_model_type(module: torch.nn.Module) -> str:
     """Auto-detect model type from class name and config path."""
     class_name = module.__class__.__name__
     config_path = getattr(getattr(module, "config", None), "_name_or_path", "").lower()
@@ -97,7 +97,7 @@ def _auto_detect_model_type(module):
     raise ValueError(f"TeaCache: Unsupported model '{class_name}'. Supported: {', '.join(model_config.keys())}")
 
 
-def _rescale_distance(coefficients, x):
+def _rescale_distance(coefficients: List[float], x: float) -> float:
     """Polynomial rescaling: c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]"""
     c = coefficients
     return c[0] * x**4 + c[1] * x**3 + c[2] * x**2 + c[3] * x + c[4]
@@ -417,10 +417,13 @@ def _flux_teacache_forward(
     encoder_hidden_states: torch.Tensor,
     txt_ids: torch.Tensor,
     img_ids: torch.Tensor,
+    controlnet_block_samples: Optional[List[torch.Tensor]] = None,
+    controlnet_single_block_samples: Optional[List[torch.Tensor]] = None,
     return_dict: bool = True,
+    controlnet_blocks_repeat: bool = False,
     **kwargs,
 ):
-    """TeaCache forward for Flux models."""
+    """TeaCache forward for Flux models with ControlNet support."""
     args, extra_kwargs = _handle_accelerate_hook(
         module,
         hidden_states,
@@ -429,10 +432,18 @@ def _flux_teacache_forward(
         encoder_hidden_states,
         txt_ids,
         img_ids,
+        controlnet_block_samples=controlnet_block_samples,
+        controlnet_single_block_samples=controlnet_single_block_samples,
         return_dict=return_dict,
+        controlnet_blocks_repeat=controlnet_blocks_repeat,
         **kwargs,
     )
     hidden_states, timestep, pooled_projections, encoder_hidden_states, txt_ids, img_ids = args
+    controlnet_block_samples = extra_kwargs.pop("controlnet_block_samples", controlnet_block_samples)
+    controlnet_single_block_samples = extra_kwargs.pop(
+        "controlnet_single_block_samples", controlnet_single_block_samples
+    )
+    controlnet_blocks_repeat = extra_kwargs.pop("controlnet_blocks_repeat", controlnet_blocks_repeat)
     return_dict = extra_kwargs.pop("return_dict", return_dict)
     kwargs = extra_kwargs
 
@@ -460,7 +471,7 @@ def _flux_teacache_forward(
         image_rotary_emb = module.pos_embed(ids)
 
         joint_attention_kwargs = kwargs.get("joint_attention_kwargs")
-        for block in module.transformer_blocks:
+        for index_block, block in enumerate(module.transformer_blocks):
             enc, hidden_states = block(
                 hidden_states=hidden_states,
                 encoder_hidden_states=enc,
@@ -468,7 +479,20 @@ def _flux_teacache_forward(
                 image_rotary_emb=image_rotary_emb,
                 joint_attention_kwargs=joint_attention_kwargs,
             )
-        for block in module.single_transformer_blocks:
+            # ControlNet residual
+            if controlnet_block_samples is not None:
+                interval_control = len(module.transformer_blocks) / len(controlnet_block_samples)
+                interval_control = (
+                    int(interval_control) if interval_control == int(interval_control) else int(interval_control) + 1
+                )
+                if controlnet_blocks_repeat:
+                    hidden_states = (
+                        hidden_states + controlnet_block_samples[index_block % len(controlnet_block_samples)]
+                    )
+                else:
+                    hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
+
+        for index_block, block in enumerate(module.single_transformer_blocks):
             enc, hidden_states = block(
                 hidden_states=hidden_states,
                 encoder_hidden_states=enc,
@@ -476,6 +500,14 @@ def _flux_teacache_forward(
                 image_rotary_emb=image_rotary_emb,
                 joint_attention_kwargs=joint_attention_kwargs,
             )
+            # ControlNet residual
+            if controlnet_single_block_samples is not None:
+                interval_control = len(module.single_transformer_blocks) / len(controlnet_single_block_samples)
+                interval_control = (
+                    int(interval_control) if interval_control == int(interval_control) else int(interval_control) + 1
+                )
+                hidden_states = hidden_states + controlnet_single_block_samples[index_block // interval_control]
+
         _update_state(state, hidden_states, ori_hs, modulated_inp)
     else:
         hidden_states = _apply_cached_residual(state, hidden_states, modulated_inp)
@@ -595,7 +627,14 @@ def _lumina2_teacache_forward(
     attention_kwargs: Optional[Dict[str, Any]] = None,
     return_dict: bool = True,
 ):
-    """TeaCache forward for Lumina2 models."""
+    """TeaCache forward for Lumina2 models.
+
+    Note: Lumina2 uses inline caching logic instead of `_should_compute()` because it requires
+    per-sequence-length caching for variable sequence lengths (CFG batches have different lengths).
+    Each sequence length gets its own cache entry in `state.cache_dict`.
+
+    Note: Gradient checkpointing is not supported in this TeaCache implementation for Lumina2.
+    """
     args, kwargs = _handle_accelerate_hook(
         module,
         hidden_states,
