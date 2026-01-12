@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional
-
 import flax
 import flax.linen as nn
 import jax
@@ -167,7 +165,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
     attention_head_dim: int | tuple[int, ...] = 8
-    num_attention_heads: Optional[int | tuple[int, ...]] = None
+    num_attention_heads: int | tuple[int, ...] | None = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False

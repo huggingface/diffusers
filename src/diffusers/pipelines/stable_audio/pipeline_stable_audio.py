@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional
+from typing import Callable
 
 import torch
 from transformers import (
@@ -158,10 +158,10 @@ class StableAudioPipeline(DiffusionPipeline):
         device,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        negative_attention_mask: Optional[torch.LongTensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        attention_mask: torch.LongTensor | None = None,
+        negative_attention_mask: torch.LongTensor | None = None,
     ):
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -492,25 +492,25 @@ class StableAudioPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str] = None,
-        audio_end_in_s: Optional[float] = None,
-        audio_start_in_s: Optional[float] = 0.0,
+        audio_end_in_s: float | None = None,
+        audio_start_in_s: float | None = 0.0,
         num_inference_steps: int = 100,
         guidance_scale: float = 7.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_waveforms_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_waveforms_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        initial_audio_waveforms: Optional[torch.Tensor] = None,
-        initial_audio_sampling_rate: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        negative_attention_mask: Optional[torch.LongTensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        initial_audio_waveforms: torch.Tensor | None = None,
+        initial_audio_sampling_rate: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        attention_mask: torch.LongTensor | None = None,
+        negative_attention_mask: torch.LongTensor | None = None,
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: Optional[int] = 1,
-        output_type: Optional[str] = "pt",
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
+        callback_steps: int | None = 1,
+        output_type: str | None = "pt",
     ):
         r"""
         The call function to the pipeline for generation.

@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import inspect
-from typing import Optional
 
 from ..utils import is_transformers_available, logging
 from .quantization_config import QuantizationConfigMixin as DiffQuantConfigMixin
@@ -50,7 +49,7 @@ class PipelineQuantizationConfig:
         self,
         quant_backend: str = None,
         quant_kwargs: dict[str, str | float | int | dict] = None,
-        components_to_quantize: Optional[list[str] | str] = None,
+        components_to_quantize: list[str] | str | None = None,
         quant_mapping: dict[str, DiffQuantConfigMixin | "TransformersQuantConfigMixin"] = None,
     ):
         self.quant_backend = quant_backend

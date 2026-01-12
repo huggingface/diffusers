@@ -16,7 +16,6 @@ import math
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 import flax
 import jax.numpy as jnp
@@ -76,7 +75,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
+        pretrained_model_name_or_path: str | os.PathLike | None = None,
         subfolder: str | None = None,
         return_unused_kwargs=False,
         **kwargs,
@@ -98,7 +97,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
             return_unused_kwargs (`bool`, *optional*, defaults to `False`):
                 Whether kwargs that are not consumed by the Python class should be returned or not.
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
             force_download (`bool`, *optional*, defaults to `False`):

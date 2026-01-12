@@ -642,7 +642,7 @@ class StableDiffusionReferencePipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(
         self, generator: Union[torch.Generator, List[torch.Generator]], eta: float
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         r"""
         Prepare extra keyword arguments for the scheduler step.
 

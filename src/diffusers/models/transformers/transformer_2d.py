@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -73,18 +73,18 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         self,
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
-        in_channels: Optional[int] = None,
-        out_channels: Optional[int] = None,
+        in_channels: int | None = None,
+        out_channels: int | None = None,
         num_layers: int = 1,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
         attention_bias: bool = False,
-        sample_size: Optional[int] = None,
-        num_vector_embeds: Optional[int] = None,
-        patch_size: Optional[int] = None,
+        sample_size: int | None = None,
+        num_vector_embeds: int | None = None,
+        patch_size: int | None = None,
         activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
+        num_embeds_ada_norm: int | None = None,
         use_linear_projection: bool = False,
         only_cross_attention: bool = False,
         double_self_attention: bool = False,
@@ -95,7 +95,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         attention_type: str = "default",
         caption_channels: int = None,
         interpolation_scale: float = None,
-        use_additional_conditions: Optional[bool] = None,
+        use_additional_conditions: bool | None = None,
     ):
         super().__init__()
 
@@ -324,13 +324,13 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        timestep: torch.LongTensor | None = None,
         added_cond_kwargs: dict[str, torch.Tensor] = None,
-        class_labels: Optional[torch.LongTensor] = None,
+        class_labels: torch.LongTensor | None = None,
         cross_attention_kwargs: dict[str, Any] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
         return_dict: bool = True,
     ):
         """

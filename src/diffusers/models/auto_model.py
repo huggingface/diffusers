@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import os
-from typing import Optional
 
 from huggingface_hub.utils import validate_hf_hub_args
 
@@ -37,7 +36,7 @@ class AutoModel(ConfigMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_or_path: Optional[str | os.PathLike] = None, **kwargs):
+    def from_pretrained(cls, pretrained_model_or_path: str | os.PathLike | None = None, **kwargs):
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
 
@@ -53,7 +52,7 @@ class AutoModel(ConfigMixin):
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       with [`~ModelMixin.save_pretrained`].
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             torch_dtype (`torch.dtype`, *optional*):
@@ -83,7 +82,7 @@ class AutoModel(ConfigMixin):
                 Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`str` or `dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`str` or `dict[str, int | str | torch.device]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device. Defaults to `None`, meaning that the model will be loaded on CPU.

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import nn
@@ -110,7 +110,7 @@ class SparseControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, FromOrigina
             The frequency shift to apply to the time embedding.
         down_block_types (`tuple[str]`, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use.
-        only_cross_attention (`Union[bool, tuple[bool]]`, defaults to `False`):
+        only_cross_attention (`bool | tuple[bool]`, defaults to `False`):
         block_out_channels (`tuple[int]`, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, defaults to 2):
@@ -176,18 +176,18 @@ class SparseControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, FromOrigina
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
-        norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int | None = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 768,
         transformer_layers_per_block: int | tuple[int, ...] = 1,
-        transformer_layers_per_mid_block: Optional[int | tuple[int]] = None,
+        transformer_layers_per_mid_block: int | tuple[int] | None = None,
         temporal_transformer_layers_per_block: int | tuple[int, ...] = 1,
         attention_head_dim: int | tuple[int, ...] = 8,
-        num_attention_heads: Optional[int | tuple[int, ...]] = None,
+        num_attention_heads: int | tuple[int, ...] | None = None,
         use_linear_projection: bool = False,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        conditioning_embedding_out_channels: Optional[tuple[int, ...]] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: tuple[int, ...] | None = (16, 32, 96, 256),
         global_pool_conditions: bool = False,
         controlnet_conditioning_channel_order: str = "rgb",
         motion_max_seq_length: int = 32,
@@ -389,7 +389,7 @@ class SparseControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, FromOrigina
         cls,
         unet: UNet2DConditionModel,
         controlnet_conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Optional[tuple[int, ...]] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: tuple[int, ...] | None = (16, 32, 96, 256),
         load_weights_from_unet: bool = True,
         conditioning_channels: int = 3,
     ) -> "SparseControlNetModel":
@@ -537,10 +537,10 @@ class SparseControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, FromOrigina
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: torch.Tensor,
         conditioning_scale: float = 1.0,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        conditioning_mask: Optional[torch.Tensor] = None,
+        timestep_cond: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        conditioning_mask: torch.Tensor | None = None,
         guess_mode: bool = False,
         return_dict: bool = True,
     ) -> SparseControlNetOutput | tuple[tuple[torch.Tensor, ...], torch.Tensor]:
@@ -550,7 +550,7 @@ class SparseControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, FromOrigina
         Args:
             sample (`torch.Tensor`):
                 The noisy input tensor.
-            timestep (`Union[torch.Tensor, float, int]`):
+            timestep (`torch.Tensor | float | int`):
                 The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.

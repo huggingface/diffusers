@@ -17,7 +17,7 @@
 import importlib
 import inspect
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 import flax
 import numpy as np
@@ -151,7 +151,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
     def save_pretrained(
         self,
         save_directory: str | os.PathLike,
-        params: Dict | FrozenDict,
+        params: dict | FrozenDict,
         push_to_hub: bool = False,
         **kwargs,
     ):
@@ -228,7 +228,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[str | os.PathLike], **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: str | os.PathLike | None, **kwargs):
         r"""
         Instantiate a Flax-based diffusion pipeline from pretrained pipeline weights.
 

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import functools
-from typing import Any, Optional
+from typing import Any
 
 import torch
 
@@ -214,7 +214,7 @@ class HookRegistry:
         self._hook_order.append(name)
         self._fn_refs.append(fn_ref)
 
-    def get_hook(self, name: str) -> Optional[ModelHook]:
+    def get_hook(self, name: str) -> ModelHook | None:
         return self.hooks.get(name, None)
 
     def remove_hook(self, name: str, recurse: bool = True) -> None:
@@ -265,7 +265,7 @@ class HookRegistry:
             module._diffusers_hook = cls(module)
         return module._diffusers_hook
 
-    def _set_context(self, name: Optional[str] = None) -> None:
+    def _set_context(self, name: str | None = None) -> None:
         for hook_name in reversed(self._hook_order):
             hook = self.hooks[hook_name]
             if hook._is_stateful:

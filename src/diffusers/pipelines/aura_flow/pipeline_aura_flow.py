@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
@@ -63,10 +63,10 @@ EXAMPLE_DOC_STRING = """
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -235,13 +235,13 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
         negative_prompt: str | list[str] = None,
         do_classifier_free_guidance: bool = True,
         num_images_per_prompt: int = 1,
-        device: Optional[torch.device] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        device: torch.device | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
         max_sequence_length: int = 256,
-        lora_scale: Optional[float] = None,
+        lora_scale: float | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -434,22 +434,20 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
         num_inference_steps: int = 50,
         sigmas: list[float] = None,
         guidance_scale: float = 3.5,
-        num_images_per_prompt: Optional[int] = 1,
-        height: Optional[int] = 1024,
-        width: Optional[int] = 1024,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        num_images_per_prompt: int | None = 1,
+        height: int | None = 1024,
+        width: int | None = 1024,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
         max_sequence_length: int = 256,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[dict[str, Any]] = None,
-        callback_on_step_end: Optional[
-            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
-        ] = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ) -> ImagePipelineOutput | tuple:
         r"""

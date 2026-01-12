@@ -14,7 +14,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import torch
@@ -149,21 +148,21 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         num_attention_heads: tuple[int, ...] = (32, 32),
         down_num_layers_per_block: tuple[int, ...] = (8, 24),
         up_num_layers_per_block: tuple[int, ...] = (24, 8),
-        down_blocks_repeat_mappers: Optional[tuple[int]] = (
+        down_blocks_repeat_mappers: tuple[int] | None = (
             1,
             1,
         ),
-        up_blocks_repeat_mappers: Optional[tuple[int]] = (1, 1),
+        up_blocks_repeat_mappers: tuple[int] | None = (1, 1),
         block_types_per_layer: tuple[tuple[str]] = (
             ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
             ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
         ),
-        clip_text_in_channels: Optional[int] = None,
+        clip_text_in_channels: int | None = None,
         clip_text_pooled_in_channels=1280,
-        clip_image_in_channels: Optional[int] = None,
+        clip_image_in_channels: int | None = None,
         clip_seq=4,
-        effnet_in_channels: Optional[int] = None,
-        pixel_mapper_in_channels: Optional[int] = None,
+        effnet_in_channels: int | None = None,
+        pixel_mapper_in_channels: int | None = None,
         kernel_size=3,
         dropout: float | tuple[float] = (0.1, 0.1),
         self_attn: bool | tuple[bool] = True,
@@ -216,11 +215,11 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 Kernel size to use in the block convolutional layers.
             dropout (tuple[float], *optional*, defaults to (0.1, 0.1)):
                 Dropout to use per block.
-            self_attn (Union[bool, tuple[bool]]):
+            self_attn (bool | tuple[bool]):
                 tuple of booleans that determine whether to use self attention in a block or not.
             timestep_conditioning_type (tuple[str], defaults to ("sca", "crp")):
                 Timestep conditioning type.
-            switch_level (Optional[tuple[bool]], *optional*, defaults to `None`):
+            switch_level (tuple[bool] | None, *optional*, defaults to `None`):
                 tuple that indicates whether upsampling or downsampling should be applied in a block
         """
 

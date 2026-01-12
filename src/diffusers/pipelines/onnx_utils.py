@@ -18,7 +18,6 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 from huggingface_hub import hf_hub_download
@@ -84,7 +83,7 @@ class OnnxRuntimeModel:
             path, providers=[provider], sess_options=sess_options, provider_options=provider_options
         )
 
-    def _save_pretrained(self, save_directory: str | Path, file_name: Optional[str] = None, **kwargs):
+    def _save_pretrained(self, save_directory: str | Path, file_name: str | None = None, **kwargs):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
         [`~optimum.onnxruntime.modeling_ort.ORTModel.from_pretrained`] class method. It will always save the
@@ -142,13 +141,13 @@ class OnnxRuntimeModel:
     def _from_pretrained(
         cls,
         model_id: str | Path,
-        token: Optional[bool | str | None] = None,
-        revision: Optional[str | None] = None,
+        token: bool | str | None | None = None,
+        revision: str | None | None = None,
         force_download: bool = False,
-        cache_dir: Optional[str] = None,
-        file_name: Optional[str] = None,
-        provider: Optional[str] = None,
-        sess_options: Optional["ort.SessionOptions"] = None,
+        cache_dir: str | None = None,
+        file_name: str | None = None,
+        provider: str | None = None,
+        sess_options: "ort.SessionOptions" | None = None,
         **kwargs,
     ):
         """
@@ -161,7 +160,7 @@ class OnnxRuntimeModel:
                 Is needed to load models from a private or gated repository
             revision (`str`):
                 Revision is the specific model version to use. It can be a branch name, a tag name, or a commit id
-            cache_dir (`Union[str, Path]`, *optional*):
+            cache_dir (`str | Path`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
             force_download (`bool`, *optional*, defaults to `False`):
@@ -212,8 +211,8 @@ class OnnxRuntimeModel:
         cls,
         model_id: str | Path,
         force_download: bool = True,
-        token: Optional[str] = None,
-        cache_dir: Optional[str] = None,
+        token: str | None = None,
+        cache_dir: str | None = None,
         **model_kwargs,
     ):
         revision = None

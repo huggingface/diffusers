@@ -16,7 +16,7 @@ import inspect
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field, fields
-from typing import Any, Literal, Optional, Type, Union
+from typing import Any, Literal, Type, Union
 
 import torch
 
@@ -88,18 +88,18 @@ class ComponentSpec:
         default_creation_method: Preferred creation method - "from_config" or "from_pretrained"
     """
 
-    name: Optional[str] = None
-    type_hint: Optional[Type] = None
-    description: Optional[str] = None
-    config: Optional[FrozenDict] = None
-    pretrained_model_name_or_path: Optional[Union[str, list[str]]] = field(default=None, metadata={"loading": True})
-    subfolder: Optional[str] = field(default="", metadata={"loading": True})
-    variant: Optional[str] = field(default=None, metadata={"loading": True})
-    revision: Optional[str] = field(default=None, metadata={"loading": True})
+    name: str | None = None
+    type_hint: Type | None = None
+    description: str | None = None
+    config: FrozenDict | None = None
+    pretrained_model_name_or_path: str | list[str] | None = field(default=None, metadata={"loading": True})
+    subfolder: str | None = field(default="", metadata={"loading": True})
+    variant: str | None = field(default=None, metadata={"loading": True})
+    revision: str | None = field(default=None, metadata={"loading": True})
     default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
 
     # Deprecated
-    repo: Optional[Union[str, list[str]]] = field(default=None, metadata={"loading": False})
+    repo: str | list[str] | None = field(default=None, metadata={"loading": False})
 
     def __post_init__(self):
         repo_value = self.repo
@@ -200,7 +200,7 @@ class ComponentSpec:
         return "|".join(p for p in parts if p)
 
     @classmethod
-    def decode_load_id(cls, load_id: str) -> dict[str, Optional[str]]:
+    def decode_load_id(cls, load_id: str) -> dict[str, str | None]:
         """
         Decode a load_id string back into a dictionary of loading fields and values.
 
@@ -238,7 +238,7 @@ class ComponentSpec:
     # otherwise we cannot do spec -> spec.create() -> component -> ComponentSpec.from_component(component)
     # the config info is lost in the process
     # remove error check in from_component spec and ModularPipeline.update_components() if we remove support for non configmixin in `create()` method
-    def create(self, config: Optional[FrozenDict | dict[str, Any]] = None, **kwargs) -> Any:
+    def create(self, config: FrozenDict | dict[str, Any] | None = None, **kwargs) -> Any:
         """Create component using from_config with config."""
 
         if self.type_hint is None or not isinstance(self.type_hint, type):
@@ -320,7 +320,7 @@ class ConfigSpec:
 
     name: str
     default: Any
-    description: Optional[str] = None
+    description: str | None = None
 
 
 # YiYi Notes: both inputs and intermediate_inputs are InputParam objects
@@ -460,7 +460,7 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
     def get_type_str(type_hint):
         if hasattr(type_hint, "__origin__") and type_hint.__origin__ is Union:
             types = [t.__name__ if hasattr(t, "__name__") else str(t) for t in type_hint.__args__]
-            return f"Union[{', '.join(types)}]"
+            return f"{' | '.join(types)}"
         return type_hint.__name__ if hasattr(type_hint, "__name__") else str(type_hint)
 
     def wrap_text(text, indent, max_length):

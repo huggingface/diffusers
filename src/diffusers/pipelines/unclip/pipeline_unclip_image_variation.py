@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional
 
 import PIL.Image
 import torch
@@ -190,7 +189,7 @@ class UnCLIPImageVariationPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-    def _encode_image(self, image, device, num_images_per_prompt, image_embeddings: Optional[torch.Tensor] = None):
+    def _encode_image(self, image, device, num_images_per_prompt, image_embeddings: torch.Tensor | None = None):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if image_embeddings is None:
@@ -207,16 +206,16 @@ class UnCLIPImageVariationPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Optional[PIL.Image.Image | list[PIL.Image.Image] | torch.Tensor] = None,
+        image: PIL.Image.Image | list[PIL.Image.Image] | torch.Tensor | None = None,
         num_images_per_prompt: int = 1,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
-        generator: Optional[torch.Generator] = None,
-        decoder_latents: Optional[torch.Tensor] = None,
-        super_res_latents: Optional[torch.Tensor] = None,
-        image_embeddings: Optional[torch.Tensor] = None,
+        generator: torch.Generator | None = None,
+        decoder_latents: torch.Tensor | None = None,
+        super_res_latents: torch.Tensor | None = None,
+        image_embeddings: torch.Tensor | None = None,
         decoder_guidance_scale: float = 8.0,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ):
         """

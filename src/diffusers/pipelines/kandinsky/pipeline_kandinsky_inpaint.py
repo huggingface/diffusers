@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from copy import deepcopy
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 import PIL.Image
@@ -134,7 +134,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
     binarized (``mask > 0.5``) and cast to ``torch.float32`` too.
 
     Args:
-        image (Union[np.array, PIL.Image, torch.Tensor]): The image to inpaint.
+        image (np.array | PIL.Image | torch.Tensor): The image to inpaint.
             It can be a ``PIL.Image``, or a ``height x width x 3`` ``np.array`` or a ``channels x height x width``
             ``torch.Tensor`` or a ``batch x channels x height x width`` ``torch.Tensor``.
         mask (_type_): The mask to apply to the image, i.e. regions to inpaint.
@@ -407,16 +407,16 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
         mask_image: torch.Tensor | PIL.Image.Image | np.ndarray,
         image_embeds: torch.Tensor,
         negative_image_embeds: torch.Tensor,
-        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt: str | list[str] | None = None,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
         return_dict: bool = True,
     ):

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import torch
 
@@ -94,7 +94,7 @@ class PerturbedAttentionGuidance(BaseGuidance):
         perturbed_guidance_scale: float = 2.8,
         perturbed_guidance_start: float = 0.01,
         perturbed_guidance_stop: float = 0.2,
-        perturbed_guidance_layers: Optional[int | list[int]] = None,
+        perturbed_guidance_layers: int | list[int] | None = None,
         perturbed_guidance_config: LayerSkipConfig | list[LayerSkipConfig] | dict[str, Any] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
@@ -213,8 +213,8 @@ class PerturbedAttentionGuidance(BaseGuidance):
     def forward(
         self,
         pred_cond: torch.Tensor,
-        pred_uncond: Optional[torch.Tensor] = None,
-        pred_cond_skip: Optional[torch.Tensor] = None,
+        pred_uncond: torch.Tensor | None = None,
+        pred_cond_skip: torch.Tensor | None = None,
     ) -> GuiderOutput:
         pred = None
 

@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 from torch import nn
@@ -30,10 +29,10 @@ class TransformationModelOutput(ModelOutput):
             heads.
     """
 
-    projection_state: Optional[torch.Tensor] = None
+    projection_state: torch.Tensor | None = None
     last_hidden_state: torch.Tensor = None
-    hidden_states: Optional[tuple[torch.Tensor]] = None
-    attentions: Optional[tuple[torch.Tensor]] = None
+    hidden_states: tuple[torch.Tensor] | None = None
+    attentions: tuple[torch.Tensor] | None = None
 
 
 class RobertaSeriesConfig(XLMRobertaConfig):
@@ -73,17 +72,17 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
 
     def forward(
         self,
-        input_ids: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        token_type_ids: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
+        input_ids: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        token_type_ids: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
+        head_mask: torch.Tensor | None = None,
+        inputs_embeds: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        output_attentions: bool | None = None,
+        return_dict: bool | None = None,
+        output_hidden_states: bool | None = None,
     ):
         r""" """
 

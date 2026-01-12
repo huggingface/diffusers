@@ -12,8 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional
-
 import PIL.Image
 import torch
 from transformers import CLIPTokenizer
@@ -246,16 +244,16 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
         condtioning_image: PIL.Image.Image,
         source_subject_category: list[str],
         target_subject_category: list[str],
-        latents: Optional[torch.Tensor] = None,
+        latents: torch.Tensor | None = None,
         guidance_scale: float = 7.5,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        neg_prompt: Optional[str] = "",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        neg_prompt: str | None = "",
         prompt_strength: float = 1.0,
         prompt_reps: int = 20,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ):
         """

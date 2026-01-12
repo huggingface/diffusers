@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional
-
 import safetensors
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -264,9 +262,9 @@ class TextualInversionLoaderMixin:
     def load_textual_inversion(
         self,
         pretrained_model_name_or_path: str | list[str] | dict[str, torch.Tensor] | list[dict[str, torch.Tensor]],
-        token: Optional[str | list[str]] = None,
-        tokenizer: Optional["PreTrainedTokenizer"] = None,  # noqa: F821
-        text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
+        token: str | list[str] | None = None,
+        tokenizer: "PreTrainedTokenizer" | None = None,  # noqa: F821
+        text_encoder: "PreTrainedModel" | None = None,  # noqa: F821
         **kwargs,
     ):
         r"""
@@ -299,7 +297,7 @@ class TextualInversionLoaderMixin:
                     - The saved textual inversion file is in 🤗 Diffusers format, but was saved under a specific weight
                       name such as `text_inv.bin`.
                     - The saved textual inversion file is in the Automatic1111 format.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
@@ -458,9 +456,9 @@ class TextualInversionLoaderMixin:
 
     def unload_textual_inversion(
         self,
-        tokens: Optional[str | list[str]] = None,
-        tokenizer: Optional["PreTrainedTokenizer"] = None,
-        text_encoder: Optional["PreTrainedModel"] = None,
+        tokens: str | list[str] | None = None,
+        tokenizer: "PreTrainedTokenizer" | None = None,
+        text_encoder: "PreTrainedModel" | None = None,
     ):
         r"""
         Unload Textual Inversion embeddings from the text encoder of [`StableDiffusionPipeline`]

@@ -15,11 +15,11 @@ import tempfile
 import time
 import unittest
 import urllib.parse
-from collections import UserDict
+from collections import UserDict, Userdict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Set
 
 import numpy as np
 import PIL.Image
@@ -676,7 +676,7 @@ def get_python_version():
     return major, minor
 
 
-def load_numpy(arry: str | np.ndarray, local_path: Optional[str] = None) -> np.ndarray:
+def load_numpy(arry: str | np.ndarray, local_path: str | None = None) -> np.ndarray:
     if isinstance(arry, str):
         if local_path is not None:
             # local_path can be passed to correct images of tests
@@ -702,7 +702,7 @@ def load_numpy(arry: str | np.ndarray, local_path: Optional[str] = None) -> np.n
     return arry
 
 
-def load_pt(url: str, map_location: Optional[str] = None, weights_only: Optional[bool] = True):
+def load_pt(url: str, map_location: str | None = None, weights_only: bool | None = True):
     response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
     response.raise_for_status()
     arry = torch.load(BytesIO(response.content), map_location=map_location, weights_only=weights_only)
@@ -1024,7 +1024,7 @@ def pytest_terminal_summary_main(tr, id):
 
 
 # Adapted from https://github.com/huggingface/transformers/blob/000e52aec8850d3fe2f360adc6fd256e5b47fe4c/src/transformers/testing_utils.py#L1905
-def is_flaky(max_attempts: int = 5, wait_before_retry: Optional[float] = None, description: Optional[str] = None):
+def is_flaky(max_attempts: int = 5, wait_before_retry: float | None = None, description: str | None = None):
     """
     To decorate flaky tests (methods or entire classes). They will be retried on failures.
 
@@ -1459,7 +1459,7 @@ def get_device_properties() -> DeviceProperties:
 
 
 if TYPE_CHECKING:
-    DevicePropertiesUserDict = UserDict[DeviceProperties, Any]
+    DevicePropertiesUserDict = Userdict[DeviceProperties, Any]
 else:
     DevicePropertiesUserDict = UserDict
 
@@ -1477,7 +1477,7 @@ if is_torch_available():
         module: torch.nn.Module,
         offload_to_disk_path: str,
         offload_type: str,
-        num_blocks_per_group: Optional[int] = None,
+        num_blocks_per_group: int | None = None,
     ) -> Set[str]:
         expected_files = set()
 
@@ -1545,7 +1545,7 @@ if is_torch_available():
         module: torch.nn.Module,
         offload_to_disk_path: str,
         offload_type: str,
-        num_blocks_per_group: Optional[int] = None,
+        num_blocks_per_group: int | None = None,
     ) -> bool:
         if not os.path.isdir(offload_to_disk_path):
             return False, None, None

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 import PIL.Image
@@ -43,7 +43,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -65,7 +65,7 @@ def prepare_mask_and_masked_image(image, mask):
     binarized (``mask > 0.5``) and cast to ``torch.float32`` too.
 
     Args:
-        image (Union[np.array, PIL.Image, torch.Tensor]): The image to inpaint.
+        image (np.array | PIL.Image | torch.Tensor): The image to inpaint.
             It can be a ``PIL.Image``, or a ``height x width x 3`` ``np.array`` or a ``channels x height x width``
             ``torch.Tensor`` or a ``batch x channels x height x width`` ``torch.Tensor``.
         mask (_type_): The mask to apply to the image, i.e. regions to inpaint.
@@ -400,18 +400,18 @@ class PaintByExamplePipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableD
         example_image: torch.Tensor | PIL.Image.Image,
         image: torch.Tensor | PIL.Image.Image,
         mask_image: torch.Tensor | PIL.Image.Image,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
     ):
         r"""

@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -25,5 +24,5 @@ class IFPipelineOutput(BaseOutput):
     """
 
     images: list[PIL.Image.Image] | np.ndarray
-    nsfw_detected: Optional[list[bool]]
-    watermark_detected: Optional[list[bool]]
+    nsfw_detected: list[bool] | None
+    watermark_detected: list[bool] | None

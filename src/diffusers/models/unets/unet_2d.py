@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -95,16 +94,16 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[int | tuple[int, int]] = None,
+        sample_size: int | tuple[int, int] | None = None,
         in_channels: int = 3,
         out_channels: int = 3,
         center_input_sample: bool = False,
         time_embedding_type: str = "positional",
-        time_embedding_dim: Optional[int] = None,
+        time_embedding_dim: int | None = None,
         freq_shift: int = 0,
         flip_sin_to_cos: bool = True,
         down_block_types: tuple[str, ...] = ("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
-        mid_block_type: Optional[str] = "UNetMidBlock2D",
+        mid_block_type: str | None = "UNetMidBlock2D",
         up_block_types: tuple[str, ...] = ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
         block_out_channels: tuple[int, ...] = (224, 448, 672, 896),
         layers_per_block: int = 2,
@@ -114,15 +113,15 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         upsample_type: str = "conv",
         dropout: float = 0.0,
         act_fn: str = "silu",
-        attention_head_dim: Optional[int] = 8,
+        attention_head_dim: int | None = 8,
         norm_num_groups: int = 32,
-        attn_norm_num_groups: Optional[int] = None,
+        attn_norm_num_groups: int | None = None,
         norm_eps: float = 1e-5,
         resnet_time_scale_shift: str = "default",
         add_attention: bool = True,
-        class_embed_type: Optional[str] = None,
-        num_class_embeds: Optional[int] = None,
-        num_train_timesteps: Optional[int] = None,
+        class_embed_type: str | None = None,
+        num_class_embeds: int | None = None,
+        num_train_timesteps: int | None = None,
     ):
         super().__init__()
 
@@ -251,7 +250,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         self,
         sample: torch.Tensor,
         timestep: torch.Tensor | float | int,
-        class_labels: Optional[torch.Tensor] = None,
+        class_labels: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> UNet2DOutput | tuple:
         r"""

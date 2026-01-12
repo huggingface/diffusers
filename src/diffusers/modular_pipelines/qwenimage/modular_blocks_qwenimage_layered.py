@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import List
-
 import PIL.Image
 import torch
 
@@ -174,5 +172,5 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam(name="images", type_hint=List[List[PIL.Image.Image]], description="The generated images"),
+            OutputParam(name="images", type_hint=list[list[PIL.Image.Image]], description="The generated images"),
         ]

@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -23,7 +23,7 @@ class HiDreamImageFeedForwardSwiGLU(nn.Module):
         dim: int,
         hidden_dim: int,
         multiple_of: int = 256,
-        ffn_dim_multiplier: Optional[float] = None,
+        ffn_dim_multiplier: float | None = None,
     ):
         super().__init__()
         hidden_dim = int(2 * hidden_dim / 3)
@@ -55,7 +55,7 @@ class HiDreamImageTimestepEmbed(nn.Module):
         self.time_proj = Timesteps(num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
 
-    def forward(self, timesteps: torch.Tensor, wdtype: Optional[torch.dtype] = None) -> torch.Tensor:
+    def forward(self, timesteps: torch.Tensor, wdtype: torch.dtype | None = None) -> torch.Tensor:
         t_emb = self.time_proj(timesteps).to(dtype=wdtype)
         t_emb = self.timestep_embedder(t_emb)
         return t_emb
@@ -205,8 +205,8 @@ class HiDreamAttnProcessor:
         self,
         attn: HiDreamAttention,
         hidden_states: torch.Tensor,
-        hidden_states_masks: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
+        hidden_states_masks: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor = None,
         *args,
         **kwargs,
@@ -458,9 +458,9 @@ class HiDreamImageSingleTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        hidden_states_masks: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
+        hidden_states_masks: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor = None,
     ) -> torch.Tensor:
         wtype = hidden_states.dtype
@@ -530,9 +530,9 @@ class HiDreamImageTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        hidden_states_masks: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
+        hidden_states_masks: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         wtype = hidden_states.dtype
@@ -588,9 +588,9 @@ class HiDreamBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        hidden_states_masks: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
+        hidden_states_masks: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         return self.block(
@@ -609,9 +609,9 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
     @register_to_config
     def __init__(
         self,
-        patch_size: Optional[int] = None,
+        patch_size: int | None = None,
         in_channels: int = 64,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         num_layers: int = 16,
         num_single_layers: int = 32,
         attention_head_dim: int = 128,
@@ -780,10 +780,10 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         encoder_hidden_states_t5: torch.Tensor = None,
         encoder_hidden_states_llama3: torch.Tensor = None,
         pooled_embeds: torch.Tensor = None,
-        img_ids: Optional[torch.Tensor] = None,
-        img_sizes: Optional[list[tuple[int, int]]] = None,
-        hidden_states_masks: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        img_ids: torch.Tensor | None = None,
+        img_sizes: list[tuple[int, int]] | None = None,
+        hidden_states_masks: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
         **kwargs,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:

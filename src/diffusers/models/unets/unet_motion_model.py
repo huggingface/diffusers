@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -93,19 +93,19 @@ class AnimateDiffTransformer3D(nn.Module):
         self,
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
-        in_channels: Optional[int] = None,
-        out_channels: Optional[int] = None,
+        in_channels: int | None = None,
+        out_channels: int | None = None,
         num_layers: int = 1,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
         attention_bias: bool = False,
-        sample_size: Optional[int] = None,
+        sample_size: int | None = None,
         activation_fn: str = "geglu",
         norm_elementwise_affine: bool = True,
         double_self_attention: bool = True,
-        positional_embeddings: Optional[str] = None,
-        num_positional_embeddings: Optional[int] = None,
+        positional_embeddings: str | None = None,
+        num_positional_embeddings: int | None = None,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -142,11 +142,11 @@ class AnimateDiffTransformer3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.LongTensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
-        class_labels: Optional[torch.LongTensor] = None,
+        encoder_hidden_states: torch.LongTensor | None = None,
+        timestep: torch.LongTensor | None = None,
+        class_labels: torch.LongTensor | None = None,
         num_frames: int = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor:
         """
         The [`AnimateDiffTransformer3D`] forward method.
@@ -228,7 +228,7 @@ class DownBlockMotion(nn.Module):
         add_downsample: bool = True,
         downsample_padding: int = 1,
         temporal_num_attention_heads: int | tuple[int] = 1,
-        temporal_cross_attention_dim: Optional[int] = None,
+        temporal_cross_attention_dim: int | None = None,
         temporal_max_seq_length: int = 32,
         temporal_transformer_layers_per_block: int | tuple[int] = 1,
         temporal_double_self_attention: bool = True,
@@ -308,7 +308,7 @@ class DownBlockMotion(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
         num_frames: int = 1,
         *args,
         **kwargs,
@@ -363,7 +363,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
         attention_type: str = "default",
-        temporal_cross_attention_dim: Optional[int] = None,
+        temporal_cross_attention_dim: int | None = None,
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
         temporal_transformer_layers_per_block: int | tuple[int] = 1,
@@ -477,13 +477,13 @@ class CrossAttnDownBlockMotion(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
         num_frames: int = 1,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        additional_residuals: Optional[torch.Tensor] = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        additional_residuals: torch.Tensor | None = None,
     ):
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -531,7 +531,7 @@ class CrossAttnUpBlockMotion(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: int | tuple[int] = 1,
@@ -549,7 +549,7 @@ class CrossAttnUpBlockMotion(nn.Module):
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
         attention_type: str = "default",
-        temporal_cross_attention_dim: Optional[int] = None,
+        temporal_cross_attention_dim: int | None = None,
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
         temporal_transformer_layers_per_block: int | tuple[int] = 1,
@@ -654,12 +654,12 @@ class CrossAttnUpBlockMotion(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        upsample_size: int | None = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
         num_frames: int = 1,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
@@ -723,7 +723,7 @@ class UpBlockMotion(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -733,7 +733,7 @@ class UpBlockMotion(nn.Module):
         resnet_pre_norm: bool = True,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
-        temporal_cross_attention_dim: Optional[int] = None,
+        temporal_cross_attention_dim: int | None = None,
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
         temporal_transformer_layers_per_block: int | tuple[int] = 1,
@@ -799,7 +799,7 @@ class UpBlockMotion(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
         upsample_size=None,
         num_frames: int = 1,
         *args,
@@ -872,7 +872,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         upcast_attention: bool = False,
         attention_type: str = "default",
         temporal_num_attention_heads: int = 1,
-        temporal_cross_attention_dim: Optional[int] = None,
+        temporal_cross_attention_dim: int | None = None,
         temporal_max_seq_length: int = 32,
         temporal_transformer_layers_per_block: int | tuple[int] = 1,
     ):
@@ -980,11 +980,11 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
         num_frames: int = 1,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
@@ -1024,7 +1024,7 @@ class MotionModules(nn.Module):
         transformer_layers_per_block: int | tuple[int] = 8,
         num_attention_heads: int | tuple[int] = 8,
         attention_bias: bool = False,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
         activation_fn: str = "geglu",
         norm_num_groups: int = 32,
         max_seq_length: int = 32,
@@ -1070,7 +1070,7 @@ class MotionAdapter(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         motion_norm_num_groups: int = 32,
         motion_max_seq_length: int = 32,
         use_motion_mid_block: bool = True,
-        conv_in_channels: Optional[int] = None,
+        conv_in_channels: int | None = None,
     ):
         """Container to store AnimateDiff Motion Modules
 
@@ -1209,7 +1209,7 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[int] = None,
+        sample_size: int | None = None,
         in_channels: int = 4,
         out_channels: int = 4,
         down_block_types: tuple[str, ...] = (
@@ -1233,24 +1233,24 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
         transformer_layers_per_block: int | tuple[int] | tuple[tuple] = 1,
-        reverse_transformer_layers_per_block: Optional[int | tuple[int] | tuple[tuple]] = None,
+        reverse_transformer_layers_per_block: int | tuple[int] | tuple[tuple] | None = None,
         temporal_transformer_layers_per_block: int | tuple[int] | tuple[tuple] = 1,
-        reverse_temporal_transformer_layers_per_block: Optional[int | tuple[int] | tuple[tuple]] = None,
-        transformer_layers_per_mid_block: Optional[int | tuple[int]] = None,
-        temporal_transformer_layers_per_mid_block: Optional[int | tuple[int]] = 1,
+        reverse_temporal_transformer_layers_per_block: int | tuple[int] | tuple[tuple] | None = None,
+        transformer_layers_per_mid_block: int | tuple[int] | None = None,
+        temporal_transformer_layers_per_mid_block: int | tuple[int] | None = 1,
         use_linear_projection: bool = False,
         num_attention_heads: int | tuple[int, ...] = 8,
         motion_max_seq_length: int = 32,
         motion_num_attention_heads: int | tuple[int, ...] = 8,
-        reverse_motion_num_attention_heads: Optional[int | tuple[int, ...] | tuple[tuple[int, ...], ...]] = None,
+        reverse_motion_num_attention_heads: int | tuple[int, ...] | tuple[tuple[int, ...], ...] | None = None,
         use_motion_mid_block: bool = True,
         mid_block_layers: int = 1,
-        encoder_hid_dim: Optional[int] = None,
-        encoder_hid_dim_type: Optional[str] = None,
-        addition_embed_type: Optional[str] = None,
-        addition_time_embed_dim: Optional[int] = None,
-        projection_class_embeddings_input_dim: Optional[int] = None,
-        time_cond_proj_dim: Optional[int] = None,
+        encoder_hid_dim: int | None = None,
+        encoder_hid_dim_type: str | None = None,
+        addition_embed_type: str | None = None,
+        addition_time_embed_dim: int | None = None,
+        projection_class_embeddings_input_dim: int | None = None,
+        time_cond_proj_dim: int | None = None,
     ):
         super().__init__()
 
@@ -1534,7 +1534,7 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
     def from_unet2d(
         cls,
         unet: UNet2DConditionModel,
-        motion_adapter: Optional[MotionAdapter] = None,
+        motion_adapter: MotionAdapter | None = None,
         load_weights: bool = True,
     ):
         has_motion_adapter = motion_adapter is not None
@@ -1708,7 +1708,7 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
             for param in motion_modules.parameters():
                 param.requires_grad = True
 
-    def load_motion_modules(self, motion_adapter: Optional[MotionAdapter]) -> None:
+    def load_motion_modules(self, motion_adapter: MotionAdapter | None) -> None:
         for i, down_block in enumerate(motion_adapter.down_blocks):
             self.down_blocks[i].motion_modules.load_state_dict(down_block.motion_modules.state_dict())
         for i, up_block in enumerate(motion_adapter.up_blocks):
@@ -1723,7 +1723,7 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
         save_directory: str,
         is_main_process: bool = True,
         safe_serialization: bool = True,
-        variant: Optional[str] = None,
+        variant: str | None = None,
         push_to_hub: bool = False,
         **kwargs,
     ) -> None:
@@ -1753,7 +1753,7 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
             **kwargs,
         )
 
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(self, chunk_size: int | None = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -1880,12 +1880,12 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
         sample: torch.Tensor,
         timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        added_cond_kwargs: Optional[dict[str, torch.Tensor]] = None,
-        down_block_additional_residuals: Optional[tuple[torch.Tensor]] = None,
-        mid_block_additional_residual: Optional[torch.Tensor] = None,
+        timestep_cond: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        added_cond_kwargs: dict[str, torch.Tensor] | None = None,
+        down_block_additional_residuals: tuple[torch.Tensor] | None = None,
+        mid_block_additional_residual: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> UNetMotionOutput | tuple[torch.Tensor]:
         r"""

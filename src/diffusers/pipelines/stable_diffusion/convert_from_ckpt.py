@@ -17,7 +17,6 @@
 import re
 from contextlib import nullcontext
 from io import BytesIO
-from typing import Optional
 
 import requests
 import torch
@@ -1049,7 +1048,7 @@ def stable_unclip_image_encoder(original_config, local_files_only=False):
 
 
 def stable_unclip_image_noising_components(
-    original_config, clip_stats_path: Optional[str] = None, device: Optional[str] = None
+    original_config, clip_stats_path: str | None = None, device: str | None = None
 ):
     """
     Returns the noising components for the img2img and txt2img unclip pipelines.
@@ -1146,23 +1145,23 @@ def convert_controlnet_checkpoint(
 def download_from_original_stable_diffusion_ckpt(
     checkpoint_path_or_dict: str | dict[str, torch.Tensor],
     original_config_file: str = None,
-    image_size: Optional[int] = None,
+    image_size: int | None = None,
     prediction_type: str = None,
     model_type: str = None,
     extract_ema: bool = False,
     scheduler_type: str = "pndm",
-    num_in_channels: Optional[int] = None,
-    upcast_attention: Optional[bool] = None,
+    num_in_channels: int | None = None,
+    upcast_attention: bool | None = None,
     device: str = None,
     from_safetensors: bool = False,
-    stable_unclip: Optional[str] = None,
-    stable_unclip_prior: Optional[str] = None,
-    clip_stats_path: Optional[str] = None,
-    controlnet: Optional[bool] = None,
-    adapter: Optional[bool] = None,
+    stable_unclip: str | None = None,
+    stable_unclip_prior: str | None = None,
+    clip_stats_path: str | None = None,
+    controlnet: bool | None = None,
+    adapter: bool | None = None,
     load_safety_checker: bool = True,
-    safety_checker: Optional[StableDiffusionSafetyChecker] = None,
-    feature_extractor: Optional[AutoFeatureExtractor] = None,
+    safety_checker: StableDiffusionSafetyChecker | None = None,
+    feature_extractor: AutoFeatureExtractor | None = None,
     pipeline_class: DiffusionPipeline = None,
     local_files_only=False,
     vae_path=None,
@@ -1827,12 +1826,12 @@ def download_controlnet_from_original_ckpt(
     original_config_file: str,
     image_size: int = 512,
     extract_ema: bool = False,
-    num_in_channels: Optional[int] = None,
-    upcast_attention: Optional[bool] = None,
+    num_in_channels: int | None = None,
+    upcast_attention: bool | None = None,
     device: str = None,
     from_safetensors: bool = False,
-    use_linear_projection: Optional[bool] = None,
-    cross_attention_dim: Optional[bool] = None,
+    use_linear_projection: bool | None = None,
+    cross_attention_dim: bool | None = None,
 ) -> DiffusionPipeline:
     if from_safetensors:
         from safetensors import safe_open

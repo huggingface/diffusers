@@ -18,7 +18,7 @@
 # --------------------------------------------------------------------------
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import torch
@@ -153,11 +153,11 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         scheduler: DDIMScheduler | LCMScheduler,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        prediction_type: Optional[str] = None,
-        scale_invariant: Optional[bool] = True,
-        shift_invariant: Optional[bool] = True,
-        default_denoising_steps: Optional[int] = None,
-        default_processing_resolution: Optional[int] = None,
+        prediction_type: str | None = None,
+        scale_invariant: bool | None = True,
+        shift_invariant: bool | None = True,
+        default_denoising_steps: int | None = None,
+        default_processing_resolution: int | None = None,
     ):
         super().__init__()
 
@@ -202,9 +202,9 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         resample_method_input: str,
         resample_method_output: str,
         batch_size: int,
-        ensembling_kwargs: Optional[dict[str, Any]],
-        latents: Optional[torch.Tensor],
-        generator: Optional[torch.Generator | list[torch.Generator]],
+        ensembling_kwargs: dict[str, Any] | None,
+        latents: torch.Tensor | None,
+        generator: torch.Generator | list[torch.Generator] | None,
         output_type: str,
         output_uncertainty: bool,
     ) -> int:
@@ -349,16 +349,16 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: PipelineImageInput,
-        num_inference_steps: Optional[int] = None,
+        num_inference_steps: int | None = None,
         ensemble_size: int = 1,
-        processing_resolution: Optional[int] = None,
+        processing_resolution: int | None = None,
         match_input_resolution: bool = True,
         resample_method_input: str = "bilinear",
         resample_method_output: str = "bilinear",
         batch_size: int = 1,
-        ensembling_kwargs: Optional[dict[str, Any]] = None,
-        latents: Optional[torch.Tensor | list[torch.Tensor]] = None,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
+        ensembling_kwargs: dict[str, Any] | None = None,
+        latents: torch.Tensor | list[torch.Tensor] | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str = "np",
         output_uncertainty: bool = False,
         output_latent: bool = False,
@@ -621,8 +621,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     def prepare_latents(
         self,
         image: torch.Tensor,
-        latents: Optional[torch.Tensor],
-        generator: Optional[torch.Generator],
+        latents: torch.Tensor | None,
+        generator: torch.Generator | None,
         ensemble_size: int,
         batch_size: int,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -680,7 +680,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         max_iter: int = 2,
         tol: float = 1e-3,
         max_res: int = 1024,
-    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Ensembles the depth maps represented by the `depth` tensor with expected shape `(B, 1, H, W)`, where B is the
         number of ensemble members for a given prediction of size `(H x W)`. Even though the function is designed for
@@ -754,7 +754,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         def ensemble(
             depth_aligned: torch.Tensor, return_uncertainty: bool = False
-        ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        ) -> tuple[torch.Tensor, torch.Tensor | None]:
             uncertainty = None
             if reduction == "mean":
                 prediction = torch.mean(depth_aligned, dim=0, keepdim=True)

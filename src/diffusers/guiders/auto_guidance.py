@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import torch
 
@@ -67,9 +67,9 @@ class AutoGuidance(BaseGuidance):
     def __init__(
         self,
         guidance_scale: float = 7.5,
-        auto_guidance_layers: Optional[int | list[int]] = None,
+        auto_guidance_layers: int | list[int] | None = None,
         auto_guidance_config: LayerSkipConfig | list[LayerSkipConfig] | dict[str, Any] = None,
-        dropout: Optional[float] = None,
+        dropout: float | None = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -153,7 +153,7 @@ class AutoGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: torch.Tensor | None = None) -> GuiderOutput:
         pred = None
 
         if not self._is_ag_enabled():

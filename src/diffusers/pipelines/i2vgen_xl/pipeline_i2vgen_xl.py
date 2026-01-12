@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import PIL
@@ -165,9 +165,9 @@ class I2VGenXLPipeline(
         device,
         num_videos_per_prompt,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        clip_skip: Optional[int] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -513,24 +513,24 @@ class I2VGenXLPipeline(
         self,
         prompt: str | list[str] = None,
         image: PipelineImageInput = None,
-        height: Optional[int] = 704,
-        width: Optional[int] = 1280,
-        target_fps: Optional[int] = 16,
+        height: int | None = 704,
+        width: int | None = 1280,
+        target_fps: int | None = 16,
         num_frames: int = 16,
         num_inference_steps: int = 50,
         guidance_scale: float = 9.0,
-        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt: str | list[str] | None = None,
         eta: float = 0.0,
-        num_videos_per_prompt: Optional[int] = 1,
-        decode_chunk_size: Optional[int] = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        num_videos_per_prompt: int | None = 1,
+        decode_chunk_size: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        clip_skip: Optional[int] = 1,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        clip_skip: int | None = 1,
     ):
         r"""
         The call function to the pipeline for image-to-video generation with [`I2VGenXLPipeline`].

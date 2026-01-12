@@ -16,7 +16,7 @@
 # More information and citation instructions are available on the
 # Marigold project website: https://marigoldcomputervision.github.io
 # --------------------------------------------------------------------------
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import PIL
@@ -90,7 +90,7 @@ class MarigoldImageProcessor(ConfigMixin):
 
     @staticmethod
     def resize_antialias(
-        image: torch.Tensor, size: tuple[int, int], mode: str, is_aa: Optional[bool] = None
+        image: torch.Tensor, size: tuple[int, int], mode: str, is_aa: bool | None = None
     ) -> torch.Tensor:
         if not torch.is_tensor(image):
             raise ValueError(f"Invalid input type={type(image)}.")
@@ -216,7 +216,7 @@ class MarigoldImageProcessor(ConfigMixin):
     def preprocess(
         self,
         image: PipelineImageInput,
-        processing_resolution: Optional[int] = None,
+        processing_resolution: int | None = None,
         resample_method_input: str = "bilinear",
         device: torch.device = torch.device("cpu"),
         dtype: torch.dtype = torch.float32,
@@ -259,7 +259,7 @@ class MarigoldImageProcessor(ConfigMixin):
         image: np.ndarray | torch.Tensor,
         cmap: str = "Spectral",
         bytes: bool = False,
-        _force_method: Optional[str] = None,
+        _force_method: str | None = None,
     ) -> np.ndarray | torch.Tensor:
         """
         Converts a monochrome image into an RGB image by applying the specified colormap. This function mimics the
@@ -400,7 +400,7 @@ class MarigoldImageProcessor(ConfigMixin):
         Visualizes depth maps, such as predictions of the `MarigoldDepthPipeline`.
 
         Args:
-            depth (`Union[PIL.Image.Image, np.ndarray, torch.Tensor, list[PIL.Image.Image], list[np.ndarray],
+            depth (`PIL.Image.Image | np.ndarray | torch.Tensor | list[PIL.Image.Image, list[np.ndarray],
                 list[torch.Tensor]]`): Depth maps.
             val_min (`float`, *optional*, defaults to `0.0`): Minimum value of the visualized depth range.
             val_max (`float`, *optional*, defaults to `1.0`): Maximum value of the visualized depth range.
@@ -494,7 +494,7 @@ class MarigoldImageProcessor(ConfigMixin):
         Visualizes surface normals, such as predictions of the `MarigoldNormalsPipeline`.
 
         Args:
-            normals (`Union[np.ndarray, torch.Tensor, list[np.ndarray], list[torch.Tensor]]`):
+            normals (`np.ndarray | torch.Tensor | list[np.ndarray, list[torch.Tensor]]`):
                 Surface normals.
             flip_x (`bool`, *optional*, defaults to `False`): Flips the X axis of the normals frame of reference.
                       Default direction is right.
@@ -549,13 +549,13 @@ class MarigoldImageProcessor(ConfigMixin):
         Visualizes intrinsic image decomposition, such as predictions of the `MarigoldIntrinsicsPipeline`.
 
         Args:
-            prediction (`Union[np.ndarray, torch.Tensor, list[np.ndarray], list[torch.Tensor]]`):
+            prediction (`np.ndarray | torch.Tensor | list[np.ndarray, list[torch.Tensor]]`):
                 Intrinsic image decomposition.
             target_properties (`dict[str, Any]`):
                 Decomposition properties. Expected entries: `target_names: list[str]` and a dictionary with keys
-                `prediction_space: str`, `sub_target_names: list[Union[str, Null]]` (must have 3 entries, null for
-                missing modalities), `up_to_scale: bool`, one for each target and sub-target.
-            color_map (`Union[str, dict[str, str]]`, *optional*, defaults to `"Spectral"`):
+                `prediction_space: str`, `sub_target_names: list[str | Null]` (must have 3 entries, null for missing
+                modalities), `up_to_scale: bool`, one for each target and sub-target.
+            color_map (`str | dict[str, str]`, *optional*, defaults to `"Spectral"`):
                 Color map used to convert a single-channel predictions into colored representations. When a dictionary
                 is passed, each modality can be colored with its own color map.
 
@@ -637,7 +637,7 @@ class MarigoldImageProcessor(ConfigMixin):
         `MarigoldIntrinsicsPipeline`.
 
         Args:
-            uncertainty (`Union[np.ndarray, torch.Tensor, list[np.ndarray], list[torch.Tensor]]`):
+            uncertainty (`np.ndarray | torch.Tensor | list[np.ndarray, list[torch.Tensor]]`):
                 Uncertainty maps.
             saturation_percentile (`int`, *optional*, defaults to `95`):
                 Specifies the percentile uncertainty value visualized with maximum intensity.

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -56,9 +56,9 @@ class HunyuanVideoAttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if attn.add_q_proj is None and encoder_hidden_states is not None:
             hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
@@ -178,7 +178,7 @@ class HunyuanVideoPatchEmbed(nn.Module):
 
 
 class HunyuanVideoAdaNorm(nn.Module):
-    def __init__(self, in_features: int, out_features: Optional[int] = None) -> None:
+    def __init__(self, in_features: int, out_features: int | None = None) -> None:
         super().__init__()
 
         out_features = out_features or 2 * in_features
@@ -292,7 +292,7 @@ class HunyuanVideoConditionEmbedding(nn.Module):
         embedding_dim: int,
         pooled_projection_dim: int,
         guidance_embeds: bool,
-        image_condition_type: Optional[str] = None,
+        image_condition_type: str | None = None,
     ):
         super().__init__()
 
@@ -307,7 +307,7 @@ class HunyuanVideoConditionEmbedding(nn.Module):
             self.guidance_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
     def forward(
-        self, timestep: torch.Tensor, pooled_projection: torch.Tensor, guidance: Optional[torch.Tensor] = None
+        self, timestep: torch.Tensor, pooled_projection: torch.Tensor, guidance: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=pooled_projection.dtype))  # (N, D)
@@ -360,7 +360,7 @@ class HunyuanVideoIndividualTokenRefinerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         norm_hidden_states = self.norm1(hidden_states)
 
@@ -408,7 +408,7 @@ class HunyuanVideoIndividualTokenRefiner(nn.Module):
         self,
         hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> None:
         self_attn_mask = None
         if attention_mask is not None:
@@ -458,7 +458,7 @@ class HunyuanVideoTokenRefiner(nn.Module):
         self,
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
-        attention_mask: Optional[torch.LongTensor] = None,
+        attention_mask: torch.LongTensor | None = None,
     ) -> torch.Tensor:
         if attention_mask is None:
             pooled_projections = hidden_states.mean(dim=1)
@@ -544,8 +544,8 @@ class HunyuanVideoSingleTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         *args,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -624,8 +624,8 @@ class HunyuanVideoTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        freqs_cis: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: torch.Tensor | None = None,
+        freqs_cis: tuple[torch.Tensor, torch.Tensor] | None = None,
         *args,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -699,8 +699,8 @@ class HunyuanVideoTokenReplaceSingleTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         token_replace_emb: torch.Tensor = None,
         num_tokens: int = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -783,8 +783,8 @@ class HunyuanVideoTokenReplaceTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        freqs_cis: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: torch.Tensor | None = None,
+        freqs_cis: tuple[torch.Tensor, torch.Tensor] | None = None,
         token_replace_emb: torch.Tensor = None,
         num_tokens: int = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -917,7 +917,7 @@ class HunyuanVideoTransformer3DModel(
         pooled_projection_dim: int = 768,
         rope_theta: float = 256.0,
         rope_axes_dim: tuple[int, ...] = (16, 56, 56),
-        image_condition_type: Optional[str] = None,
+        image_condition_type: str | None = None,
     ) -> None:
         super().__init__()
 
@@ -997,7 +997,7 @@ class HunyuanVideoTransformer3DModel(
         encoder_attention_mask: torch.Tensor,
         pooled_projections: torch.Tensor,
         guidance: torch.Tensor = None,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         if attention_kwargs is not None:

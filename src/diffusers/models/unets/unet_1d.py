@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -77,12 +76,12 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         sample_size: int = 65536,
-        sample_rate: Optional[int] = None,
+        sample_rate: int | None = None,
         in_channels: int = 2,
         out_channels: int = 2,
         extra_in_channels: int = 0,
         time_embedding_type: str = "fourier",
-        time_embedding_dim: Optional[int] = None,
+        time_embedding_dim: int | None = None,
         flip_sin_to_cos: bool = True,
         use_timestep_embedding: bool = False,
         freq_shift: float = 0.0,

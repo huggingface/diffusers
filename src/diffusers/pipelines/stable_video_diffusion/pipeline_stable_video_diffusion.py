@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import numpy as np
 import PIL.Image
@@ -73,10 +73,10 @@ def _append_dims(x, target_dims):
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -340,7 +340,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         dtype: torch.dtype,
         device: str | torch.device,
         generator: torch.Generator,
-        latents: Optional[torch.Tensor] = None,
+        latents: torch.Tensor | None = None,
     ):
         shape = (
             batch_size,
@@ -388,20 +388,20 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         image: PIL.Image.Image | list[PIL.Image.Image] | torch.Tensor,
         height: int = 576,
         width: int = 1024,
-        num_frames: Optional[int] = None,
+        num_frames: int | None = None,
         num_inference_steps: int = 25,
-        sigmas: Optional[list[float]] = None,
+        sigmas: list[float] | None = None,
         min_guidance_scale: float = 1.0,
         max_guidance_scale: float = 3.0,
         fps: int = 7,
         motion_bucket_id: int = 127,
         noise_aug_strength: float = 0.02,
-        decode_chunk_size: Optional[int] = None,
-        num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        decode_chunk_size: int | None = None,
+        num_videos_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         return_dict: bool = True,
     ):

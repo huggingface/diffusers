@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import PIL.Image
 import torch
@@ -141,9 +141,9 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         weights: list[float],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        negative_prior_prompt: Optional[str] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        negative_prior_prompt: str | None = None,
         negative_prompt: str = "",
         guidance_scale: float = 4.0,
         device=None,
@@ -152,7 +152,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         Function invoked when using the prior pipeline for interpolation.
 
         Args:
-            images_and_prompts (`list[Union[str, PIL.Image.Image, torch.Tensor]]`):
+            images_and_prompts (`list[str | PIL.Image.Image | torch.Tensor]`):
                 list of prompts and images to guide the image generation.
             weights: (`list[float]`):
                 list of weights for each condition in `images_and_prompts`
@@ -377,15 +377,15 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str],
-        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt: str | list[str] | None = None,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
         guidance_scale: float = 4.0,
-        output_type: Optional[str] = "pt",  # pt only
+        output_type: str | None = "pt",  # pt only
         return_dict: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         """

@@ -14,7 +14,7 @@
 
 import inspect
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 import PIL
@@ -73,16 +73,16 @@ EXAMPLE_DOC_STRING = """
 
 
 # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.format_text_input
-def format_text_input(prompt: List[str], system_message: str) -> List[Dict[str, Any]]:
+def format_text_input(prompt: list[str], system_message: str) -> list[dict[str, Any]]:
     """
     Apply text to template.
 
     Args:
-        prompt (List[str]): Input text.
+        prompt (list[str]): Input text.
         system_message (str): System message.
 
     Returns:
-        List[Dict[str, Any]]: List of chat conversation.
+        list[dict[str, Any]]: List of chat conversation.
     """
 
     template = [
@@ -93,7 +93,7 @@ def format_text_input(prompt: List[str], system_message: str) -> List[Dict[str, 
 
 
 # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.extract_glyph_texts
-def extract_glyph_texts(prompt: str) -> List[str]:
+def extract_glyph_texts(prompt: str) -> list[str]:
     """
     Extract glyph texts from prompt using regex pattern.
 
@@ -118,7 +118,7 @@ def extract_glyph_texts(prompt: str) -> List[str]:
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -133,10 +133,10 @@ def retrieve_latents(
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -280,7 +280,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
     def _get_mllm_prompt_embeds(
         text_encoder: Qwen2_5_VLTextModel,
         tokenizer: Qwen2Tokenizer,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         device: torch.device,
         tokenizer_max_length: int = 1000,
         num_hidden_layers_to_skip: int = 2,
@@ -293,7 +293,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         5. camera angles, movements, and transitions used in the video.",
         # fmt: on
         crop_start: int = 108,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
         prompt = format_text_input(prompt, system_message)
@@ -329,7 +329,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
     def _get_byt5_prompt_embeds(
         tokenizer: ByT5Tokenizer,
         text_encoder: T5EncoderModel,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         device: torch.device,
         tokenizer_max_length: int = 256,
     ):
@@ -421,20 +421,20 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        prompt: str | list[str],
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
         batch_size: int = 1,
         num_videos_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_mask: Optional[torch.Tensor] = None,
-        prompt_embeds_2: Optional[torch.Tensor] = None,
-        prompt_embeds_mask_2: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_embeds_mask: torch.Tensor | None = None,
+        prompt_embeds_2: torch.Tensor | None = None,
+        prompt_embeds_mask_2: torch.Tensor | None = None,
     ):
         r"""
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -567,10 +567,10 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         height: int = 720,
         width: int = 1280,
         num_frames: int = 129,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -652,25 +652,25 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: PIL.Image.Image,
-        prompt: Union[str, List[str]] = None,
-        negative_prompt: Union[str, List[str]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
         num_frames: int = 121,
         num_inference_steps: int = 50,
-        sigmas: List[float] = None,
-        num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_mask: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_mask: Optional[torch.Tensor] = None,
-        prompt_embeds_2: Optional[torch.Tensor] = None,
-        prompt_embeds_mask_2: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_2: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_mask_2: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "np",
+        sigmas: list[float] = None,
+        num_videos_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_embeds_mask: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds_mask: torch.Tensor | None = None,
+        prompt_embeds_2: torch.Tensor | None = None,
+        prompt_embeds_mask_2: torch.Tensor | None = None,
+        negative_prompt_embeds_2: torch.Tensor | None = None,
+        negative_prompt_embeds_mask_2: torch.Tensor | None = None,
+        output_type: str | None = "np",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -678,10 +678,10 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         Args:
             image (`PIL.Image.Image`):
                 The input image to condition video generation on.
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the video generation. If not defined, one has to pass `prompt_embeds`
                 instead.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the video generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead.
             num_frames (`int`, defaults to `121`):
@@ -689,13 +689,13 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality video at the
                 expense of slower inference.
-            sigmas (`List[float]`, *optional*):
+            sigmas (`list[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):

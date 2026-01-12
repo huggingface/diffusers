@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import nn
@@ -94,7 +94,7 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
             The frequency shift to apply to the time embedding.
         down_block_types (`tuple[str]`, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use.
-        only_cross_attention (`Union[bool, tuple[bool]]`, defaults to `False`):
+        only_cross_attention (`bool | tuple[bool]`, defaults to `False`):
         block_out_channels (`tuple[int]`, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, defaults to 2):
@@ -122,7 +122,7 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
             If given, the `encoder_hidden_states` and potentially other embeddings are down-projected to text
             embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
-        attention_head_dim (`Union[int, tuple[int]]`, defaults to 8):
+        attention_head_dim (`int | tuple[int]`, defaults to 8):
             The dimension of the attention heads.
         use_linear_projection (`bool`, defaults to `False`):
         class_embed_type (`str`, *optional*, defaults to `None`):
@@ -168,24 +168,24 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
-        norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int | None = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
         transformer_layers_per_block: int | tuple[int, ...] = 1,
-        encoder_hid_dim: Optional[int] = None,
-        encoder_hid_dim_type: Optional[str] = None,
+        encoder_hid_dim: int | None = None,
+        encoder_hid_dim_type: str | None = None,
         attention_head_dim: int | tuple[int, ...] = 8,
-        num_attention_heads: Optional[int | tuple[int, ...]] = None,
+        num_attention_heads: int | tuple[int, ...] | None = None,
         use_linear_projection: bool = False,
-        class_embed_type: Optional[str] = None,
-        addition_embed_type: Optional[str] = None,
-        addition_time_embed_dim: Optional[int] = None,
-        num_class_embeds: Optional[int] = None,
+        class_embed_type: str | None = None,
+        addition_embed_type: str | None = None,
+        addition_time_embed_dim: int | None = None,
+        num_class_embeds: int | None = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        projection_class_embeddings_input_dim: Optional[int] = None,
+        projection_class_embeddings_input_dim: int | None = None,
         controlnet_conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Optional[tuple[int, ...]] = (48, 96, 192, 384),
+        conditioning_embedding_out_channels: tuple[int, ...] | None = (48, 96, 192, 384),
         global_pool_conditions: bool = False,
         addition_embed_type_num_heads: int = 64,
         num_control_type: int = 6,
@@ -390,7 +390,7 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         cls,
         unet: UNet2DConditionModel,
         controlnet_conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Optional[tuple[int, ...]] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: tuple[int, ...] | None = (16, 32, 96, 256),
         load_weights_from_unet: bool = True,
     ):
         r"""
@@ -546,11 +546,11 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         control_type: torch.Tensor,
         control_type_idx: list[int],
         conditioning_scale: float | list[float] = 1.0,
-        class_labels: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        added_cond_kwargs: Optional[dict[str, torch.Tensor]] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        class_labels: torch.Tensor | None = None,
+        timestep_cond: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        added_cond_kwargs: dict[str, torch.Tensor] | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         from_multi: bool = False,
         guess_mode: bool = False,
         return_dict: bool = True,
@@ -561,7 +561,7 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         Args:
             sample (`torch.Tensor`):
                 The noisy input tensor.
-            timestep (`Union[torch.Tensor, float, int]`):
+            timestep (`torch.Tensor | float | int`):
                 The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.

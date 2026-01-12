@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from functools import partial
-from typing import Dict, Optional
 
 import jax
 import jax.numpy as jnp
@@ -86,12 +85,12 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
     def __call__(
         self,
         prompt_ids: jax.Array,
-        params: Dict | FrozenDict,
+        params: dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int = 50,
         guidance_scale: float | jax.Array = 7.5,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         latents: jnp.array = None,
         neg_prompt_ids: jnp.array = None,
         return_dict: bool = True,
@@ -167,14 +166,14 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
     def _generate(
         self,
         prompt_ids: jnp.array,
-        params: Dict | FrozenDict,
+        params: dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int,
         height: int,
         width: int,
         guidance_scale: float,
-        latents: Optional[jnp.array] = None,
-        neg_prompt_ids: Optional[jnp.array] = None,
+        latents: jnp.array | None = None,
+        neg_prompt_ids: jnp.array | None = None,
         return_latents=False,
     ):
         if height % 8 != 0 or width % 8 != 0:

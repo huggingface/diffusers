@@ -18,7 +18,7 @@ https://github.com/huggingface/transformers/blob/52cb4034ada381fe1ffe8d428a1076e
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from ..utils import is_torch_available
 from .quantization_config import QuantizationConfigMixin
@@ -76,14 +76,14 @@ class DiffusersQuantizer(ABC):
         """
         return torch_dtype
 
-    def update_device_map(self, device_map: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    def update_device_map(self, device_map: dict[str, Any] | None) -> dict[str, Any] | None:
         """
         Override this method if you want to pass a override the existing device map with a new one. E.g. for
         bitsandbytes, since `accelerate` is a hard requirement, if no device_map is passed, the device_map is set to
         `"auto"``
 
         Args:
-            device_map (`Union[dict, str]`, *optional*):
+            device_map (`dict | str`, *optional*):
                 The device_map that is passed through the `from_pretrained` method.
         """
         return device_map

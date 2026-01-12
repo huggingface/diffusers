@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import nn
@@ -96,9 +96,9 @@ class PRXAttnProcessor2_0:
         self,
         attn: "PRXAttention",
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -234,9 +234,9 @@ class PRXAttention(nn.Module, AttentionModuleMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
         return self.processor(
@@ -389,7 +389,7 @@ class PRXBlock(nn.Module):
         hidden_size: int,
         num_heads: int,
         mlp_ratio: float = 4.0,
-        qk_scale: Optional[float] = None,
+        qk_scale: float | None = None,
     ):
         super().__init__()
 
@@ -430,7 +430,7 @@ class PRXBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
         **kwargs: dict[str, Any],
     ) -> torch.Tensor:
         r"""
@@ -728,8 +728,8 @@ class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        attention_mask: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor, ...] | Transformer2DModelOutput:
         r"""

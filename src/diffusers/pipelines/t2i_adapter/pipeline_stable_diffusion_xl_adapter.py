@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import numpy as np
 import PIL.Image
@@ -153,10 +153,10 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -311,18 +311,18 @@ class StableDiffusionXLAdapterPipeline(
     def encode_prompt(
         self,
         prompt: str,
-        prompt_2: Optional[str] = None,
-        device: Optional[torch.device] = None,
+        prompt_2: str | None = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str] = None,
-        negative_prompt_2: Optional[str] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt: str | None = None,
+        negative_prompt_2: str | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -858,42 +858,42 @@ class StableDiffusionXLAdapterPipeline(
     def __call__(
         self,
         prompt: str | list[str] = None,
-        prompt_2: Optional[str | list[str]] = None,
+        prompt_2: str | list[str] | None = None,
         image: PipelineImageInput = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
         timesteps: list[int] = None,
         sigmas: list[float] = None,
-        denoising_end: Optional[float] = None,
+        denoising_end: float | None = None,
         guidance_scale: float = 5.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        negative_prompt_2: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        negative_prompt_2: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[list[torch.Tensor]] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        ip_adapter_image: PipelineImageInput | None = None,
+        ip_adapter_image_embeds: list[torch.Tensor] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         guidance_rescale: float = 0.0,
-        original_size: Optional[tuple[int, int]] = None,
+        original_size: tuple[int, int] | None = None,
         crops_coords_top_left: tuple[int, int] = (0, 0),
-        target_size: Optional[tuple[int, int]] = None,
-        negative_original_size: Optional[tuple[int, int]] = None,
+        target_size: tuple[int, int] | None = None,
+        negative_original_size: tuple[int, int] | None = None,
         negative_crops_coords_top_left: tuple[int, int] = (0, 0),
-        negative_target_size: Optional[tuple[int, int]] = None,
+        negative_target_size: tuple[int, int] | None = None,
         adapter_conditioning_scale: float | list[float] = 1.0,
         adapter_conditioning_factor: float = 1.0,
-        clip_skip: Optional[int] = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.

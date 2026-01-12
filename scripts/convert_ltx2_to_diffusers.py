@@ -317,7 +317,7 @@ def get_ltx2_connectors_config(version: str) -> Tuple[Dict[str, Any], Dict[str, 
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_transformer(original_state_dict: Dict[str, Any], version: str) -> Dict[str, Any]:
+def convert_ltx2_transformer(original_state_dict: Dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_transformer_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -450,7 +450,7 @@ def get_ltx2_video_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, A
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_video_vae(original_state_dict: Dict[str, Any], version: str) -> Dict[str, Any]:
+def convert_ltx2_video_vae(original_state_dict: Dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_video_vae_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -505,7 +505,7 @@ def get_ltx2_audio_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, A
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_audio_vae(original_state_dict: Dict[str, Any], version: str) -> Dict[str, Any]:
+def convert_ltx2_audio_vae(original_state_dict: Dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_audio_vae_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -552,7 +552,7 @@ def get_ltx2_vocoder_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_vocoder(original_state_dict: Dict[str, Any], version: str) -> Dict[str, Any]:
+def convert_ltx2_vocoder(original_state_dict: Dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_vocoder_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -605,7 +605,7 @@ def convert_ltx2_spatial_latent_upsampler(
     return latent_upsampler
 
 
-def load_original_checkpoint(args, filename: Optional[str]) -> Dict[str, Any]:
+def load_original_checkpoint(args, filename: Optional[str]) -> dict[str, Any]:
     if args.original_state_dict_repo_id is not None:
         ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename=filename)
     elif args.checkpoint_path is not None:
@@ -617,7 +617,7 @@ def load_original_checkpoint(args, filename: Optional[str]) -> Dict[str, Any]:
     return original_state_dict
 
 
-def load_hub_or_local_checkpoint(repo_id: Optional[str] = None, filename: Optional[str] = None) -> Dict[str, Any]:
+def load_hub_or_local_checkpoint(repo_id: Optional[str] = None, filename: Optional[str] = None) -> dict[str, Any]:
     if repo_id is None and filename is None:
         raise ValueError("Please supply at least one of `repo_id` or `filename`")
 
@@ -637,7 +637,7 @@ def load_hub_or_local_checkpoint(repo_id: Optional[str] = None, filename: Option
     return state_dict
 
 
-def get_model_state_dict_from_combined_ckpt(combined_ckpt: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+def get_model_state_dict_from_combined_ckpt(combined_ckpt: Dict[str, Any], prefix: str) -> dict[str, Any]:
     # Ensure that the key prefix ends with a dot (.)
     if not prefix.endswith("."):
         prefix = prefix + "."

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional
 
 import torch
 from torch.nn import functional as F
@@ -131,8 +130,8 @@ class UnCLIPPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
-        text_model_output: Optional[CLIPTextModelOutput | tuple] = None,
-        text_attention_mask: Optional[torch.Tensor] = None,
+        text_model_output: CLIPTextModelOutput | tuple | None = None,
+        text_attention_mask: torch.Tensor | None = None,
     ):
         if text_model_output is None:
             batch_size = len(prompt) if isinstance(prompt, list) else 1
@@ -219,20 +218,20 @@ class UnCLIPPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Optional[str | list[str]] = None,
+        prompt: str | list[str] | None = None,
         num_images_per_prompt: int = 1,
         prior_num_inference_steps: int = 25,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        prior_latents: Optional[torch.Tensor] = None,
-        decoder_latents: Optional[torch.Tensor] = None,
-        super_res_latents: Optional[torch.Tensor] = None,
-        text_model_output: Optional[CLIPTextModelOutput | tuple] = None,
-        text_attention_mask: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        prior_latents: torch.Tensor | None = None,
+        decoder_latents: torch.Tensor | None = None,
+        super_res_latents: torch.Tensor | None = None,
+        text_model_output: CLIPTextModelOutput | tuple | None = None,
+        text_attention_mask: torch.Tensor | None = None,
         prior_guidance_scale: float = 4.0,
         decoder_guidance_scale: float = 8.0,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ):
         """

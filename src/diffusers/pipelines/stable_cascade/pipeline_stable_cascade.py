@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import torch
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
@@ -139,10 +139,10 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         do_classifier_free_guidance,
         prompt=None,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_pooled: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_pooled: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_embeds_pooled: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds_pooled: torch.Tensor | None = None,
     ):
         if prompt_embeds is None:
             # get prompt text embeddings
@@ -309,17 +309,17 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         prompt: str | list[str] = None,
         num_inference_steps: int = 10,
         guidance_scale: float = 0.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_pooled: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_pooled: Optional[torch.Tensor] = None,
+        negative_prompt: str | list[str] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_embeds_pooled: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds_pooled: torch.Tensor | None = None,
         num_images_per_prompt: int = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         """

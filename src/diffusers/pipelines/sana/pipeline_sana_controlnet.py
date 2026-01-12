@@ -17,7 +17,7 @@ import inspect
 import re
 import urllib.parse as ul
 import warnings
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import torch
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
@@ -137,10 +137,10 @@ EXAMPLE_DOC_STRING = """
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -294,7 +294,7 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         dtype: torch.dtype,
         clean_caption: bool = False,
         max_sequence_length: int = 300,
-        complex_human_instruction: Optional[list[str]] = None,
+        complex_human_instruction: list[str] | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -352,15 +352,15 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
         num_images_per_prompt: int = 1,
-        device: Optional[torch.device] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        device: torch.device | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
         clean_caption: bool = False,
         max_sequence_length: int = 300,
-        complex_human_instruction: Optional[list[str]] = None,
-        lora_scale: Optional[float] = None,
+        complex_human_instruction: list[str] | None = None,
+        lora_scale: float | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -785,22 +785,22 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         guidance_scale: float = 4.5,
         control_image: PipelineImageInput = None,
         controlnet_conditioning_scale: float | list[float] = 1.0,
-        num_images_per_prompt: Optional[int] = 1,
+        num_images_per_prompt: int | None = 1,
         height: int = 1024,
         width: int = 1024,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
         clean_caption: bool = False,
         use_resolution_binning: bool = True,
-        attention_kwargs: Optional[dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 300,
         complex_human_instruction: list[str] = [

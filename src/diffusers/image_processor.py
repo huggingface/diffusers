@@ -14,7 +14,6 @@
 
 import math
 import warnings
-from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -42,7 +41,7 @@ def is_valid_image(image) -> bool:
     - A 2D or 3D `np.ndarray` or `torch.Tensor` (grayscale or color image).
 
     Args:
-        image (`Union[PIL.Image.Image, np.ndarray, torch.Tensor]`):
+        image (`PIL.Image.Image | np.ndarray | torch.Tensor`):
             The image to validate. It can be a PIL image, a NumPy array, or a torch tensor.
 
     Returns:
@@ -63,7 +62,7 @@ def is_valid_image_imagelist(images):
     - A list of valid images.
 
     Args:
-        images (`Union[np.ndarray, torch.Tensor, PIL.Image.Image, list]`):
+        images (`np.ndarray | torch.Tensor | PIL.Image.Image | list`):
             The image(s) to check. Can be a batch of images (4D tensor/array), a single image, or a list of valid
             images.
 
@@ -111,7 +110,7 @@ class VaeImageProcessor(ConfigMixin):
         vae_scale_factor: int = 8,
         vae_latent_channels: int = 4,
         resample: str = "lanczos",
-        reducing_gap: int = None,
+        reducing_gap: int | None = None,
         do_normalize: bool = True,
         do_binarize: bool = False,
         do_convert_rgb: bool = False,
@@ -539,7 +538,7 @@ class VaeImageProcessor(ConfigMixin):
         return image
 
     def _denormalize_conditionally(
-        self, images: torch.Tensor, do_denormalize: Optional[list[bool]] = None
+        self, images: torch.Tensor, do_denormalize: list[bool] | None = None
     ) -> torch.Tensor:
         r"""
         Denormalize a batch of images based on a condition list.
@@ -561,20 +560,20 @@ class VaeImageProcessor(ConfigMixin):
     def get_default_height_width(
         self,
         image: PIL.Image.Image | np.ndarray | torch.Tensor,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
     ) -> tuple[int, int]:
         r"""
         Returns the height and width of the image, downscaled to the next integer multiple of `vae_scale_factor`.
 
         Args:
-            image (`Union[PIL.Image.Image, np.ndarray, torch.Tensor]`):
+            image (`PIL.Image.Image | np.ndarray | torch.Tensor`):
                 The image input, which can be a PIL image, NumPy array, or PyTorch tensor. If it is a NumPy array, it
                 should have shape `[batch, height, width]` or `[batch, height, width, channels]`. If it is a PyTorch
                 tensor, it should have shape `[batch, channels, height, width]`.
-            height (`Optional[int]`, *optional*, defaults to `None`):
+            height (`int | None`, *optional*, defaults to `None`):
                 The height of the preprocessed image. If `None`, the height of the `image` input will be used.
-            width (`Optional[int]`, *optional*, defaults to `None`):
+            width (`int | None`, *optional*, defaults to `None`):
                 The width of the preprocessed image. If `None`, the width of the `image` input will be used.
 
         Returns:
@@ -608,10 +607,10 @@ class VaeImageProcessor(ConfigMixin):
     def preprocess(
         self,
         image: PipelineImageInput,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         resize_mode: str = "default",  # "default", "fill", "crop"
-        crops_coords: Optional[tuple[int, int, int, int]] = None,
+        crops_coords: tuple[int, int, int, int] | None = None,
     ) -> torch.Tensor:
         """
         Preprocess the image input.
@@ -740,7 +739,7 @@ class VaeImageProcessor(ConfigMixin):
         self,
         image: torch.Tensor,
         output_type: str = "pil",
-        do_denormalize: Optional[list[bool]] = None,
+        do_denormalize: list[bool] | None = None,
     ) -> PIL.Image.Image | np.ndarray | torch.Tensor:
         """
         Postprocess the image output from tensor to `output_type`.
@@ -791,7 +790,7 @@ class VaeImageProcessor(ConfigMixin):
         mask: PIL.Image.Image,
         init_image: PIL.Image.Image,
         image: PIL.Image.Image,
-        crop_coords: Optional[tuple[int, int, int, int]] = None,
+        crop_coords: tuple[int, int, int, int] | None = None,
     ) -> PIL.Image.Image:
         r"""
         Applies an overlay of the mask and the inpainted image on the original image.
@@ -848,7 +847,7 @@ class InpaintProcessor(ConfigMixin):
         vae_scale_factor: int = 8,
         vae_latent_channels: int = 4,
         resample: str = "lanczos",
-        reducing_gap: int = None,
+        reducing_gap: int | None = None,
         do_normalize: bool = True,
         do_binarize: bool = False,
         do_convert_grayscale: bool = False,
@@ -882,10 +881,10 @@ class InpaintProcessor(ConfigMixin):
     def preprocess(
         self,
         image: PIL.Image.Image,
-        mask: PIL.Image.Image = None,
-        height: int = None,
-        width: int = None,
-        padding_mask_crop: Optional[int] = None,
+        mask: PIL.Image.Image | None = None,
+        height: int | None = None,
+        width: int | None = None,
+        padding_mask_crop: int | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Preprocess the image and mask.
@@ -939,9 +938,9 @@ class InpaintProcessor(ConfigMixin):
         self,
         image: torch.Tensor,
         output_type: str = "pil",
-        original_image: Optional[PIL.Image.Image] = None,
-        original_mask: Optional[PIL.Image.Image] = None,
-        crops_coords: Optional[tuple[int, int, int, int]] = None,
+        original_image: PIL.Image.Image | None = None,
+        original_mask: PIL.Image.Image | None = None,
+        crops_coords: tuple[int, int, int, int] | None = None,
     ) -> tuple[PIL.Image.Image, PIL.Image.Image]:
         """
         Postprocess the image, optionally apply mask overlay
@@ -1022,7 +1021,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         Convert a PIL image or a list of PIL images to NumPy arrays.
 
         Args:
-            images (`Union[list[PIL.Image.Image], PIL.Image.Image]`):
+            images (`list[PIL.Image.Image, PIL.Image.Image]`):
                 The input image or list of images to be converted.
 
         Returns:
@@ -1106,7 +1105,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         self,
         image: torch.Tensor,
         output_type: str = "pil",
-        do_denormalize: Optional[list[bool]] = None,
+        do_denormalize: list[bool] | None = None,
     ) -> PIL.Image.Image | np.ndarray | torch.Tensor:
         """
         Postprocess the image output from tensor to `output_type`.
@@ -1156,23 +1155,23 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         self,
         rgb: torch.Tensor | PIL.Image.Image | np.ndarray,
         depth: torch.Tensor | PIL.Image.Image | np.ndarray,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        target_res: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
+        target_res: int | None = None,
     ) -> torch.Tensor:
         r"""
         Preprocess the image input. Accepted formats are PIL images, NumPy arrays, or PyTorch tensors.
 
         Args:
-            rgb (`Union[torch.Tensor, PIL.Image.Image, np.ndarray]`):
+            rgb (`torch.Tensor | PIL.Image.Image | np.ndarray`):
                 The RGB input image, which can be a single image or a batch.
-            depth (`Union[torch.Tensor, PIL.Image.Image, np.ndarray]`):
+            depth (`torch.Tensor | PIL.Image.Image | np.ndarray`):
                 The depth input image, which can be a single image or a batch.
-            height (`Optional[int]`, *optional*, defaults to `None`):
+            height (`int | None`, *optional*, defaults to `None`):
                 The desired height of the processed image. If `None`, defaults to the height of the input image.
-            width (`Optional[int]`, *optional*, defaults to `None`):
+            width (`int | None`, *optional*, defaults to `None`):
                 The desired width of the processed image. If `None`, defaults to the width of the input image.
-            target_res (`Optional[int]`, *optional*, defaults to `None`):
+            target_res (`int | None`, *optional*, defaults to `None`):
                 Target resolution for resizing the images. If specified, overrides height and width.
 
         Returns:

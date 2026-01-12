@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from copy import deepcopy
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import numpy as np
 import PIL.Image
@@ -132,7 +132,7 @@ def prepare_mask_and_masked_image(image, mask, height, width):
     binarized (``mask > 0.5``) and cast to ``torch.float32`` too.
 
     Args:
-        image (Union[np.array, PIL.Image, torch.Tensor]): The image to inpaint.
+        image (np.array | PIL.Image | torch.Tensor): The image to inpaint.
             It can be a ``PIL.Image``, or a ``height x width x 3`` ``np.array`` or a ``channels x height x width``
             ``torch.Tensor`` or a ``batch x channels x height x width`` ``torch.Tensor``.
         mask (_type_): The mask to apply to the image, i.e. regions to inpaint.
@@ -311,11 +311,11 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
     ):

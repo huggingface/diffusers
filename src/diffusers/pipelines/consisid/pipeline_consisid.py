@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import numpy as np
 import PIL
@@ -176,10 +176,10 @@ def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -235,7 +235,7 @@ def retrieve_timesteps(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -314,8 +314,8 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         prompt: str | list[str] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 226,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -355,14 +355,14 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     def encode_prompt(
         self,
         prompt: str | list[str],
-        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt: str | list[str] | None = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
         max_sequence_length: int = 226,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -441,11 +441,11 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         num_frames: int = 13,
         height: int = 60,
         width: int = 90,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
-        kps_cond: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
+        kps_cond: torch.Tensor | None = None,
     ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -663,8 +663,8 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     def __call__(
         self,
         image: PipelineImageInput,
-        prompt: Optional[str | list[str]] = None,
-        negative_prompt: Optional[str | list[str]] = None,
+        prompt: str | list[str] | None = None,
+        negative_prompt: str | list[str] | None = None,
         height: int = 480,
         width: int = 720,
         num_frames: int = 49,
@@ -673,21 +673,19 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         use_dynamic_cfg: bool = False,
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.FloatTensor | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[dict[str, Any]] = None,
-        callback_on_step_end: Optional[
-            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
-        ] = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 226,
-        id_vit_hidden: Optional[torch.Tensor] = None,
-        id_cond: Optional[torch.Tensor] = None,
-        kps_cond: Optional[torch.Tensor] = None,
+        id_vit_hidden: torch.Tensor | None = None,
+        id_cond: torch.Tensor | None = None,
+        kps_cond: torch.Tensor | None = None,
     ) -> ConsisIDPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
@@ -763,15 +761,15 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             max_sequence_length (`int`, defaults to `226`):
                 Maximum sequence length in encoded prompt. Must be consistent with
                 `self.transformer.config.max_text_seq_length` otherwise may lead to poor results.
-            id_vit_hidden (`Optional[torch.Tensor]`, *optional*):
+            id_vit_hidden (`torch.Tensor | None`, *optional*):
                 The tensor representing the hidden features extracted from the face model, which are used to condition
                 the local facial extractor. This is crucial for the model to obtain high-frequency information of the
                 face. If not provided, the local facial extractor will not run normally.
-            id_cond (`Optional[torch.Tensor]`, *optional*):
+            id_cond (`torch.Tensor | None`, *optional*):
                 The tensor representing the hidden features extracted from the clip model, which are used to condition
                 the local facial extractor. This is crucial for the model to edit facial features If not provided, the
                 local facial extractor will not run normally.
-            kps_cond (`Optional[torch.Tensor]`, *optional*):
+            kps_cond (`torch.Tensor | None`, *optional*):
                 A tensor that determines whether the global facial extractor use keypoint information for conditioning.
                 If provided, this tensor controls whether facial keypoints such as eyes, nose, and mouth landmarks are
                 used during the generation process. This helps ensure the model retains more facial low-frequency

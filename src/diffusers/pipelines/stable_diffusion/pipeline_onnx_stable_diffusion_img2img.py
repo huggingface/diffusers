@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 import PIL.Image
@@ -169,11 +169,11 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
     def _encode_prompt(
         self,
         prompt: str | list[str],
-        num_images_per_prompt: Optional[int],
+        num_images_per_prompt: int | None,
         do_classifier_free_guidance: bool,
-        negative_prompt: Optional[str],
-        prompt_embeds: Optional[np.ndarray] = None,
-        negative_prompt_embeds: Optional[np.ndarray] = None,
+        negative_prompt: str | None,
+        prompt_embeds: np.ndarray | None = None,
+        negative_prompt_embeds: np.ndarray | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -273,9 +273,9 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         self,
         prompt: str | list[str],
         callback_steps: int,
-        negative_prompt: Optional[str | list[str]] = None,
-        prompt_embeds: Optional[np.ndarray] = None,
-        negative_prompt_embeds: Optional[np.ndarray] = None,
+        negative_prompt: str | list[str] | None = None,
+        prompt_embeds: np.ndarray | None = None,
+        negative_prompt_embeds: np.ndarray | None = None,
     ):
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -316,17 +316,17 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         prompt: str | list[str],
         image: np.ndarray | PIL.Image.Image = None,
         strength: float = 0.8,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 7.5,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        eta: Optional[float] = 0.0,
-        generator: Optional[np.random.RandomState] = None,
-        prompt_embeds: Optional[np.ndarray] = None,
-        negative_prompt_embeds: Optional[np.ndarray] = None,
-        output_type: Optional[str] = "pil",
+        num_inference_steps: int | None = 50,
+        guidance_scale: float | None = 7.5,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
+        eta: float | None = 0.0,
+        generator: np.random.RandomState | None = None,
+        prompt_embeds: np.ndarray | None = None,
+        negative_prompt_embeds: np.ndarray | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
+        callback: Callable[[int, int, np.ndarray], None] | None = None,
         callback_steps: int = 1,
     ):
         r"""

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import torch
@@ -45,7 +45,7 @@ class ChromaAdaLayerNormZeroPruned(nn.Module):
         num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
-    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None, norm_type="layer_norm", bias=True):
+    def __init__(self, embedding_dim: int, num_embeddings: int | None = None, norm_type="layer_norm", bias=True):
         super().__init__()
         if num_embeddings is not None:
             self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
@@ -64,10 +64,10 @@ class ChromaAdaLayerNormZeroPruned(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        timestep: Optional[torch.Tensor] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-        hidden_dtype: Optional[torch.dtype] = None,
-        emb: Optional[torch.Tensor] = None,
+        timestep: torch.Tensor | None = None,
+        class_labels: torch.LongTensor | None = None,
+        hidden_dtype: torch.dtype | None = None,
+        emb: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.emb is not None:
             emb = self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)
@@ -98,7 +98,7 @@ class ChromaAdaLayerNormZeroSinglePruned(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        emb: Optional[torch.Tensor] = None,
+        emb: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         shift_msa, scale_msa, gate_msa = emb.flatten(1, 2).chunk(3, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
@@ -243,9 +243,9 @@ class ChromaSingleTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor:
         residual = hidden_states
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
@@ -309,9 +309,9 @@ class ChromaTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         temb_img, temb_txt = temb[:, :6], temb[:, 6:]
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb_img)
@@ -413,7 +413,7 @@ class ChromaTransformer2DModel(
         self,
         patch_size: int = 1,
         in_channels: int = 64,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         num_layers: int = 19,
         num_single_layers: int = 38,
         attention_head_dim: int = 128,
@@ -481,7 +481,7 @@ class ChromaTransformer2DModel(
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
         attention_mask: torch.Tensor = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         controlnet_block_samples=None,
         controlnet_single_block_samples=None,
         return_dict: bool = True,

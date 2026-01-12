@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from typing import Callable, Optional
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -73,7 +73,7 @@ class MultiAdapter(ModelMixin):
         self.total_downscale_factor = first_adapter_total_downscale_factor
         self.downscale_factor = first_adapter_downscale_factor
 
-    def forward(self, xs: torch.Tensor, adapter_weights: Optional[list[float]] = None) -> list[torch.Tensor]:
+    def forward(self, xs: torch.Tensor, adapter_weights: list[float] | None = None) -> list[torch.Tensor]:
         r"""
         Args:
             xs (`torch.Tensor`):
@@ -108,7 +108,7 @@ class MultiAdapter(ModelMixin):
         is_main_process: bool = True,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        variant: Optional[str] = None,
+        variant: str | None = None,
     ):
         """
         Save a model and its configuration file to a specified directory, allowing it to be re-loaded with the
@@ -145,7 +145,7 @@ class MultiAdapter(ModelMixin):
             model_path_to_save = model_path_to_save + f"_{idx}"
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_path: Optional[str | os.PathLike], **kwargs):
+    def from_pretrained(cls, pretrained_model_path: str | os.PathLike | None, **kwargs):
         r"""
         Instantiate a pretrained `MultiAdapter` model from multiple pre-trained adapter models.
 
@@ -165,7 +165,7 @@ class MultiAdapter(ModelMixin):
                 Override the default `torch.dtype` and load the model under this dtype.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
-            device_map (`str` or `dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`str` or `dict[str, int | str | torch.device]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be refined to each
                 parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
                 same device.

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -111,7 +111,7 @@ class ClassifierFreeGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: torch.Tensor | None = None) -> GuiderOutput:
         pred = None
 
         if not self._is_cfg_enabled():

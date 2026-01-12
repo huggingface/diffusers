@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -80,13 +79,13 @@ class PriorTransformer(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionL
         additional_embeddings=4,
         dropout: float = 0.0,
         time_embed_act_fn: str = "silu",
-        norm_in_type: Optional[str] = None,  # layer
-        embedding_proj_norm_type: Optional[str] = None,  # layer
-        encoder_hid_proj_type: Optional[str] = "linear",  # linear
-        added_emb_type: Optional[str] = "prd",  # prd
-        time_embed_dim: Optional[int] = None,
-        embedding_proj_dim: Optional[int] = None,
-        clip_embed_dim: Optional[int] = None,
+        norm_in_type: str | None = None,  # layer
+        embedding_proj_norm_type: str | None = None,  # layer
+        encoder_hid_proj_type: str | None = "linear",  # linear
+        added_emb_type: str | None = "prd",  # prd
+        time_embed_dim: int | None = None,
+        embedding_proj_dim: int | None = None,
+        clip_embed_dim: int | None = None,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -186,8 +185,8 @@ class PriorTransformer(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionL
         hidden_states,
         timestep: torch.Tensor | float | int,
         proj_embedding: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.BoolTensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.BoolTensor | None = None,
         return_dict: bool = True,
     ):
         """

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -97,7 +97,7 @@ class ClassifierFreeZeroStarGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: torch.Tensor | None = None) -> GuiderOutput:
         pred = None
 
         # YiYi Notes: add default behavior for self._enabled == False

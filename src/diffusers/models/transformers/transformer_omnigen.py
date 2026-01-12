@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -200,8 +199,8 @@ class OmniGenAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size, sequence_length, _ = hidden_states.shape
 
@@ -308,7 +307,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
             The size of the vocabulary of the embedding vocabulary.
         rope_base (`int`, default to `10000`):
             The default theta value to use when creating RoPE.
-        rope_scaling (`Dict`, optional):
+        rope_scaling (`dict`, optional):
             The scaling factors for the RoPE. Must contain `short_factor` and `long_factor`.
         pos_embed_max_size (`int`, default to `192`):
             The maximum size of the positional embeddings.
@@ -342,7 +341,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
         max_position_embeddings: int = 131072,
         original_max_position_embeddings: int = 4096,
         rope_base: int = 10000,
-        rope_scaling: Dict = None,
+        rope_scaling: dict = None,
         pos_embed_max_size: int = 192,
         time_step_dim: int = 256,
         flip_sin_to_cos: bool = True,
@@ -387,8 +386,8 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
         self.gradient_checkpointing = False
 
     def _get_multimodal_embeddings(
-        self, input_ids: torch.Tensor, input_img_latents: list[torch.Tensor], input_image_sizes: Dict
-    ) -> Optional[torch.Tensor]:
+        self, input_ids: torch.Tensor, input_img_latents: list[torch.Tensor], input_image_sizes: dict
+    ) -> torch.Tensor | None:
         if input_ids is None:
             return None
 

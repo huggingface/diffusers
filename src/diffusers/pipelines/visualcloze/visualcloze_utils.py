@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Optional
 
 import torch
 from PIL import Image
@@ -40,7 +39,7 @@ class VisualClozeProcessor(VaeImageProcessor):
         self.resolution = resolution
 
     def preprocess_image(
-        self, input_images: list[list[Optional[Image.Image]]], vae_scale_factor: int
+        self, input_images: list[list[Image.Image | None]], vae_scale_factor: int
     ) -> tuple[list[list[torch.Tensor]], list[list[list[int]]], list[int]]:
         """
         Preprocesses input images for the VisualCloze pipeline.
@@ -52,7 +51,7 @@ class VisualClozeProcessor(VaeImageProcessor):
         4. Tracking image sizes and positions of target images
 
         Args:
-            input_images (list[list[Optional[Image.Image]]]):
+            input_images (list[list[Image.Image | None]]):
                 A nested list of PIL Images where:
                 - Outer list represents different samples, including in-context examples and the query
                 - Inner list contains images for the task
@@ -70,7 +69,7 @@ class VisualClozeProcessor(VaeImageProcessor):
         divisible = 2 * vae_scale_factor
 
         processed_images: list[list[Image.Image]] = [[] for _ in range(n_samples)]
-        resize_size: list[Optional[tuple[int, int]]] = [None for _ in range(n_samples)]
+        resize_size: list[tuple[int, int] | None] = [None for _ in range(n_samples)]
         target_position: list[int] = []
 
         # Process each sample
@@ -191,12 +190,12 @@ class VisualClozeProcessor(VaeImageProcessor):
         self,
         task_prompt: str | list[str],
         content_prompt: str | list[str],
-        input_images: Optional[list[list[list[Optional[str]]]]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        input_images: list[list[list[str | None]]] | None = None,
+        height: int | None = None,
+        width: int | None = None,
         upsampling: bool = False,
         vae_scale_factor: int = 16,
-    ) -> Dict:
+    ) -> dict:
         """Process visual cloze inputs.
 
         Args:
@@ -208,7 +207,7 @@ class VisualClozeProcessor(VaeImageProcessor):
             upsampling: Whether this is in the upsampling processing stage
 
         Returns:
-            Dictionary containing processed images, masks, prompts and metadata
+            dictionary containing processed images, masks, prompts and metadata
         """
         if isinstance(task_prompt, str):
             task_prompt = [task_prompt]

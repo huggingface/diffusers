@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from ...loaders import WanLoraLoaderMixin
 from ...pipelines.pipeline_utils import StableDiffusionMixin
@@ -38,7 +38,7 @@ class WanModularPipeline(
     default_blocks_name = "WanAutoBlocks"
 
     # override the default_blocks_name in base class, which is just return self.default_blocks_name
-    def get_default_blocks_name(self, config_dict: Optional[Dict[str, Any]]) -> Optional[str]:
+    def get_default_blocks_name(self, config_dict: dict[str, Any] | None) -> str | None:
         if config_dict is not None and "boundary_ratio" in config_dict and config_dict["boundary_ratio"] is not None:
             return "Wan22AutoBlocks"
         else:

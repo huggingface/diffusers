@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import numpy as np
 import PIL.Image
@@ -74,8 +74,8 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         unet: OnnxRuntimeModel,
         low_res_scheduler: DDPMScheduler,
         scheduler: KarrasDiffusionSchedulers,
-        safety_checker: Optional[OnnxRuntimeModel] = None,
-        feature_extractor: Optional[CLIPImageProcessor] = None,
+        safety_checker: OnnxRuntimeModel | None = None,
+        feature_extractor: CLIPImageProcessor | None = None,
         max_noise_level: int = 350,
         num_latent_channels=4,
         num_unet_input_channels=7,
@@ -246,11 +246,11 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
     def _encode_prompt(
         self,
         prompt: str | list[str],
-        num_images_per_prompt: Optional[int],
+        num_images_per_prompt: int | None,
         do_classifier_free_guidance: bool,
-        negative_prompt: Optional[str],
-        prompt_embeds: Optional[np.ndarray] = None,
-        negative_prompt_embeds: Optional[np.ndarray] = None,
+        negative_prompt: str | None,
+        prompt_embeds: np.ndarray | None = None,
+        negative_prompt_embeds: np.ndarray | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -353,17 +353,17 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         noise_level: int = 20,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[np.random.RandomState | list[np.random.RandomState]] = None,
-        latents: Optional[np.ndarray] = None,
-        prompt_embeds: Optional[np.ndarray] = None,
-        negative_prompt_embeds: Optional[np.ndarray] = None,
-        output_type: Optional[str] = "pil",
+        generator: np.random.RandomState | list[np.random.RandomState] | None = None,
+        latents: np.ndarray | None = None,
+        prompt_embeds: np.ndarray | None = None,
+        negative_prompt_embeds: np.ndarray | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback: Callable[[int, int, np.ndarray], None] | None = None,
+        callback_steps: int | None = 1,
     ):
         r"""
         Function invoked when calling the pipeline for generation.

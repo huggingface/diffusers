@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -53,7 +53,7 @@ class QwenImageControlNetModel(
         self,
         patch_size: int = 2,
         in_channels: int = 64,
-        out_channels: Optional[int] = 16,
+        out_channels: int | None = 16,
         num_layers: int = 60,
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
@@ -131,9 +131,9 @@ class QwenImageControlNetModel(
         encoder_hidden_states: torch.Tensor = None,
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        img_shapes: Optional[list[tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[list[int]] = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        img_shapes: list[tuple[int, int, int]] | None = None,
+        txt_seq_lens: list[int] | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.FloatTensor | Transformer2DModelOutput:
         """
@@ -154,9 +154,9 @@ class QwenImageControlNetModel(
                 (not just contiguous valid tokens followed by padding) since it's applied element-wise in attention.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            img_shapes (`List[Tuple[int, int, int]]`, *optional*):
+            img_shapes (`list[tuple[int, int, int]]`, *optional*):
                 Image shapes for RoPE computation.
-            txt_seq_lens (`List[int]`, *optional*):
+            txt_seq_lens (`list[int]`, *optional*):
                 **Deprecated**. Not needed anymore, we use `encoder_hidden_states` instead to infer text sequence
                 length.
             joint_attention_kwargs (`dict`, *optional*):
@@ -293,9 +293,9 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         encoder_hidden_states: torch.Tensor = None,
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        img_shapes: Optional[list[tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[list[int]] = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        img_shapes: list[tuple[int, int, int]] | None = None,
+        txt_seq_lens: list[int] | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> QwenImageControlNetOutput | tuple:
         if txt_seq_lens is not None:

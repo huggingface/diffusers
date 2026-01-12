@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import io
 import json
-from typing import Literal, Optional, cast
+from typing import Literal, cast
 
 import requests
 
@@ -60,18 +60,18 @@ def detect_image_type(data: bytes) -> str:
 def check_inputs_decode(
     endpoint: str,
     tensor: "torch.Tensor",
-    processor: Optional["VaeImageProcessor" | "VideoProcessor"] = None,
+    processor: "VaeImageProcessor" | "VideoProcessor" | None = None,
     do_scaling: bool = True,
-    scaling_factor: Optional[float] = None,
-    shift_factor: Optional[float] = None,
+    scaling_factor: float | None = None,
+    shift_factor: float | None = None,
     output_type: Literal["mp4", "pil", "pt"] = "pil",
     return_type: Literal["mp4", "pil", "pt"] = "pil",
     image_format: Literal["png", "jpg"] = "jpg",
     partial_postprocess: bool = False,
     input_tensor_type: Literal["binary"] = "binary",
     output_tensor_type: Literal["binary"] = "binary",
-    height: Optional[int] = None,
-    width: Optional[int] = None,
+    height: int | None = None,
+    width: int | None = None,
 ):
     if tensor.ndim == 3 and height is None and width is None:
         raise ValueError("`height` and `width` required for packed latents.")
@@ -93,7 +93,7 @@ def check_inputs_decode(
 
 def postprocess_decode(
     response: requests.Response,
-    processor: Optional["VaeImageProcessor" | "VideoProcessor"] = None,
+    processor: "VaeImageProcessor" | "VideoProcessor" | None = None,
     output_type: Literal["mp4", "pil", "pt"] = "pil",
     return_type: Literal["mp4", "pil", "pt"] = "pil",
     partial_postprocess: bool = False,
@@ -146,15 +146,15 @@ def postprocess_decode(
 
 def prepare_decode(
     tensor: "torch.Tensor",
-    processor: Optional["VaeImageProcessor" | "VideoProcessor"] = None,
+    processor: "VaeImageProcessor" | "VideoProcessor" | None = None,
     do_scaling: bool = True,
-    scaling_factor: Optional[float] = None,
-    shift_factor: Optional[float] = None,
+    scaling_factor: float | None = None,
+    shift_factor: float | None = None,
     output_type: Literal["mp4", "pil", "pt"] = "pil",
     image_format: Literal["png", "jpg"] = "jpg",
     partial_postprocess: bool = False,
-    height: Optional[int] = None,
-    width: Optional[int] = None,
+    height: int | None = None,
+    width: int | None = None,
 ):
     headers = {}
     parameters = {
@@ -190,18 +190,18 @@ def prepare_decode(
 def remote_decode(
     endpoint: str,
     tensor: "torch.Tensor",
-    processor: Optional["VaeImageProcessor" | "VideoProcessor"] = None,
+    processor: "VaeImageProcessor" | "VideoProcessor" | None = None,
     do_scaling: bool = True,
-    scaling_factor: Optional[float] = None,
-    shift_factor: Optional[float] = None,
+    scaling_factor: float | None = None,
+    shift_factor: float | None = None,
     output_type: Literal["mp4", "pil", "pt"] = "pil",
     return_type: Literal["mp4", "pil", "pt"] = "pil",
     image_format: Literal["png", "jpg"] = "jpg",
     partial_postprocess: bool = False,
     input_tensor_type: Literal["binary"] = "binary",
     output_tensor_type: Literal["binary"] = "binary",
-    height: Optional[int] = None,
-    width: Optional[int] = None,
+    height: int | None = None,
+    width: int | None = None,
 ) -> Image.Image | list[Image.Image] | bytes | "torch.Tensor":
     """
     Hugging Face Hybrid Inference that allow running VAE decode remotely.
@@ -339,8 +339,8 @@ def remote_decode(
 def check_inputs_encode(
     endpoint: str,
     image: "torch.Tensor" | Image.Image,
-    scaling_factor: Optional[float] = None,
-    shift_factor: Optional[float] = None,
+    scaling_factor: float | None = None,
+    shift_factor: float | None = None,
 ):
     pass
 
@@ -359,8 +359,8 @@ def postprocess_encode(
 
 def prepare_encode(
     image: "torch.Tensor" | Image.Image,
-    scaling_factor: Optional[float] = None,
-    shift_factor: Optional[float] = None,
+    scaling_factor: float | None = None,
+    shift_factor: float | None = None,
 ):
     headers = {}
     parameters = {}
@@ -382,8 +382,8 @@ def prepare_encode(
 def remote_encode(
     endpoint: str,
     image: "torch.Tensor" | Image.Image,
-    scaling_factor: Optional[float] = None,
-    shift_factor: Optional[float] = None,
+    scaling_factor: float | None = None,
+    shift_factor: float | None = None,
 ) -> "torch.Tensor":
     """
     Hugging Face Hybrid Inference that allow running VAE encode remotely.

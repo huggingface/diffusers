@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import ceil
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import numpy as np
 import torch
@@ -145,8 +145,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin)
         do_classifier_free_guidance,
         prompt=None,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
     ):
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -290,21 +290,21 @@ class WuerstchenPriorPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin)
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[str | list[str]] = None,
+        prompt: str | list[str] | None = None,
         height: int = 1024,
         width: int = 1024,
         num_inference_steps: int = 60,
         timesteps: list[float] = None,
         guidance_scale: float = 8.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pt",
+        negative_prompt: str | list[str] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pt",
         return_dict: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
     ):

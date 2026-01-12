@@ -23,7 +23,6 @@ Reference implementation (ComfyUI):
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
 
 import torch
 
@@ -158,10 +157,10 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: int = None,
-        device: Union[str, torch.device, None] = None,
-        sigmas: Optional[Union[List[float], torch.Tensor]] = None,
-        timesteps: Optional[Union[List[float], torch.Tensor]] = None,
+        num_inference_steps: int | None = None,
+        device: str | torch.device | None = None,
+        sigmas: list[float] | torch.Tensor | None = None,
+        timesteps: list[float] | torch.Tensor | None = None,
         mu: float | None = None,
         **kwargs,
     ):
@@ -179,9 +178,9 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
                 to be consistent and are otherwise ignored with a warning.
             device (`str` or `torch.device`, *optional*):
                 Device to move the internal tensors to.
-            sigmas (`List[float]` or `torch.Tensor`, *optional*):
+            sigmas (`list[float]` or `torch.Tensor`, *optional*):
                 Explicit sigma schedule, e.g. `[1.0, 0.99, ..., 0.0]`.
-            timesteps (`List[float]` or `torch.Tensor`, *optional*):
+            timesteps (`list[float]` or `torch.Tensor`, *optional*):
                 Optional alias for `sigmas`. If `sigmas` is None and `timesteps` is provided, timesteps are treated as
                 sigmas.
             mu (`float`, *optional*):
@@ -282,7 +281,7 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
         generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[LTXEulerAncestralRFSchedulerOutput, Tuple[torch.FloatTensor]]:
+    ) -> LTXEulerAncestralRFSchedulerOutput | tuple[torch.FloatTensor]:
         """
         Perform a single Euler-Ancestral RF update step.
 

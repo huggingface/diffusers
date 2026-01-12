@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from ..base import DiffusersQuantizer
 
@@ -108,8 +108,8 @@ class GGUFQuantizer(DiffusersQuantizer):
         param_value: "GGUFParameter" | "torch.Tensor",
         param_name: str,
         target_device: "torch.device",
-        state_dict: Optional[dict[str, Any]] = None,
-        unexpected_keys: Optional[list[str]] = None,
+        state_dict: dict[str, Any] | None = None,
+        unexpected_keys: list[str] | None = None,
         **kwargs,
     ):
         module, tensor_name = get_module_from_name(model, param_name)

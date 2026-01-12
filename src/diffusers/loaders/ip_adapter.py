@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from pathlib import Path
-from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -60,7 +59,7 @@ class IPAdapterMixin:
         pretrained_model_name_or_path_or_dict: str | list[str] | dict[str, torch.Tensor],
         subfolder: str | list[str],
         weight_name: str | list[str],
-        image_encoder_folder: Optional[str] = "image_encoder",
+        image_encoder_folder: str | None = "image_encoder",
         **kwargs,
     ):
         """
@@ -87,7 +86,7 @@ class IPAdapterMixin:
                 `image_encoder_folder="image_encoder"`. If the image encoder is located in a folder other than
                 `subfolder`, you should pass the path to the folder that contains image encoder weights, for example,
                 `image_encoder_folder="different_subfolder/image_encoder"`.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
@@ -380,7 +379,7 @@ class ModularIPAdapterMixin:
             weight_name (`str` or `list[str]`):
                 The name of the weight file to load. If a list is passed, it should have the same length as
                 `subfolder`.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
@@ -610,9 +609,9 @@ class FluxIPAdapterMixin:
         self,
         pretrained_model_name_or_path_or_dict: str | list[str] | dict[str, torch.Tensor],
         weight_name: str | list[str],
-        subfolder: Optional[str | list[str]] = "",
-        image_encoder_pretrained_model_name_or_path: Optional[str] = "image_encoder",
-        image_encoder_subfolder: Optional[str] = "",
+        subfolder: str | list[str] | None = "",
+        image_encoder_pretrained_model_name_or_path: str | None = "image_encoder",
+        image_encoder_subfolder: str | None = "",
         image_encoder_dtype: torch.dtype = torch.float16,
         **kwargs,
     ):
@@ -640,7 +639,7 @@ class FluxIPAdapterMixin:
                       hosted on the Hub.
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       with [`ModelMixin.save_pretrained`].
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
@@ -920,8 +919,8 @@ class SD3IPAdapterMixin:
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         weight_name: str = "ip-adapter.safetensors",
-        subfolder: Optional[str] = None,
-        image_encoder_folder: Optional[str] = "image_encoder",
+        subfolder: str | None = None,
+        image_encoder_folder: str | None = "image_encoder",
         **kwargs,
     ) -> None:
         """
@@ -947,7 +946,7 @@ class SD3IPAdapterMixin:
                 `image_encoder_folder="image_encoder"`. If the image encoder is located in a folder other than
                 `subfolder`, you should pass the path to the folder that contains image encoder weights, for example,
                 `image_encoder_folder="different_subfolder/image_encoder"`.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):

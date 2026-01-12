@@ -14,8 +14,6 @@
 # limitations under the License.
 """Image processor class for BLIP."""
 
-from typing import Optional
-
 import numpy as np
 import torch
 from transformers.image_processing_utils import BaseImageProcessor, BatchFeature, get_size_dict
@@ -91,8 +89,8 @@ class BlipImageProcessor(BaseImageProcessor):
         do_rescale: bool = True,
         rescale_factor: int | float = 1 / 255,
         do_normalize: bool = True,
-        image_mean: Optional[float | list[float]] = None,
-        image_std: Optional[float | list[float]] = None,
+        image_mean: float | list[float] | None = None,
+        image_std: float | list[float] | None = None,
         do_convert_rgb: bool = True,
         do_center_crop: bool = True,
         **kwargs,
@@ -118,8 +116,8 @@ class BlipImageProcessor(BaseImageProcessor):
         image: np.ndarray,
         size: dict[str, int],
         resample: PILImageResampling = PILImageResampling.BICUBIC,
-        data_format: Optional[str | ChannelDimension] = None,
-        input_data_format: Optional[str | ChannelDimension] = None,
+        data_format: str | ChannelDimension | None = None,
+        input_data_format: str | ChannelDimension | None = None,
         **kwargs,
     ) -> np.ndarray:
         """
@@ -164,19 +162,19 @@ class BlipImageProcessor(BaseImageProcessor):
     def preprocess(
         self,
         images: ImageInput,
-        do_resize: Optional[bool] = None,
-        size: Optional[dict[str, int]] = None,
+        do_resize: bool | None = None,
+        size: dict[str, int] | None = None,
         resample: PILImageResampling = None,
-        do_rescale: Optional[bool] = None,
-        do_center_crop: Optional[bool] = None,
-        rescale_factor: Optional[float] = None,
-        do_normalize: Optional[bool] = None,
-        image_mean: Optional[float | list[float]] = None,
-        image_std: Optional[float | list[float]] = None,
-        return_tensors: Optional[str | TensorType] = None,
+        do_rescale: bool | None = None,
+        do_center_crop: bool | None = None,
+        rescale_factor: float | None = None,
+        do_normalize: bool | None = None,
+        image_mean: float | list[float] | None = None,
+        image_std: float | list[float] | None = None,
+        return_tensors: str | TensorType | None = None,
         do_convert_rgb: bool = None,
         data_format: ChannelDimension = ChannelDimension.FIRST,
-        input_data_format: Optional[str | ChannelDimension] = None,
+        input_data_format: str | ChannelDimension | None = None,
         **kwargs,
     ) -> PIL.Image.Image:
         """

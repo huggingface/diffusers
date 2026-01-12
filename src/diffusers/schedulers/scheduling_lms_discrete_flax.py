@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional
 
 import flax
 import jax.numpy as jnp
@@ -40,7 +39,7 @@ class LMSDiscreteSchedulerState:
     num_inference_steps: int = None
 
     # running values
-    derivatives: Optional[jnp.ndarray] = None
+    derivatives: jnp.ndarray | None = None
 
     @classmethod
     def create(
@@ -97,13 +96,13 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         prediction_type: str = "epsilon",
         dtype: jnp.dtype = jnp.float32,
     ):
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> LMSDiscreteSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> LMSDiscreteSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 

@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional
-
 import torch
 import torch.nn as nn
 
@@ -124,8 +122,8 @@ class AsymmetricAutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin):
     def _decode(
         self,
         z: torch.Tensor,
-        image: Optional[torch.Tensor] = None,
-        mask: Optional[torch.Tensor] = None,
+        image: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> DecoderOutput | tuple[torch.Tensor]:
         z = self.post_quant_conv(z)
@@ -140,9 +138,9 @@ class AsymmetricAutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin):
     def decode(
         self,
         z: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
-        image: Optional[torch.Tensor] = None,
-        mask: Optional[torch.Tensor] = None,
+        generator: torch.Generator | None = None,
+        image: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> DecoderOutput | tuple[torch.Tensor]:
         decoded = self._decode(z, image, mask).sample
@@ -155,10 +153,10 @@ class AsymmetricAutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin):
     def forward(
         self,
         sample: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
+        mask: torch.Tensor | None = None,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:

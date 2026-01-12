@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import numpy as np
 import PIL.Image
@@ -393,9 +393,9 @@ class StableDiffusionDiffEditPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
         **kwargs,
     ):
         deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
@@ -426,10 +426,10 @@ class StableDiffusionDiffEditPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -845,22 +845,22 @@ class StableDiffusionDiffEditPipeline(
     def generate_mask(
         self,
         image: torch.Tensor | PIL.Image.Image = None,
-        target_prompt: Optional[str | list[str]] = None,
-        target_negative_prompt: Optional[str | list[str]] = None,
-        target_prompt_embeds: Optional[torch.Tensor] = None,
-        target_negative_prompt_embeds: Optional[torch.Tensor] = None,
-        source_prompt: Optional[str | list[str]] = None,
-        source_negative_prompt: Optional[str | list[str]] = None,
-        source_prompt_embeds: Optional[torch.Tensor] = None,
-        source_negative_prompt_embeds: Optional[torch.Tensor] = None,
-        num_maps_per_mask: Optional[int] = 10,
-        mask_encode_strength: Optional[float] = 0.5,
-        mask_thresholding_ratio: Optional[float] = 3.0,
+        target_prompt: str | list[str] | None = None,
+        target_negative_prompt: str | list[str] | None = None,
+        target_prompt_embeds: torch.Tensor | None = None,
+        target_negative_prompt_embeds: torch.Tensor | None = None,
+        source_prompt: str | list[str] | None = None,
+        source_negative_prompt: str | list[str] | None = None,
+        source_prompt_embeds: torch.Tensor | None = None,
+        source_negative_prompt_embeds: torch.Tensor | None = None,
+        num_maps_per_mask: int | None = 10,
+        mask_encode_strength: float | None = 0.5,
+        mask_thresholding_ratio: float | None = 3.0,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        output_type: Optional[str] = "np",
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        output_type: str | None = "np",
+        cross_attention_kwargs: dict[str, Any] | None = None,
     ):
         r"""
         Generate a latent mask given a mask prompt, a target prompt, and an image.
@@ -1063,21 +1063,21 @@ class StableDiffusionDiffEditPipeline(
     @replace_example_docstring(EXAMPLE_INVERT_DOC_STRING)
     def invert(
         self,
-        prompt: Optional[str | list[str]] = None,
+        prompt: str | list[str] | None = None,
         image: torch.Tensor | PIL.Image.Image = None,
         num_inference_steps: int = 50,
         inpaint_strength: float = 0.8,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[str | list[str]] = None,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt: str | list[str] | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
         decode_latents: bool = False,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: Optional[int] = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
+        callback_steps: int | None = 1,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         lambda_auto_corr: float = 20.0,
         lambda_kl: float = 20.0,
         num_reg_steps: int = 0,
@@ -1301,24 +1301,24 @@ class StableDiffusionDiffEditPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[str | list[str]] = None,
+        prompt: str | list[str] | None = None,
         mask_image: torch.Tensor | PIL.Image.Image = None,
         image_latents: torch.Tensor | PIL.Image.Image = None,
-        inpaint_strength: Optional[float] = 0.8,
+        inpaint_strength: float | None = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         clip_skip: int = None,
     ):
         r"""

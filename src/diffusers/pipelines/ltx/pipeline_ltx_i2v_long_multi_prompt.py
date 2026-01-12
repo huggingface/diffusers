@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import copy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import numpy as np
 import PIL
@@ -84,7 +84,7 @@ def get_latent_coords(
       device: torch.device for the resulting tensor.
       rope_interpolation_scale:
           tuple[int|float, int|float, int|float]. Scale per (t, y, x) latent step to pixel coords.
-      latent_idx: Optional[int]. When not None, shifts the time coordinate to align segments:
+      latent_idx: int | None. When not None, shifts the time coordinate to align segments:
         - <= 0 uses step multiples of rope_interpolation_scale[0]
         - > 0 starts at 1 then increments by rope_interpolation_scale[0]
 
@@ -141,7 +141,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 
 def adain_normalize_latents(
-    curr_latents: torch.Tensor, ref_latents: Optional[torch.Tensor], factor: float
+    curr_latents: torch.Tensor, ref_latents: torch.Tensor | None, factor: float
 ) -> torch.Tensor:
     """
     Optional AdaIN normalization: channel-wise mean/variance matching of curr_latents to ref_latents, controlled by
@@ -150,7 +150,7 @@ def adain_normalize_latents(
     Args:
       curr_latents: Tensor [B, C, T, H, W]. Current window latents.
       ref_latents:
-          Optional[Tensor] [B, C, T_ref, H, W]. Reference latents (e.g., first window) used to compute target stats.
+          Tensor | None [B, C, T_ref, H, W]. Reference latents (e.g., first window) used to compute target stats.
       factor: float in [0, 1]. 0 keeps current stats; 1 matches reference stats.
 
     Returns:
@@ -180,7 +180,7 @@ def adain_normalize_latents(
 
 def split_into_temporal_windows(
     latent_len: int, temporal_tile_size: int, temporal_overlap: int, compression: int
-) -> List[Tuple[int, int]]:
+) -> list[tuple[int, int]]:
     """
     Split latent frames into sliding windows.
 
@@ -231,26 +231,26 @@ def linear_overlap_fuse(prev: torch.Tensor, new: torch.Tensor, overlap: int) -> 
 
 def inject_prev_tail_latents(
     window_latents: torch.Tensor,
-    prev_tail_latents: Optional[torch.Tensor],
+    prev_tail_latents: torch.Tensor | None,
     window_cond_mask_5d: torch.Tensor,
     overlap_lat: int,
-    strength: Optional[float],
+    strength: float | None,
     prev_overlap_len: int,
-) -> Tuple[torch.Tensor, torch.Tensor, int]:
+) -> tuple[torch.Tensor, torch.Tensor, int]:
     """
     Inject the tail latents from the previous window at the beginning of the current window (first k frames), where k =
     min(overlap_lat, T_curr, T_prev_tail).
 
     Args:
       window_latents: Tensor [B, C, T, H, W]. Current window latents.
-      prev_tail_latents: Optional[Tensor] [B, C, T_prev, H, W]. Tail segment from the previous window.
+      prev_tail_latents: Tensor | None [B, C, T_prev, H, W]. Tail segment from the previous window.
       window_cond_mask_5d: Tensor [B, 1, T, H, W]. Per-token conditioning mask (1 = free, 0 = hard condition).
       overlap_lat: int. Number of latent frames to inject from the previous tail.
-      strength: Optional[float] in [0, 1]. Blend strength; 1.0 replaces, 0.0 keeps original.
+      strength: float | None in [0, 1]. Blend strength; 1.0 replaces, 0.0 keeps original.
       prev_overlap_len: int. Accumulated overlap length so far (used for trimming later).
 
     Returns:
-      Tuple[Tensor, Tensor, int]: (updated_window_latents, updated_cond_mask, updated_prev_overlap_len)
+      tuple[Tensor, Tensor, int]: (updated_window_latents, updated_cond_mask, updated_prev_overlap_len)
     """
     if prev_tail_latents is None or overlap_lat <= 0 or strength is None or strength <= 0:
         return window_latents, window_cond_mask_5d, prev_overlap_len
@@ -316,7 +316,7 @@ def build_video_coords_for_window(
     return fractional_coords
 
 
-def parse_prompt_segments(prompt: Union[str, List[str]], prompt_segments: Optional[List[Dict[str, Any]]]) -> List[str]:
+def parse_prompt_segments(prompt: str | list[str], prompt_segments: list[dict[str, Any]] | None) -> list[str]:
     """
     Return a list of positive prompts per window index.
 
@@ -368,7 +368,7 @@ def batch_normalize(latents, reference, factor):
         reference: dict containing "samples" used to compute target stats
         factor: float in [0, 1]; 0 = no change, 1 = full match to reference
     Returns:
-        Tuple[dict]: a single-element tuple with the updated latents dict.
+        tuple[dict]: a single-element tuple with the updated latents dict.
     """
     latents_copy = copy.deepcopy(latents)
     t = latents_copy["samples"]  #  B x C x F x H x W
@@ -503,8 +503,8 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         prompt: str | list[str] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 128,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -550,16 +550,16 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
     def encode_prompt(
         self,
         prompt: str | list[str],
-        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt: str | list[str] | None = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
         max_sequence_length: int = 128,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -697,13 +697,13 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         width: int,
         num_frames: int,
         device: torch.device,
-        generator: Optional[torch.Generator],
+        generator: torch.Generator | None,
         dtype: torch.dtype = torch.float32,
-        latents: Optional[torch.Tensor] = None,
-        cond_latents: Optional[torch.Tensor] = None,
+        latents: torch.Tensor | None = None,
+        cond_latents: torch.Tensor | None = None,
         cond_strength: float = 0.0,
-        negative_index_latents: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], int, int, int]:
+        negative_index_latents: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None, int, int, int]:
         """
         Prepare base latents and optionally inject first-frame conditioning latents.
 
@@ -737,18 +737,18 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
     def vae_decode_tiled(
         self,
         latents: torch.Tensor,
-        decode_timestep: Optional[float] = None,
-        decode_noise_scale: Optional[float] = None,
+        decode_timestep: float | None = None,
+        decode_noise_scale: float | None = None,
         horizontal_tiles: int = 4,
         vertical_tiles: int = 4,
         overlap: int = 3,
         last_frame_fix: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         output_type: str = "pt",
         auto_denormalize: bool = True,
         compute_dtype: torch.dtype = torch.float32,
         enable_vae_tiling: bool = False,
-    ) -> Union[torch.Tensor, np.ndarray, List[PIL.Image.Image]]:
+    ) -> torch.Tensor | np.ndarray | list[PIL.Image.Image]:
         """
         VAE-based spatial tiled decoding (ComfyUI parity) implemented in Diffusers style.
         - Linearly feather and blend overlapping tiles to avoid seams.
@@ -837,8 +837,8 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         base_tile_h = (h_lat + (vertical_tiles - 1) * overlap) // vertical_tiles
         base_tile_w = (w_lat + (horizontal_tiles - 1) * overlap) // horizontal_tiles
 
-        output: Optional[torch.Tensor] = None  # [B, C_img, F, H, W], fused using compute_dtype
-        weights: Optional[torch.Tensor] = None  # [B, 1, F, H, W], fused using compute_dtype
+        output: torch.Tensor | None = None  # [B, C_img, F, H, W], fused using compute_dtype
+        weights: torch.Tensor | None = None  # [B, 1, F, H, W], fused using compute_dtype
 
         # Iterate tiles in latent space (no temporal tiling)
         for v in range(vertical_tiles):
@@ -934,52 +934,52 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        prompt_segments: Optional[List[Dict[str, Any]]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] | None = None,
+        prompt_segments: list[dict[str, Any]] | None = None,
         height: int = 512,
         width: int = 704,
         num_frames: int = 161,
         frame_rate: float = 25,
         guidance_scale: float = 1.0,
         guidance_rescale: float = 0.0,
-        num_inference_steps: Optional[int] = 8,
-        sigmas: Optional[Union[List[float], torch.Tensor]] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        seed: Optional[int] = 0,
-        cond_image: Optional[Union["PIL.Image.Image", torch.Tensor]] = None,
+        num_inference_steps: int | None = 8,
+        sigmas: list[float, torch.Tensor] | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        seed: int | None = 0,
+        cond_image: "PIL.Image.Image" | torch.Tensor | None = None,
         cond_strength: float = 0.5,
-        latents: Optional[torch.Tensor] = None,
+        latents: torch.Tensor | None = None,
         temporal_tile_size: int = 80,
         temporal_overlap: int = 24,
         temporal_overlap_cond_strength: float = 0.5,
         adain_factor: float = 0.25,
-        guidance_latents: Optional[torch.Tensor] = None,
+        guidance_latents: torch.Tensor | None = None,
         guiding_strength: float = 1.0,
-        negative_index_latents: Optional[torch.Tensor] = None,
+        negative_index_latents: torch.Tensor | None = None,
         negative_index_strength: float = 1.0,
-        skip_steps_sigma_threshold: Optional[float] = 1,
-        decode_timestep: Optional[float] = 0.05,
-        decode_noise_scale: Optional[float] = 0.025,
+        skip_steps_sigma_threshold: float | None = 1,
+        decode_timestep: float | None = 0.05,
+        decode_noise_scale: float | None = 0.025,
         decode_horizontal_tiles: int = 4,
         decode_vertical_tiles: int = 4,
         decode_overlap: int = 3,
-        output_type: Optional[str] = "latent",  # "latent" | "pt" | "np" | "pil"
+        output_type: str | None = "latent",  # "latent" | "pt" | "np" | "pil"
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 128,
     ):
         r"""
         Generate an image-to-video sequence via temporal sliding windows and multi-prompt scheduling.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 Positive text prompt(s) per window. If a single string contains '|', parts are split by bars.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 Negative prompt(s) to suppress undesired content.
-            prompt_segments (`List[dict]`, *optional*):
+            prompt_segments (`list[dict]`, *optional*):
                 Segment mapping with {"start_window", "end_window", "text"} to override prompts per window.
             height (`int`, defaults to `512`):
                 Output image height in pixels; must be divisible by 32.
@@ -995,9 +995,9 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                 Optional rescale to mitigate overexposure under CFG (see `rescale_noise_cfg`).
             num_inference_steps (`int`, *optional*, defaults to `8`):
                 Denoising steps per window. Ignored if `sigmas` is provided.
-            sigmas (`List[float]` or `torch.Tensor`, *optional*):
+            sigmas (`list[float]` or `torch.Tensor`, *optional*):
                 Explicit sigma schedule per window; if set, overrides `num_inference_steps`.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 Controls stochasticity; list accepted but first element is used (batch=1).
             seed (`int`, *optional*, defaults to `0`):
                 If provided, seeds the shared generator for global latents and derives a window-local generator with
@@ -1045,7 +1045,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                 Extra attention parameters forwarded to the transformer.
             callback_on_step_end (`PipelineCallback` or `MultiPipelineCallbacks`, *optional*):
                 Per-step callback hook.
-            callback_on_step_end_tensor_inputs (`List[str]`, defaults to `["latents"]`):
+            callback_on_step_end_tensor_inputs (`list[str]`, defaults to `["latents"]`):
                 Keys from locals() to pass into the callback.
             max_sequence_length (`int`, defaults to `128`):
                 Tokenizer max length for prompt encoding.
@@ -1060,7 +1060,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                 - "latent"/"pt": `torch.Tensor` [B, C, F, H, W]; "latent" is in normalized latent space, "pt" is VAE
                   output space.
                 - "np": `np.ndarray` post-processed.
-                - "pil": `List[PIL.Image.Image]` list of PIL images.
+                - "pil": `list[PIL.Image.Image]` list of PIL images.
 
         Shapes:
             Latent sizes (when auto-generated):

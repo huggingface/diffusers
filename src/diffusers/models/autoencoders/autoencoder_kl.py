@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional
-
 import torch
 import torch.nn as nn
 
@@ -90,9 +88,9 @@ class AutoencoderKL(
         norm_num_groups: int = 32,
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
-        shift_factor: Optional[float] = None,
-        latents_mean: Optional[tuple[float]] = None,
-        latents_std: Optional[tuple[float]] = None,
+        shift_factor: float | None = None,
+        latents_mean: tuple[float] | None = None,
+        latents_std: tuple[float] | None = None,
         force_upcast: bool = True,
         use_quant_conv: bool = True,
         use_post_quant_conv: bool = True,
@@ -417,7 +415,7 @@ class AutoencoderKL(
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:

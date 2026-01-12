@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import math
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -771,12 +770,12 @@ class AutoencoderKLMagvit(ModelMixin, AutoencoderMixin, ConfigMixin):
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_sample_min_num_frames: Optional[int] = None,
-        tile_sample_stride_height: Optional[float] = None,
-        tile_sample_stride_width: Optional[float] = None,
-        tile_sample_stride_num_frames: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_sample_min_num_frames: int | None = None,
+        tile_sample_stride_height: float | None = None,
+        tile_sample_stride_width: float | None = None,
+        tile_sample_stride_num_frames: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1049,7 +1048,7 @@ class AutoencoderKLMagvit(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:

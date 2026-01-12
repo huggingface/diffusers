@@ -2524,7 +2524,7 @@ class MatryoshkaUNet2DConditionModel(
             )
 
     @property
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with

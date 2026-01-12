@@ -111,7 +111,7 @@ class PAGMixin:
             return_pred_text (bool): Whether to return the text noise prediction.
 
         Returns:
-            Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]: The updated noise prediction tensor after applying
+            torch.Tensor | tuple[torch.Tensor, torch.Tensor]: The updated noise prediction tensor after applying
             perturbed attention guidance and the text noise prediction.
         """
         pag_scale = self._get_pag_scale(t)

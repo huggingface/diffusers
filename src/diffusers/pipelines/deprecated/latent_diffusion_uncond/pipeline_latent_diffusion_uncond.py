@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional
 
 import torch
 
@@ -47,10 +46,10 @@ class LDMPipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         eta: float = 0.0,
         num_inference_steps: int = 50,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         **kwargs,
     ) -> tuple | ImagePipelineOutput:

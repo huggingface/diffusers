@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Optional
+from typing import Callable
 
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -33,7 +33,7 @@ class LearnedClassifierFreeSamplingEmbeddings(ModelMixin, ConfigMixin):
     """
 
     @register_to_config
-    def __init__(self, learnable: bool, hidden_size: Optional[int] = None, length: Optional[int] = None):
+    def __init__(self, learnable: bool, hidden_size: int | None = None, length: int | None = None):
         super().__init__()
 
         self.learnable = learnable
@@ -168,11 +168,11 @@ class VQDiffusionPipeline(DiffusionPipeline):
         guidance_scale: float = 5.0,
         truncation_rate: float = 1.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
     ) -> ImagePipelineOutput | tuple:
         """

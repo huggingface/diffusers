@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -97,7 +97,7 @@ class UNet3DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DCondit
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[int] = None,
+        sample_size: int | None = None,
         in_channels: int = 4,
         out_channels: int = 4,
         down_block_types: tuple[str, ...] = (
@@ -117,12 +117,12 @@ class UNet3DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DCondit
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
-        norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int | None = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1024,
         attention_head_dim: int | tuple[int] = 64,
-        num_attention_heads: Optional[int | tuple[int]] = None,
-        time_cond_proj_dim: Optional[int] = None,
+        num_attention_heads: int | tuple[int] | None = None,
+        time_cond_proj_dim: int | None = None,
     ):
         super().__init__()
 
@@ -351,7 +351,7 @@ class UNet3DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DCondit
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(self, chunk_size: int | None = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -478,12 +478,12 @@ class UNet3DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DCondit
         sample: torch.Tensor,
         timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
-        class_labels: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        down_block_additional_residuals: Optional[tuple[torch.Tensor]] = None,
-        mid_block_additional_residual: Optional[torch.Tensor] = None,
+        class_labels: torch.Tensor | None = None,
+        timestep_cond: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        down_block_additional_residuals: tuple[torch.Tensor] | None = None,
+        mid_block_additional_residual: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> UNet3DConditionOutput | tuple[torch.Tensor]:
         r"""

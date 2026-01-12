@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -112,8 +112,8 @@ class AudioLDMPipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusi
         num_waveforms_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -362,21 +362,21 @@ class AudioLDMPipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusi
     def __call__(
         self,
         prompt: str | list[str] = None,
-        audio_length_in_s: Optional[float] = None,
+        audio_length_in_s: float | None = None,
         num_inference_steps: int = 10,
         guidance_scale: float = 2.5,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_waveforms_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_waveforms_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: Optional[int] = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        output_type: Optional[str] = "np",
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
+        callback_steps: int | None = 1,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        output_type: str | None = "np",
     ):
         r"""
         The call function to the pipeline for generation.

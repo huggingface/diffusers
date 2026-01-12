@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -82,7 +80,7 @@ class HunyuanVideoUpsampleCausal3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         kernel_size: int = 3,
         stride: int = 1,
         bias: bool = True,
@@ -124,7 +122,7 @@ class HunyuanVideoDownsampleCausal3D(nn.Module):
     def __init__(
         self,
         channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         padding: int = 1,
         kernel_size: int = 3,
         bias: bool = True,
@@ -144,7 +142,7 @@ class HunyuanVideoResnetBlockCausal3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         dropout: float = 0.0,
         groups: int = 32,
         eps: float = 1e-6,
@@ -725,12 +723,12 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_sample_min_num_frames: Optional[int] = None,
-        tile_sample_stride_height: Optional[float] = None,
-        tile_sample_stride_width: Optional[float] = None,
-        tile_sample_stride_num_frames: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_sample_min_num_frames: int | None = None,
+        tile_sample_stride_height: float | None = None,
+        tile_sample_stride_width: float | None = None,
+        tile_sample_stride_num_frames: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1054,7 +1052,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import torch
@@ -50,10 +50,10 @@ def get_down_block(
     resnet_eps: float,
     resnet_act_fn: str,
     transformer_layers_per_block: int = 1,
-    num_attention_heads: Optional[int] = None,
-    resnet_groups: Optional[int] = None,
-    cross_attention_dim: Optional[int] = None,
-    downsample_padding: Optional[int] = None,
+    num_attention_heads: int | None = None,
+    resnet_groups: int | None = None,
+    cross_attention_dim: int | None = None,
+    downsample_padding: int | None = None,
     dual_cross_attention: bool = False,
     use_linear_projection: bool = False,
     only_cross_attention: bool = False,
@@ -62,9 +62,9 @@ def get_down_block(
     attention_type: str = "default",
     resnet_skip_time_act: bool = False,
     resnet_out_scale_factor: float = 1.0,
-    cross_attention_norm: Optional[str] = None,
-    attention_head_dim: Optional[int] = None,
-    downsample_type: Optional[str] = None,
+    cross_attention_norm: str | None = None,
+    attention_head_dim: int | None = None,
+    downsample_type: str | None = None,
     dropout: float = 0.0,
 ):
     # If attn head dim is not defined, we default it to the number of heads
@@ -258,8 +258,8 @@ def get_mid_block(
     resnet_groups: int,
     output_scale_factor: float = 1.0,
     transformer_layers_per_block: int = 1,
-    num_attention_heads: Optional[int] = None,
-    cross_attention_dim: Optional[int] = None,
+    num_attention_heads: int | None = None,
+    cross_attention_dim: int | None = None,
     dual_cross_attention: bool = False,
     use_linear_projection: bool = False,
     mid_block_only_cross_attention: bool = False,
@@ -267,8 +267,8 @@ def get_mid_block(
     resnet_time_scale_shift: str = "default",
     attention_type: str = "default",
     resnet_skip_time_act: bool = False,
-    cross_attention_norm: Optional[str] = None,
-    attention_head_dim: Optional[int] = 1,
+    cross_attention_norm: str | None = None,
+    attention_head_dim: int | None = 1,
     dropout: float = 0.0,
 ):
     if mid_block_type == "UNetMidBlock2DCrossAttn":
@@ -334,11 +334,11 @@ def get_up_block(
     add_upsample: bool,
     resnet_eps: float,
     resnet_act_fn: str,
-    resolution_idx: Optional[int] = None,
+    resolution_idx: int | None = None,
     transformer_layers_per_block: int = 1,
-    num_attention_heads: Optional[int] = None,
-    resnet_groups: Optional[int] = None,
-    cross_attention_dim: Optional[int] = None,
+    num_attention_heads: int | None = None,
+    resnet_groups: int | None = None,
+    cross_attention_dim: int | None = None,
     dual_cross_attention: bool = False,
     use_linear_projection: bool = False,
     only_cross_attention: bool = False,
@@ -347,9 +347,9 @@ def get_up_block(
     attention_type: str = "default",
     resnet_skip_time_act: bool = False,
     resnet_out_scale_factor: float = 1.0,
-    cross_attention_norm: Optional[str] = None,
-    attention_head_dim: Optional[int] = None,
-    upsample_type: Optional[str] = None,
+    cross_attention_norm: str | None = None,
+    attention_head_dim: int | None = None,
+    upsample_type: str | None = None,
     dropout: float = 0.0,
 ) -> nn.Module:
     # If attn head dim is not defined, we default it to the number of heads
@@ -602,7 +602,7 @@ class UNetMidBlock2D(nn.Module):
         resnet_act_fn (`str`, *optional*, defaults to `swish`): The activation function for the resnet blocks.
         resnet_groups (`int`, *optional*, defaults to 32):
             The number of groups to use in the group normalization layers of the resnet blocks.
-        attn_groups (`Optional[int]`, *optional*, defaults to None): The number of groups for the attention blocks.
+        attn_groups (`int | None`, *optional*, defaults to None): The number of groups for the attention blocks.
         resnet_pre_norm (`bool`, *optional*, defaults to `True`):
             Whether to use pre-normalization for the resnet blocks.
         add_attention (`bool`, *optional*, defaults to `True`): Whether to add attention blocks.
@@ -627,7 +627,7 @@ class UNetMidBlock2D(nn.Module):
         resnet_time_scale_shift: str = "default",  # default, spatial
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        attn_groups: Optional[int] = None,
+        attn_groups: int | None = None,
         resnet_pre_norm: bool = True,
         add_attention: bool = True,
         attention_head_dim: int = 1,
@@ -733,7 +733,7 @@ class UNetMidBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor | None = None) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -753,7 +753,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self,
         in_channels: int,
         temb_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: int | tuple[int] = 1,
@@ -761,7 +761,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_groups_out: Optional[int] = None,
+        resnet_groups_out: int | None = None,
         resnet_pre_norm: bool = True,
         num_attention_heads: int = 1,
         output_scale_factor: float = 1.0,
@@ -854,11 +854,11 @@ class UNetMidBlock2DCrossAttn(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -907,7 +907,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         cross_attention_dim: int = 1280,
         skip_time_act: bool = False,
         only_cross_attention: bool = False,
-        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm: str | None = None,
     ):
         super().__init__()
 
@@ -978,11 +978,11 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
@@ -1112,9 +1112,9 @@ class AttnDownBlock2D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        upsample_size: Optional[int] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        temb: torch.Tensor | None = None,
+        upsample_size: int | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
@@ -1239,12 +1239,12 @@ class CrossAttnDownBlock2D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        additional_residuals: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        additional_residuals: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -1344,7 +1344,7 @@ class DownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, *args, **kwargs
+        self, hidden_states: torch.Tensor, temb: torch.Tensor | None = None, *args, **kwargs
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
@@ -1635,8 +1635,8 @@ class AttnSkipDownBlock2D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        skip_sample: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        skip_sample: torch.Tensor | None = None,
         *args,
         **kwargs,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...], torch.Tensor]:
@@ -1726,8 +1726,8 @@ class SkipDownBlock2D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        skip_sample: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        skip_sample: torch.Tensor | None = None,
         *args,
         **kwargs,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...], torch.Tensor]:
@@ -1818,7 +1818,7 @@ class ResnetDownsampleBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, *args, **kwargs
+        self, hidden_states: torch.Tensor, temb: torch.Tensor | None = None, *args, **kwargs
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
@@ -1862,7 +1862,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         add_downsample: bool = True,
         skip_time_act: bool = False,
         only_cross_attention: bool = False,
-        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm: str | None = None,
     ):
         super().__init__()
 
@@ -1941,11 +1941,11 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
@@ -2041,7 +2041,7 @@ class KDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, *args, **kwargs
+        self, hidden_states: torch.Tensor, temb: torch.Tensor | None = None, *args, **kwargs
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
@@ -2132,11 +2132,11 @@ class KCrossAttnDownBlock2D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
@@ -2279,8 +2279,8 @@ class AttnUpBlock2D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
-        upsample_size: Optional[int] = None,
+        temb: torch.Tensor | None = None,
+        upsample_size: int | None = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
@@ -2318,7 +2318,7 @@ class CrossAttnUpBlock2D(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: int | tuple[int] = 1,
@@ -2406,12 +2406,12 @@ class CrossAttnUpBlock2D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        upsample_size: int | None = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -2478,7 +2478,7 @@ class UpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2525,8 +2525,8 @@ class UpBlock2D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
-        upsample_size: Optional[int] = None,
+        temb: torch.Tensor | None = None,
+        upsample_size: int | None = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
@@ -2577,7 +2577,7 @@ class UpDecoderBlock2D(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2587,7 +2587,7 @@ class UpDecoderBlock2D(nn.Module):
         resnet_pre_norm: bool = True,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
-        temb_channels: Optional[int] = None,
+        temb_channels: int | None = None,
     ):
         super().__init__()
         resnets = []
@@ -2634,7 +2634,7 @@ class UpDecoderBlock2D(nn.Module):
 
         self.resolution_idx = resolution_idx
 
-    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor | None = None) -> torch.Tensor:
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=temb)
 
@@ -2650,7 +2650,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2661,7 +2661,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
-        temb_channels: Optional[int] = None,
+        temb_channels: int | None = None,
     ):
         super().__init__()
         resnets = []
@@ -2732,7 +2732,7 @@ class AttnUpDecoderBlock2D(nn.Module):
 
         self.resolution_idx = resolution_idx
 
-    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor | None = None) -> torch.Tensor:
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb=temb)
             hidden_states = attn(hidden_states, temb=temb)
@@ -2751,7 +2751,7 @@ class AttnSkipUpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2842,7 +2842,7 @@ class AttnSkipUpBlock2D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
         skip_sample=None,
         *args,
         **kwargs,
@@ -2885,7 +2885,7 @@ class SkipUpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2954,7 +2954,7 @@ class SkipUpBlock2D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
         skip_sample=None,
         *args,
         **kwargs,
@@ -2995,7 +2995,7 @@ class ResnetUpsampleBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -3061,8 +3061,8 @@ class ResnetUpsampleBlock2D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
-        upsample_size: Optional[int] = None,
+        temb: torch.Tensor | None = None,
+        upsample_size: int | None = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
@@ -3095,7 +3095,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -3109,7 +3109,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         add_upsample: bool = True,
         skip_time_act: bool = False,
         only_cross_attention: bool = False,
-        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm: str | None = None,
     ):
         super().__init__()
         resnets = []
@@ -3191,12 +3191,12 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        upsample_size: int | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:
@@ -3256,7 +3256,7 @@ class KUpBlock2D(nn.Module):
         num_layers: int = 5,
         resnet_eps: float = 1e-5,
         resnet_act_fn: str = "gelu",
-        resnet_group_size: Optional[int] = 32,
+        resnet_group_size: int | None = 32,
         add_upsample: bool = True,
     ):
         super().__init__()
@@ -3299,8 +3299,8 @@ class KUpBlock2D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
-        upsample_size: Optional[int] = None,
+        temb: torch.Tensor | None = None,
+        upsample_size: int | None = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
@@ -3415,12 +3415,12 @@ class KCrossAttnUpBlock2D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        upsample_size: int | None = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         res_hidden_states_tuple = res_hidden_states_tuple[-1]
         if res_hidden_states_tuple is not None:
@@ -3490,12 +3490,12 @@ class KAttentionBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         dropout: float = 0.0,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
         attention_bias: bool = False,
         upcast_attention: bool = False,
         temb_channels: int = 768,  # for ada_group_norm
         add_self_attention: bool = False,
-        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm: str | None = None,
         group_size: int = 32,
     ):
         super().__init__()
@@ -3536,13 +3536,13 @@ class KAttentionBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
         # TODO: mark emb as non-optional (self.norm2 requires it).
         #       requires assessing impact of change to positional param interface.
-        emb: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        emb: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:

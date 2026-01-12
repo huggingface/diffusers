@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import torch
 
 from ....models import UNet2DModel
@@ -48,8 +46,8 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         self,
         batch_size: int = 1,
         num_inference_steps: int = 2000,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
         **kwargs,
     ) -> ImagePipelineOutput | tuple:

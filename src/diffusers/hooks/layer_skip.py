@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import asdict, dataclass
-from typing import Callable, Optional
+from typing import Callable
 
 import torch
 
@@ -196,7 +196,7 @@ def apply_layer_skip(module: torch.nn.Module, config: LayerSkipConfig) -> None:
     _apply_layer_skip_hook(module, config)
 
 
-def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, name: Optional[str] = None) -> None:
+def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, name: str | None = None) -> None:
     name = name or _LAYER_SKIP_HOOK
 
     if config.skip_attention and config.skip_attention_scores:

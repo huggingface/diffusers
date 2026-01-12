@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import torch
 import torch.nn as nn
@@ -185,7 +185,7 @@ class AttentionModuleMixin:
     def set_use_xla_flash_attention(
         self,
         use_xla_flash_attention: bool,
-        partition_spec: Optional[tuple[Optional[str], ...]] = None,
+        partition_spec: tuple[str | None, ...] | None = None,
         is_flux=False,
     ) -> None:
         """
@@ -206,7 +206,7 @@ class AttentionModuleMixin:
         self.set_attention_backend("_native_xla")
 
     def set_use_memory_efficient_attention_xformers(
-        self, use_memory_efficient_attention_xformers: bool, attention_op: Optional[Callable] = None
+        self, use_memory_efficient_attention_xformers: bool, attention_op: Callable | None = None
     ) -> None:
         """
         Set whether to use memory efficient attention from `xformers` or not.
@@ -402,7 +402,7 @@ class AttentionModuleMixin:
         return tensor
 
     def get_attention_scores(
-        self, query: torch.Tensor, key: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
+        self, query: torch.Tensor, key: torch.Tensor, attention_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
         """
         Compute the attention scores.
@@ -597,7 +597,7 @@ class JointTransformerBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         context_pre_only: bool = False,
-        qk_norm: Optional[str] = None,
+        qk_norm: str | None = None,
         use_dual_attention: bool = False,
     ):
         super().__init__()
@@ -673,7 +673,7 @@ class JointTransformerBlock(nn.Module):
         self._chunk_dim = 0
 
     # Copied from diffusers.models.attention.BasicTransformerBlock.set_chunk_feed_forward
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
+    def set_chunk_feed_forward(self, chunk_size: int | None, dim: int = 0):
         # Sets chunk feed-forward
         self._chunk_size = chunk_size
         self._chunk_dim = dim
@@ -683,7 +683,7 @@ class JointTransformerBlock(nn.Module):
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         joint_attention_kwargs = joint_attention_kwargs or {}
         if self.use_dual_attention:
@@ -790,9 +790,9 @@ class BasicTransformerBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         dropout=0.0,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
         activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
+        num_embeds_ada_norm: int | None = None,
         attention_bias: bool = False,
         only_cross_attention: bool = False,
         double_self_attention: bool = False,
@@ -802,11 +802,11 @@ class BasicTransformerBlock(nn.Module):
         norm_eps: float = 1e-5,
         final_dropout: bool = False,
         attention_type: str = "default",
-        positional_embeddings: Optional[str] = None,
-        num_positional_embeddings: Optional[int] = None,
-        ada_norm_continous_conditioning_embedding_dim: Optional[int] = None,
-        ada_norm_bias: Optional[int] = None,
-        ff_inner_dim: Optional[int] = None,
+        positional_embeddings: str | None = None,
+        num_positional_embeddings: int | None = None,
+        ada_norm_continous_conditioning_embedding_dim: int | None = None,
+        ada_norm_bias: int | None = None,
+        ff_inner_dim: int | None = None,
         ff_bias: bool = True,
         attention_out_bias: bool = True,
     ):
@@ -952,7 +952,7 @@ class BasicTransformerBlock(nn.Module):
         self._chunk_size = None
         self._chunk_dim = 0
 
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
+    def set_chunk_feed_forward(self, chunk_size: int | None, dim: int = 0):
         # Sets chunk feed-forward
         self._chunk_size = chunk_size
         self._chunk_dim = dim
@@ -960,13 +960,13 @@ class BasicTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        timestep: torch.LongTensor | None = None,
         cross_attention_kwargs: dict[str, Any] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-        added_cond_kwargs: Optional[dict[str, torch.Tensor]] = None,
+        class_labels: torch.LongTensor | None = None,
+        added_cond_kwargs: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -1099,8 +1099,8 @@ class LuminaFeedForward(nn.Module):
         self,
         dim: int,
         inner_dim: int,
-        multiple_of: Optional[int] = 256,
-        ffn_dim_multiplier: Optional[float] = None,
+        multiple_of: int | None = 256,
+        ffn_dim_multiplier: float | None = None,
     ):
         super().__init__()
         # custom hidden_size factor multiplier
@@ -1148,7 +1148,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         time_mix_inner_dim: int,
         num_attention_heads: int,
         attention_head_dim: int,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
     ):
         super().__init__()
         self.is_res = dim == time_mix_inner_dim
@@ -1195,7 +1195,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         self._chunk_size = None
         self._chunk_dim = None
 
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], **kwargs):
+    def set_chunk_feed_forward(self, chunk_size: int | None, **kwargs):
         # Sets chunk feed-forward
         self._chunk_size = chunk_size
         # chunk dim should be hardcoded to 1 to have better speed vs. memory trade-off
@@ -1205,7 +1205,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         num_frames: int,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
     ) -> torch.Tensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
@@ -1268,7 +1268,7 @@ class SkipFFTransformerBlock(nn.Module):
         kv_input_dim: int,
         kv_input_dim_proj_use_bias: bool,
         dropout=0.0,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
         attention_bias: bool = False,
         attention_out_bias: bool = True,
     ):
@@ -1393,9 +1393,9 @@ class FreeNoiseTransformerBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         dropout: float = 0.0,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
         activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
+        num_embeds_ada_norm: int | None = None,
         attention_bias: bool = False,
         only_cross_attention: bool = False,
         double_self_attention: bool = False,
@@ -1404,9 +1404,9 @@ class FreeNoiseTransformerBlock(nn.Module):
         norm_type: str = "layer_norm",
         norm_eps: float = 1e-5,
         final_dropout: bool = False,
-        positional_embeddings: Optional[str] = None,
-        num_positional_embeddings: Optional[int] = None,
-        ff_inner_dim: Optional[int] = None,
+        positional_embeddings: str | None = None,
+        num_positional_embeddings: int | None = None,
+        ff_inner_dim: int | None = None,
         ff_bias: bool = True,
         attention_out_bias: bool = True,
         context_length: int = 16,
@@ -1548,7 +1548,7 @@ class FreeNoiseTransformerBlock(nn.Module):
         self.context_stride = context_stride
         self.weighting_scheme = weighting_scheme
 
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0) -> None:
+    def set_chunk_feed_forward(self, chunk_size: int | None, dim: int = 0) -> None:
         # Sets chunk feed-forward
         self._chunk_size = chunk_size
         self._chunk_dim = dim
@@ -1556,9 +1556,9 @@ class FreeNoiseTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
         cross_attention_kwargs: dict[str, Any] = None,
         *args,
         **kwargs,
@@ -1696,7 +1696,7 @@ class FeedForward(nn.Module):
     def __init__(
         self,
         dim: int,
-        dim_out: Optional[int] = None,
+        dim_out: int | None = None,
         mult: int = 4,
         dropout: float = 0.0,
         activation_fn: str = "geglu",

@@ -19,7 +19,7 @@ import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from huggingface_hub import create_repo
@@ -99,11 +99,11 @@ class PipelineState:
         Get one or multiple values from the pipeline state.
 
         Args:
-            keys (Union[str, list[str]]): Key or list of keys for the values
+            keys (str | list[str]): Key or list of keys for the values
             default (Any): The default value to return if not found
 
         Returns:
-            Union[Any, dict[str, Any]]: Single value if keys is str, dictionary of values if keys is list
+            Any | dict[str, Any]: Single value if keys is str, dictionary of values if keys is list
         """
         if isinstance(keys, str):
             return self.values.get(keys, default)
@@ -358,9 +358,9 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     def init_pipeline(
         self,
-        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
-        components_manager: Optional[ComponentsManager] = None,
-        collection: Optional[str] = None,
+        pretrained_model_name_or_path: str | os.PathLike | None = None,
+        components_manager: ComponentsManager | None = None,
+        collection: str | None = None,
     ) -> "ModularPipeline":
         """
         create a ModularPipeline, optionally accept pretrained_model_name_or_path to load from hub.
@@ -665,7 +665,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         """All trigger inputs including from nested blocks."""
         return self._get_trigger_inputs()
 
-    def select_block(self, **kwargs) -> Optional[str]:
+    def select_block(self, **kwargs) -> str | None:
         """
         Select the block to run based on the trigger inputs. Subclasses must implement this method to define the logic
         for selecting the block.
@@ -674,7 +674,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             **kwargs: Trigger input names and their values from the state.
 
         Returns:
-            Optional[str]: The name of the block to run, or None to use default/skip.
+            str | None: The name of the block to run, or None to use default/skip.
         """
         raise NotImplementedError(f"Subclass {self.__class__.__name__} must implement the `select_block` method.")
 
@@ -794,14 +794,14 @@ class AutoPipelineBlocks(ConditionalPipelineBlocks):
             )
 
     @property
-    def default_block_name(self) -> Optional[str]:
+    def default_block_name(self) -> str | None:
         """Derive default_block_name from block_trigger_inputs (None entry)."""
         if None in self.block_trigger_inputs:
             idx = self.block_trigger_inputs.index(None)
             return self.block_names[idx]
         return None
 
-    def select_block(self, **kwargs) -> Optional[str]:
+    def select_block(self, **kwargs) -> str | None:
         """Select block based on which trigger input is present (not None)."""
         for trigger_input, block_name in zip(self.block_trigger_inputs, self.block_names):
             if trigger_input is not None and kwargs.get(trigger_input) is not None:
@@ -855,7 +855,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     @classmethod
     def from_blocks_dict(
-        cls, blocks_dict: dict[str, Any], description: Optional[str] = None
+        cls, blocks_dict: dict[str, Any], description: str | None = None
     ) -> "SequentialPipelineBlocks":
         """Creates a SequentialPipelineBlocks instance from a dictionary of blocks.
 
@@ -1461,12 +1461,12 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     # YiYi TODO: add warning for passing multiple ComponentSpec/ConfigSpec with the same name
     def __init__(
         self,
-        blocks: Optional[ModularPipelineBlocks] = None,
-        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
-        components_manager: Optional[ComponentsManager] = None,
-        collection: Optional[str] = None,
-        modular_config_dict: Optional[dict[str, Any]] = None,
-        config_dict: Optional[dict[str, Any]] = None,
+        blocks: ModularPipelineBlocks | None = None,
+        pretrained_model_name_or_path: str | os.PathLike | None = None,
+        components_manager: ComponentsManager | None = None,
+        collection: str | None = None,
+        modular_config_dict: dict[str, Any] | None = None,
+        config_dict: dict[str, Any] | None = None,
         **kwargs,
     ):
         """
@@ -1616,13 +1616,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             params[input_param.name] = input_param.default
         return params
 
-    def get_default_blocks_name(self, config_dict: Optional[dict[str, Any]]) -> Optional[str]:
+    def get_default_blocks_name(self, config_dict: dict[str, Any] | None) -> str | None:
         return self.default_blocks_name
 
     @classmethod
     def _load_pipeline_config(
         cls,
-        pretrained_model_name_or_path: Optional[str | os.PathLike],
+        pretrained_model_name_or_path: str | os.PathLike | None,
         **load_config_kwargs,
     ):
         try:
@@ -1652,10 +1652,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Optional[str | os.PathLike],
-        trust_remote_code: Optional[bool] = None,
-        components_manager: Optional[ComponentsManager] = None,
-        collection: Optional[str] = None,
+        pretrained_model_name_or_path: str | os.PathLike | None,
+        trust_remote_code: bool | None = None,
+        components_manager: ComponentsManager | None = None,
+        collection: str | None = None,
         **kwargs,
     ):
         """
@@ -2120,7 +2120,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         self.register_to_config(**config_to_register)
 
     # YiYi TODO: support map for additional from_pretrained kwargs
-    def load_components(self, names: Optional[list[str] | str] = None, **kwargs):
+    def load_components(self, names: list[str] | str | None = None, **kwargs):
         """
         Load selected components from specs.
 
@@ -2185,7 +2185,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
     # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline._maybe_raise_error_if_group_offload_active
     def _maybe_raise_error_if_group_offload_active(
-        self, raise_error: bool = False, module: Optional[torch.nn.Module] = None
+        self, raise_error: bool = False, module: torch.nn.Module | None = None
     ) -> bool:
         from ..hooks.group_offloading import _is_group_offload_enabled
 
@@ -2400,13 +2400,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
           - "type_hint": tuple[str, str]
               Library name and class name of the component. (e.g. ("diffusers", "UNet2DConditionModel"))
           - All loading fields defined by `component_spec.loading_fields()`, typically:
-              - "pretrained_model_name_or_path": Optional[str]
+              - "pretrained_model_name_or_path": str | None
                   The model pretrained_model_name_or_pathsitory (e.g., "stabilityai/stable-diffusion-xl").
-              - "subfolder": Optional[str]
+              - "subfolder": str | None
                   A subfolder within the pretrained_model_name_or_path where this component lives.
-              - "variant": Optional[str]
+              - "variant": str | None
                   An optional variant identifier for the model.
-              - "revision": Optional[str]
+              - "revision": str | None
                   A specific git revision (commit hash, tag, or branch).
               - ... any other loading fields defined on the spec.
 
@@ -2456,13 +2456,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
           - "type_hint": tuple[str, str]
               Library name and class name of the component. (e.g. ("diffusers", "UNet2DConditionModel"))
           - All loading fields defined by `component_spec.loading_fields()`, typically:
-              - "pretrained_model_name_or_path": Optional[str]
+              - "pretrained_model_name_or_path": str | None
                   The model repository (e.g., "stabilityai/stable-diffusion-xl").
-              - "subfolder": Optional[str]
+              - "subfolder": str | None
                   A subfolder within the pretrained_model_name_or_path where this component lives.
-              - "variant": Optional[str]
+              - "variant": str | None
                   An optional variant identifier for the model.
-              - "revision": Optional[str]
+              - "revision": str | None
                   A specific git revision (commit hash, tag, or branch).
               - ... any other loading fields defined on the spec.
 

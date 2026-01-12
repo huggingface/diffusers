@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import re
-from typing import Optional, Type
+from typing import Type
 
 import torch
 
@@ -103,7 +103,7 @@ def apply_layerwise_casting(
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
     skip_modules_pattern: str | tuple[str, ...] = "auto",
-    skip_modules_classes: Optional[tuple[Type[torch.nn.Module], ...]] = None,
+    skip_modules_classes: tuple[Type[torch.nn.Module], ...] | None = None,
     non_blocking: bool = False,
 ) -> None:
     r"""
@@ -169,8 +169,8 @@ def _apply_layerwise_casting(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    skip_modules_pattern: Optional[tuple[str, ...]] = None,
-    skip_modules_classes: Optional[tuple[Type[torch.nn.Module], ...]] = None,
+    skip_modules_pattern: tuple[str, ...] | None = None,
+    skip_modules_classes: tuple[Type[torch.nn.Module], ...] | None = None,
     non_blocking: bool = False,
     _prefix: str = "",
 ) -> None:

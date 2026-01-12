@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Optional, Tuple
 
 import torch
 
@@ -93,7 +92,7 @@ def repeat_tensor_to_batch_size(
 
 def calculate_dimension_from_latents(
     latents: torch.Tensor, vae_scale_factor_temporal: int, vae_scale_factor_spatial: int
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Calculate image dimensions from latent tensor dimensions.
 
     This function converts latent temporal and spatial dimensions to image temporal and spatial dimensions by
@@ -108,7 +107,7 @@ def calculate_dimension_from_latents(
             Typically 8 for most VAEs (image is 8x larger than latents in each dimension)
 
     Returns:
-        Tuple[int, int]: The calculated image dimensions as (height, width)
+        tuple[int, int]: The calculated image dimensions as (height, width)
 
     Raises:
         ValueError: If latents tensor doesn't have 4 or 5 dimensions
@@ -129,10 +128,10 @@ def calculate_dimension_from_latents(
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -201,13 +200,13 @@ class WanTextInputStep(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("transformer", WanTransformer3DModel),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_videos_per_prompt", default=1),
             InputParam(
@@ -280,8 +279,8 @@ class WanAdditionalInputsStep(ModularPipelineBlocks):
 
     def __init__(
         self,
-        image_latent_inputs: List[str] = ["first_frame_latents"],
-        additional_batch_inputs: List[str] = [],
+        image_latent_inputs: list[str] = ["first_frame_latents"],
+        additional_batch_inputs: list[str] = [],
     ):
         """Initialize a configurable step that standardizes the inputs for the denoising step. It:\n"
 
@@ -292,10 +291,10 @@ class WanAdditionalInputsStep(ModularPipelineBlocks):
         This is a dynamic block that allows you to configure which inputs to process.
 
         Args:
-            image_latent_inputs (List[str], optional): Names of image latent tensors to process.
+            image_latent_inputs (list[str], optional): Names of image latent tensors to process.
                 In additional to adjust batch size of these inputs, they will be used to determine height/width. Can be
                 a single string or list of strings. Defaults to ["first_frame_latents"].
-            additional_batch_inputs (List[str], optional):
+            additional_batch_inputs (list[str], optional):
                 Names of additional conditional input tensors to expand batch size. These tensors will only have their
                 batch dimensions adjusted to match the final batch size. Can be a single string or list of strings.
                 Defaults to [].
@@ -343,7 +342,7 @@ class WanAdditionalInputsStep(ModularPipelineBlocks):
         return summary_section + inputs_info + placement_section
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         inputs = [
             InputParam(name="num_videos_per_prompt", default=1),
             InputParam(name="batch_size", required=True),
@@ -460,7 +459,7 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
             InputParam("height", type_hint=int),
             InputParam("width", type_hint=int),
             InputParam("num_frames", type_hint=int),
-            InputParam("latents", type_hint=Optional[torch.Tensor]),
+            InputParam("latents", type_hint=torch.Tensor | None),
             InputParam("num_videos_per_prompt", type_hint=int, default=1),
             InputParam("generator"),
             InputParam(
@@ -504,10 +503,10 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
         height: int = 480,
         width: int = 832,
         num_frames: int = 81,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -567,9 +566,9 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
         return "step that prepares the masked first frame latents and add it to the latent condition"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
-            InputParam("first_frame_latents", type_hint=Optional[torch.Tensor]),
+            InputParam("first_frame_latents", type_hint=torch.Tensor | None),
             InputParam("num_frames", type_hint=int),
         ]
 
@@ -605,9 +604,9 @@ class WanPrepareFirstLastFrameLatentsStep(ModularPipelineBlocks):
         return "step that prepares the masked latents with first and last frames and add it to the latent condition"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
-            InputParam("first_last_frame_latents", type_hint=Optional[torch.Tensor]),
+            InputParam("first_last_frame_latents", type_hint=torch.Tensor | None),
             InputParam("num_frames", type_hint=int),
         ]
 

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 from torch import nn
@@ -45,8 +44,8 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         conditioning_channels: int = 3,
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
-        in_channels: Optional[int] = None,
-        patch_size: Optional[int] = None,
+        in_channels: int | None = None,
+        patch_size: int | None = None,
         activation_fn: str = "gelu-approximate",
         sample_size=32,
         hidden_size=1152,

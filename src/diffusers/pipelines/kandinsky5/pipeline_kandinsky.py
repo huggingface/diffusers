@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import regex as re
 import torch
@@ -313,9 +313,9 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     def _encode_prompt_qwen(
         self,
         prompt: str | list[str],
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         max_sequence_length: int = 256,
-        dtype: Optional[torch.dtype] = None,
+        dtype: torch.dtype | None = None,
     ):
         """
         Encode prompt using Qwen2.5-VL text encoder.
@@ -324,7 +324,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         video generation.
 
         Args:
-            prompt (Union[str, list[str]]): Input prompt or list of prompts
+            prompt (str | list[str]): Input prompt or list of prompts
             device (torch.device): Device to run encoding on
             num_videos_per_prompt (int): Number of videos to generate per prompt
             max_sequence_length (int): Maximum sequence length for tokenization
@@ -383,8 +383,8 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     def _encode_prompt_clip(
         self,
         prompt: str | list[str],
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         """
         Encode prompt using CLIP text encoder.
@@ -393,7 +393,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         semantic information.
 
         Args:
-            prompt (Union[str, list[str]]): Input prompt or list of prompts
+            prompt (str | list[str]): Input prompt or list of prompts
             device (torch.device): Device to run encoding on
             num_videos_per_prompt (int): Number of videos to generate per prompt
             dtype (torch.dtype): Data type for embeddings
@@ -422,8 +422,8 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         prompt: str | list[str],
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 512,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         r"""
         Encodes a single prompt (positive or negative) into text encoder hidden states.
@@ -603,10 +603,10 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         height: int = 480,
         width: int = 832,
         num_frames: int = 81,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Prepare initial latent variables for video generation.
@@ -684,26 +684,24 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     def __call__(
         self,
         prompt: str | list[str] = None,
-        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt: str | list[str] | None = None,
         height: int = 512,
         width: int = 768,
         num_frames: int = 121,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
-        num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds_qwen: Optional[torch.Tensor] = None,
-        prompt_embeds_clip: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_qwen: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_clip: Optional[torch.Tensor] = None,
-        prompt_cu_seqlens: Optional[torch.Tensor] = None,
-        negative_prompt_cu_seqlens: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        num_videos_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds_qwen: torch.Tensor | None = None,
+        prompt_embeds_clip: torch.Tensor | None = None,
+        negative_prompt_embeds_qwen: torch.Tensor | None = None,
+        negative_prompt_embeds_clip: torch.Tensor | None = None,
+        prompt_cu_seqlens: torch.Tensor | None = None,
+        negative_prompt_cu_seqlens: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
-        ] = None,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
     ):

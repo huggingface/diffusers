@@ -1,7 +1,7 @@
 import copy
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import numpy as np
 import PIL
@@ -402,7 +402,7 @@ class TextToVideoZeroSDXLPipeline(
         image_encoder: CLIPVisionModelWithProjection = None,
         feature_extractor: CLIPImageProcessor = None,
         force_zeros_for_empty_prompt: bool = True,
-        add_watermarker: Optional[bool] = None,
+        add_watermarker: bool | None = None,
     ):
         super().__init__()
         self.register_modules(
@@ -585,18 +585,18 @@ class TextToVideoZeroSDXLPipeline(
     def encode_prompt(
         self,
         prompt: str,
-        prompt_2: Optional[str] = None,
-        device: Optional[torch.device] = None,
+        prompt_2: str | None = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str] = None,
-        negative_prompt_2: Optional[str] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt: str | None = None,
+        negative_prompt_2: str | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -938,35 +938,35 @@ class TextToVideoZeroSDXLPipeline(
     def __call__(
         self,
         prompt: str | list[str],
-        prompt_2: Optional[str | list[str]] = None,
-        video_length: Optional[int] = 8,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        prompt_2: str | list[str] | None = None,
+        video_length: int | None = 8,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
-        denoising_end: Optional[float] = None,
+        denoising_end: float | None = None,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[str | list[str]] = None,
-        negative_prompt_2: Optional[str | list[str]] = None,
-        num_videos_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        negative_prompt_2: str | list[str] | None = None,
+        num_videos_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        frame_ids: Optional[list[int]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        frame_ids: list[int] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        latents: torch.Tensor | None = None,
         motion_field_strength_x: float = 12,
         motion_field_strength_y: float = 12,
-        output_type: Optional[str] = "tensor",
+        output_type: str | None = "tensor",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         guidance_rescale: float = 0.0,
-        original_size: Optional[tuple[int, int]] = None,
+        original_size: tuple[int, int] | None = None,
         crops_coords_top_left: tuple[int, int] = (0, 0),
-        target_size: Optional[tuple[int, int]] = None,
+        target_size: tuple[int, int] | None = None,
         t0: int = 44,
         t1: int = 47,
     ):

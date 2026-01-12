@@ -1,5 +1,3 @@
-from typing import Optional
-
 import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -165,9 +163,9 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         weights: list[float],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        negative_prior_prompt: Optional[str] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        negative_prior_prompt: str | None = None,
         negative_prompt: str = "",
         guidance_scale: float = 4.0,
         device=None,
@@ -176,7 +174,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         Function invoked when using the prior pipeline for interpolation.
 
         Args:
-            images_and_prompts (`list[Union[str, PIL.Image.Image, torch.Tensor]]`):
+            images_and_prompts (`list[str | PIL.Image.Image | torch.Tensor]`):
                 list of prompts and images to guide the image generation.
             weights: (`list[float]`):
                 list of weights for each condition in `images_and_prompts`
@@ -405,12 +403,12 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         prompt: str | list[str],
         image: torch.Tensor | list[torch.Tensor] | PIL.Image.Image | list[PIL.Image.Image],
         strength: float = 0.3,
-        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt: str | list[str] | None = None,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         guidance_scale: float = 4.0,
-        output_type: Optional[str] = "pt",  # pt only
+        output_type: str | None = "pt",  # pt only
         return_dict: bool = True,
     ):
         """

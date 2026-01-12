@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional
 
 import PIL.Image
 import torch
@@ -251,7 +250,7 @@ class QwenImageEditAutoCoreDenoiseStep(ConditionalPipelineBlocks):
     block_trigger_inputs = ["processed_mask_image", "image_latents"]
     default_block_name = "edit"
 
-    def select_block(self, processed_mask_image=None, image_latents=None) -> Optional[str]:
+    def select_block(self, processed_mask_image=None, image_latents=None) -> str | None:
         if processed_mask_image is not None:
             return "edit_inpaint"
         elif image_latents is not None:
@@ -349,5 +348,5 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam(name="images", type_hint=List[List[PIL.Image.Image]], description="The generated images"),
+            OutputParam(name="images", type_hint=list[list[PIL.Image.Image]], description="The generated images"),
         ]

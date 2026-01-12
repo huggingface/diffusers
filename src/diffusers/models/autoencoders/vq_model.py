@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -89,7 +88,7 @@ class VQModel(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample_size: int = 32,
         num_vq_embeddings: int = 256,
         norm_num_groups: int = 32,
-        vq_embed_dim: Optional[int] = None,
+        vq_embed_dim: int | None = None,
         scaling_factor: float = 0.18215,
         norm_type: str = "group",  # group, spatial
         mid_block_add_attention=True,

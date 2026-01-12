@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import torch
 import torch.nn.functional as F
@@ -168,8 +168,8 @@ class AnimateDiffControlNetPipeline(
         motion_adapter: MotionAdapter,
         controlnet: ControlNetModel | list[ControlNetModel] | tuple[ControlNetModel] | MultiControlNetModel,
         scheduler: KarrasDiffusionSchedulers,
-        feature_extractor: Optional[CLIPImageProcessor] = None,
-        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
+        feature_extractor: CLIPImageProcessor | None = None,
+        image_encoder: CLIPVisionModelWithProjection | None = None,
     ):
         super().__init__()
         if isinstance(unet, UNet2DConditionModel):
@@ -203,10 +203,10 @@ class AnimateDiffControlNetPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -722,30 +722,30 @@ class AnimateDiffControlNetPipeline(
     def __call__(
         self,
         prompt: str | list[str] = None,
-        num_frames: Optional[int] = 16,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        num_frames: int | None = 16,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_videos_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_videos_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[PipelineImageInput] = None,
-        conditioning_frames: Optional[list[PipelineImageInput]] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        ip_adapter_image: PipelineImageInput | None = None,
+        ip_adapter_image_embeds: PipelineImageInput | None = None,
+        conditioning_frames: list[PipelineImageInput] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         controlnet_conditioning_scale: float | list[float] = 1.0,
         guess_mode: bool = False,
         control_guidance_start: float | list[float] = 0.0,
         control_guidance_end: float | list[float] = 1.0,
-        clip_skip: Optional[int] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        clip_skip: int | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         decode_chunk_size: int = 16,
     ):

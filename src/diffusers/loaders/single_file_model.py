@@ -15,7 +15,6 @@ import importlib
 import inspect
 import re
 from contextlib import nullcontext
-from typing import Optional
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -216,7 +215,7 @@ class FromOriginalModelMixin:
 
     @classmethod
     @validate_hf_hub_args
-    def from_single_file(cls, pretrained_model_link_or_path_or_dict: Optional[str] = None, **kwargs) -> Self:
+    def from_single_file(cls, pretrained_model_link_or_path_or_dict: str | None = None, **kwargs) -> Self:
         r"""
         Instantiate a model from pretrained weights saved in the original `.ckpt` or `.safetensors` format. The model
         is set in evaluation mode (`model.eval()`) by default.
@@ -243,7 +242,7 @@ class FromOriginalModelMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
 

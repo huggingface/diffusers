@@ -17,7 +17,7 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import safetensors
 import torch
@@ -117,8 +117,8 @@ def unfuse_text_encoder_lora(text_encoder):
 
 def set_adapters_for_text_encoder(
     adapter_names: list[str] | str,
-    text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
-    text_encoder_weights: Optional[float | list[float] | list[None]] = None,
+    text_encoder: "PreTrainedModel" | None = None,  # noqa: F821
+    text_encoder_weights: float | list[float] | list[None] | None = None,
 ):
     """
     Sets the adapter layers for the text encoder.
@@ -159,7 +159,7 @@ def set_adapters_for_text_encoder(
     set_weights_and_activate_adapters(text_encoder, adapter_names, text_encoder_weights)
 
 
-def disable_lora_for_text_encoder(text_encoder: Optional["PreTrainedModel"] = None):
+def disable_lora_for_text_encoder(text_encoder: "PreTrainedModel" | None = None):
     """
     Disables the LoRA layers for the text encoder.
 
@@ -173,7 +173,7 @@ def disable_lora_for_text_encoder(text_encoder: Optional["PreTrainedModel"] = No
     set_adapter_layers(text_encoder, enabled=False)
 
 
-def enable_lora_for_text_encoder(text_encoder: Optional["PreTrainedModel"] = None):
+def enable_lora_for_text_encoder(text_encoder: "PreTrainedModel" | None = None):
     """
     Enables the LoRA layers for the text encoder.
 
@@ -538,7 +538,7 @@ class LoraBaseMixin:
         components: list[str] = [],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -675,7 +675,7 @@ class LoraBaseMixin:
     def set_adapters(
         self,
         adapter_names: list[str] | str,
-        adapter_weights: Optional[float | Dict | list[float] | list[Dict]] = None,
+        adapter_weights: float | dict | list[float] | list[dict] | None = None,
     ):
         """
         Set the currently active adapters for use in the pipeline.
@@ -683,7 +683,7 @@ class LoraBaseMixin:
         Args:
             adapter_names (`list[str]` or `str`):
                 The names of the adapters to use.
-            adapter_weights (`Union[list[float], float]`, *optional*):
+            adapter_weights (`list[float, float]`, *optional*):
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
                 adapters.
 
@@ -840,7 +840,7 @@ class LoraBaseMixin:
         Delete an adapter's LoRA layers from the pipeline.
 
         Args:
-            adapter_names (`Union[list[str], str]`):
+            adapter_names (`list[str, str]`):
                 The names of the adapters to delete.
 
         Example:
@@ -957,7 +957,7 @@ class LoraBaseMixin:
         Args:
             adapter_names (`list[str]`):
                 list of adapters to send device to.
-            device (`Union[torch.device, str, int]`):
+            device (`torch.device | str | int`):
                 Device to send the adapters to. Can be either a torch device, a str or an integer.
         """
         if not USE_PEFT_BACKEND:
@@ -1013,7 +1013,7 @@ class LoraBaseMixin:
         weight_name: str,
         save_function: Callable,
         safe_serialization: bool,
-        lora_adapter_metadata: Optional[dict] = None,
+        lora_adapter_metadata: dict | None = None,
     ):
         """Writes the state dict of the LoRA layers (optionally with metadata) to disk."""
         if os.path.isfile(save_directory):
@@ -1061,7 +1061,7 @@ class LoraBaseMixin:
         cls,
         save_directory: str | os.PathLike,
         lora_layers: dict[str, dict[str, torch.nn.Module | torch.Tensor]],
-        lora_metadata: dict[str, Optional[dict]],
+        lora_metadata: dict[str, dict | None],
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,

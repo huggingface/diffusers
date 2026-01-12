@@ -41,7 +41,7 @@ class CacheMixin:
         Enable caching techniques on the model.
 
         Args:
-            config (`Union[PyramidAttentionBroadcastConfig, FasterCacheConfig, FirstBlockCacheConfig]`):
+            config (`PyramidAttentionBroadcastConfig | FasterCacheConfig | FirstBlockCacheConfig`):
                 The configuration for applying the caching technique. Currently supported caching techniques are:
                     - [`~hooks.PyramidAttentionBroadcastConfig`]
                     - [`~hooks.FasterCacheConfig`]

@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -60,7 +60,7 @@ class AdaptiveProjectedGuidance(BaseGuidance):
     def __init__(
         self,
         guidance_scale: float = 7.5,
-        adaptive_projected_guidance_momentum: Optional[float] = None,
+        adaptive_projected_guidance_momentum: float | None = None,
         adaptive_projected_guidance_rescale: float = 15.0,
         eta: float = 1.0,
         guidance_rescale: float = 0.0,
@@ -103,7 +103,7 @@ class AdaptiveProjectedGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: torch.Tensor | None = None) -> GuiderOutput:
         pred = None
 
         if not self._is_apg_enabled():
@@ -206,7 +206,7 @@ def normalized_guidance(
     pred_cond: torch.Tensor,
     pred_uncond: torch.Tensor,
     guidance_scale: float,
-    momentum_buffer: Optional[MomentumBuffer] = None,
+    momentum_buffer: MomentumBuffer | None = None,
     eta: float = 1.0,
     norm_threshold: float = 0.0,
     use_original_formulation: bool = False,

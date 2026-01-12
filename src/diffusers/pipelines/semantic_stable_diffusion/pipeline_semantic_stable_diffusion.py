@@ -1,6 +1,6 @@
 import inspect
 from itertools import repeat
-from typing import Callable, Optional
+from typing import Callable
 
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
@@ -224,30 +224,30 @@ class SemanticStableDiffusionPipeline(DeprecatedPipelineMixin, DiffusionPipeline
     def __call__(
         self,
         prompt: str | list[str],
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt: str | list[str] | None = None,
         num_images_per_prompt: int = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-        editing_prompt: Optional[str | list[str]] = None,
-        editing_prompt_embeddings: Optional[torch.Tensor] = None,
-        reverse_editing_direction: Optional[bool | list[bool]] = False,
-        edit_guidance_scale: Optional[float | list[float]] = 5,
-        edit_warmup_steps: Optional[int | list[int]] = 10,
-        edit_cooldown_steps: Optional[int | list[int]] = None,
-        edit_threshold: Optional[float | list[float]] = 0.9,
-        edit_momentum_scale: Optional[float] = 0.1,
-        edit_mom_beta: Optional[float] = 0.4,
-        edit_weights: Optional[list[float]] = None,
-        sem_guidance: Optional[list[torch.Tensor]] = None,
+        editing_prompt: str | list[str] | None = None,
+        editing_prompt_embeddings: torch.Tensor | None = None,
+        reverse_editing_direction: bool | list[bool] | None = False,
+        edit_guidance_scale: float | list[float] | None = 5,
+        edit_warmup_steps: int | list[int] | None = 10,
+        edit_cooldown_steps: int | list[int] | None = None,
+        edit_threshold: float | list[float] | None = 0.9,
+        edit_momentum_scale: float | None = 0.1,
+        edit_mom_beta: float | None = 0.4,
+        edit_weights: list[float] | None = None,
+        sem_guidance: list[torch.Tensor] | None = None,
     ):
         r"""
         The call function to the pipeline for generation.

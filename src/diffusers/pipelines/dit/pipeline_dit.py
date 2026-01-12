@@ -18,8 +18,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import torch
 
 from ...models import AutoencoderKL, DiTTransformer2DModel
@@ -62,7 +60,7 @@ class DiTPipeline(DiffusionPipeline):
         transformer: DiTTransformer2DModel,
         vae: AutoencoderKL,
         scheduler: KarrasDiffusionSchedulers,
-        id2label: Optional[dict[int, str]] = None,
+        id2label: dict[int, str] | None = None,
     ):
         super().__init__()
         self.register_modules(transformer=transformer, vae=vae, scheduler=scheduler)
@@ -105,9 +103,9 @@ class DiTPipeline(DiffusionPipeline):
         self,
         class_labels: list[int],
         guidance_scale: float = 4.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         num_inference_steps: int = 50,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ) -> ImagePipelineOutput | tuple:
         r"""

@@ -1,7 +1,7 @@
 import inspect
 import math
 from itertools import repeat
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import torch
 import torch.nn.functional as F
@@ -525,10 +525,10 @@ class LEditsPPPipelineStableDiffusion(
         enable_edit_guidance,
         negative_prompt=None,
         editing_prompt=None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        editing_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        editing_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -774,28 +774,28 @@ class LEditsPPPipelineStableDiffusion(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        negative_prompt: Optional[str | list[str]] = None,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        output_type: Optional[str] = "pil",
+        negative_prompt: str | list[str] | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        editing_prompt: Optional[str | list[str]] = None,
-        editing_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        reverse_editing_direction: Optional[bool | list[bool]] = False,
-        edit_guidance_scale: Optional[float | list[float]] = 5,
-        edit_warmup_steps: Optional[int | list[int]] = 0,
-        edit_cooldown_steps: Optional[int | list[int]] = None,
-        edit_threshold: Optional[float | list[float]] = 0.9,
-        user_mask: Optional[torch.Tensor] = None,
-        sem_guidance: Optional[list[torch.Tensor]] = None,
+        editing_prompt: str | list[str] | None = None,
+        editing_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        reverse_editing_direction: bool | list[bool] | None = False,
+        edit_guidance_scale: float | list[float] | None = 5,
+        edit_warmup_steps: int | list[int] | None = 0,
+        edit_cooldown_steps: int | list[int] | None = None,
+        edit_threshold: float | list[float] | None = 0.9,
+        user_mask: torch.Tensor | None = None,
+        sem_guidance: list[torch.Tensor] | None = None,
         use_cross_attn_mask: bool = False,
         use_intersect_mask: bool = True,
-        attn_store_steps: Optional[list[int]] = [],
+        attn_store_steps: list[int] | None = [],
         store_averaged_over_steps: bool = True,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         guidance_rescale: float = 0.0,
-        clip_skip: Optional[int] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        clip_skip: int | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
     ):
@@ -1282,13 +1282,13 @@ class LEditsPPPipelineStableDiffusion(
         source_guidance_scale: float = 3.5,
         num_inversion_steps: int = 30,
         skip: float = 0.15,
-        generator: Optional[torch.Generator] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        clip_skip: Optional[int] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        resize_mode: Optional[str] = "default",
-        crops_coords: Optional[tuple[int, int, int, int]] = None,
+        generator: torch.Generator | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        clip_skip: int | None = None,
+        height: int | None = None,
+        width: int | None = None,
+        resize_mode: str | None = "default",
+        crops_coords: tuple[int, int, int, int] | None = None,
     ):
         r"""
         The function to the pipeline for image inversion as described by the [LEDITS++

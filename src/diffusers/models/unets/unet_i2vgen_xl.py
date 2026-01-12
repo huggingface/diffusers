@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -51,7 +51,7 @@ class I2VGenXLTransformerTemporalEncoder(nn.Module):
         attention_head_dim: int,
         activation_fn: str = "geglu",
         upcast_attention: bool = False,
-        ff_inner_dim: Optional[int] = None,
+        ff_inner_dim: int | None = None,
         dropout: int = 0.0,
     ):
         super().__init__()
@@ -124,7 +124,7 @@ class I2VGenXLUNet(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoade
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[int] = None,
+        sample_size: int | None = None,
         in_channels: int = 4,
         out_channels: int = 4,
         down_block_types: tuple[str, ...] = (
@@ -141,10 +141,10 @@ class I2VGenXLUNet(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoade
         ),
         block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
-        norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int | None = 32,
         cross_attention_dim: int = 1024,
         attention_head_dim: int | tuple[int] = 64,
-        num_attention_heads: Optional[int | tuple[int]] = None,
+        num_attention_heads: int | tuple[int] | None = None,
     ):
         super().__init__()
 
@@ -313,7 +313,7 @@ class I2VGenXLUNet(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoade
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(self, chunk_size: int | None = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -442,10 +442,10 @@ class I2VGenXLUNet(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoade
         timestep: torch.Tensor | float | int,
         fps: torch.Tensor,
         image_latents: torch.Tensor,
-        image_embeddings: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        image_embeddings: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        timestep_cond: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> UNet3DConditionOutput | tuple[torch.Tensor]:
         r"""

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import torch
@@ -54,7 +53,7 @@ class DecoderOutput(BaseOutput):
     """
 
     sample: torch.Tensor
-    commit_loss: Optional[torch.FloatTensor] = None
+    commit_loss: torch.FloatTensor | None = None
 
 
 class Encoder(nn.Module):
@@ -280,7 +279,7 @@ class Decoder(nn.Module):
     def forward(
         self,
         sample: torch.Tensor,
-        latent_embeds: Optional[torch.Tensor] = None,
+        latent_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
         r"""The forward method of the `Decoder` class."""
 
@@ -500,9 +499,9 @@ class MaskConditionDecoder(nn.Module):
     def forward(
         self,
         z: torch.Tensor,
-        image: Optional[torch.Tensor] = None,
-        mask: Optional[torch.Tensor] = None,
-        latent_embeds: Optional[torch.Tensor] = None,
+        image: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
+        latent_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
         r"""The forward method of the `MaskConditionDecoder` class."""
         sample = z
@@ -698,7 +697,7 @@ class DiagonalGaussianDistribution(object):
                 self.mean, device=self.parameters.device, dtype=self.parameters.dtype
             )
 
-    def sample(self, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+    def sample(self, generator: torch.Generator | None = None) -> torch.Tensor:
         # make sure sample is on the same device as the parameters and has same dtype
         sample = randn_tensor(
             self.mean.shape,
@@ -745,7 +744,7 @@ class IdentityDistribution(object):
     def __init__(self, parameters: torch.Tensor):
         self.parameters = parameters
 
-    def sample(self, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+    def sample(self, generator: torch.Generator | None = None) -> torch.Tensor:
         return self.parameters
 
     def mode(self) -> torch.Tensor:

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Optional
+from typing import Callable
 
 import torch
 
@@ -168,10 +168,10 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
         return_dict: bool = True,
     ):

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -162,7 +162,7 @@ class FluxControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.FloatTensor | Transformer2DModelOutput:
         """
@@ -365,7 +365,7 @@ class FluxMultiControlNetModel(ModelMixin):
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> FluxControlNetOutput | tuple:
         # ControlNet-Union with multiple conditions

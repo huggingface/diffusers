@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import torch
 from transformers import (
@@ -126,10 +126,10 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -195,9 +195,9 @@ class EasyAnimatePipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKLMagvit`]):
             Variational Auto-Encoder (VAE) Model to encode and decode video to and from latent representations.
-        text_encoder (Optional[`~transformers.Qwen2VLForConditionalGeneration`, `~transformers.BertModel`]):
+        text_encoder (`~transformers.Qwen2VLForConditionalGeneration`, `~transformers.BertModel` | None):
             EasyAnimate uses [qwen2 vl](https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct) in V5.1.
-        tokenizer (Optional[`~transformers.Qwen2Tokenizer`, `~transformers.BertTokenizer`]):
+        tokenizer (`~transformers.Qwen2Tokenizer`, `~transformers.BertTokenizer` | None):
             A `Qwen2Tokenizer` or `BertTokenizer` to tokenize text.
         transformer ([`EasyAnimateTransformer3DModel`]):
             The EasyAnimate model designed by EasyAnimate Team.
@@ -243,13 +243,13 @@ class EasyAnimatePipeline(DiffusionPipeline):
         prompt: str | list[str],
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str | list[str]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        negative_prompt: str | list[str] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
         max_sequence_length: int = 256,
     ):
         r"""
@@ -526,26 +526,24 @@ class EasyAnimatePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str] = None,
-        num_frames: Optional[int] = 49,
-        height: Optional[int] = 512,
-        width: Optional[int] = 512,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 5.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        eta: Optional[float] = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        timesteps: Optional[list[int]] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        num_frames: int | None = 49,
+        height: int | None = 512,
+        width: int | None = 512,
+        num_inference_steps: int | None = 50,
+        guidance_scale: float | None = 5.0,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
+        eta: float | None = 0.0,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        timesteps: list[int] | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
-        ] = None,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         guidance_rescale: float = 0.0,
     ):

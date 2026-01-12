@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch import nn
@@ -47,13 +47,13 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
     def __init__(
         self,
         in_channels: int = 32,
-        out_channels: Optional[int] = 32,
+        out_channels: int | None = 32,
         num_attention_heads: int = 70,
         attention_head_dim: int = 32,
         num_layers: int = 7,
-        num_cross_attention_heads: Optional[int] = 20,
-        cross_attention_head_dim: Optional[int] = 112,
-        cross_attention_dim: Optional[int] = 2240,
+        num_cross_attention_heads: int | None = 20,
+        cross_attention_head_dim: int | None = 112,
+        cross_attention_dim: int | None = 2240,
         caption_channels: int = 2304,
         mlp_ratio: float = 2.5,
         dropout: float = 0.0,
@@ -62,7 +62,7 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         patch_size: int = 1,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
-        interpolation_scale: Optional[int] = None,
+        interpolation_scale: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -124,9 +124,9 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         timestep: torch.LongTensor,
         controlnet_cond: torch.Tensor,
         conditioning_scale: float = 1.0,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor, ...] | Transformer2DModelOutput:
         if attention_kwargs is not None:

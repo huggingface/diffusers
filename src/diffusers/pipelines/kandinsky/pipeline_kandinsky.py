@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Optional
+from typing import Callable
 
 import torch
 from transformers import (
@@ -90,7 +90,7 @@ class KandinskyPipeline(DiffusionPipeline):
             Frozen text-encoder.
         tokenizer ([`XLMRobertaTokenizer`]):
             Tokenizer of class
-        scheduler (Union[`DDIMScheduler`,`DDPMScheduler`]):
+        scheduler (`DDIMScheduler` | `DDPMScheduler`):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
@@ -240,16 +240,16 @@ class KandinskyPipeline(DiffusionPipeline):
         prompt: str | list[str],
         image_embeds: torch.Tensor | list[torch.Tensor],
         negative_image_embeds: torch.Tensor | list[torch.Tensor],
-        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt: str | list[str] | None = None,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
         return_dict: bool = True,
     ):

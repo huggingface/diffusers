@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 import PIL.Image
 import torch
@@ -92,7 +92,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     @property
-    def components(self) -> Dict[str, Any]:
+    def components(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
 
     @torch.no_grad()

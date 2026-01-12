@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional
 
 import torch
 from torch import nn
@@ -196,10 +195,10 @@ class DecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        conditioning_emb: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        conditioning_emb: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
         encoder_decoder_position_bias=None,
     ) -> tuple[torch.Tensor]:
         hidden_states = self.layer[0](
@@ -250,8 +249,8 @@ class T5LayerSelfAttentionCond(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        conditioning_emb: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
+        conditioning_emb: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         # pre_self_attention_layer_norm
         normed_hidden_states = self.layer_norm(hidden_states)
@@ -293,8 +292,8 @@ class T5LayerCrossAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        key_value_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
+        key_value_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         normed_hidden_states = self.layer_norm(hidden_states)
         attention_output = self.attention(
@@ -328,7 +327,7 @@ class T5LayerFFCond(nn.Module):
         self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(self, hidden_states: torch.Tensor, conditioning_emb: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, conditioning_emb: torch.Tensor | None = None) -> torch.Tensor:
         forwarded_states = self.layer_norm(hidden_states)
         if conditioning_emb is not None:
             forwarded_states = self.film(forwarded_states, conditioning_emb)

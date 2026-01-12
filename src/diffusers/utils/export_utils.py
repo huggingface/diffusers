@@ -3,7 +3,6 @@ import random
 import struct
 import tempfile
 from contextlib import contextmanager
-from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -143,8 +142,8 @@ def export_to_video(
     output_video_path: str = None,
     fps: int = 10,
     quality: float = 5.0,
-    bitrate: Optional[int] = None,
-    macro_block_size: Optional[int] = 16,
+    bitrate: int | None = None,
+    macro_block_size: int | None = 16,
 ) -> str:
     """
     quality:

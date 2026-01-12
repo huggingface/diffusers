@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import torch
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
@@ -115,24 +115,24 @@ class AmusedInpaintPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[list[str] | str] = None,
+        prompt: list[str] | str | None = None,
         image: PipelineImageInput = None,
         mask_image: PipelineImageInput = None,
         strength: float = 1.0,
         num_inference_steps: int = 12,
         guidance_scale: float = 10.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[torch.Generator] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_encoder_hidden_states: Optional[torch.Tensor] = None,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_encoder_hidden_states: torch.Tensor | None = None,
         output_type="pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         micro_conditioning_aesthetic_score: int = 6,
         micro_conditioning_crop_coord: tuple[int, int] = (0, 0),
         temperature: int | tuple[int, int] | list[int] = (2, 0),
@@ -208,7 +208,7 @@ class AmusedInpaintPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             micro_conditioning_crop_coord (`tuple[int]`, *optional*, defaults to (0, 0)):
                 The targeted height, width crop coordinates. See the micro-conditioning section of
                 https://huggingface.co/papers/2307.01952.
-            temperature (`Union[int, tuple[int, int], list[int]]`, *optional*, defaults to (2, 0)):
+            temperature (`int | tuple[int, int, list[int]]`, *optional*, defaults to (2, 0)):
                 Configures the temperature scheduler on `self.scheduler` see `AmusedScheduler#set_timesteps`.
 
         Examples:

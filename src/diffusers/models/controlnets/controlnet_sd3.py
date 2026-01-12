@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -100,8 +100,8 @@ class SD3ControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMix
         pos_embed_max_size: int = 96,
         extra_conditioning_channels: int = 0,
         dual_attention_layers: tuple[int, ...] = (),
-        qk_norm: Optional[str] = None,
-        pos_embed_type: Optional[str] = "sincos",
+        qk_norm: str | None = None,
+        pos_embed_type: str | None = "sincos",
         use_pos_embed: bool = True,
         force_zeros_for_pooled_projection: bool = True,
     ):
@@ -175,7 +175,7 @@ class SD3ControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMix
         self.gradient_checkpointing = False
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(self, chunk_size: int | None = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -277,7 +277,7 @@ class SD3ControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMix
         encoder_hidden_states: torch.Tensor = None,
         pooled_projections: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor | Transformer2DModelOutput:
         """
@@ -417,7 +417,7 @@ class SD3MultiControlNetModel(ModelMixin):
         pooled_projections: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> SD3ControlNetOutput | tuple:
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):

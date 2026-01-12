@@ -16,7 +16,6 @@
 # and https://github.com/hojonathanho/diffusion
 
 from dataclasses import dataclass
-from typing import Optional
 
 import flax
 import jax.numpy as jnp
@@ -117,7 +116,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         clip_sample: bool = True,
         clip_sample_range: float = 1.0,
         set_alpha_to_one: bool = True,
@@ -127,7 +126,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
     ):
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DDIMSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> DDIMSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 

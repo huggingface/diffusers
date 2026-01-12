@@ -24,7 +24,7 @@ import os
 import re
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 from huggingface_hub import DDUFEntry, create_repo, hf_hub_download
@@ -309,7 +309,7 @@ class ConfigMixin:
                     - A path to a *directory* (for example `./my_model_directory`) containing model weights saved with
                       [`~ConfigMixin.save_config`].
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
@@ -352,7 +352,7 @@ class ConfigMixin:
         _ = kwargs.pop("mirror", None)
         subfolder = kwargs.pop("subfolder", None)
         user_agent = kwargs.pop("user_agent", {})
-        dduf_entries: Optional[dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
+        dduf_entries: dict[str, DDUFEntry] | None = kwargs.pop("dduf_entries", None)
 
         user_agent = {**user_agent, "file_type": "config"}
         user_agent = http_user_agent(user_agent)
@@ -563,7 +563,7 @@ class ConfigMixin:
         return init_dict, unused_kwargs, hidden_config_dict
 
     @classmethod
-    def _dict_from_json_file(cls, json_file: str | os.PathLike, dduf_entries: Optional[dict[str, DDUFEntry]] = None):
+    def _dict_from_json_file(cls, json_file: str | os.PathLike, dduf_entries: dict[str, DDUFEntry] | None = None):
         if dduf_entries:
             text = dduf_entries[json_file].read_text()
         else:

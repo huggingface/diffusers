@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from typing import Callable, Optional
+from typing import Callable
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -142,7 +142,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -538,7 +538,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["unet", "text_encoder"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -607,7 +607,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -964,7 +964,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["unet", "text_encoder", "text_encoder_2"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -1262,7 +1262,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer", "text_encoder", "text_encoder_2"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -1351,7 +1351,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -1431,7 +1431,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -1462,7 +1462,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -1625,7 +1625,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -1938,7 +1938,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -2480,7 +2480,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -2559,7 +2559,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -2589,7 +2589,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -2677,7 +2677,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -2757,7 +2757,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -2788,7 +2788,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -2880,7 +2880,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -2960,7 +2960,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -2991,7 +2991,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -3089,7 +3089,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -3187,7 +3187,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -3218,7 +3218,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -3307,7 +3307,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -3387,7 +3387,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -3418,7 +3418,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -3510,7 +3510,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -3590,7 +3590,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -3621,7 +3621,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -3714,7 +3714,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -3794,7 +3794,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -3825,7 +3825,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -3914,7 +3914,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -3994,7 +3994,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -4025,7 +4025,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -4164,7 +4164,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -4268,7 +4268,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -4299,7 +4299,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -4441,7 +4441,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -4545,7 +4545,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -4576,7 +4576,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -4665,7 +4665,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -4745,7 +4745,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -4776,7 +4776,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -4868,7 +4868,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -4948,7 +4948,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -4979,7 +4979,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -5074,7 +5074,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -5154,7 +5154,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -5185,7 +5185,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -5280,7 +5280,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -5360,7 +5360,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -5391,7 +5391,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
@@ -5483,7 +5483,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
-        adapter_name: Optional[str] = None,
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -5563,7 +5563,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -5594,7 +5594,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[list[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""

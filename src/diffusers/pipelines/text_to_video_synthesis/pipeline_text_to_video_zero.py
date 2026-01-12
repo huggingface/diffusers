@@ -1,7 +1,7 @@
 import copy
 import inspect
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 import PIL.Image
@@ -208,7 +208,7 @@ class TextToVideoPipelineOutput(BaseOutput):
     """
 
     images: list[PIL.Image.Image] | np.ndarray
-    nsfw_content_detected: Optional[list[bool]]
+    nsfw_content_detected: list[bool] | None
 
 
 def coords_grid(batch, ht, wd, device):
@@ -546,25 +546,25 @@ class TextToVideoZeroPipeline(
     def __call__(
         self,
         prompt: str | list[str],
-        video_length: Optional[int] = 8,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        video_length: int | None = 8,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_videos_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_videos_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
         motion_field_strength_x: float = 12,
         motion_field_strength_y: float = 12,
-        output_type: Optional[str] = "tensor",
+        output_type: str | None = "tensor",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
+        callback_steps: int | None = 1,
         t0: int = 44,
         t1: int = 47,
-        frame_ids: Optional[list[int]] = None,
+        frame_ids: list[int] | None = None,
     ):
         """
         The call function to the pipeline for generation.
@@ -821,10 +821,10 @@ class TextToVideoZeroPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.

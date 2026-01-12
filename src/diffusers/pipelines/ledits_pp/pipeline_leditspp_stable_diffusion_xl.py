@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import torch
 import torch.nn.functional as F
@@ -355,7 +355,7 @@ class LEditsPPPipelineStableDiffusionXL(
         image_encoder: CLIPVisionModelWithProjection = None,
         feature_extractor: CLIPImageProcessor = None,
         force_zeros_for_empty_prompt: bool = True,
-        add_watermarker: Optional[bool] = None,
+        add_watermarker: bool | None = None,
     ):
         super().__init__()
 
@@ -399,18 +399,18 @@ class LEditsPPPipelineStableDiffusionXL(
 
     def encode_prompt(
         self,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
-        negative_prompt: Optional[str] = None,
-        negative_prompt_2: Optional[str] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt: str | None = None,
+        negative_prompt_2: str | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
         enable_edit_guidance: bool = True,
-        editing_prompt: Optional[str] = None,
-        editing_prompt_embeds: Optional[torch.Tensor] = None,
-        editing_pooled_prompt_embeds: Optional[torch.Tensor] = None,
+        editing_prompt: str | None = None,
+        editing_prompt_embeds: torch.Tensor | None = None,
+        editing_pooled_prompt_embeds: torch.Tensor | None = None,
     ) -> object:
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -837,34 +837,34 @@ class LEditsPPPipelineStableDiffusionXL(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        denoising_end: Optional[float] = None,
-        negative_prompt: Optional[str | list[str]] = None,
-        negative_prompt_2: Optional[str | list[str]] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        output_type: Optional[str] = "pil",
+        denoising_end: float | None = None,
+        negative_prompt: str | list[str] | None = None,
+        negative_prompt_2: str | list[str] | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        ip_adapter_image: PipelineImageInput | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         guidance_rescale: float = 0.0,
         crops_coords_top_left: tuple[int, int] = (0, 0),
-        target_size: Optional[tuple[int, int]] = None,
-        editing_prompt: Optional[str | list[str]] = None,
-        editing_prompt_embeddings: Optional[torch.Tensor] = None,
-        editing_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        reverse_editing_direction: Optional[bool | list[bool]] = False,
-        edit_guidance_scale: Optional[float | list[float]] = 5,
-        edit_warmup_steps: Optional[int | list[int]] = 0,
-        edit_cooldown_steps: Optional[int | list[int]] = None,
-        edit_threshold: Optional[float | list[float]] = 0.9,
-        sem_guidance: Optional[list[torch.Tensor]] = None,
+        target_size: tuple[int, int] | None = None,
+        editing_prompt: str | list[str] | None = None,
+        editing_prompt_embeddings: torch.Tensor | None = None,
+        editing_pooled_prompt_embeds: torch.Tensor | None = None,
+        reverse_editing_direction: bool | list[bool] | None = False,
+        edit_guidance_scale: float | list[float] | None = 5,
+        edit_warmup_steps: int | list[int] | None = 0,
+        edit_cooldown_steps: int | list[int] | None = None,
+        edit_threshold: float | list[float] | None = 0.9,
+        sem_guidance: list[torch.Tensor] | None = None,
         use_cross_attn_mask: bool = False,
         use_intersect_mask: bool = False,
-        user_mask: Optional[torch.Tensor] = None,
-        attn_store_steps: Optional[list[int]] = [],
+        user_mask: torch.Tensor | None = None,
+        attn_store_steps: list[int] | None = [],
         store_averaged_over_steps: bool = True,
-        clip_skip: Optional[int] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        clip_skip: int | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
     ):
@@ -1482,14 +1482,14 @@ class LEditsPPPipelineStableDiffusionXL(
         negative_prompt_2: str = None,
         num_inversion_steps: int = 50,
         skip: float = 0.15,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         crops_coords_top_left: tuple[int, int] = (0, 0),
         num_zero_noise_steps: int = 3,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        resize_mode: Optional[str] = "default",
-        crops_coords: Optional[tuple[int, int, int, int]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        height: int | None = None,
+        width: int | None = None,
+        resize_mode: str | None = "default",
+        crops_coords: tuple[int, int, int, int] | None = None,
     ):
         r"""
         The function to the pipeline for image inversion as described by the [LEDITS++

@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 from dataclasses import dataclass
-from typing import Optional
 
 import flax
 import jax
@@ -99,7 +98,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: str = "epsilon",
@@ -107,7 +106,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
     ):
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DDPMSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> DDPMSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 
@@ -196,7 +195,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-        key: Optional[jax.Array] = None,
+        key: jax.Array | None = None,
         return_dict: bool = True,
     ) -> FlaxDDPMSchedulerOutput | tuple:
         """

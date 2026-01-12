@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -47,7 +47,7 @@ class WanVACETransformerBlock(nn.Module):
         qk_norm: str = "rms_norm_across_heads",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
-        added_kv_proj_dim: Optional[int] = None,
+        added_kv_proj_dim: int | None = None,
         apply_input_projection: bool = False,
         apply_output_projection: bool = False,
     ):
@@ -182,7 +182,7 @@ class WanVACETransformer3DModel(
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int, ...] = (1, 2, 2),
+        patch_size: tuple[int, ...] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
         in_channels: int = 16,
@@ -192,12 +192,12 @@ class WanVACETransformer3DModel(
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
+        qk_norm: str | None = "rms_norm_across_heads",
         eps: float = 1e-6,
-        image_dim: Optional[int] = None,
-        added_kv_proj_dim: Optional[int] = None,
+        image_dim: int | None = None,
+        added_kv_proj_dim: int | None = None,
         rope_max_seq_len: int = 1024,
-        pos_embed_seq_len: Optional[int] = None,
+        pos_embed_seq_len: int | None = None,
         vace_layers: list[int] = [0, 5, 10, 15, 20, 25, 30, 35],
         vace_in_channels: int = 96,
     ) -> None:
@@ -266,11 +266,11 @@ class WanVACETransformer3DModel(
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        encoder_hidden_states_image: torch.Tensor | None = None,
         control_hidden_states: torch.Tensor = None,
         control_hidden_states_scale: torch.Tensor = None,
         return_dict: bool = True,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()

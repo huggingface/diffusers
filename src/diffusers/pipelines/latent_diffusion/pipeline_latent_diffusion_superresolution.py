@@ -1,5 +1,4 @@
 import inspect
-from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -73,11 +72,11 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: torch.Tensor | PIL.Image.Image = None,
-        batch_size: Optional[int] = 1,
-        num_inference_steps: Optional[int] = 100,
-        eta: Optional[float] = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        output_type: Optional[str] = "pil",
+        batch_size: int | None = 1,
+        num_inference_steps: int | None = 100,
+        eta: float | None = 0.0,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ) -> tuple | ImagePipelineOutput:
         r"""

@@ -14,7 +14,7 @@
 
 import inspect
 import warnings
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import numpy as np
 import PIL.Image
@@ -123,9 +123,9 @@ class StableDiffusionUpscalePipeline(
         unet: UNet2DConditionModel,
         low_res_scheduler: DDPMScheduler,
         scheduler: KarrasDiffusionSchedulers,
-        safety_checker: Optional[Any] = None,
-        feature_extractor: Optional[CLIPImageProcessor] = None,
-        watermarker: Optional[Any] = None,
+        safety_checker: Any | None = None,
+        feature_extractor: CLIPImageProcessor | None = None,
+        watermarker: Any | None = None,
         max_noise_level: int = 350,
     ):
         super().__init__()
@@ -188,9 +188,9 @@ class StableDiffusionUpscalePipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
         **kwargs,
     ):
         deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
@@ -221,10 +221,10 @@ class StableDiffusionUpscalePipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -540,18 +540,18 @@ class StableDiffusionUpscalePipeline(
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         noise_level: int = 20,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         clip_skip: int = None,
     ):
         r"""

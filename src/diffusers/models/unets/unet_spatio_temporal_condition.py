@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -71,7 +70,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[int] = None,
+        sample_size: int | None = None,
         in_channels: int = 8,
         out_channels: int = 4,
         down_block_types: tuple[str, ...] = (
@@ -89,10 +88,10 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
         block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         addition_time_embed_dim: int = 256,
         projection_class_embeddings_input_dim: int = 768,
-        layers_per_block: Union[int, tuple[int]] = 2,
-        cross_attention_dim: Union[int, tuple[int]] = 1024,
-        transformer_layers_per_block: Union[int, tuple[int], tuple[tuple]] = 1,
-        num_attention_heads: Union[int, tuple[int, ...]] = (5, 10, 20, 20),
+        layers_per_block: int | tuple[int] = 2,
+        cross_attention_dim: int | tuple[int] = 1024,
+        transformer_layers_per_block: int | tuple[int, tuple[tuple]] = 1,
+        num_attention_heads: int | tuple[int, ...] = (5, 10, 20, 20),
         num_frames: int = 25,
     ):
         super().__init__()
@@ -260,7 +259,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
         self.set_attn_processor(processor)
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(self, chunk_size: int | None = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).

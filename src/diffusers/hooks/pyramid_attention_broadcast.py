@@ -14,7 +14,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import torch
 
@@ -71,9 +71,9 @@ class PyramidAttentionBroadcastConfig:
             The identifiers to match against the layer names to determine if the layer is a cross-attention layer.
     """
 
-    spatial_attention_block_skip_range: Optional[int] = None
-    temporal_attention_block_skip_range: Optional[int] = None
-    cross_attention_block_skip_range: Optional[int] = None
+    spatial_attention_block_skip_range: int | None = None
+    temporal_attention_block_skip_range: int | None = None
+    cross_attention_block_skip_range: int | None = None
 
     spatial_attention_timestep_skip_range: tuple[int, int] = (100, 800)
     temporal_attention_timestep_skip_range: tuple[int, int] = (100, 800)
@@ -191,7 +191,7 @@ def apply_pyramid_attention_broadcast(module: torch.nn.Module, config: PyramidAt
     Args:
         module (`torch.nn.Module`):
             The module to apply Pyramid Attention Broadcast to.
-        config (`Optional[PyramidAttentionBroadcastConfig]`, `optional`, defaults to `None`):
+        config (`PyramidAttentionBroadcastConfig | None`, `optional`, defaults to `None`):
             The configuration to use for Pyramid Attention Broadcast.
 
     Example:

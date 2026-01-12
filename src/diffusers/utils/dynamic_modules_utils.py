@@ -24,7 +24,6 @@ import sys
 import threading
 from pathlib import Path
 from types import ModuleType
-from typing import Optional
 from urllib import request
 
 from huggingface_hub import hf_hub_download, model_info
@@ -197,7 +196,7 @@ def get_class_in_module(class_name, module_path, force_reload=False):
         if force_reload:
             sys.modules.pop(name, None)
             importlib.invalidate_caches()
-        cached_module: Optional[ModuleType] = sys.modules.get(name)
+        cached_module: ModuleType | None = sys.modules.get(name)
         module_spec = importlib.util.spec_from_file_location(name, location=module_file)
 
         module: ModuleType
@@ -247,14 +246,14 @@ def find_pipeline_class(loaded_module):
 def get_cached_module_file(
     pretrained_model_name_or_path: str | os.PathLike,
     module_file: str,
-    subfolder: Optional[str] = None,
-    cache_dir: Optional[str | os.PathLike] = None,
+    subfolder: str | None = None,
+    cache_dir: str | os.PathLike | None = None,
     force_download: bool = False,
-    proxies: Optional[dict[str, str]] = None,
-    token: Optional[bool | str] = None,
-    revision: Optional[str] = None,
+    proxies: dict[str, str] | None = None,
+    token: bool | str | None = None,
+    revision: str | None = None,
     local_files_only: bool = False,
-    local_dir: Optional[str] = None,
+    local_dir: str | None = None,
 ):
     """
     Prepares Downloads a module from a local folder or a distant repo and returns its path inside the cached
@@ -428,15 +427,15 @@ def get_cached_module_file(
 def get_class_from_dynamic_module(
     pretrained_model_name_or_path: str | os.PathLike,
     module_file: str,
-    subfolder: Optional[str] = None,
-    class_name: Optional[str] = None,
-    cache_dir: Optional[str | os.PathLike] = None,
+    subfolder: str | None = None,
+    class_name: str | None = None,
+    cache_dir: str | os.PathLike | None = None,
     force_download: bool = False,
-    proxies: Optional[dict[str, str]] = None,
-    token: Optional[bool | str] = None,
-    revision: Optional[str] = None,
+    proxies: dict[str, str] | None = None,
+    token: bool | str | None = None,
+    revision: str | None = None,
     local_files_only: bool = False,
-    local_dir: Optional[str] = None,
+    local_dir: str | None = None,
 ):
     """
     Extracts a class from a module file, present in the local folder or repository of a model.

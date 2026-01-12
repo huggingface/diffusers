@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -129,8 +129,8 @@ class CogView4AttnProcessor:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         dtype = encoder_hidden_states.dtype
 
@@ -211,10 +211,10 @@ class CogView4TrainingAttnProcessor:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        latent_attn_mask: Optional[torch.Tensor] = None,
-        text_attn_mask: Optional[torch.Tensor] = None,
-        batch_flag: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]] = None,
+        latent_attn_mask: torch.Tensor | None = None,
+        text_attn_mask: torch.Tensor | None = None,
+        batch_flag: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]] | None = None,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -486,10 +486,10 @@ class CogView4TransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]] = None,
-        attention_mask: Optional[dict[str, torch.Tensor]] = None,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        temb: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]] | None = None,
+        attention_mask: dict[str, torch.Tensor] | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # 1. Timestep conditioning
         (
@@ -707,10 +707,10 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         original_size: torch.Tensor,
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]] | None = None,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()

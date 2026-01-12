@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional
 
 import numpy as np
 import torch
@@ -84,7 +83,7 @@ def get_3d_sincos_pos_embed(
     temporal_size: int,
     spatial_interpolation_scale: float = 1.0,
     temporal_interpolation_scale: float = 1.0,
-    device: Optional[torch.device] = None,
+    device: torch.device | None = None,
     output_type: str = "np",
 ) -> torch.Tensor:
     r"""
@@ -225,7 +224,7 @@ def get_2d_sincos_pos_embed(
     extra_tokens=0,
     interpolation_scale=1.0,
     base_size=16,
-    device: Optional[torch.device] = None,
+    device: torch.device | None = None,
     output_type: str = "np",
 ):
     """
@@ -642,7 +641,7 @@ class CogVideoXPatchEmbed(nn.Module):
     def __init__(
         self,
         patch_size: int = 2,
-        patch_size_t: Optional[int] = None,
+        patch_size_t: int | None = None,
         in_channels: int = 16,
         embed_dim: int = 1920,
         text_embed_dim: int = 4096,
@@ -689,7 +688,7 @@ class CogVideoXPatchEmbed(nn.Module):
             self.register_buffer("pos_embedding", pos_embedding, persistent=persistent)
 
     def _get_positional_embeddings(
-        self, sample_height: int, sample_width: int, sample_frames: int, device: Optional[torch.device] = None
+        self, sample_height: int, sample_width: int, sample_frames: int, device: torch.device | None = None
     ) -> torch.Tensor:
         post_patch_height = sample_height // self.patch_size
         post_patch_width = sample_width // self.patch_size
@@ -836,8 +835,8 @@ def get_3d_rotary_pos_embed(
     theta: int = 10000,
     use_real: bool = True,
     grid_type: str = "linspace",
-    max_size: Optional[tuple[int, int]] = None,
-    device: Optional[torch.device] = None,
+    max_size: tuple[int, int] | None = None,
+    device: torch.device | None = None,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     """
     RoPE for video tokens with 3D structure.
@@ -936,7 +935,7 @@ def get_3d_rotary_pos_embed_allegro(
     temporal_size,
     interpolation_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
     theta: int = 10000,
-    device: Optional[torch.device] = None,
+    device: torch.device | None = None,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     # TODO(aryan): docs
     start, stop = crops_coords
@@ -973,7 +972,7 @@ def get_3d_rotary_pos_embed_allegro(
 
 
 def get_2d_rotary_pos_embed(
-    embed_dim, crops_coords, grid_size, use_real=True, device: Optional[torch.device] = None, output_type: str = "np"
+    embed_dim, crops_coords, grid_size, use_real=True, device: torch.device | None = None, output_type: str = "np"
 ):
     """
     RoPE for image tokens with 2d structure.
@@ -1266,7 +1265,7 @@ class TimestepEmbedding(nn.Module):
         time_embed_dim: int,
         act_fn: str = "silu",
         out_dim: int = None,
-        post_act_fn: Optional[str] = None,
+        post_act_fn: str | None = None,
         cond_proj_dim=None,
         sample_proj_bias=True,
     ):
@@ -1816,7 +1815,7 @@ class MochiCombinedTimestepCaptionEmbedding(nn.Module):
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        hidden_dtype: Optional[torch.dtype] = None,
+        hidden_dtype: torch.dtype | None = None,
     ):
         time_proj = self.time_proj(timestep)
         time_emb = self.timestep_embedder(time_proj.to(dtype=hidden_dtype))
@@ -1961,7 +1960,7 @@ class MochiAttentionPool(nn.Module):
         self,
         num_attention_heads: int,
         embed_dim: int,
-        output_dim: Optional[int] = None,
+        output_dim: int | None = None,
     ) -> None:
         super().__init__()
 

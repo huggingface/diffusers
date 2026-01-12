@@ -13,7 +13,6 @@
 # limitations under the License.
 import math
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import torch
@@ -153,7 +152,7 @@ class OobleckDiagonalGaussianDistribution(object):
         self.logvar = torch.log(self.var)
         self.deterministic = deterministic
 
-    def sample(self, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+    def sample(self, generator: torch.Generator | None = None) -> torch.Tensor:
         # make sure sample is on the same device as the parameters and has same dtype
         sample = randn_tensor(
             self.mean.shape,
@@ -428,7 +427,7 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> OobleckDecoderOutput | torch.Tensor:
         r"""
         Args:

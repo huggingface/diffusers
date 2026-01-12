@@ -14,7 +14,7 @@
 import inspect
 import math
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import numpy as np
 import PIL
@@ -144,10 +144,10 @@ def calculate_shift(
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -203,7 +203,7 @@ def retrieve_timesteps(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -343,10 +343,10 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
 
     def encode_prompt(
         self,
-        prompt: List[str] = None,
-        image: Optional[torch.Tensor] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt: list[str] = None,
+        image: torch.Tensor | None = None,
+        num_images_per_prompt: int | None = 1,
+        prompt_embeds: torch.Tensor | None = None,
     ):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
@@ -532,20 +532,20 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
     @torch.no_grad()
     def __call__(
         self,
-        image: Optional[PIL.Image.Image] = None,
-        prompt: Union[str, List[str]] = None,
-        negative_prompt: Union[str, List[str]] = None,
+        image: PIL.Image.Image | None = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
         num_inference_steps: int = 50,
-        sigmas: Optional[List[float]] = None,
+        sigmas: list[float] | None = None,
         guidance_scale: float = 4.5,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.FloatTensor | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.

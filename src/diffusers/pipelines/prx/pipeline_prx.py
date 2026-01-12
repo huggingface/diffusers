@@ -16,7 +16,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import ftfy
 import torch
@@ -285,8 +285,8 @@ class PRXPipeline(
         scheduler: FlowMatchEulerDiscreteScheduler,
         text_encoder: T5GemmaEncoder,
         tokenizer: T5TokenizerFast | GemmaTokenizerFast | AutoTokenizer,
-        vae: Optional[AutoencoderKL | AutoencoderDC] = None,
-        default_sample_size: Optional[int] = DEFAULT_RESOLUTION,
+        vae: AutoencoderKL | AutoencoderDC | None = None,
+        default_sample_size: int | None = DEFAULT_RESOLUTION,
     ):
         super().__init__()
 
@@ -352,8 +352,8 @@ class PRXPipeline(
         width: int,
         dtype: torch.dtype,
         device: torch.device,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
     ):
         """Prepare initial latents for the diffusion process."""
         if latents is None:
@@ -371,14 +371,14 @@ class PRXPipeline(
     def encode_prompt(
         self,
         prompt: str | list[str],
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
         num_images_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_attention_mask: Optional[torch.BoolTensor] = None,
-        negative_prompt_attention_mask: Optional[torch.BoolTensor] = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+        prompt_attention_mask: torch.BoolTensor | None = None,
+        negative_prompt_attention_mask: torch.BoolTensor | None = None,
     ):
         """Encode text prompt using standard text encoder and tokenizer, or use precomputed embeddings."""
         if device is None:
@@ -477,9 +477,9 @@ class PRXPipeline(
         height: int,
         width: int,
         guidance_scale: float,
-        callback_on_step_end_tensor_inputs: Optional[list[str]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
     ):
         """Check that all inputs are in correct format."""
         if prompt is not None and prompt_embeds is not None:
@@ -529,22 +529,22 @@ class PRXPipeline(
         self,
         prompt: str | list[str] = None,
         negative_prompt: str = "",
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 28,
         timesteps: list[int] = None,
         guidance_scale: float = 4.0,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_attention_mask: Optional[torch.BoolTensor] = None,
-        negative_prompt_attention_mask: Optional[torch.BoolTensor] = None,
-        output_type: Optional[str] = "pil",
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+        prompt_attention_mask: torch.BoolTensor | None = None,
+        negative_prompt_attention_mask: torch.BoolTensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
         use_resolution_binning: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         """

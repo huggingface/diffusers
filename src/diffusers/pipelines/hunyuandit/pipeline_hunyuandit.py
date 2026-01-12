@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import numpy as np
 import torch
@@ -160,10 +160,10 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. We use
             `sdxl-vae-fp16-fix`.
-        text_encoder (Optional[`~transformers.BertModel`, `~transformers.CLIPTextModel`]):
+        text_encoder (`~transformers.BertModel`, `~transformers.CLIPTextModel` | None):
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
             HunyuanDiT uses a fine-tuned [bilingual CLIP].
-        tokenizer (Optional[`~transformers.BertTokenizer`, `~transformers.CLIPTokenizer`]):
+        tokenizer (`~transformers.BertTokenizer`, `~transformers.CLIPTokenizer` | None):
             A `BertTokenizer` or `CLIPTokenizer` to tokenize text.
         transformer ([`HunyuanDiT2DModel`]):
             The HunyuanDiT model designed by Tencent Hunyuan.
@@ -203,8 +203,8 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
-        text_encoder_2: Optional[T5EncoderModel] = None,
-        tokenizer_2: Optional[T5Tokenizer] = None,
+        text_encoder_2: T5EncoderModel | None = None,
+        tokenizer_2: T5Tokenizer | None = None,
     ):
         super().__init__()
 
@@ -252,12 +252,12 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         dtype: torch.dtype = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        max_sequence_length: Optional[int] = None,
+        negative_prompt: str | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        max_sequence_length: int | None = None,
         text_encoder_index: int = 0,
     ):
         r"""
@@ -570,32 +570,30 @@ class HunyuanDiTPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 5.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        eta: Optional[float] = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_2: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_2: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        prompt_attention_mask_2: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask_2: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        height: int | None = None,
+        width: int | None = None,
+        num_inference_steps: int | None = 50,
+        guidance_scale: float | None = 5.0,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
+        eta: float | None = 0.0,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_embeds_2: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds_2: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        prompt_attention_mask_2: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask_2: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
-        ] = None,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         guidance_rescale: float = 0.0,
-        original_size: Optional[tuple[int, int]] = (1024, 1024),
-        target_size: Optional[tuple[int, int]] = None,
+        original_size: tuple[int, int] | None = (1024, 1024),
+        target_size: tuple[int, int] | None = None,
         crops_coords_top_left: tuple[int, int] = (0, 0),
         use_resolution_binning: bool = True,
     ):
@@ -651,7 +649,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
-            callback_on_step_end (`Callable[[int, int, Dict], None]`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
+            callback_on_step_end (`Callable[[int, int], None]`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A callback function or a list of callback functions to be called at the end of each denoising step.
             callback_on_step_end_tensor_inputs (`list[str]`, *optional*):
                 A list of tensor inputs that should be passed to the callback function. If not defined, all tensor

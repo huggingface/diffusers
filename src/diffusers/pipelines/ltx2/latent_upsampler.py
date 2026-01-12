@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -32,7 +31,7 @@ RATIONAL_RESAMPLER_SCALE_MAPPING = {
 
 # Copied from diffusers.pipelines.ltx.modeling_latent_upsampler.ResBlock
 class ResBlock(torch.nn.Module):
-    def __init__(self, channels: int, mid_channels: Optional[int] = None, dims: int = 3):
+    def __init__(self, channels: int, mid_channels: int | None = None, dims: int = 3):
         super().__init__()
         if mid_channels is None:
             mid_channels = channels
@@ -196,7 +195,7 @@ class LTX2LatentUpsamplerModel(ModelMixin, ConfigMixin):
         dims: int = 3,
         spatial_upsample: bool = True,
         temporal_upsample: bool = False,
-        rational_spatial_scale: Optional[float] = 2.0,
+        rational_spatial_scale: float | None = 2.0,
     ):
         super().__init__()
 

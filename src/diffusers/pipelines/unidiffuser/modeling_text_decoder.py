@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 import torch
 from torch import nn
@@ -68,13 +66,13 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         self,
         prefix_length: int,
         prefix_inner_dim: int,
-        prefix_hidden_dim: Optional[int] = None,
+        prefix_hidden_dim: int | None = None,
         vocab_size: int = 50257,  # Start of GPT2 config args
         n_positions: int = 1024,
         n_embd: int = 768,
         n_layer: int = 12,
         n_head: int = 12,
-        n_inner: Optional[int] = None,
+        n_inner: int | None = None,
         activation_function: str = "gelu_new",
         resid_pdrop: float = 0.1,
         embd_pdrop: float = 0.1,
@@ -132,8 +130,8 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         self,
         input_ids: torch.Tensor,
         prefix_embeds: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        labels: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        labels: torch.Tensor | None = None,
     ):
         """
         Args:
@@ -207,7 +205,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         beam_size: int = 5,
         entry_length: int = 67,
         temperature: float = 1.0,
-        eos_token_id: Optional[int] = None,
+        eos_token_id: int | None = None,
     ):
         """
         Generates text using the given tokenizer and text prompt or token embedding via beam search. This

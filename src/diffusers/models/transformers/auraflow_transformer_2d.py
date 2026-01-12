@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -172,7 +172,7 @@ class AuraFlowSingleTransformerBlock(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor:
         residual = hidden_states
         attention_kwargs = attention_kwargs or {}
@@ -241,7 +241,7 @@ class AuraFlowJointTransformerBlock(nn.Module):
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         residual = hidden_states
         residual_context = encoder_hidden_states
@@ -402,7 +402,7 @@ class AuraFlowTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAd
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor = None,
         timestep: torch.LongTensor = None,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         if attention_kwargs is not None:

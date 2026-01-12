@@ -15,7 +15,6 @@ import importlib
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -96,7 +95,7 @@ class SchedulerMixin(PushToHubMixin):
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
+        pretrained_model_name_or_path: str | os.PathLike | None = None,
         subfolder: str | None = None,
         return_unused_kwargs=False,
         **kwargs,
@@ -116,7 +115,7 @@ class SchedulerMixin(PushToHubMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             return_unused_kwargs (`bool`, *optional*, defaults to `False`):
                 Whether kwargs that are not consumed by the Python class should be returned or not.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):

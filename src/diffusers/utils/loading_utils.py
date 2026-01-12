@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
 import PIL.Image
@@ -12,7 +12,7 @@ from .import_utils import BACKENDS_MAPPING, is_imageio_available
 
 
 def load_image(
-    image: str | PIL.Image.Image, convert_method: Optional[Callable[[PIL.Image.Image], PIL.Image.Image]] = None
+    image: str | PIL.Image.Image, convert_method: Callable[[PIL.Image.Image], PIL.Image.Image] | None = None
 ) -> PIL.Image.Image:
     """
     Loads `image` to a PIL Image.
@@ -56,7 +56,7 @@ def load_image(
 
 def load_video(
     video: str,
-    convert_method: Optional[Callable[[list[PIL.Image.Image]], list[PIL.Image.Image]]] = None,
+    convert_method: Callable[[list[PIL.Image.Image]], list[PIL.Image.Image]] | None = None,
 ) -> list[PIL.Image.Image]:
     """
     Loads `video` to a list of PIL Image.

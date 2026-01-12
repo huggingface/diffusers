@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -91,9 +91,9 @@ class HunyuanVideoHistoryPatchEmbed(nn.Module):
 
     def forward(
         self,
-        latents_clean: Optional[torch.Tensor] = None,
-        latents_clean_2x: Optional[torch.Tensor] = None,
-        latents_clean_4x: Optional[torch.Tensor] = None,
+        latents_clean: torch.Tensor | None = None,
+        latents_clean_2x: torch.Tensor | None = None,
+        latents_clean_4x: torch.Tensor | None = None,
     ):
         if latents_clean is not None:
             latents_clean = self.proj(latents_clean)
@@ -140,7 +140,7 @@ class HunyuanVideoFramepackTransformer3DModel(
         pooled_projection_dim: int = 768,
         rope_theta: float = 256.0,
         rope_axes_dim: tuple[int, ...] = (16, 56, 56),
-        image_condition_type: Optional[str] = None,
+        image_condition_type: str | None = None,
         has_image_proj: int = False,
         image_proj_dim: int = 1152,
         has_clean_x_embedder: int = False,
@@ -207,14 +207,14 @@ class HunyuanVideoFramepackTransformer3DModel(
         pooled_projections: torch.Tensor,
         image_embeds: torch.Tensor,
         indices_latents: torch.Tensor,
-        guidance: Optional[torch.Tensor] = None,
-        latents_clean: Optional[torch.Tensor] = None,
-        indices_latents_clean: Optional[torch.Tensor] = None,
-        latents_history_2x: Optional[torch.Tensor] = None,
-        indices_latents_history_2x: Optional[torch.Tensor] = None,
-        latents_history_4x: Optional[torch.Tensor] = None,
-        indices_latents_history_4x: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        guidance: torch.Tensor | None = None,
+        latents_clean: torch.Tensor | None = None,
+        indices_latents_clean: torch.Tensor | None = None,
+        latents_history_2x: torch.Tensor | None = None,
+        indices_latents_history_2x: torch.Tensor | None = None,
+        latents_history_4x: torch.Tensor | None = None,
+        indices_latents_history_4x: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         if attention_kwargs is not None:
@@ -348,13 +348,13 @@ class HunyuanVideoFramepackTransformer3DModel(
     def _pack_history_states(
         self,
         hidden_states: torch.Tensor,
-        latents_clean: Optional[torch.Tensor] = None,
-        latents_history_2x: Optional[torch.Tensor] = None,
-        latents_history_4x: Optional[torch.Tensor] = None,
+        latents_clean: torch.Tensor | None = None,
+        latents_history_2x: torch.Tensor | None = None,
+        latents_history_4x: torch.Tensor | None = None,
         image_rotary_emb: tuple[torch.Tensor, torch.Tensor] = None,
-        image_rotary_emb_clean: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
-        image_rotary_emb_history_2x: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
-        image_rotary_emb_history_4x: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        image_rotary_emb_clean: tuple[torch.Tensor, torch.Tensor] | None = None,
+        image_rotary_emb_history_2x: tuple[torch.Tensor, torch.Tensor] | None = None,
+        image_rotary_emb_history_4x: tuple[torch.Tensor, torch.Tensor] | None = None,
         height: int = None,
         width: int = None,
     ):

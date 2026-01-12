@@ -2,7 +2,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import numpy as np
 import PIL.Image
@@ -129,10 +129,10 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline, StableDiffusionLoraLoa
     scheduler: DDPMScheduler
     image_noising_scheduler: DDPMScheduler
 
-    feature_extractor: Optional[CLIPImageProcessor]
-    safety_checker: Optional[IFSafetyChecker]
+    feature_extractor: CLIPImageProcessor | None
+    safety_checker: IFSafetyChecker | None
 
-    watermarker: Optional[IFWatermarker]
+    watermarker: IFWatermarker | None
 
     bad_punct_regex = re.compile(
         r"["
@@ -161,9 +161,9 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline, StableDiffusionLoraLoa
         unet: UNet2DConditionModel,
         scheduler: DDPMScheduler,
         image_noising_scheduler: DDPMScheduler,
-        safety_checker: Optional[IFSafetyChecker],
-        feature_extractor: Optional[CLIPImageProcessor],
-        watermarker: Optional[IFWatermarker],
+        safety_checker: IFSafetyChecker | None,
+        feature_extractor: CLIPImageProcessor | None,
+        watermarker: IFWatermarker | None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -348,10 +348,10 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline, StableDiffusionLoraLoa
         prompt: str | list[str],
         do_classifier_free_guidance: bool = True,
         num_images_per_prompt: int = 1,
-        device: Optional[torch.device] = None,
-        negative_prompt: Optional[str | list[str]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        device: torch.device | None = None,
+        negative_prompt: str | list[str] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
         clean_caption: bool = False,
     ):
         r"""
@@ -757,17 +757,17 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline, StableDiffusionLoraLoa
         num_inference_steps: int = 50,
         timesteps: list[int] = None,
         guidance_scale: float = 4.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         noise_level: int = 250,
         clean_caption: bool = True,
     ):

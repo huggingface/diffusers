@@ -14,7 +14,6 @@
 
 import warnings
 from functools import partial
-from typing import Dict, Optional
 
 import jax
 import jax.numpy as jnp
@@ -216,14 +215,14 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     def _generate(
         self,
         prompt_ids: jnp.array,
-        params: Dict | FrozenDict,
+        params: dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int,
         height: int,
         width: int,
         guidance_scale: float,
-        latents: Optional[jnp.ndarray] = None,
-        neg_prompt_ids: Optional[jnp.ndarray] = None,
+        latents: jnp.ndarray | None = None,
+        neg_prompt_ids: jnp.ndarray | None = None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -313,11 +312,11 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     def __call__(
         self,
         prompt_ids: jnp.array,
-        params: Dict | FrozenDict,
+        params: dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int = 50,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         guidance_scale: float | jnp.ndarray = 7.5,
         latents: jnp.ndarray = None,
         neg_prompt_ids: jnp.ndarray = None,

@@ -15,7 +15,6 @@
 import json
 import os
 import re
-from typing import Optional
 
 from sentencepiece import SentencePieceProcessor
 from transformers import PreTrainedTokenizer
@@ -246,7 +245,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         return self.batch_encode_plus([input_ids], return_tensors="pt", is_split_into_words=True)
 
     def build_inputs_with_special_tokens(
-        self, token_ids_0: list[int], token_ids_1: Optional[list[int]] = None
+        self, token_ids_0: list[int], token_ids_1: list[int] | None = None
     ) -> list[int]:
         """
         Build model inputs from a sequence or a pair of sequence for sequence classification tasks by concatenating and
@@ -273,11 +272,11 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
     def _pad(
         self,
         encoded_inputs: dict[str, EncodedInput] | BatchEncoding,
-        max_length: Optional[int] = None,
+        max_length: int | None = None,
         padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
-        pad_to_multiple_of: Optional[int] = None,
-        return_attention_mask: Optional[bool] = None,
-        padding_side: Optional[bool] = None,
+        pad_to_multiple_of: int | None = None,
+        return_attention_mask: bool | None = None,
+        padding_side: bool | None = None,
     ) -> dict:
         """
         Pad encoded inputs (on left/right and up to predefined length or max length in the batch)

@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
 from dataclasses import dataclass
-from typing import Optional
 
 import flax
 import jax
@@ -29,9 +28,9 @@ from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broa
 @flax.struct.dataclass
 class ScoreSdeVeSchedulerState:
     # setable values
-    timesteps: Optional[jnp.ndarray] = None
-    discrete_sigmas: Optional[jnp.ndarray] = None
-    sigmas: Optional[jnp.ndarray] = None
+    timesteps: jnp.ndarray | None = None
+    discrete_sigmas: jnp.ndarray | None = None
+    sigmas: jnp.ndarray | None = None
 
     @classmethod
     def create(cls):
@@ -54,7 +53,7 @@ class FlaxSdeVeOutput(FlaxSchedulerOutput):
 
     state: ScoreSdeVeSchedulerState
     prev_sample: jnp.ndarray
-    prev_sample_mean: Optional[jnp.ndarray] = None
+    prev_sample_mean: jnp.ndarray | None = None
 
 
 class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):

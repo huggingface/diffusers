@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import PIL.Image
 import torch
@@ -175,9 +175,9 @@ class StableUnCLIPImg2ImgPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
         **kwargs,
     ):
         deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
@@ -263,10 +263,10 @@ class StableUnCLIPImg2ImgPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -579,8 +579,8 @@ class StableUnCLIPImg2ImgPipeline(
         self,
         image_embeds: torch.Tensor,
         noise_level: int,
-        noise: Optional[torch.Tensor] = None,
-        generator: Optional[torch.Generator] = None,
+        noise: torch.Tensor | None = None,
+        generator: torch.Generator | None = None,
     ):
         """
         Add noise to the image embeddings. The amount of noise is controlled by a `noise_level` input. A higher
@@ -627,25 +627,25 @@ class StableUnCLIPImg2ImgPipeline(
         self,
         image: torch.Tensor | PIL.Image.Image = None,
         prompt: str | list[str] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 20,
         guidance_scale: float = 10,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         noise_level: int = 0,
-        image_embeds: Optional[torch.Tensor] = None,
-        clip_skip: Optional[int] = None,
+        image_embeds: torch.Tensor | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         The call function to the pipeline for generation.

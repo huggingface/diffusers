@@ -14,7 +14,6 @@
 
 import math
 from dataclasses import asdict, dataclass
-from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -73,7 +72,7 @@ class SmoothedEnergyGuidanceHook(ModelHook):
 
 
 def _apply_smoothed_energy_guidance_hook(
-    module: torch.nn.Module, config: SmoothedEnergyGuidanceConfig, blur_sigma: float, name: Optional[str] = None
+    module: torch.nn.Module, config: SmoothedEnergyGuidanceConfig, blur_sigma: float, name: str | None = None
 ) -> None:
     name = name or _SMOOTHED_ENERGY_GUIDANCE_HOOK
 

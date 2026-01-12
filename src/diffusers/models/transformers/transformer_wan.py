@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -79,9 +79,9 @@ class WanAttnProcessor:
         self,
         attn: "WanAttention",
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -183,8 +183,8 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         dim_head: int = 64,
         eps: float = 1e-5,
         dropout: float = 0.0,
-        added_kv_proj_dim: Optional[int] = None,
-        cross_attention_dim_head: Optional[int] = None,
+        added_kv_proj_dim: int | None = None,
+        cross_attention_dim_head: int | None = None,
         processor=None,
         is_cross_attention=None,
     ):
@@ -270,9 +270,9 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         **kwargs,
     ) -> torch.Tensor:
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
@@ -309,8 +309,8 @@ class WanTimeTextImageEmbedding(nn.Module):
         time_freq_dim: int,
         time_proj_dim: int,
         text_embed_dim: int,
-        image_embed_dim: Optional[int] = None,
-        pos_embed_seq_len: Optional[int] = None,
+        image_embed_dim: int | None = None,
+        pos_embed_seq_len: int | None = None,
     ):
         super().__init__()
 
@@ -328,8 +328,8 @@ class WanTimeTextImageEmbedding(nn.Module):
         self,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        timestep_seq_len: Optional[int] = None,
+        encoder_hidden_states_image: torch.Tensor | None = None,
+        timestep_seq_len: int | None = None,
     ):
         timestep = self.timesteps_proj(timestep)
         if timestep_seq_len is not None:
@@ -423,7 +423,7 @@ class WanTransformerBlock(nn.Module):
         qk_norm: str = "rms_norm_across_heads",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
-        added_kv_proj_dim: Optional[int] = None,
+        added_kv_proj_dim: int | None = None,
     ):
         super().__init__()
 
@@ -578,12 +578,12 @@ class WanTransformer3DModel(
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
+        qk_norm: str | None = "rms_norm_across_heads",
         eps: float = 1e-6,
-        image_dim: Optional[int] = None,
-        added_kv_proj_dim: Optional[int] = None,
+        image_dim: int | None = None,
+        added_kv_proj_dim: int | None = None,
         rope_max_seq_len: int = 1024,
-        pos_embed_seq_len: Optional[int] = None,
+        pos_embed_seq_len: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -627,9 +627,9 @@ class WanTransformer3DModel(
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        encoder_hidden_states_image: torch.Tensor | None = None,
         return_dict: bool = True,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()

@@ -284,7 +284,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            sigmas (`Union[torch.Tensor, list[float]]`, *optional*):
+            sigmas (`torch.Tensor | list[float]`, *optional*):
                 Custom sigmas to use for the denoising process. If not defined, the default behavior when
                 `num_inference_steps` is passed will be used.
         """

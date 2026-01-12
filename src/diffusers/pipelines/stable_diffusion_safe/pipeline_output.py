@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -29,6 +28,6 @@ class StableDiffusionSafePipelineOutput(BaseOutput):
     """
 
     images: list[PIL.Image.Image] | np.ndarray
-    nsfw_content_detected: Optional[list[bool]]
-    unsafe_images: Optional[list[PIL.Image.Image] | np.ndarray]
-    applied_safety_concept: Optional[str]
+    nsfw_content_detected: list[bool] | None
+    unsafe_images: list[PIL.Image.Image] | np.ndarray | None
+    applied_safety_concept: str | None

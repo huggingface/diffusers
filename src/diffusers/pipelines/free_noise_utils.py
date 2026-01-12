@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Optional
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -105,7 +105,7 @@ class SplitInferenceModule(nn.Module):
                 arguments are passed unchanged.
 
         Returns:
-            `Union[torch.Tensor, tuple[torch.Tensor]]`:
+            `torch.Tensor | tuple[torch.Tensor]`:
                 The outputs obtained from `SplitInferenceModule` are the same as if the underlying module was inferred
                 without it.
                 - If the underlying module returns a single tensor, the result will be a single concatenated tensor
@@ -260,11 +260,11 @@ class AnimateDiffFreeNoiseMixin:
         device: torch.device,
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
-        negative_prompt: Optional[str | dict[int, str]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt: str | dict[int, str] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ) -> torch.Tensor:
         if negative_prompt is None:
             negative_prompt = ""
@@ -362,8 +362,8 @@ class AnimateDiffFreeNoiseMixin:
         width: int,
         dtype: torch.dtype,
         device: torch.device,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
     ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -443,13 +443,14 @@ class AnimateDiffFreeNoiseMixin:
 
     def enable_free_noise(
         self,
-        context_length: Optional[int] = 16,
+        context_length: int | None = 16,
         context_stride: int = 4,
         weighting_scheme: str = "pyramid",
         noise_type: str = "shuffle_context",
-        prompt_interpolation_callback: Optional[
-            Callable[[DiffusionPipeline, int, int, torch.Tensor, torch.Tensor], torch.Tensor]
-        ] = None,
+        prompt_interpolation_callback: Callable[
+            [DiffusionPipeline, int, int, torch.Tensor, torch.Tensor], torch.Tensor
+        ]
+        | None = None,
     ) -> None:
         r"""
         Enable long video generation using FreeNoise.

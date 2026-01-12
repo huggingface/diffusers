@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import numpy as np
 import PIL.Image
@@ -186,7 +186,7 @@ class StableDiffusionXLControlNetXSPipeline(
         controlnet: ControlNetXSAdapter,
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
-        add_watermarker: Optional[bool] = None,
+        add_watermarker: bool | None = None,
         feature_extractor: CLIPImageProcessor = None,
     ):
         super().__init__()
@@ -223,18 +223,18 @@ class StableDiffusionXLControlNetXSPipeline(
     def encode_prompt(
         self,
         prompt: str,
-        prompt_2: Optional[str] = None,
-        device: Optional[torch.device] = None,
+        prompt_2: str | None = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str] = None,
-        negative_prompt_2: Optional[str] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt: str | None = None,
+        negative_prompt_2: str | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -719,38 +719,36 @@ class StableDiffusionXLControlNetXSPipeline(
     def __call__(
         self,
         prompt: str | list[str] = None,
-        prompt_2: Optional[str | list[str]] = None,
+        prompt_2: str | list[str] | None = None,
         image: PipelineImageInput = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        negative_prompt_2: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        negative_prompt_2: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         controlnet_conditioning_scale: float | list[float] = 1.0,
         control_guidance_start: float = 0.0,
         control_guidance_end: float = 1.0,
         original_size: tuple[int, int] = None,
         crops_coords_top_left: tuple[int, int] = (0, 0),
         target_size: tuple[int, int] = None,
-        negative_original_size: Optional[tuple[int, int]] = None,
+        negative_original_size: tuple[int, int] | None = None,
         negative_crops_coords_top_left: tuple[int, int] = (0, 0),
-        negative_target_size: Optional[tuple[int, int]] = None,
-        clip_skip: Optional[int] = None,
-        callback_on_step_end: Optional[
-            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
-        ] = None,
+        negative_target_size: tuple[int, int] | None = None,
+        clip_skip: int | None = None,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         r"""

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -80,9 +80,9 @@ class Lumina2AttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        base_sequence_length: Optional[int] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        base_sequence_length: int | None = None,
     ) -> torch.Tensor:
         batch_size, sequence_length, _ = hidden_states.shape
 
@@ -202,7 +202,7 @@ class Lumina2TransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
         image_rotary_emb: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if self.modulation:
             norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
@@ -368,14 +368,14 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         sample_size: int = 128,
         patch_size: int = 2,
         in_channels: int = 16,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         hidden_size: int = 2304,
         num_layers: int = 26,
         num_refiner_layers: int = 2,
         num_attention_heads: int = 24,
         num_kv_heads: int = 8,
         multiple_of: int = 256,
-        ffn_dim_multiplier: Optional[float] = None,
+        ffn_dim_multiplier: float | None = None,
         norm_eps: float = 1e-5,
         scaling_factor: float = 1.0,
         axes_dim_rope: tuple[int, int, int] = (32, 32, 32),
@@ -461,7 +461,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        attention_kwargs: Optional[dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor | Transformer2DModelOutput:
         if attention_kwargs is not None:

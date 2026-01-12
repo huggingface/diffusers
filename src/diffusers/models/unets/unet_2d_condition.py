@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -171,7 +171,7 @@ class UNet2DConditionModel(
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[int | tuple[int, int]] = None,
+        sample_size: int | tuple[int, int] | None = None,
         in_channels: int = 4,
         out_channels: int = 4,
         center_input_sample: bool = False,
@@ -183,51 +183,51 @@ class UNet2DConditionModel(
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
+        mid_block_type: str | None = "UNetMidBlock2DCrossAttn",
         up_block_types: tuple[str, ...] = (
             "UpBlock2D",
             "CrossAttnUpBlock2D",
             "CrossAttnUpBlock2D",
             "CrossAttnUpBlock2D",
         ),
-        only_cross_attention: Union[bool, tuple[bool]] = False,
+        only_cross_attention: bool | tuple[bool] = False,
         block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
-        layers_per_block: Union[int, tuple[int]] = 2,
+        layers_per_block: int | tuple[int] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         dropout: float = 0.0,
         act_fn: str = "silu",
-        norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int | None = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int | tuple[int] = 1280,
         transformer_layers_per_block: int | tuple[int] | tuple[tuple] = 1,
-        reverse_transformer_layers_per_block: Optional[tuple[tuple[int]]] = None,
-        encoder_hid_dim: Optional[int] = None,
-        encoder_hid_dim_type: Optional[str] = None,
+        reverse_transformer_layers_per_block: tuple[tuple[int]] | None = None,
+        encoder_hid_dim: int | None = None,
+        encoder_hid_dim_type: str | None = None,
         attention_head_dim: int | tuple[int] = 8,
-        num_attention_heads: Optional[int | tuple[int]] = None,
+        num_attention_heads: int | tuple[int] | None = None,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
-        class_embed_type: Optional[str] = None,
-        addition_embed_type: Optional[str] = None,
-        addition_time_embed_dim: Optional[int] = None,
-        num_class_embeds: Optional[int] = None,
+        class_embed_type: str | None = None,
+        addition_embed_type: str | None = None,
+        addition_time_embed_dim: int | None = None,
+        num_class_embeds: int | None = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
         resnet_skip_time_act: bool = False,
         resnet_out_scale_factor: float = 1.0,
         time_embedding_type: str = "positional",
-        time_embedding_dim: Optional[int] = None,
-        time_embedding_act_fn: Optional[str] = None,
-        timestep_post_act: Optional[str] = None,
-        time_cond_proj_dim: Optional[int] = None,
+        time_embedding_dim: int | None = None,
+        time_embedding_act_fn: str | None = None,
+        timestep_post_act: str | None = None,
+        time_cond_proj_dim: int | None = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
-        projection_class_embeddings_input_dim: Optional[int] = None,
+        projection_class_embeddings_input_dim: int | None = None,
         attention_type: str = "default",
         class_embeddings_concat: bool = False,
-        mid_block_only_cross_attention: Optional[bool] = None,
-        cross_attention_norm: Optional[str] = None,
+        mid_block_only_cross_attention: bool | None = None,
+        cross_attention_norm: str | None = None,
         addition_embed_type_num_heads: int = 64,
     ):
         super().__init__()
@@ -493,14 +493,14 @@ class UNet2DConditionModel(
         self,
         down_block_types: tuple[str, ...],
         up_block_types: tuple[str, ...],
-        only_cross_attention: Union[bool, tuple[bool]],
+        only_cross_attention: bool | tuple[bool],
         block_out_channels: tuple[int, ...],
-        layers_per_block: Union[int, tuple[int]],
-        cross_attention_dim: Union[int, tuple[int]],
-        transformer_layers_per_block: Union[int, tuple[int], tuple[tuple[int]]],
+        layers_per_block: int | tuple[int],
+        cross_attention_dim: int | tuple[int],
+        transformer_layers_per_block: int | tuple[int, tuple[tuple[int]]],
         reverse_transformer_layers_per_block: bool,
         attention_head_dim: int,
-        num_attention_heads: Optional[int | tuple[int]],
+        num_attention_heads: int | tuple[int] | None,
     ):
         if len(down_block_types) != len(up_block_types):
             raise ValueError(
@@ -571,9 +571,9 @@ class UNet2DConditionModel(
 
     def _set_encoder_hid_proj(
         self,
-        encoder_hid_dim_type: Optional[str],
+        encoder_hid_dim_type: str | None,
         cross_attention_dim: int | tuple[int],
-        encoder_hid_dim: Optional[int],
+        encoder_hid_dim: int | None,
     ):
         if encoder_hid_dim_type is None and encoder_hid_dim is not None:
             encoder_hid_dim_type = "text_proj"
@@ -611,10 +611,10 @@ class UNet2DConditionModel(
 
     def _set_class_embedding(
         self,
-        class_embed_type: Optional[str],
+        class_embed_type: str | None,
         act_fn: str,
-        num_class_embeds: Optional[int],
-        projection_class_embeddings_input_dim: Optional[int],
+        num_class_embeds: int | None,
+        projection_class_embeddings_input_dim: int | None,
         time_embed_dim: int,
         timestep_input_dim: int,
     ):
@@ -650,12 +650,12 @@ class UNet2DConditionModel(
         self,
         addition_embed_type: str,
         addition_embed_type_num_heads: int,
-        addition_time_embed_dim: Optional[int],
+        addition_time_embed_dim: int | None,
         flip_sin_to_cos: bool,
         freq_shift: float,
-        cross_attention_dim: Optional[int],
-        encoder_hid_dim: Optional[int],
-        projection_class_embeddings_input_dim: Optional[int],
+        cross_attention_dim: int | None,
+        encoder_hid_dim: int | None,
+        projection_class_embeddings_input_dim: int | None,
         time_embed_dim: int,
     ):
         if addition_embed_type == "text":
@@ -843,7 +843,7 @@ class UNet2DConditionModel(
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
-    def get_time_embed(self, sample: torch.Tensor, timestep: torch.Tensor | float | int) -> Optional[torch.Tensor]:
+    def get_time_embed(self, sample: torch.Tensor, timestep: torch.Tensor | float | int) -> torch.Tensor | None:
         timesteps = timestep
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
@@ -868,7 +868,7 @@ class UNet2DConditionModel(
         t_emb = t_emb.to(dtype=sample.dtype)
         return t_emb
 
-    def get_class_embed(self, sample: torch.Tensor, class_labels: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    def get_class_embed(self, sample: torch.Tensor, class_labels: torch.Tensor | None) -> torch.Tensor | None:
         class_emb = None
         if self.class_embedding is not None:
             if class_labels is None:
@@ -886,7 +886,7 @@ class UNet2DConditionModel(
 
     def get_aug_embed(
         self, emb: torch.Tensor, encoder_hidden_states: torch.Tensor, added_cond_kwargs: dict[str, Any]
-    ) -> Optional[torch.Tensor]:
+    ) -> torch.Tensor | None:
         aug_emb = None
         if self.config.addition_embed_type == "text":
             aug_emb = self.add_embedding(encoder_hidden_states)
@@ -977,15 +977,15 @@ class UNet2DConditionModel(
         sample: torch.Tensor,
         timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
-        class_labels: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        added_cond_kwargs: Optional[dict[str, torch.Tensor]] = None,
-        down_block_additional_residuals: Optional[tuple[torch.Tensor]] = None,
-        mid_block_additional_residual: Optional[torch.Tensor] = None,
-        down_intrablock_additional_residuals: Optional[tuple[torch.Tensor]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        class_labels: torch.Tensor | None = None,
+        timestep_cond: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        added_cond_kwargs: dict[str, torch.Tensor] | None = None,
+        down_block_additional_residuals: tuple[torch.Tensor] | None = None,
+        mid_block_additional_residual: torch.Tensor | None = None,
+        down_intrablock_additional_residuals: tuple[torch.Tensor] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> UNet2DConditionOutput | tuple:
         r"""

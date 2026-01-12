@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import functools
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -83,7 +82,7 @@ class MochiResnetBlock3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         act_fn: str = "swish",
     ):
         super().__init__()
@@ -106,7 +105,7 @@ class MochiResnetBlock3D(nn.Module):
     def forward(
         self,
         inputs: torch.Tensor,
-        conv_cache: Optional[dict[str, torch.Tensor]] = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         new_conv_cache = {}
         conv_cache = conv_cache or {}
@@ -193,7 +192,7 @@ class MochiDownBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        conv_cache: Optional[dict[str, torch.Tensor]] = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
         chunk_size: int = 2**15,
     ) -> torch.Tensor:
         r"""Forward method of the `MochiUpBlock3D` class."""
@@ -294,7 +293,7 @@ class MochiMidBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        conv_cache: Optional[dict[str, torch.Tensor]] = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Forward method of the `MochiMidBlock3D` class."""
 
@@ -368,7 +367,7 @@ class MochiUpBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        conv_cache: Optional[dict[str, torch.Tensor]] = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Forward method of the `MochiUpBlock3D` class."""
 
@@ -499,9 +498,7 @@ class MochiEncoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self, hidden_states: torch.Tensor, conv_cache: Optional[dict[str, torch.Tensor]] = None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, conv_cache: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
         r"""Forward method of the `MochiEncoder3D` class."""
 
         new_conv_cache = {}
@@ -612,9 +609,7 @@ class MochiDecoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self, hidden_states: torch.Tensor, conv_cache: Optional[dict[str, torch.Tensor]] = None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, conv_cache: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
         r"""Forward method of the `MochiDecoder3D` class."""
 
         new_conv_cache = {}
@@ -790,10 +785,10 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_sample_stride_height: Optional[float] = None,
-        tile_sample_stride_width: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_sample_stride_height: float | None = None,
+        tile_sample_stride_width: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1096,7 +1091,7 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> torch.Tensor | torch.Tensor:
         x = sample
         posterior = self.encode(x).latent_dist

@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -123,7 +121,7 @@ class CogVideoXCausalConv3d(nn.Module):
         )
 
     def fake_context_parallel_forward(
-        self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None
+        self, inputs: torch.Tensor, conv_cache: torch.Tensor | None = None
     ) -> torch.Tensor:
         if self.pad_mode == "replicate":
             inputs = F.pad(inputs, self.time_causal_padding, mode="replicate")
@@ -134,7 +132,7 @@ class CogVideoXCausalConv3d(nn.Module):
                 inputs = torch.cat(cached_inputs + [inputs], dim=2)
         return inputs
 
-    def forward(self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor, conv_cache: torch.Tensor | None = None) -> torch.Tensor:
         inputs = self.fake_context_parallel_forward(inputs, conv_cache)
 
         if self.pad_mode == "replicate":
@@ -174,7 +172,7 @@ class CogVideoXSpatialNorm3D(nn.Module):
         self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
 
     def forward(
-        self, f: torch.Tensor, zq: torch.Tensor, conv_cache: Optional[dict[str, torch.Tensor]] = None
+        self, f: torch.Tensor, zq: torch.Tensor, conv_cache: dict[str, torch.Tensor] | None = None
     ) -> torch.Tensor:
         new_conv_cache = {}
         conv_cache = conv_cache or {}
@@ -227,14 +225,14 @@ class CogVideoXResnetBlock3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         dropout: float = 0.0,
         temb_channels: int = 512,
         groups: int = 32,
         eps: float = 1e-6,
         non_linearity: str = "swish",
         conv_shortcut: bool = False,
-        spatial_norm_dim: Optional[int] = None,
+        spatial_norm_dim: int | None = None,
         pad_mode: str = "first",
     ):
         super().__init__()
@@ -287,9 +285,9 @@ class CogVideoXResnetBlock3D(nn.Module):
     def forward(
         self,
         inputs: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        zq: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         new_conv_cache = {}
         conv_cache = conv_cache or {}
@@ -409,9 +407,9 @@ class CogVideoXDownBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        zq: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXDownBlock3D` class."""
 
@@ -477,7 +475,7 @@ class CogVideoXMidBlock3D(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        spatial_norm_dim: Optional[int] = None,
+        spatial_norm_dim: int | None = None,
         pad_mode: str = "first",
     ):
         super().__init__()
@@ -504,9 +502,9 @@ class CogVideoXMidBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        zq: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXMidBlock3D` class."""
 
@@ -611,9 +609,9 @@ class CogVideoXUpBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        zq: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXUpBlock3D` class."""
 
@@ -743,8 +741,8 @@ class CogVideoXEncoder3D(nn.Module):
     def forward(
         self,
         sample: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        conv_cache: Optional[dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""The forward method of the `CogVideoXEncoder3D` class."""
 
@@ -902,8 +900,8 @@ class CogVideoXDecoder3D(nn.Module):
     def forward(
         self,
         sample: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        conv_cache: Optional[dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""The forward method of the `CogVideoXDecoder3D` class."""
 
@@ -1017,9 +1015,9 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         sample_height: int = 480,
         sample_width: int = 720,
         scaling_factor: float = 1.15258426,
-        shift_factor: Optional[float] = None,
-        latents_mean: Optional[tuple[float]] = None,
-        latents_std: Optional[tuple[float]] = None,
+        shift_factor: float | None = None,
+        latents_mean: tuple[float] | None = None,
+        latents_std: tuple[float] | None = None,
         force_upcast: float = True,
         use_quant_conv: bool = False,
         use_post_quant_conv: bool = False,
@@ -1090,10 +1088,10 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_overlap_factor_height: Optional[float] = None,
-        tile_overlap_factor_width: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_overlap_factor_height: float | None = None,
+        tile_overlap_factor_width: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1409,7 +1407,7 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> torch.Tensor | torch.Tensor:
         x = sample
         posterior = self.encode(x).latent_dist

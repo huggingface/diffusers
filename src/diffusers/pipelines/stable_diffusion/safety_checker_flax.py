@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
@@ -76,7 +74,7 @@ class FlaxStableDiffusionSafetyChecker(FlaxPreTrainedModel):
     def __init__(
         self,
         config: CLIPConfig,
-        input_shape: Optional[tuple] = None,
+        input_shape: tuple | None = None,
         seed: int = 0,
         dtype: jnp.dtype = jnp.float32,
         _do_init: bool = True,

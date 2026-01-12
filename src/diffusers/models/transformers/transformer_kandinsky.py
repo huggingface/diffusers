@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -366,9 +366,9 @@ class Kandinsky5Attention(nn.Module, AttentionModuleMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        sparse_params: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        sparse_params: torch.Tensor | None = None,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         **kwargs,
     ) -> torch.Tensor:
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
@@ -599,7 +599,7 @@ class Kandinsky5Transformer3DModel(
         visual_rope_pos: tuple[int, int, int],
         text_rope_pos: torch.LongTensor,
         scale_factor: tuple[float, float, float] = (1.0, 1.0, 1.0),
-        sparse_params: Optional[dict[str, Any]] = None,
+        sparse_params: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> Transformer2DModelOutput | torch.FloatTensor:
         """

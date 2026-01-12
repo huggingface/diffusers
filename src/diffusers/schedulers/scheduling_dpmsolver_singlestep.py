@@ -102,7 +102,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`"linear"`, `"scaled_linear"`, or `"squaredcos_cap_v2"`, defaults to `"linear"`):
             The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`np.ndarray` or `List[float]`, *optional*):
+        trained_betas (`np.ndarray` or `list[float]`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
         solver_order (`int`, defaults to `2`):
             The DPMSolver order which can be `1` or `2` or `3`. It is recommended to use `solver_order=2` for guided
@@ -259,7 +259,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
 
         Returns:
-            `List[int]`:
+            `list[int]`:
                 The list of solver orders for each timestep.
         """
         steps = num_inference_steps

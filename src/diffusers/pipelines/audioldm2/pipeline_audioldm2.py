@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -251,7 +251,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         )
         self.vae.disable_slicing()
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = "cuda"):
+    def enable_model_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -361,13 +361,13 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         do_classifier_free_guidance,
         transcription=None,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        generated_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_generated_prompt_embeds: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        negative_attention_mask: Optional[torch.LongTensor] = None,
-        max_new_tokens: Optional[int] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        generated_prompt_embeds: torch.Tensor | None = None,
+        negative_generated_prompt_embeds: torch.Tensor | None = None,
+        attention_mask: torch.LongTensor | None = None,
+        negative_attention_mask: torch.LongTensor | None = None,
+        max_new_tokens: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -864,26 +864,26 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         self,
         prompt: str | list[str] = None,
         transcription: str | list[str] = None,
-        audio_length_in_s: Optional[float] = None,
+        audio_length_in_s: float | None = None,
         num_inference_steps: int = 200,
         guidance_scale: float = 3.5,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_waveforms_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_waveforms_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        generated_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_generated_prompt_embeds: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        negative_attention_mask: Optional[torch.LongTensor] = None,
-        max_new_tokens: Optional[int] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        generated_prompt_embeds: torch.Tensor | None = None,
+        negative_generated_prompt_embeds: torch.Tensor | None = None,
+        attention_mask: torch.LongTensor | None = None,
+        negative_attention_mask: torch.LongTensor | None = None,
+        max_new_tokens: int | None = None,
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: Optional[int] = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        output_type: Optional[str] = "np",
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
+        callback_steps: int | None = 1,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        output_type: str | None = "np",
     ):
         r"""
         The call function to the pipeline for generation.

@@ -338,7 +338,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
-            device (`Union[str, torch.device]`, *optional*):
+            device (`str | torch.device`, *optional*):
                 The device to use for the timesteps.
 
         Raises:

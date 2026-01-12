@@ -21,7 +21,6 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Dict, Optional
 from uuid import uuid4
 
 from huggingface_hub import (
@@ -72,7 +71,7 @@ MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
 
 
-def http_user_agent(user_agent: Dict | str | None = None) -> str:
+def http_user_agent(user_agent: dict | str | None = None) -> str:
     """
     Formats a user-agent string with basic info about a request.
     """
@@ -98,15 +97,15 @@ def http_user_agent(user_agent: Dict | str | None = None) -> str:
 
 def load_or_create_model_card(
     repo_id_or_path: str = None,
-    token: Optional[str] = None,
+    token: str | None = None,
     is_pipeline: bool = False,
     from_training: bool = False,
-    model_description: Optional[str] = None,
+    model_description: str | None = None,
     base_model: str = None,
-    prompt: Optional[str] = None,
-    license: Optional[str] = None,
-    widget: Optional[list[dict]] = None,
-    inference: Optional[bool] = None,
+    prompt: str | None = None,
+    license: str | None = None,
+    widget: list[dict] = None,
+    inference: bool | None = None,
 ) -> ModelCard:
     """
     Loads or creates a model card.
@@ -167,7 +166,7 @@ def load_or_create_model_card(
     return model_card
 
 
-def populate_model_card(model_card: ModelCard, tags: str | list[str] = None) -> ModelCard:
+def populate_model_card(model_card: ModelCard, tags: str | list[str] | None = None) -> ModelCard:
     """Populates the `model_card` with library name and optional tags."""
     if model_card.data.library_name is None:
         model_card.data.library_name = "diffusers"
@@ -183,7 +182,7 @@ def populate_model_card(model_card: ModelCard, tags: str | list[str] = None) -> 
     return model_card
 
 
-def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str] = None):
+def extract_commit_hash(resolved_file: str | None, commit_hash: str | None = None):
     """
     Extracts the commit hash from a resolved filename toward a cache file.
     """
@@ -197,7 +196,7 @@ def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str]
     return commit_hash if REGEX_COMMIT_HASH.match(commit_hash) else None
 
 
-def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
+def _add_variant(weights_name: str, variant: str | None = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
         splits = splits[:-1] + [variant] + splits[-1:]
@@ -211,16 +210,16 @@ def _get_model_file(
     pretrained_model_name_or_path: str | Path,
     *,
     weights_name: str,
-    subfolder: Optional[str] = None,
-    cache_dir: Optional[str] = None,
+    subfolder: str | None = None,
+    cache_dir: str | None = None,
     force_download: bool = False,
-    proxies: Optional[Dict] = None,
+    proxies: dict | None = None,
     local_files_only: bool = False,
-    token: Optional[str] = None,
-    user_agent: Optional[Dict | str] = None,
-    revision: Optional[str] = None,
-    commit_hash: Optional[str] = None,
-    dduf_entries: Optional[dict[str, DDUFEntry]] = None,
+    token: str | None = None,
+    user_agent: dict | str | None = None,
+    revision: str | None = None,
+    commit_hash: str | None = None,
+    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
@@ -348,7 +347,7 @@ def _get_checkpoint_shard_files(
     user_agent=None,
     revision=None,
     subfolder="",
-    dduf_entries: Optional[dict[str, DDUFEntry]] = None,
+    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     """
     For a given model:
@@ -471,10 +470,10 @@ class PushToHubMixin:
         self,
         working_dir: str | os.PathLike,
         repo_id: str,
-        token: Optional[str] = None,
-        commit_message: Optional[str] = None,
+        token: str | None = None,
+        commit_message: str | None = None,
         create_pr: bool = False,
-        subfolder: Optional[str] = None,
+        subfolder: str | None = None,
     ):
         """
         Uploads all files in `working_dir` to `repo_id`.
@@ -500,13 +499,13 @@ class PushToHubMixin:
     def push_to_hub(
         self,
         repo_id: str,
-        commit_message: Optional[str] = None,
-        private: Optional[bool] = None,
-        token: Optional[str] = None,
+        commit_message: str | None = None,
+        private: bool | None = None,
+        token: str | None = None,
         create_pr: bool = False,
         safe_serialization: bool = True,
-        variant: Optional[str] = None,
-        subfolder: Optional[str] = None,
+        variant: str | None = None,
+        subfolder: str | None = None,
     ) -> str:
         """
         Upload model, scheduler, or pipeline files to the 🤗 Hugging Face Hub.

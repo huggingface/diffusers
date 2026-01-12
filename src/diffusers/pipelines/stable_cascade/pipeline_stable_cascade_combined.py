@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import PIL
 import torch
@@ -90,8 +90,8 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         prior_text_encoder: CLIPTextModelWithProjection,
         prior_tokenizer: CLIPTokenizer,
         prior_scheduler: DDPMWuerstchenScheduler,
-        prior_feature_extractor: Optional[CLIPImageProcessor] = None,
-        prior_image_encoder: Optional[CLIPVisionModelWithProjection] = None,
+        prior_feature_extractor: CLIPImageProcessor | None = None,
+        prior_image_encoder: CLIPVisionModelWithProjection | None = None,
     ):
         super().__init__()
 
@@ -124,10 +124,10 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             vqgan=vqgan,
         )
 
-    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
+    def enable_xformers_memory_efficient_attention(self, attention_op: Callable | None = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
+    def enable_model_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -137,7 +137,7 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
         self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
+    def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
         r"""
         Offloads all models (`unet`, `text_encoder`, `vae`, and `safety checker` state dicts) to CPU using 🤗
         Accelerate, significantly reducing memory usage. Models are moved to a `torch.device('meta')` and loaded on a
@@ -159,7 +159,7 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[str | list[str]] = None,
+        prompt: str | list[str] | None = None,
         images: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image] = None,
         height: int = 512,
         width: int = 512,
@@ -167,19 +167,19 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         prior_guidance_scale: float = 4.0,
         num_inference_steps: int = 12,
         decoder_guidance_scale: float = 0.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_pooled: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_pooled: Optional[torch.Tensor] = None,
+        negative_prompt: str | list[str] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_embeds_pooled: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds_pooled: torch.Tensor | None = None,
         num_images_per_prompt: int = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        prior_callback_on_step_end: Callable[[int, int], None] | None = None,
         prior_callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         """
@@ -219,7 +219,7 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 equation 2. of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by
                 setting `prior_guidance_scale > 1`. Higher guidance scale encourages to generate images that are
                 closely linked to the text `prompt`, usually at the expense of lower image quality.
-            prior_num_inference_steps (`Union[int, dict[float, int]]`, *optional*, defaults to 60):
+            prior_num_inference_steps (`int | dict[float, int]`, *optional*, defaults to 60):
                 The number of prior denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. For more specific timestep spacing, you can pass customized
                 `prior_timesteps`

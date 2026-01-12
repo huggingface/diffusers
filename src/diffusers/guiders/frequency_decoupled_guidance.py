@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -145,7 +145,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         self,
         guidance_scales: list[float] | tuple[float] = [10.0, 5.0],
         guidance_rescale: float | list[float] | tuple[float] = 0.0,
-        parallel_weights: Optional[float | list[float] | tuple[float]] = None,
+        parallel_weights: float | list[float] | tuple[float] | None = None,
         use_original_formulation: bool = False,
         start: float | list[float] | tuple[float] = 0.0,
         stop: float | list[float] | tuple[float] = 1.0,
@@ -238,7 +238,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: torch.Tensor | None = None) -> GuiderOutput:
         pred = None
 
         if not self._is_fdg_enabled():

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -133,7 +133,7 @@ class SD3Transformer2DModel(
         dual_attention_layers: tuple[
             int, ...
         ] = (),  # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
-        qk_norm: Optional[str] = None,
+        qk_norm: str | None = None,
     ):
         super().__init__()
         self.out_channels = out_channels if out_channels is not None else in_channels
@@ -172,7 +172,7 @@ class SD3Transformer2DModel(
         self.gradient_checkpointing = False
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(self, chunk_size: int | None = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -252,9 +252,9 @@ class SD3Transformer2DModel(
         pooled_projections: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         block_controlnet_hidden_states: list = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-        skip_layers: Optional[list[int]] = None,
+        skip_layers: list[int] | None = None,
     ) -> torch.Tensor | Transformer2DModelOutput:
         """
         The [`SD3Transformer2DModel`] forward method.

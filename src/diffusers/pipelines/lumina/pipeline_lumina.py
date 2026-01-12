@@ -17,7 +17,7 @@ import inspect
 import math
 import re
 import urllib.parse as ul
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import torch
 from transformers import GemmaPreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
@@ -76,10 +76,10 @@ EXAMPLE_DOC_STRING = """
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -207,9 +207,9 @@ class LuminaPipeline(DiffusionPipeline):
         self,
         prompt: str | list[str],
         num_images_per_prompt: int = 1,
-        device: Optional[torch.device] = None,
-        clean_caption: Optional[bool] = False,
-        max_length: Optional[int] = None,
+        device: torch.device | None = None,
+        clean_caption: bool | None = False,
+        max_length: int | None = None,
     ):
         device = device or self._execution_device
         prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -265,11 +265,11 @@ class LuminaPipeline(DiffusionPipeline):
         do_classifier_free_guidance: bool = True,
         negative_prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
-        device: Optional[torch.device] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        device: torch.device | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
         clean_caption: bool = False,
         **kwargs,
     ):
@@ -634,28 +634,26 @@ class LuminaPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str] = None,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
+        width: int | None = None,
+        height: int | None = None,
         num_inference_steps: int = 30,
         guidance_scale: float = 4.0,
         negative_prompt: str | list[str] = None,
         sigmas: list[float] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
         clean_caption: bool = True,
         max_sequence_length: int = 256,
-        scaling_watershed: Optional[float] = 1.0,
-        proportional_attn: Optional[bool] = True,
-        callback_on_step_end: Optional[
-            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
-        ] = None,
+        scaling_watershed: float | None = 1.0,
+        proportional_attn: bool | None = True,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ) -> ImagePipelineOutput | tuple:
         """

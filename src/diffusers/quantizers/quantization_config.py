@@ -32,7 +32,7 @@ import warnings
 from dataclasses import dataclass, is_dataclass
 from enum import Enum
 from functools import partial
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from packaging import version
 
@@ -429,7 +429,7 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
     """
 
-    def __init__(self, compute_dtype: Optional["torch.dtype"] = None):
+    def __init__(self, compute_dtype: "torch.dtype" | None = None):
         self.quant_method = QuantizationMethod.GGUF
         self.compute_dtype = compute_dtype
         self.pre_quantized = True
@@ -446,7 +446,7 @@ class TorchAoConfig(QuantizationConfigMixin):
     """This is a config class for torchao quantization/sparsity techniques.
 
     Args:
-        quant_type (Union[`str`, AOBaseConfig]):
+        quant_type (`str` | AOBaseConfig):
             The type of quantization we want to use, currently supporting:
                 - **Integer quantization:**
                     - Full function names: `int4_weight_only`, `int8_dynamic_activation_int4_weight`,
@@ -501,7 +501,7 @@ class TorchAoConfig(QuantizationConfigMixin):
     def __init__(
         self,
         quant_type: str | "AOBaseConfig",  # noqa: F821
-        modules_to_not_convert: Optional[list[str]] = None,
+        modules_to_not_convert: list[str] | None = None,
         **kwargs,
     ) -> None:
         self.quant_method = QuantizationMethod.TORCHAO
@@ -841,7 +841,7 @@ class QuantoConfig(QuantizationConfigMixin):
     def __init__(
         self,
         weights_dtype: str = "int8",
-        modules_to_not_convert: Optional[list[str]] = None,
+        modules_to_not_convert: list[str] | None = None,
         **kwargs,
     ):
         self.quant_method = QuantizationMethod.QUANTO
@@ -912,15 +912,15 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
     def __init__(
         self,
         quant_type: str,
-        modules_to_not_convert: Optional[list[str]] = None,
+        modules_to_not_convert: list[str] | None = None,
         weight_only: bool = True,
-        channel_quantize: Optional[int] = None,
-        block_quantize: Optional[int] = None,
-        scale_channel_quantize: Optional[int] = None,
-        scale_block_quantize: Optional[int] = None,
+        channel_quantize: int | None = None,
+        block_quantize: int | None = None,
+        scale_channel_quantize: int | None = None,
+        scale_block_quantize: int | None = None,
         algorithm: str = "max",
-        forward_loop: Optional[Callable] = None,
-        modelopt_config: Optional[dict] = None,
+        forward_loop: Callable | None = None,
+        modelopt_config: dict | None = None,
         disable_conv_quantization: bool = False,
         **kwargs,
     ) -> None:

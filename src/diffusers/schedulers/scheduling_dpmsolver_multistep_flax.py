@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
 from dataclasses import dataclass
-from typing import Optional
 
 import flax
 import jax
@@ -44,10 +43,10 @@ class DPMSolverMultistepSchedulerState:
     num_inference_steps: int = None
 
     # running values
-    model_outputs: Optional[jnp.ndarray] = None
-    lower_order_nums: Optional[jnp.int32] = None
-    prev_timestep: Optional[jnp.int32] = None
-    cur_sample: Optional[jnp.ndarray] = None
+    model_outputs: jnp.ndarray | None = None
+    lower_order_nums: jnp.int32 | None = None
+    prev_timestep: jnp.int32 | None = None
+    cur_sample: jnp.ndarray | None = None
 
     @classmethod
     def create(
@@ -159,7 +158,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         solver_order: int = 2,
         prediction_type: str = "epsilon",
         thresholding: bool = False,
@@ -173,7 +172,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
     ):
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DPMSolverMultistepSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> DPMSolverMultistepSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 

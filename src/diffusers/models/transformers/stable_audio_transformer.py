@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Optional
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -87,10 +85,10 @@ class StableAudioDiTBlock(nn.Module):
         num_key_value_attention_heads: int,
         attention_head_dim: int,
         dropout=0.0,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
         upcast_attention: bool = False,
         norm_eps: float = 1e-5,
-        ff_inner_dim: Optional[int] = None,
+        ff_inner_dim: int | None = None,
     ):
         super().__init__()
         # Define 3 blocks. Each block has its own normalization layer.
@@ -138,7 +136,7 @@ class StableAudioDiTBlock(nn.Module):
         self._chunk_size = None
         self._chunk_dim = 0
 
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
+    def set_chunk_feed_forward(self, chunk_size: int | None, dim: int = 0):
         # Sets chunk feed-forward
         self._chunk_size = chunk_size
         self._chunk_dim = dim
@@ -146,10 +144,10 @@ class StableAudioDiTBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        rotary_embedding: Optional[torch.FloatTensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        rotary_embedding: torch.FloatTensor | None = None,
     ) -> torch.Tensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
@@ -289,8 +287,8 @@ class StableAudioDiTModel(ModelMixin, AttentionMixin, ConfigMixin):
         global_hidden_states: torch.FloatTensor = None,
         rotary_embedding: torch.FloatTensor = None,
         return_dict: bool = True,
-        attention_mask: Optional[torch.LongTensor] = None,
-        encoder_attention_mask: Optional[torch.LongTensor] = None,
+        attention_mask: torch.LongTensor | None = None,
+        encoder_attention_mask: torch.LongTensor | None = None,
     ) -> torch.FloatTensor | Transformer2DModelOutput:
         """
         The [`StableAudioDiTModel`] forward method.

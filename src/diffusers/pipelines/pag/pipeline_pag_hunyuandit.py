@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 import torch
@@ -164,10 +164,10 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. We use
             `sdxl-vae-fp16-fix`.
-        text_encoder (Optional[`~transformers.BertModel`, `~transformers.CLIPTextModel`]):
+        text_encoder (`~transformers.BertModel`, `~transformers.CLIPTextModel` | None):
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
             HunyuanDiT uses a fine-tuned [bilingual CLIP].
-        tokenizer (Optional[`~transformers.BertTokenizer`, `~transformers.CLIPTokenizer`]):
+        tokenizer (`~transformers.BertTokenizer`, `~transformers.CLIPTokenizer` | None):
             A `BertTokenizer` or `CLIPTokenizer` to tokenize text.
         transformer ([`HunyuanDiT2DModel`]):
             The HunyuanDiT model designed by Tencent Hunyuan.
@@ -262,12 +262,12 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         dtype: torch.dtype = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        max_sequence_length: Optional[int] = None,
+        negative_prompt: str | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        max_sequence_length: int | None = None,
         text_encoder_index: int = 0,
     ):
         r"""
@@ -665,7 +665,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
-            callback_on_step_end (`Callable[[int, int, Dict], None]`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
+            callback_on_step_end (`Callable[[int, int], None]`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A callback function or a list of callback functions to be called at the end of each denoising step.
             callback_on_step_end_tensor_inputs (`list[str]`, *optional*):
                 A list of tensor inputs that should be passed to the callback function. If not defined, all tensor

@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import math
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -40,7 +39,7 @@ class AllegroTemporalConvLayer(nn.Module):
     def __init__(
         self,
         in_dim: int,
-        out_dim: Optional[int] = None,
+        out_dim: int | None = None,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
         up_sample: bool = False,
@@ -234,7 +233,7 @@ class AllegroUpBlock3D(nn.Module):
         output_scale_factor: float = 1.0,
         spatial_upsample: bool = True,
         temporal_upsample: bool = False,
-        temb_channels: Optional[int] = None,
+        temb_channels: int | None = None,
     ):
         super().__init__()
 
@@ -1044,7 +1043,7 @@ class AutoencoderKLAllegro(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:

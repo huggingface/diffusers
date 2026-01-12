@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Optional
-
 import numpy as np
 import PIL.Image
 import torch
@@ -104,8 +102,8 @@ class RePaintPipeline(DiffusionPipeline):
         eta: float = 0.0,
         jump_length: int = 10,
         jump_n_sample: int = 10,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ) -> ImagePipelineOutput | tuple:
         r"""

@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 from dataclasses import dataclass
-from typing import Optional
 
 import flax
 import jax
@@ -40,14 +39,14 @@ class PNDMSchedulerState:
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
     num_inference_steps: int = None
-    prk_timesteps: Optional[jnp.ndarray] = None
-    plms_timesteps: Optional[jnp.ndarray] = None
+    prk_timesteps: jnp.ndarray | None = None
+    plms_timesteps: jnp.ndarray | None = None
 
     # running values
-    cur_model_output: Optional[jnp.ndarray] = None
-    counter: Optional[jnp.int32] = None
-    cur_sample: Optional[jnp.ndarray] = None
-    ets: Optional[jnp.ndarray] = None
+    cur_model_output: jnp.ndarray | None = None
+    counter: jnp.int32 | None = None
+    cur_sample: jnp.ndarray | None = None
+    ets: jnp.ndarray | None = None
 
     @classmethod
     def create(
@@ -124,7 +123,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         skip_prk_steps: bool = False,
         set_alpha_to_one: bool = False,
         steps_offset: int = 0,
@@ -138,7 +137,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # mainly at formula (9), (12), (13) and the Algorithm 2.
         self.pndm_order = 4
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> PNDMSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> PNDMSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 

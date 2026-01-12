@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import re
-from typing import Dict
 
 import numpy as np
 import torch
@@ -141,7 +140,7 @@ class OmniGenMultiModalProcessor:
         separate_cfg_input: bool = False,
         use_input_image_size_as_output: bool = False,
         num_images_per_prompt: int = 1,
-    ) -> Dict:
+    ) -> dict:
         if isinstance(instructions, str):
             instructions = [instructions]
             input_images = [input_images]

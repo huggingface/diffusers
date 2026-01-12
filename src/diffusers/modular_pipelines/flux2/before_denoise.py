@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Optional
 
 import numpy as np
 import torch
@@ -52,10 +51,10 @@ def compute_empirical_mu(image_seq_len: int, num_steps: int) -> float:
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -113,7 +112,7 @@ class Flux2SetTimestepsStep(ModularPipelineBlocks):
     model_name = "flux2"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
             ComponentSpec("transformer", Flux2Transformer2DModel),
@@ -124,7 +123,7 @@ class Flux2SetTimestepsStep(ModularPipelineBlocks):
         return "Step that sets the scheduler's timesteps for Flux2 inference using empirical mu calculation"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_inference_steps", default=50),
             InputParam("timesteps"),
@@ -143,7 +142,7 @@ class Flux2SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
             OutputParam(
@@ -206,7 +205,7 @@ class Flux2PrepareLatentsStep(ModularPipelineBlocks):
     model_name = "flux2"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return []
 
     @property
@@ -214,11 +213,11 @@ class Flux2PrepareLatentsStep(ModularPipelineBlocks):
         return "Prepare latents step that prepares the initial noise latents for Flux2 text-to-image generation"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("height", type_hint=int),
             InputParam("width", type_hint=int),
-            InputParam("latents", type_hint=Optional[torch.Tensor]),
+            InputParam("latents", type_hint=torch.Tensor | None),
             InputParam("num_images_per_prompt", type_hint=int, default=1),
             InputParam("generator"),
             InputParam(
@@ -231,7 +230,7 @@ class Flux2PrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
@@ -350,14 +349,14 @@ class Flux2RoPEInputsStep(ModularPipelineBlocks):
         return "Step that prepares the 4D RoPE position IDs for Flux2 denoising. Should be placed after text encoder and latent preparation steps."
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="prompt_embeds", required=True),
             InputParam(name="latent_ids"),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="txt_ids",
@@ -374,7 +373,7 @@ class Flux2RoPEInputsStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    def _prepare_text_ids(x: torch.Tensor, t_coord: Optional[torch.Tensor] = None):
+    def _prepare_text_ids(x: torch.Tensor, t_coord: torch.Tensor | None = None):
         """Prepare 4D position IDs for text tokens."""
         B, L, _ = x.shape
         out_ids = []
@@ -411,15 +410,15 @@ class Flux2PrepareImageLatentsStep(ModularPipelineBlocks):
         return "Step that prepares image latents and their position IDs for Flux2 image conditioning."
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
-            InputParam("image_latents", type_hint=List[torch.Tensor]),
+            InputParam("image_latents", type_hint=list[torch.Tensor]),
             InputParam("batch_size", required=True, type_hint=int),
             InputParam("num_images_per_prompt", default=1, type_hint=int),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "image_latents",
@@ -434,7 +433,7 @@ class Flux2PrepareImageLatentsStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    def _prepare_image_ids(image_latents: List[torch.Tensor], scale: int = 10):
+    def _prepare_image_ids(image_latents: list[torch.Tensor], scale: int = 10):
         """
         Generates 4D time-space coordinates (T, H, W, L) for a sequence of image latents.
 

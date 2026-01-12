@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -43,7 +41,7 @@ class Downsample1D(nn.Module):
         self,
         channels: int,
         use_conv: bool = False,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         padding: int = 1,
         name: str = "conv",
     ):
@@ -86,7 +84,7 @@ class Downsample2D(nn.Module):
         self,
         channels: int,
         use_conv: bool = False,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         padding: int = 1,
         name: str = "conv",
         kernel_size=3,
@@ -165,8 +163,8 @@ class FirDownsample2D(nn.Module):
 
     def __init__(
         self,
-        channels: Optional[int] = None,
-        out_channels: Optional[int] = None,
+        channels: int | None = None,
+        out_channels: int | None = None,
         use_conv: bool = False,
         fir_kernel: tuple[int, int, int, int] = (1, 3, 3, 1),
     ):
@@ -181,8 +179,8 @@ class FirDownsample2D(nn.Module):
     def _downsample_2d(
         self,
         hidden_states: torch.Tensor,
-        weight: Optional[torch.Tensor] = None,
-        kernel: Optional[torch.Tensor] = None,
+        weight: torch.Tensor | None = None,
+        kernel: torch.Tensor | None = None,
         factor: int = 2,
         gain: float = 1,
     ) -> torch.Tensor:
@@ -355,7 +353,7 @@ class CogVideoXDownsample3D(nn.Module):
 
 def downsample_2d(
     hidden_states: torch.Tensor,
-    kernel: Optional[torch.Tensor] = None,
+    kernel: torch.Tensor | None = None,
     factor: int = 2,
     gain: float = 1,
 ) -> torch.Tensor:

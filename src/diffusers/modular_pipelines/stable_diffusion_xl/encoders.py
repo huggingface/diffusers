@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -45,7 +43,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -296,18 +294,18 @@ class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
     def encode_prompt(
         components,
         prompt: str,
-        prompt_2: Optional[str] = None,
-        device: Optional[torch.device] = None,
+        prompt_2: str | None = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         prepare_unconditional_embeds: bool = True,
-        negative_prompt: Optional[str] = None,
-        negative_prompt_2: Optional[str] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt: str | None = None,
+        negative_prompt_2: str | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -605,7 +603,7 @@ class StableDiffusionXLVaeEncoderStep(ModularPipelineBlocks):
             InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"),
             InputParam(
                 "preprocess_kwargs",
-                type_hint=Optional[dict],
+                type_hint=dict | None,
                 description="A kwargs dictionary that if specified is passed along to the `ImageProcessor` as defined under `self.image_processor` in [diffusers.image_processor.VaeImageProcessor]",
             ),
         ]
@@ -736,7 +734,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(ModularPipelineBlocks):
             ),
             OutputParam(
                 "crops_coords",
-                type_hint=Optional[tuple[int, int]],
+                type_hint=tuple[int, int] | None,
                 description="The crop coordinates to use for the preprocess/postprocess of the image and mask",
             ),
         ]

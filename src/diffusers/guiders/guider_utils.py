@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -107,7 +107,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         """
         Returns the current state of the guidance technique as a dictionary. The state variables will be included in
         the __repr__ method. Returns:
-            `Dict[str, Any]`: A dictionary containing the current state variables including:
+            `dict[str, Any]`: A dictionary containing the current state variables including:
                 - step: Current inference step
                 - num_inference_steps: Total number of inference steps
                 - timestep: Current timestep tensor
@@ -290,8 +290,8 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
-        subfolder: Optional[str] = None,
+        pretrained_model_name_or_path: str | os.PathLike | None = None,
+        subfolder: str | None = None,
         return_unused_kwargs=False,
         **kwargs,
     ) -> Self:
@@ -310,7 +310,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             return_unused_kwargs (`bool`, *optional*, defaults to `False`):
                 Whether kwargs that are not consumed by the Python class should be returned or not.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
@@ -367,8 +367,8 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
 
 class GuiderOutput(BaseOutput):
     pred: torch.Tensor
-    pred_cond: Optional[torch.Tensor]
-    pred_uncond: Optional[torch.Tensor]
+    pred_cond: torch.Tensor | None
+    pred_uncond: torch.Tensor | None
 
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):

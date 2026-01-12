@@ -14,7 +14,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -195,11 +194,11 @@ class ShapEPipeline(DiffusionPipeline):
         prompt: str,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
         guidance_scale: float = 4.0,
         frame_size: int = 64,
-        output_type: Optional[str] = "pil",  # pil, np, latent, mesh
+        output_type: str | None = "pil",  # pil, np, latent, mesh
         return_dict: bool = True,
     ):
         """

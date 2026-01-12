@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional
 
 import numpy as np
 import torch
@@ -33,10 +32,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[str | torch.device] = None,
-    timesteps: Optional[list[int]] = None,
-    sigmas: Optional[list[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -106,7 +105,7 @@ def calculate_shift(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -334,7 +333,7 @@ class FluxPrepareLatentsStep(ModularPipelineBlocks):
         return [
             InputParam("height", type_hint=int),
             InputParam("width", type_hint=int),
-            InputParam("latents", type_hint=Optional[torch.Tensor]),
+            InputParam("latents", type_hint=torch.Tensor | None),
             InputParam("num_images_per_prompt", type_hint=int, default=1),
             InputParam("generator"),
             InputParam(

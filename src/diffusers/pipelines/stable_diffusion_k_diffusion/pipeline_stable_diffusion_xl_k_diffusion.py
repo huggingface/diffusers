@@ -14,7 +14,6 @@
 
 import importlib
 import inspect
-from typing import Optional
 
 import torch
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
@@ -202,18 +201,18 @@ class StableDiffusionXLKDiffusionPipeline(
     def encode_prompt(
         self,
         prompt: str,
-        prompt_2: Optional[str] = None,
-        device: Optional[torch.device] = None,
+        prompt_2: str | None = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str] = None,
-        negative_prompt_2: Optional[str] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt: str | None = None,
+        negative_prompt_2: str | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -568,31 +567,31 @@ class StableDiffusionXLKDiffusionPipeline(
     def __call__(
         self,
         prompt: str | list[str] = None,
-        prompt_2: Optional[str | list[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        prompt_2: str | list[str] | None = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        negative_prompt_2: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        negative_prompt: str | list[str] | None = None,
+        negative_prompt_2: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        original_size: Optional[tuple[int, int]] = None,
+        original_size: tuple[int, int] | None = None,
         crops_coords_top_left: tuple[int, int] = (0, 0),
-        target_size: Optional[tuple[int, int]] = None,
-        negative_original_size: Optional[tuple[int, int]] = None,
+        target_size: tuple[int, int] | None = None,
+        negative_original_size: tuple[int, int] | None = None,
         negative_crops_coords_top_left: tuple[int, int] = (0, 0),
-        negative_target_size: Optional[tuple[int, int]] = None,
-        use_karras_sigmas: Optional[bool] = False,
-        noise_sampler_seed: Optional[int] = None,
-        clip_skip: Optional[int] = None,
+        negative_target_size: tuple[int, int] | None = None,
+        use_karras_sigmas: bool | None = False,
+        noise_sampler_seed: int | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.

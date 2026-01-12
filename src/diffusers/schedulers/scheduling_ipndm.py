@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import Optional
 
 import numpy as np
 import torch
@@ -39,7 +38,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
     order = 1
 
     @register_to_config
-    def __init__(self, num_train_timesteps: int = 1000, trained_betas: Optional[np.ndarray | list[float]] = None):
+    def __init__(self, num_train_timesteps: int = 1000, trained_betas: np.ndarray | list[float] | None = None):
         # set `betas`, `alphas`, `timesteps`
         self.set_timesteps(num_train_timesteps)
 
@@ -81,7 +80,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 

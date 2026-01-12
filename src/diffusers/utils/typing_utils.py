@@ -15,8 +15,7 @@
 Typing utilities: Utilities related to type checking and validation
 """
 
-from types import UnionType
-from typing import Any, Set, Type, Union, get_args, get_origin
+from typing import Any, Set, Type, Union, UnionType, get_args, get_origin
 
 
 def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:

@@ -14,7 +14,6 @@
 
 
 from dataclasses import dataclass
-from typing import Optional
 
 import flax
 import jax
@@ -30,8 +29,8 @@ from .scheduling_utils_flax import FlaxSchedulerMixin
 class KarrasVeSchedulerState:
     # setable values
     num_inference_steps: int = None
-    timesteps: Optional[jnp.ndarray] = None
-    schedule: Optional[jnp.ndarray] = None  # sigma(t_i)
+    timesteps: jnp.ndarray | None = None
+    schedule: jnp.ndarray | None = None  # sigma(t_i)
 
     @classmethod
     def create(cls):

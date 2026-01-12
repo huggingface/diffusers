@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Optional
-
 from ..utils import deprecate, logging
 from .controlnets.controlnet_sparsectrl import (  # noqa
     SparseControlNetConditioningEmbedding,
@@ -62,18 +60,18 @@ class SparseControlNetModel(SparseControlNetModel):
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
-        norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int | None = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 768,
         transformer_layers_per_block: int | tuple[int, ...] = 1,
-        transformer_layers_per_mid_block: Optional[int | tuple[int]] = None,
+        transformer_layers_per_mid_block: int | tuple[int] | None = None,
         temporal_transformer_layers_per_block: int | tuple[int, ...] = 1,
         attention_head_dim: int | tuple[int, ...] = 8,
-        num_attention_heads: Optional[int | tuple[int, ...]] = None,
+        num_attention_heads: int | tuple[int, ...] | None = None,
         use_linear_projection: bool = False,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        conditioning_embedding_out_channels: Optional[tuple[int, ...]] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: tuple[int, ...] | None = (16, 32, 96, 256),
         global_pool_conditions: bool = False,
         controlnet_conditioning_channel_order: str = "rgb",
         motion_max_seq_length: int = 32,

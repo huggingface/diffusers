@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -186,9 +185,9 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         weights: list[float],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        negative_prior_prompt: Optional[str] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        negative_prior_prompt: str | None = None,
         negative_prompt: str = "",
         guidance_scale: float = 4.0,
         device=None,
@@ -197,7 +196,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         Function invoked when using the prior pipeline for interpolation.
 
         Args:
-            images_and_prompts (`list[Union[str, PIL.Image.Image, torch.Tensor]]`):
+            images_and_prompts (`list[str | PIL.Image.Image | torch.Tensor]`):
                 list of prompts and images to guide the image generation.
             weights: (`list[float]`):
                 list of weights for each condition in `images_and_prompts`
@@ -408,13 +407,13 @@ class KandinskyPriorPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str],
-        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt: str | list[str] | None = None,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
         guidance_scale: float = 4.0,
-        output_type: Optional[str] = "pt",
+        output_type: str | None = "pt",
         return_dict: bool = True,
     ):
         """

@@ -1,6 +1,6 @@
 import inspect
 import warnings
-from typing import Any, Dict, Optional
+from typing import Any
 
 from packaging import version
 
@@ -26,7 +26,7 @@ _TRANSFORMERS_CLASS_REMAPPING = {
 }
 
 
-def _maybe_remap_transformers_class(class_name: str) -> Optional[str]:
+def _maybe_remap_transformers_class(class_name: str) -> str | None:
     """
     Check if a Transformers class should be remapped to a newer version.
 
@@ -53,7 +53,7 @@ def _maybe_remap_transformers_class(class_name: str) -> Optional[str]:
     return None
 
 
-def deprecate(*args, take_from: Optional[Dict | Any] = None, standard_warn=True, stacklevel=2):
+def deprecate(*args, take_from: dict | Any | None = None, standard_warn=True, stacklevel=2):
     from .. import __version__
 
     deprecated_kwargs = take_from

@@ -16,7 +16,7 @@
 import dataclasses
 import math
 import os
-from typing import Any, Callable, Mapping, MutableMapping, Optional, Sequence
+from typing import Any, Callable, Mapping, MutableMapping, Sequence
 
 import numpy as np
 import torch
@@ -91,10 +91,10 @@ class NoteRepresentationConfig:
 @dataclasses.dataclass
 class NoteEventData:
     pitch: int
-    velocity: Optional[int] = None
-    program: Optional[int] = None
-    is_drum: Optional[bool] = None
-    instrument: Optional[int] = None
+    velocity: int | None = None
+    program: int | None = None
+    is_drum: bool | None = None
+    instrument: int | None = None
 
 
 @dataclasses.dataclass
@@ -348,7 +348,7 @@ def velocity_to_bin(velocity, num_velocity_bins):
 
 
 def note_event_data_to_events(
-    state: Optional[NoteEncodingState],
+    state: NoteEncodingState | None,
     value: NoteEventData,
     codec: Codec,
 ) -> Sequence[Event]:

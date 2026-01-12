@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -278,7 +277,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, AutoencoderMixin,
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         num_frames: int = 1,
     ) -> DecoderOutput | torch.Tensor:
         r"""

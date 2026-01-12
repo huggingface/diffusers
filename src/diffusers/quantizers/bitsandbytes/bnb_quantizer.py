@@ -16,7 +16,7 @@ Adapted from
 https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339dbc020fb3b/src/transformers/quantizers/quantizer_bnb_4bit.py
 """
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from ...utils import get_module_from_name
 from ..base import DiffusersQuantizer
@@ -134,7 +134,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         param_name: str,
         target_device: "torch.device",
         state_dict: dict[str, Any],
-        unexpected_keys: Optional[list[str]] = None,
+        unexpected_keys: list[str] | None = None,
         **kwargs,
     ):
         import bitsandbytes as bnb
@@ -456,7 +456,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         param_name: str,
         target_device: "torch.device",
         state_dict: dict[str, Any],
-        unexpected_keys: Optional[list[str]] = None,
+        unexpected_keys: list[str] | None = None,
         **kwargs,
     ):
         import bitsandbytes as bnb

@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -96,11 +96,11 @@ class Kandinsky3Pipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
         num_images_per_prompt=1,
         device=None,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
         _cut_context=False,
-        attention_mask: Optional[torch.Tensor] = None,
-        negative_attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        negative_attention_mask: torch.Tensor | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -338,19 +338,19 @@ class Kandinsky3Pipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
         prompt: str | list[str] = None,
         num_inference_steps: int = 25,
         guidance_scale: float = 3.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        height: Optional[int] = 1024,
-        width: Optional[int] = 1024,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        negative_attention_mask: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
+        height: int | None = 1024,
+        width: int | None = 1024,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        negative_attention_mask: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
         latents=None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
     ):

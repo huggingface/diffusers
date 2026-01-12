@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import math
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -440,7 +439,7 @@ class CosmosCausalAttention(nn.Module):
         if self.processor is None:
             raise ValueError("CosmosCausalAttention requires a processor.")
 
-    def forward(self, hidden_states: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor | None = None) -> torch.Tensor:
         return self.processor(self, hidden_states=hidden_states, attention_mask=attention_mask)
 
 
@@ -452,7 +451,7 @@ class CosmosSpatialAttentionProcessor2_0:
             )
 
     def __call__(
-        self, attn: CosmosCausalAttention, hidden_states: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
+        self, attn: CosmosCausalAttention, hidden_states: torch.Tensor, attention_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         residual = hidden_states
@@ -491,7 +490,7 @@ class CosmosTemporalAttentionProcessor2_0:
             )
 
     def __call__(
-        self, attn: CosmosCausalAttention, hidden_states: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
+        self, attn: CosmosCausalAttention, hidden_states: torch.Tensor, attention_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         residual = hidden_states
@@ -936,8 +935,8 @@ class AutoencoderKLCosmos(ModelMixin, AutoencoderMixin, ConfigMixin):
         scaling_factor: float = 1.0,
         spatial_compression_ratio: int = 8,
         temporal_compression_ratio: int = 8,
-        latents_mean: Optional[list[float]] = LATENTS_MEAN,
-        latents_std: Optional[list[float]] = LATENTS_STD,
+        latents_mean: list[float] | None = LATENTS_MEAN,
+        latents_std: list[float] | None = LATENTS_STD,
     ) -> None:
         super().__init__()
 
@@ -1001,12 +1000,12 @@ class AutoencoderKLCosmos(ModelMixin, AutoencoderMixin, ConfigMixin):
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_sample_min_num_frames: Optional[int] = None,
-        tile_sample_stride_height: Optional[float] = None,
-        tile_sample_stride_width: Optional[float] = None,
-        tile_sample_stride_num_frames: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_sample_min_num_frames: int | None = None,
+        tile_sample_stride_height: float | None = None,
+        tile_sample_stride_width: float | None = None,
+        tile_sample_stride_num_frames: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1077,7 +1076,7 @@ class AutoencoderKLCosmos(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> tuple[torch.Tensor] | DecoderOutput:
         x = sample
         posterior = self.encode(x).latent_dist

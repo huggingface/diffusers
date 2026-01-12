@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Dict, Optional
 
 import flax
 import flax.linen as nn
@@ -113,12 +112,12 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         "DownBlock2D",
     )
     up_block_types: tuple[str, ...] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
-    mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn"
+    mid_block_type: str | None = "UNetMidBlock2DCrossAttn"
     only_cross_attention: bool | tuple[bool] = False
     block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
     attention_head_dim: int | tuple[int, ...] = 8
-    num_attention_heads: Optional[int | tuple[int, ...]] = None
+    num_attention_heads: int | tuple[int, ...] | None = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
@@ -128,10 +127,10 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     use_memory_efficient_attention: bool = False
     split_head_dim: bool = False
     transformer_layers_per_block: int | tuple[int, ...] = 1
-    addition_embed_type: Optional[str] = None
-    addition_time_embed_dim: Optional[int] = None
+    addition_embed_type: str | None = None
+    addition_time_embed_dim: int | None = None
     addition_embed_type_num_heads: int = 64
-    projection_class_embeddings_input_dim: Optional[int] = None
+    projection_class_embeddings_input_dim: int | None = None
 
     def init_weights(self, rng: jax.Array) -> FrozenDict:
         # init input tensors
@@ -340,9 +339,9 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample: jnp.ndarray,
         timesteps: jnp.ndarray | float | int,
         encoder_hidden_states: jnp.ndarray,
-        added_cond_kwargs: Optional[Dict | FrozenDict] = None,
-        down_block_additional_residuals: Optional[tuple[jnp.ndarray, ...]] = None,
-        mid_block_additional_residual: Optional[jnp.ndarray] = None,
+        added_cond_kwargs: dict | FrozenDict | None = None,
+        down_block_additional_residuals: tuple[jnp.ndarray, ...] | None = None,
+        mid_block_additional_residual: jnp.ndarray | None = None,
         return_dict: bool = True,
         train: bool = False,
     ) -> FlaxUNet2DConditionOutput | tuple[jnp.ndarray]:

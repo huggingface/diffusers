@@ -17,7 +17,7 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import httpx
 import requests
@@ -745,9 +745,9 @@ def load_sub_model(
     torch_dtype: torch.dtype,
     provider: Any,
     sess_options: Any,
-    device_map: Optional[dict[str, torch.device] | str],
-    max_memory: Optional[dict[int | str, int | str]],
-    offload_folder: Optional[str | os.PathLike],
+    device_map: dict[str, torch.device] | str | None,
+    max_memory: dict[int | str, int | str] | None,
+    offload_folder: str | os.PathLike | None,
     offload_state_dict: bool,
     model_variants: dict[str, str],
     name: str,
@@ -756,9 +756,9 @@ def load_sub_model(
     low_cpu_mem_usage: bool,
     cached_folder: str | os.PathLike,
     use_safetensors: bool,
-    dduf_entries: Optional[dict[str, DDUFEntry]],
+    dduf_entries: dict[str, DDUFEntry] | None,
     provider_options: Any,
-    quantization_config: Optional[Any] = None,
+    quantization_config: Any | None = None,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     from ..quantizers import PipelineQuantizationConfig
@@ -1047,9 +1047,9 @@ def _update_init_kwargs_with_connected_pipeline(
 def _get_custom_components_and_folders(
     pretrained_model_name: str,
     config_dict: dict[str, Any],
-    filenames: Optional[list[str]] = None,
-    variant_filenames: Optional[list[str]] = None,
-    variant: Optional[str] = None,
+    filenames: list[str] | None = None,
+    variant_filenames: list[str] | None = None,
+    variant: str | None = None,
 ):
     config_dict = config_dict.copy()
 
@@ -1089,7 +1089,7 @@ def _get_ignore_patterns(
     allow_pickle: bool,
     use_onnx: bool,
     is_onnx: bool,
-    variant: Optional[str] = None,
+    variant: str | None = None,
 ) -> list[str]:
     if (
         use_safetensors

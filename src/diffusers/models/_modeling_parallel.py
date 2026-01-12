@@ -16,7 +16,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal
 
 import torch
 
@@ -62,8 +62,8 @@ class ContextParallelConfig:
 
     """
 
-    ring_degree: Optional[int] = None
-    ulysses_degree: Optional[int] = None
+    ring_degree: int | None = None
+    ulysses_degree: int | None = None
     convert_to_fp32: bool = True
     # TODO: support alltoall
     rotate_method: Literal["allgather", "alltoall"] = "allgather"
@@ -136,7 +136,7 @@ class ParallelConfig:
             Configuration for context parallelism.
     """
 
-    context_parallel_config: Optional[ContextParallelConfig] = None
+    context_parallel_config: ContextParallelConfig | None = None
 
     _rank: int = None
     _world_size: int = None
@@ -149,7 +149,7 @@ class ParallelConfig:
         world_size: int,
         device: torch.device,
         *,
-        mesh: Optional[torch.distributed.device_mesh.DeviceMesh] = None,
+        mesh: torch.distributed.device_mesh.DeviceMesh | None = None,
     ):
         self._rank = rank
         self._world_size = world_size
@@ -177,7 +177,7 @@ class ContextParallelInput:
     """
 
     split_dim: int
-    expected_dims: Optional[int] = None
+    expected_dims: int | None = None
     split_output: bool = False
 
     def __repr__(self):
@@ -198,7 +198,7 @@ class ContextParallelOutput:
     """
 
     gather_dim: int
-    expected_dims: Optional[int] = None
+    expected_dims: int | None = None
 
     def __repr__(self):
         return f"ContextParallelOutput(gather_dim={self.gather_dim}, expected_dims={self.expected_dims})"

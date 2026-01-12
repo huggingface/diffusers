@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Optional
-
 import torch
 
 from ...models import UNet1DModel
@@ -61,8 +59,8 @@ class DanceDiffusionPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         self,
         batch_size: int = 1,
         num_inference_steps: int = 100,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        audio_length_in_s: Optional[float] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        audio_length_in_s: float | None = None,
         return_dict: bool = True,
     ) -> AudioPipelineOutput | tuple:
         r"""

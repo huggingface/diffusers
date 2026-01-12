@@ -21,7 +21,7 @@ import importlib
 import re
 import types
 from fnmatch import fnmatch
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from packaging import version
 
@@ -119,7 +119,7 @@ if (
     _update_torch_safe_globals()
 
 
-def fuzzy_match_size(config_name: str) -> Optional[str]:
+def fuzzy_match_size(config_name: str) -> str | None:
     """
     Extract the size digit from strings like "4weight", "8weight". Returns the digit as an integer if found, otherwise
     None.

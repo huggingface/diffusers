@@ -17,7 +17,7 @@ import json
 import os
 from functools import partial
 from pathlib import Path
-from typing import Dict, Literal, Optional
+from typing import Literal
 
 import safetensors
 import torch
@@ -88,7 +88,7 @@ class PeftAdapterMixin:
 
     _hf_peft_config_loaded = False
     # kwargs for prepare_model_for_compiled_hotswap, if required
-    _prepare_lora_hotswap_kwargs: Optional[dict] = None
+    _prepare_lora_hotswap_kwargs: dict | None = None
 
     @classmethod
     # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
@@ -114,7 +114,7 @@ class PeftAdapterMixin:
 
             prefix (`str`, *optional*): Prefix to filter the state dict.
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
@@ -405,7 +405,7 @@ class PeftAdapterMixin:
         adapter_name: str = "default",
         upcast_before_saving: bool = False,
         safe_serialization: bool = True,
-        weight_name: Optional[str] = None,
+        weight_name: str | None = None,
     ):
         """
         Save the LoRA parameters corresponding to the underlying model.
@@ -470,7 +470,7 @@ class PeftAdapterMixin:
     def set_adapters(
         self,
         adapter_names: list[str] | str,
-        weights: Optional[float | Dict | list[float] | list[Dict] | list[None]] = None,
+        weights: float | dict | list[float] | list[dict] | list[None] | None = None,
     ):
         """
         Set the currently active adapters for use in the diffusion network (e.g. unet, transformer, etc.).
@@ -478,7 +478,7 @@ class PeftAdapterMixin:
         Args:
             adapter_names (`list[str]` or `str`):
                 The names of the adapters to use.
-            adapter_weights (`Union[list[float], float]`, *optional*):
+            adapter_weights (`list[float, float]`, *optional*):
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
                 adapters.
 
@@ -569,7 +569,7 @@ class PeftAdapterMixin:
         [documentation](https://huggingface.co/docs/peft).
 
         Args:
-            adapter_name (Union[str, list[str]])):
+            adapter_name (str | list[str])):
                 The list of adapters to set or the adapter name in the case of a single adapter.
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
@@ -783,7 +783,7 @@ class PeftAdapterMixin:
         Delete an adapter's LoRA layers from the underlying model.
 
         Args:
-            adapter_names (`Union[list[str], str]`):
+            adapter_names (`list[str, str]`):
                 The names (single string or list of strings) of the adapter to delete.
 
         Example:

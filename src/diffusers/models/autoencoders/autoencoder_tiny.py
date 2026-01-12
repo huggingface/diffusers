@@ -14,7 +14,6 @@
 
 
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 
@@ -274,7 +273,7 @@ class AutoencoderTiny(ModelMixin, AutoencoderMixin, ConfigMixin):
 
     @apply_forward_hook
     def decode(
-        self, x: torch.Tensor, generator: Optional[torch.Generator] = None, return_dict: bool = True
+        self, x: torch.Tensor, generator: torch.Generator | None = None, return_dict: bool = True
     ) -> DecoderOutput | tuple[torch.Tensor]:
         if self.use_slicing and x.shape[0] > 1:
             output = [

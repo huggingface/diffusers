@@ -511,7 +511,7 @@ class EMAModel:
                 Inverse multiplicative factor of EMA warmup. Default: 1. Only used if `use_ema_warmup` is True.
             power (float): Exponential factor of EMA warmup. Default: 2/3. Only used if `use_ema_warmup` is True.
             foreach (bool): Use torch._foreach functions for updating shadow parameters. Should be faster.
-            device (Optional[Union[str, torch.device]]): The device to store the EMA weights on. If None, the EMA
+            device (str | torch.device | None): The device to store the EMA weights on. If None, the EMA
                         weights will be stored on CPU.
 
         @crowsonkb's notes on EMA Warmup:

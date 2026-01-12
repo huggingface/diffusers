@@ -4,7 +4,7 @@ import os
 
 # Simple typed wrapper for parameter overrides
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from huggingface_hub import create_repo, hf_hub_download, upload_folder
 from huggingface_hub.utils import (
@@ -32,18 +32,18 @@ class MellonParam:
     name: str
     label: str
     type: str
-    display: Optional[str] = None
+    display: str | None = None
     default: Any = None
-    min: Optional[float] = None
-    max: Optional[float] = None
-    step: Optional[float] = None
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
     options: Any = None
     value: Any = None
-    fieldOptions: Optional[dict[str, Any]] = None
+    fieldOptions: dict[str, Any] | None = None
     onChange: Any = None
     onSignal: Any = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for Mellon schema, excluding None values and name."""
         data = asdict(self)
         return {k: v for k, v in data.items() if v is not None and k != "name"}
@@ -269,7 +269,7 @@ def mark_required(label: str, marker: str = " *") -> str:
     return f"{label}{marker}"
 
 
-def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[str, Any]:
+def node_spec_to_mellon_dict(node_spec: dict[str, Any], node_type: str) -> dict[str, Any]:
     """
     Convert a node spec dict into Mellon format.
 
@@ -421,7 +421,7 @@ class MellonPipelineConfig:
 
     def __init__(
         self,
-        node_specs: Dict[str, Optional[Dict[str, Any]]],
+        node_specs: dict[str, dict[str, Any] | None],
         label: str = "",
         default_repo: str = "",
         default_dtype: str = "",
@@ -451,7 +451,7 @@ class MellonPipelineConfig:
         node_types = list(self.node_params.keys())
         return f"MellonPipelineConfig(label={self.label!r}, default_repo={self.default_repo!r}, default_dtype={self.default_dtype!r}, node_params={node_types})"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to a JSON-serializable dictionary."""
         return {
             "label": self.label,
@@ -461,7 +461,7 @@ class MellonPipelineConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MellonPipelineConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "MellonPipelineConfig":
         """
         Create from a dictionary (loaded from JSON).
 
@@ -478,19 +478,19 @@ class MellonPipelineConfig:
         """Serialize to JSON string."""
         return json.dumps(self.to_dict(), indent=2, sort_keys=False) + "\n"
 
-    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
+    def to_json_file(self, json_file_path: str | os.PathLike):
         """Save to a JSON file."""
         with open(json_file_path, "w", encoding="utf-8") as writer:
             writer.write(self.to_json_string())
 
     @classmethod
-    def from_json_file(cls, json_file_path: Union[str, os.PathLike]) -> "MellonPipelineConfig":
+    def from_json_file(cls, json_file_path: str | os.PathLike) -> "MellonPipelineConfig":
         """Load from a JSON file."""
         with open(json_file_path, "r", encoding="utf-8") as reader:
             data = json.load(reader)
         return cls.from_dict(data)
 
-    def save(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
         """Save the pipeline config to a directory."""
         if os.path.isfile(save_directory):
             raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
@@ -522,7 +522,7 @@ class MellonPipelineConfig:
     @classmethod
     def load(
         cls,
-        pretrained_model_name_or_path: Union[str, os.PathLike],
+        pretrained_model_name_or_path: str | os.PathLike,
         **kwargs,
     ) -> "MellonPipelineConfig":
         """Load a pipeline config from a local path or Hugging Face Hub."""

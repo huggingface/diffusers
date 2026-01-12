@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -22,7 +21,7 @@ class LEditsPPDiffusionPipelineOutput(BaseOutput):
     """
 
     images: list[PIL.Image.Image] | np.ndarray
-    nsfw_content_detected: Optional[list[bool]]
+    nsfw_content_detected: list[bool] | None
 
 
 @dataclass

@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Optional
-
 import torch
 
 from ...models import UNet2DModel
@@ -57,9 +55,9 @@ class DDPMPipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         num_inference_steps: int = 1000,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ) -> ImagePipelineOutput | tuple:
         r"""

@@ -217,7 +217,7 @@ class BenchmarkMixin:
         init_kwargs: Dict[str, Any],
         get_input_fn: Callable,
         compile_kwargs: Optional[Dict[str, Any]],
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         # setup
         self.pre_benchmark()
 

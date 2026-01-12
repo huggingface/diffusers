@@ -14,7 +14,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import torch
 
@@ -133,7 +133,7 @@ class FasterCacheConfig:
     # In the paper and codebase, they hardcode these values to 2. However, it can be made configurable
     # after some testing. We default to 2 if these parameters are not provided.
     spatial_attention_block_skip_range: int = 2
-    temporal_attention_block_skip_range: Optional[int] = None
+    temporal_attention_block_skip_range: int | None = None
 
     spatial_attention_timestep_skip_range: tuple[int, int] = (-1, 681)
     temporal_attention_timestep_skip_range: tuple[int, int] = (-1, 681)

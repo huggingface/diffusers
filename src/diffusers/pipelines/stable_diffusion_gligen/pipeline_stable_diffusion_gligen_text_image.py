@@ -14,7 +14,7 @@
 
 import inspect
 import warnings
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import PIL.Image
 import torch
@@ -255,10 +255,10 @@ class StableDiffusionGLIGENTextImagePipeline(DeprecatedPipelineMixin, DiffusionP
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -716,8 +716,8 @@ class StableDiffusionGLIGENTextImagePipeline(DeprecatedPipelineMixin, DiffusionP
     def __call__(
         self,
         prompt: str | list[str] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         gligen_scheduled_sampling_beta: float = 0.3,
@@ -726,19 +726,19 @@ class StableDiffusionGLIGENTextImagePipeline(DeprecatedPipelineMixin, DiffusionP
         input_phrases_mask: int | list[int] = None,
         input_images_mask: int | list[int] = None,
         gligen_boxes: list[list[float]] = None,
-        gligen_inpaint_image: Optional[PIL.Image.Image] = None,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        gligen_inpaint_image: PIL.Image.Image | None = None,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         gligen_normalize_constant: float = 28.7,
         clip_skip: int = None,
     ):

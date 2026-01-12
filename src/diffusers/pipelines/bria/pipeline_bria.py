@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -146,14 +146,14 @@ class BriaPipeline(DiffusionPipeline):
     def encode_prompt(
         self,
         prompt: str | list[str],
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str | list[str]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt: str | list[str] | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
         max_sequence_length: int = 128,
-        lora_scale: Optional[float] = None,
+        lora_scale: float | None = None,
     ):
         r"""
 
@@ -323,7 +323,7 @@ class BriaPipeline(DiffusionPipeline):
         prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 128,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
     ):
         tokenizer = self.tokenizer
         text_encoder = self.text_encoder
@@ -450,21 +450,21 @@ class BriaPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 30,
         timesteps: list[int] = None,
         guidance_scale: float = 5,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.FloatTensor | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 128,
         clip_value: None | float = None,
@@ -504,7 +504,7 @@ class BriaPipeline(DiffusionPipeline):
                         equation 2. of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is
                         enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
                         that are closely linked to the text `prompt`, usually at the expense of lower image quality.
-                    negative_prompt (`str` or `List[str]`, *optional*):
+                    negative_prompt (`str` or `list[str]`, *optional*):
         >>>>>>> main
                         The prompt or prompts not to guide the image generation. If not defined, one has to pass
                         `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -222,7 +221,7 @@ class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, Config
     def decode(
         self,
         z: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
         num_inference_steps: int = 2,
     ) -> DecoderOutput | tuple[torch.Tensor]:
@@ -231,12 +230,12 @@ class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, Config
 
         Args:
             z (torch.Tensor): The input latent vector.
-            generator (Optional[torch.Generator]): The random number generator. Default is None.
+            generator (torch.Generator | None): The random number generator. Default is None.
             return_dict (bool): Whether to return the output as a dictionary. Default is True.
             num_inference_steps (int): The number of inference steps. Default is 2.
 
         Returns:
-            Union[DecoderOutput, tuple[torch.Tensor]]: The decoded output.
+            DecoderOutput | tuple[torch.Tensor]: The decoded output.
 
         """
         z = (z * self.config.scaling_factor - self.means) / self.stds
@@ -339,7 +338,7 @@ class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, Config
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:

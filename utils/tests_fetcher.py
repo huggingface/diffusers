@@ -726,7 +726,7 @@ def init_test_examples_dependencies() -> Tuple[Dict[str, List[str]], List[str]]:
     return test_example_deps, all_examples
 
 
-def create_reverse_dependency_map() -> Dict[str, List[str]]:
+def create_reverse_dependency_map() -> dict[str, List[str]]:
     """
     Create the dependency map from module/test filename to the list of modules/tests that depend on it recursively.
 
@@ -778,7 +778,7 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
     return reverse_map
 
 
-def create_module_to_test_map(reverse_map: Dict[str, List[str]] = None) -> Dict[str, List[str]]:
+def create_module_to_test_map(reverse_map: Dict[str, List[str]] = None) -> dict[str, List[str]]:
     """
     Extract the tests from the reverse_dependency_map and potentially filters the model tests.
 
@@ -1023,7 +1023,7 @@ def filter_tests(output_file: str, filters: List[str]):
         f.write(" ".join(test_files))
 
 
-def parse_commit_message(commit_message: str) -> Dict[str, bool]:
+def parse_commit_message(commit_message: str) -> dict[str, bool]:
     """
     Parses the commit message to detect if a command is there to skip, force all or part of the CI.
 

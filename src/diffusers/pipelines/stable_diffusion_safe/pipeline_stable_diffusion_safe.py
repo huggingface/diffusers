@@ -1,6 +1,6 @@
 import inspect
 import warnings
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 import torch
@@ -73,11 +73,11 @@ class StableDiffusionPipelineSafe(DeprecatedPipelineMixin, DiffusionPipeline, St
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: SafeStableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
-        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
+        image_encoder: CLIPVisionModelWithProjection | None = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
-        safety_concept: Optional[str] = (
+        safety_concept: str | None = (
             "an image showing hate, harassment, violence, suffering, humiliation, harm, suicide, sexual, nudity,"
             " bodily fluids, blood, obscene gestures, illegal activity, drug use, theft, vandalism, weapons, child"
             " abuse, brutality, cruelty"
@@ -521,25 +521,25 @@ class StableDiffusionPipelineSafe(DeprecatedPipelineMixin, DiffusionPipeline, St
     def __call__(
         self,
         prompt: str | list[str],
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        ip_adapter_image: PipelineImageInput | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-        sld_guidance_scale: Optional[float] = 1000,
-        sld_warmup_steps: Optional[int] = 10,
-        sld_threshold: Optional[float] = 0.01,
-        sld_momentum_scale: Optional[float] = 0.3,
-        sld_mom_beta: Optional[float] = 0.4,
+        sld_guidance_scale: float | None = 1000,
+        sld_warmup_steps: int | None = 10,
+        sld_threshold: float | None = 0.01,
+        sld_momentum_scale: float | None = 0.3,
+        sld_mom_beta: float | None = 0.4,
     ):
         r"""
         The call function to the pipeline for generation.

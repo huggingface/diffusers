@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -730,7 +728,7 @@ class WanUpBlock(nn.Module):
         out_dim: int,
         num_res_blocks: int,
         dropout: float = 0.0,
-        upsample_mode: Optional[str] = None,
+        upsample_mode: str | None = None,
         non_linearity: str = "silu",
     ):
         super().__init__()
@@ -971,7 +969,7 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
     def __init__(
         self,
         base_dim: int = 96,
-        decoder_base_dim: Optional[int] = None,
+        decoder_base_dim: int | None = None,
         z_dim: int = 16,
         dim_mult: list[int] = [1, 2, 4, 4],
         num_res_blocks: int = 2,
@@ -1017,9 +1015,9 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
         is_residual: bool = False,
         in_channels: int = 3,
         out_channels: int = 3,
-        patch_size: Optional[int] = None,
-        scale_factor_temporal: Optional[int] = 4,
-        scale_factor_spatial: Optional[int] = 8,
+        patch_size: int | None = None,
+        scale_factor_temporal: int | None = 4,
+        scale_factor_spatial: int | None = 8,
     ) -> None:
         super().__init__()
 
@@ -1087,10 +1085,10 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_sample_stride_height: Optional[float] = None,
-        tile_sample_stride_width: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_sample_stride_height: float | None = None,
+        tile_sample_stride_width: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1406,7 +1404,7 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> DecoderOutput | torch.Tensor:
         """
         Args:
