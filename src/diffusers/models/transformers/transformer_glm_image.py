@@ -155,11 +155,13 @@ class GlmImageLayerKVCache:
             self.k_cache = k
             self.v_cache = v
         else:
-            self.k_cache = torch.cat([self.k_cache, k], dim=2)
-            self.v_cache = torch.cat([self.v_cache, v], dim=2)
+            self.k_cache = torch.cat([self.k_cache, k], dim=1)
+            self.v_cache = torch.cat([self.v_cache, v], dim=1)
 
-    def get(self):
-        return self.k_cache, self.v_cache
+    def get(self, k: torch.Tensor, v: torch.Tensor):
+        k_cache = torch.cat([self.k_cache, k], dim=1)
+        v_cache = torch.cat([self.v_cache, v], dim=1)
+        return k_cache, v_cache
 
     def clear(self):
         self.k_cache = None
@@ -249,9 +251,7 @@ class GlmImageAttnProcessor:
             if kv_cache.mode == "write":
                 kv_cache.store(key, value)
             elif kv_cache.mode == "read":
-                k_cache, v_cache = kv_cache.get()
-                key = torch.cat([k_cache, key], dim=1) if k_cache is not None else key
-                value = torch.cat([v_cache, value], dim=1) if v_cache is not None else value
+                key, value = kv_cache.get(key, value)
             elif kv_cache.mode == "skip":
                 pass
 
