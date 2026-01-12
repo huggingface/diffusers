@@ -432,7 +432,7 @@ def get_fsdp_kwargs_from_accelerator(accelerator) -> dict:
 
 def wrap_with_fsdp(
     model: torch.nn.Module,
-    device: str | torch.Device,
+    device: str | torch.device,
     offload: bool = True,
     use_orig_params: bool = True,
     limit_all_gathers: bool = True,
