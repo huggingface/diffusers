@@ -15,7 +15,6 @@
 
 import inspect
 import re
-from math import sqrt
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -194,40 +193,28 @@ class GlmImagePipeline(DiffusionPipeline):
         )
 
     @staticmethod
-    def _build_image_grid_thw(
-        token_h: int,
-        token_w: int,
-        prev_token_h: int,
-        prev_token_w: int,
-        existing_grid: Optional[torch.Tensor] = None,
-        device: Optional[torch.device] = None,
-    ) -> torch.Tensor:
-        if existing_grid is None or existing_grid.numel() == 0:
-            return torch.tensor(
-                [
-                    [1, token_h, token_w],
-                    [1, prev_token_h, prev_token_w],
-                ],
-                device=device,
-            )
-        else:
-            return torch.cat([existing_grid.to(device), torch.tensor([[1, token_h, token_w]], device=device)], dim=0)
+    def _compute_generation_params(
+        image_grid_thw,
+        is_text_to_image: bool,
+    ):
+        grid_sizes = []
+        grid_hw = []
 
-    @staticmethod
-    def _calculate_ar_generation_params(
-        token_h: int, token_w: int, prev_token_h: int, prev_token_w: int, is_text_to_image: bool
-    ) -> Tuple[int, int]:
-        large_image_tokens = token_h * token_w
-        small_image_tokens = prev_token_h * prev_token_w
+        for i in range(image_grid_thw.shape[0]):
+            t, h, w = image_grid_thw[i].tolist()
+            grid_sizes.append(int(h * w))
+            grid_hw.append((int(h), int(w)))
 
-        if is_text_to_image:
-            max_new_tokens = small_image_tokens + large_image_tokens + 1
-            large_image_start_offset = small_image_tokens
-        else:
-            max_new_tokens = large_image_tokens + 1
+        if not is_text_to_image:
+            max_new_tokens = grid_sizes[-1] + 1
             large_image_start_offset = 0
-
-        return max_new_tokens, large_image_start_offset
+            target_grid_h, target_grid_w = grid_hw[-1]
+        else:
+            total_tokens = sum(grid_sizes)
+            max_new_tokens = total_tokens + 1
+            large_image_start_offset = sum(grid_sizes[1:])
+            target_grid_h, target_grid_w = grid_hw[0]
+        return max_new_tokens, large_image_start_offset, target_grid_h, target_grid_w
 
     @staticmethod
     def _extract_large_image_tokens(
@@ -247,75 +234,44 @@ class GlmImagePipeline(DiffusionPipeline):
         token_ids = token_ids.view(1, -1)
         return token_ids
 
-    @staticmethod
-    def _build_prompt_with_shape(
-        prompt: str,
-        height: int,
-        width: int,
-        is_text_to_image: bool,
-        factor: int = 32,
-    ) -> Tuple[str, int, int, int, int]:
-        token_h = height // factor
-        token_w = width // factor
-        ratio = token_h / token_w
-        prev_token_h = int(sqrt(ratio) * (factor // 2))
-        prev_token_w = int(sqrt(1 / ratio) * (factor // 2))
-
-        if is_text_to_image:
-            expanded_prompt = f"{prompt}<sop>{token_h} {token_w}<eop><sop>{prev_token_h} {prev_token_w}<eop>"
-        else:
-            expanded_prompt = f"{prompt}<sop>{token_h} {token_w}<eop>"
-
-        return expanded_prompt, token_h, token_w, prev_token_h, prev_token_w
-
     def generate_prior_tokens(
         self,
         prompt: str,
         height: int,
         width: int,
         image: Optional[List[PIL.Image.Image]] = None,
-        factor: int = 32,
-    ) -> Tuple[torch.Tensor, int, int]:
+    ):
         device = self.vision_language_encoder.device
-        height = (height // factor) * factor
-        width = (width // factor) * factor
         is_text_to_image = image is None or len(image) == 0
-        expanded_prompt, token_h, token_w, prev_h, prev_w = self._build_prompt_with_shape(
-            prompt, height, width, is_text_to_image
-        )
         content = []
         if image is not None:
             for img in image:
                 content.append({"type": "image", "image": img})
-        content.append({"type": "text", "text": expanded_prompt})
+        content.append({"type": "text", "text": prompt})
         messages = [{"role": "user", "content": content}]
         inputs = self.processor.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            target_h=height,
+            target_w=width,
+            return_dict=True,
+            return_tensors="pt",
         ).to(device)
-        existing_grid = inputs.get("image_grid_thw")
-        inputs["image_grid_thw"] = self._build_image_grid_thw(
-            token_h,
-            token_w,
-            prev_h,
-            prev_w,
-            existing_grid=existing_grid if not is_text_to_image else None,
-            device=device,
-        )
 
-        max_new_tokens, large_image_offset = self._calculate_ar_generation_params(
-            token_h, token_w, prev_h, prev_w, is_text_to_image
+        image_grid_thw = inputs.get("image_grid_thw")
+        max_new_tokens, large_image_offset, token_h, token_w = self._compute_generation_params(
+            image_grid_thw, is_text_to_image
         )
-        large_image_tokens = token_h * token_w
-        input_length = inputs["input_ids"].shape[-1]
 
         prior_token_image_ids = None
         if image is not None:
             prior_token_image_embed = self.vision_language_encoder.get_image_features(
-                inputs["pixel_values"], existing_grid
+                inputs["pixel_values"], image_grid_thw[:-1]
             )
             prior_token_image_embed = torch.cat(prior_token_image_embed, dim=0)
             prior_token_image_ids = self.vision_language_encoder.get_image_tokens(
-                prior_token_image_embed, existing_grid
+                prior_token_image_embed, image_grid_thw[:-1]
             )
         outputs = self.vision_language_encoder.generate(
             **inputs,
@@ -324,7 +280,7 @@ class GlmImagePipeline(DiffusionPipeline):
         )
 
         prior_token_ids_d32 = self._extract_large_image_tokens(
-            outputs, input_length, large_image_offset, large_image_tokens
+            outputs, inputs["input_ids"].shape[-1], large_image_offset, token_h * token_w
         )
         prior_token_ids = self._upsample_token_ids(prior_token_ids_d32, token_h, token_w)
 
