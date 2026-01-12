@@ -1042,7 +1042,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         class_labels: torch.Tensor | None = None,
         timestep_cond: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
-        cross_attention_kwargs: dict[str, any] | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         added_cond_kwargs: dict[str, torch.Tensor] | None = None,
         down_block_additional_residuals: tuple[torch.Tensor] | None = None,
         mid_block_additional_residual: torch.Tensor | None = None,
@@ -1698,7 +1698,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         temb: torch.Tensor | None = None,
         encoder_hidden_states: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
-        cross_attention_kwargs: dict[str, any] | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         additional_residuals: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -27,10 +28,7 @@ from ...models.attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from ...models.embeddings import (
-    TimestepEmbedding,
-    Timesteps,
-)
+from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.modeling_utils import ModelMixin
 from ...models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from ...models.transformers.transformer_2d import Transformer2DModel
@@ -619,7 +617,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNe
         class_labels: torch.Tensor | None = None,
         timestep_cond: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
-        cross_attention_kwargs: dict[str, any] | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         return_dict: bool = True,
         encoder_hidden_states_1: torch.Tensor | None = None,
@@ -1029,7 +1027,7 @@ class CrossAttnDownBlock2D(nn.Module):
         temb: torch.Tensor | None = None,
         encoder_hidden_states: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
-        cross_attention_kwargs: dict[str, any] | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         encoder_hidden_states_1: torch.Tensor | None = None,
         encoder_attention_mask_1: torch.Tensor | None = None,
@@ -1191,7 +1189,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         temb: torch.Tensor | None = None,
         encoder_hidden_states: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
-        cross_attention_kwargs: dict[str, any] | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         encoder_hidden_states_1: torch.Tensor | None = None,
         encoder_attention_mask_1: torch.Tensor | None = None,
@@ -1341,7 +1339,7 @@ class CrossAttnUpBlock2D(nn.Module):
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
         temb: torch.Tensor | None = None,
         encoder_hidden_states: torch.Tensor | None = None,
-        cross_attention_kwargs: dict[str, any] | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         upsample_size: int | None = None,
         attention_mask: torch.Tensor | None = None,
         encoder_attention_mask: torch.Tensor | None = None,

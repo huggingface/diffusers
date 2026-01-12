@@ -436,7 +436,7 @@ def wrap_with_fsdp(
     offload: bool = True,
     use_orig_params: bool = True,
     limit_all_gathers: bool = True,
-    fsdp_kwargs: dict[str, any] | None = None,
+    fsdp_kwargs: dict[str, Any] | None = None,
     transformer_layer_cls: set[type[torch.nn.Module]] | None = None,
 ) -> FSDP:
     """
@@ -496,8 +496,8 @@ class EMAModel:
         inv_gamma: float | int = 1.0,
         power: float | int = 2 / 3,
         foreach: bool = False,
-        model_cls: any | None = None,
-        model_config: dict[str, any] | None = None,
+        model_cls: Any | None = None,
+        model_config: dict[str, Any] | None = None,
         **kwargs,
     ):
         """

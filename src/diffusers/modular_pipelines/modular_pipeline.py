@@ -1616,7 +1616,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             params[input_param.name] = input_param.default
         return params
 
-    def get_default_blocks_name(self, config_dict: Optional[dict[str, any]]) -> Optional[str]:
+    def get_default_blocks_name(self, config_dict: Optional[dict[str, Any]]) -> Optional[str]:
         return self.default_blocks_name
 
     @classmethod
