@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import torch
@@ -600,7 +600,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         negative_prompt_attention_mask_2: torch.Tensor | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
-        callback_on_step_end: callable[[int, int, dict], None]
+        callback_on_step_end: Callable[[int, int, dict], None]
         | PipelineCallback
         | MultiPipelineCallbacks
         | None = None,
