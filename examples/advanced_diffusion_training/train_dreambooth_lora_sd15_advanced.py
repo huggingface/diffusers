@@ -801,7 +801,7 @@ class TokenEmbeddingsHandler:
 
             # New tokens for each text encoder are saved under "clip_l" (for text_encoder 0), "clip_g" (for
             # text_encoder 1) to keep compatible with the ecosystem.
-            # Note: When loading with diffusers, Any name can work - simply specify in inference
+            # Note: When loading with diffusers, any name can work - simply specify in inference
             tensors[idx_to_text_encoder_name[idx]] = new_token_embeddings
             # tensors[f"text_encoders_{idx}"] = new_token_embeddings
 

@@ -121,7 +121,7 @@ from showone_unet_3d_condition import ShowOneUNet3DConditionModel
 unet = ShowOneUNet3DConditionModel.from_pretrained(pipeline_id, subfolder="unet")
 ```
 
-3. Load the custom pipeline code (already implemented in [pipeline_t2v_base_pixel.py](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/pipeline_t2v_base_pixel.py)). This script contains a custom `TextToVideoIFPipeline` class for generating videos from text. Like the custom UNet, Any code required for `TextToVideIFPipeline` should be placed in `pipeline_t2v_base_pixel.py`.
+3. Load the custom pipeline code (already implemented in [pipeline_t2v_base_pixel.py](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/pipeline_t2v_base_pixel.py)). This script contains a custom `TextToVideoIFPipeline` class for generating videos from text. Like the custom UNet, any code required for `TextToVideIFPipeline` should be placed in `pipeline_t2v_base_pixel.py`.
 
 Initialize `TextToVideoIFPipeline` with `ShowOneUNet3DConditionModel`.
 

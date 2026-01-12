@@ -945,7 +945,7 @@ class TokenEmbeddingsHandler:
             new_token_embeddings = embeds.weight.data[train_ids]
 
             # New tokens for each text encoder are saved under "clip_l" (for text_encoder 0),
-            # Note: When loading with diffusers, Any name can work - simply specify in inference
+            # Note: When loading with diffusers, any name can work - simply specify in inference
             tensors[idx_to_text_encoder_name[idx]] = new_token_embeddings
             # tensors[f"text_encoders_{idx}"] = new_token_embeddings
 
