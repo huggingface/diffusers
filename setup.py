@@ -122,7 +122,7 @@ _deps = [
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
-    "python>=3.9.0",
+    "python>=3.10.0",
     "ruff==0.9.10",
     "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
