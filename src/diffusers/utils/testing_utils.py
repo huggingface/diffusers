@@ -15,7 +15,7 @@ import tempfile
 import time
 import unittest
 import urllib.parse
-from collections import UserDict, Userdict
+from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -1459,7 +1459,7 @@ def get_device_properties() -> DeviceProperties:
 
 
 if TYPE_CHECKING:
-    DevicePropertiesUserDict = Userdict[DeviceProperties, Any]
+    DevicePropertiesUserDict = UserDict[DeviceProperties, Any]
 else:
     DevicePropertiesUserDict = UserDict
 
