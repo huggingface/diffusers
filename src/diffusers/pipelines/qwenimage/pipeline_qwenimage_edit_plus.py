@@ -723,7 +723,9 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
             if is_nested:
                 if batch_size > 1 and len(image) != batch_size:
-                    raise ValueError( f"Image batch_size ({len(image)}) must match batch_size for prompts ({batch_size}) for batch inference."")
+                    raise ValueError(
+                        f"Image batch_size ({len(image)}) must match batch_size for prompts ({batch_size}) for batch inference."
+                    )
                 # batch_size > 1: image = [[img1, img2], [img3, img4]]
                 # Process each batch item separately
                 condition_image_sizes = []
