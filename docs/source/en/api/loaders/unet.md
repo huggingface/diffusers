@@ -17,7 +17,7 @@ Some training methods - like LoRA and Custom Diffusion - typically target the UN
 The [`UNet2DConditionLoadersMixin`] class provides functions for loading and saving weights, fusing and unfusing LoRAs, disabling and enabling LoRAs, and setting and deleting adapters.
 
 > [!TIP]
-> To learn more about how to load LoRA weights, see the [LoRA](../../using-diffusers/loading_adapters#lora) loading guide.
+> To learn more about how to load LoRA weights, see the [LoRA](../../tutorials/using_peft_for_inference) guide.
 
 ## UNet2DConditionLoadersMixin
 

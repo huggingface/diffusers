@@ -47,6 +47,7 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.models.auto_model import AutoModel
+from diffusers.models.modeling_outputs import BaseOutput
 from diffusers.training_utils import EMAModel
 from diffusers.utils import (
     SAFE_WEIGHTS_INDEX_NAME,
@@ -106,6 +107,11 @@ def check_if_lora_correctly_set(model) -> bool:
         if isinstance(module, BaseTunerLayer):
             return True
     return False
+
+
+def normalize_output(out):
+    out0 = out[0] if isinstance(out, (BaseOutput, tuple)) else out
+    return torch.stack(out0) if isinstance(out0, list) else out0
 
 
 # Will be run via run_test_in_subprocess
@@ -450,7 +456,15 @@ class ModelUtilsTest(unittest.TestCase):
 
 
 class UNetTesterMixin:
+    @staticmethod
+    def _accepts_norm_num_groups(model_class):
+        model_sig = inspect.signature(model_class.__init__)
+        accepts_norm_groups = "norm_num_groups" in model_sig.parameters
+        return accepts_norm_groups
+
     def test_forward_with_norm_groups(self):
+        if not self._accepts_norm_num_groups(self.model_class):
+            pytest.skip(f"Test not supported for {self.model_class.__name__}")
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         init_dict["norm_num_groups"] = 16
@@ -527,6 +541,9 @@ class ModelTesterMixin:
 
             if isinstance(new_image, dict):
                 new_image = new_image.to_tuple()[0]
+
+            image = normalize_output(image)
+            new_image = normalize_output(new_image)
 
         max_diff = (image - new_image).abs().max().item()
         self.assertLessEqual(max_diff, expected_max_diff, "Models give different forward passes")
@@ -772,6 +789,9 @@ class ModelTesterMixin:
             if isinstance(new_image, dict):
                 new_image = new_image.to_tuple()[0]
 
+            image = normalize_output(image)
+            new_image = normalize_output(new_image)
+
         max_diff = (image - new_image).abs().max().item()
         self.assertLessEqual(max_diff, expected_max_diff, "Models give different forward passes")
 
@@ -834,6 +854,9 @@ class ModelTesterMixin:
             if isinstance(second, dict):
                 second = second.to_tuple()[0]
 
+            first = normalize_output(first)
+            second = normalize_output(second)
+
         out_1 = first.cpu().numpy()
         out_2 = second.cpu().numpy()
         out_1 = out_1[~np.isnan(out_1)]
@@ -852,11 +875,15 @@ class ModelTesterMixin:
 
             if isinstance(output, dict):
                 output = output.to_tuple()[0]
+            if isinstance(output, list):
+                output = torch.stack(output)
 
         self.assertIsNotNone(output)
 
         # input & output have to have the same shape
         input_tensor = inputs_dict[self.main_input_name]
+        if isinstance(input_tensor, list):
+            input_tensor = torch.stack(input_tensor)
 
         if expected_output_shape is None:
             expected_shape = input_tensor.shape
@@ -890,11 +917,15 @@ class ModelTesterMixin:
 
             if isinstance(output_1, dict):
                 output_1 = output_1.to_tuple()[0]
+            if isinstance(output_1, list):
+                output_1 = torch.stack(output_1)
 
             output_2 = new_model(**inputs_dict)
 
             if isinstance(output_2, dict):
                 output_2 = output_2.to_tuple()[0]
+            if isinstance(output_2, list):
+                output_2 = torch.stack(output_2)
 
         self.assertEqual(output_1.shape, output_2.shape)
 
@@ -1130,6 +1161,8 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         output_no_lora = model(**inputs_dict, return_dict=False)[0]
+        if isinstance(output_no_lora, list):
+            output_no_lora = torch.stack(output_no_lora)
 
         denoiser_lora_config = LoraConfig(
             r=rank,
@@ -1143,6 +1176,8 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         outputs_with_lora = model(**inputs_dict, return_dict=False)[0]
+        if isinstance(outputs_with_lora, list):
+            outputs_with_lora = torch.stack(outputs_with_lora)
 
         self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora, atol=1e-4, rtol=1e-4))
 
@@ -1167,6 +1202,8 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         outputs_with_lora_2 = model(**inputs_dict, return_dict=False)[0]
+        if isinstance(outputs_with_lora_2, list):
+            outputs_with_lora_2 = torch.stack(outputs_with_lora_2)
 
         self.assertFalse(torch.allclose(output_no_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
         self.assertTrue(torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4))
@@ -1288,31 +1325,35 @@ class ModelTesterMixin:
     def test_cpu_offload(self):
         if self.model_class._no_split_modules is None:
             pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
+
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-
         model = model.to(torch_device)
 
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_sizes(model)[""]
-        # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
             for max_size in max_gpu_sizes:
                 max_memory = {0: max_size, "cpu": model_size * 2}
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
+
                 # Making sure part of the model will actually end up offloaded
                 self.assertSetEqual(set(new_model.hf_device_map.values()), {0, "cpu"})
 
                 self.check_device_map_is_respected(new_model, new_model.hf_device_map)
+
                 torch.manual_seed(0)
                 new_output = new_model(**inputs_dict)
+                new_normalized_output = normalize_output(new_output)
 
-                self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+                self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     @require_torch_accelerator
     def test_disk_offload_without_safetensors(self):
@@ -1325,6 +1366,7 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_sizes(model)[""]
         max_size = int(self.model_split_percents[0] * model_size)
@@ -1344,8 +1386,8 @@ class ModelTesterMixin:
             self.check_device_map_is_respected(new_model, new_model.hf_device_map)
             torch.manual_seed(0)
             new_output = new_model(**inputs_dict)
-
-            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+            new_normalized_output = normalize_output(new_output)
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     @require_torch_accelerator
     def test_disk_offload_with_safetensors(self):
@@ -1358,6 +1400,7 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1372,8 +1415,9 @@ class ModelTesterMixin:
             self.check_device_map_is_respected(new_model, new_model.hf_device_map)
             torch.manual_seed(0)
             new_output = new_model(**inputs_dict)
+            new_normalized_output = normalize_output(new_output)
 
-            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     @require_torch_multi_accelerator
     def test_model_parallelism(self):
@@ -1414,6 +1458,7 @@ class ModelTesterMixin:
         model = model.to(torch_device)
 
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
@@ -1435,8 +1480,9 @@ class ModelTesterMixin:
             if "generator" in inputs_dict:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
+            new_normalized_output = normalize_output(new_output)
 
-            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     @require_torch_accelerator
     def test_sharded_checkpoints_with_variant(self):
@@ -1446,6 +1492,7 @@ class ModelTesterMixin:
         model = model.to(torch_device)
 
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
@@ -1473,8 +1520,9 @@ class ModelTesterMixin:
             if "generator" in inputs_dict:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
+            new_normalized_output = normalize_output(new_output)
 
-            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     @require_torch_accelerator
     def test_sharded_checkpoints_with_parallel_loading(self):
@@ -1484,6 +1532,7 @@ class ModelTesterMixin:
         model = model.to(torch_device)
 
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
@@ -1507,7 +1556,9 @@ class ModelTesterMixin:
             if "generator" in inputs_dict:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
-            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+            new_normalized_output = normalize_output(new_output)
+
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
             # set to no.
             os.environ["HF_ENABLE_PARALLEL_LOADING"] = "no"
 
@@ -1521,6 +1572,7 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
@@ -1541,7 +1593,9 @@ class ModelTesterMixin:
             if "generator" in inputs_dict:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
-            self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
+            new_normalized_output = normalize_output(new_output)
+
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     # This test is okay without a GPU because we're not running any execution. We're just serializing
     # and check if the resultant files are following an expected format.
@@ -1621,7 +1675,9 @@ class ModelTesterMixin:
         model = self.model_class(**config)
         model.eval()
         model.to(torch_device)
-        base_slice = model(**inputs_dict)[0].detach().flatten().cpu().numpy()
+        base_slice = model(**inputs_dict)[0]
+        base_slice = normalize_output(base_slice)
+        base_slice = base_slice.detach().flatten().cpu().numpy()
 
         def check_linear_dtype(module, storage_dtype, compute_dtype):
             patterns_to_check = DEFAULT_SKIP_MODULES_PATTERN
@@ -1647,7 +1703,9 @@ class ModelTesterMixin:
             model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
 
             check_linear_dtype(model, storage_dtype, compute_dtype)
-            output = model(**inputs_dict)[0].float().flatten().detach().cpu().numpy()
+            output = model(**inputs_dict)[0]
+            output = normalize_output(output)
+            output = output.float().flatten().detach().cpu().numpy()
 
             # The precision test is not very important for fast tests. In most cases, the outputs will not be the same.
             # We just want to make sure that the layerwise casting is working as expected.
@@ -1708,6 +1766,12 @@ class ModelTesterMixin:
     @parameterized.expand([False, True])
     @require_torch_accelerator
     def test_group_offloading(self, record_stream):
+        for cls in inspect.getmro(self.__class__):
+            if "test_group_offloading" in cls.__dict__ and cls is not ModelTesterMixin:
+                # Skip this test if it is overwritten by child class. We need to do this because parameterized
+                # materializes the test methods on invocation which cannot be overridden.
+                pytest.skip("Model does not support group offloading.")
+
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
 
@@ -1727,24 +1791,27 @@ class ModelTesterMixin:
             return model(**inputs_dict)[0]
 
         model = self.model_class(**init_dict)
-
         model.to(torch_device)
         output_without_group_offloading = run_forward(model)
+        output_without_group_offloading = normalize_output(output_without_group_offloading)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1)
         output_with_group_offloading1 = run_forward(model)
+        output_with_group_offloading1 = normalize_output(output_with_group_offloading1)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, non_blocking=True)
         output_with_group_offloading2 = run_forward(model)
+        output_with_group_offloading2 = normalize_output(output_with_group_offloading2)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.enable_group_offload(torch_device, offload_type="leaf_level")
         output_with_group_offloading3 = run_forward(model)
+        output_with_group_offloading3 = normalize_output(output_with_group_offloading3)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
@@ -1752,6 +1819,7 @@ class ModelTesterMixin:
             torch_device, offload_type="leaf_level", use_stream=True, record_stream=record_stream
         )
         output_with_group_offloading4 = run_forward(model)
+        output_with_group_offloading4 = normalize_output(output_with_group_offloading4)
 
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-5))
         self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-5))
@@ -1791,6 +1859,12 @@ class ModelTesterMixin:
     @torch.no_grad()
     @torch.inference_mode()
     def test_group_offloading_with_disk(self, offload_type, record_stream, atol=1e-5):
+        for cls in inspect.getmro(self.__class__):
+            if "test_group_offloading_with_disk" in cls.__dict__ and cls is not ModelTesterMixin:
+                # Skip this test if it is overwritten by child class. We need to do this because parameterized
+                # materializes the test methods on invocation which cannot be overridden.
+                pytest.skip("Model does not support group offloading with disk yet.")
+
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
 
@@ -1806,9 +1880,6 @@ class ModelTesterMixin:
             torch.manual_seed(0)
             return model(**inputs_dict)[0]
 
-        if self.__class__.__name__ == "AutoencoderKLCosmosTests" and offload_type == "leaf_level":
-            pytest.skip("With `leaf_type` as the offloading type, it fails. Needs investigation.")
-
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
@@ -1816,6 +1887,7 @@ class ModelTesterMixin:
         model.eval()
         model.to(torch_device)
         output_without_group_offloading = _run_forward(model, inputs_dict)
+        output_without_group_offloading = normalize_output(output_without_group_offloading)
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
@@ -1843,6 +1915,9 @@ class ModelTesterMixin:
                     offload_to_disk_path=tmpdir,
                     offload_type=offload_type,
                     num_blocks_per_group=num_blocks_per_group,
+                    block_modules=model._group_offload_block_modules
+                    if hasattr(model, "_group_offload_block_modules")
+                    else None,
                 )
                 if not is_correct:
                     if extra_files:
@@ -1851,6 +1926,7 @@ class ModelTesterMixin:
                         raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
 
             output_with_group_offloading = _run_forward(model, inputs_dict)
+            output_with_group_offloading = normalize_output(output_with_group_offloading)
             self.assertTrue(torch.allclose(output_without_group_offloading, output_with_group_offloading, atol=atol))
 
     def test_auto_model(self, expected_max_diff=5e-5):
@@ -1884,10 +1960,17 @@ class ModelTesterMixin:
                 output_original = model(**inputs_dict)
                 output_auto = auto_model(**inputs_dict)
 
-            if isinstance(output_original, dict):
-                output_original = output_original.to_tuple()[0]
-            if isinstance(output_auto, dict):
-                output_auto = output_auto.to_tuple()[0]
+        if isinstance(output_original, dict):
+            output_original = output_original.to_tuple()[0]
+        if isinstance(output_auto, dict):
+            output_auto = output_auto.to_tuple()[0]
+
+        if isinstance(output_original, list):
+            output_original = torch.stack(output_original)
+        if isinstance(output_auto, list):
+            output_auto = torch.stack(output_auto)
+
+        output_original, output_auto = output_original.float(), output_auto.float()
 
         max_diff = (output_original - output_auto).abs().max().item()
         self.assertLessEqual(
@@ -2078,6 +2161,8 @@ class TorchCompileTesterMixin:
         recompile_limit = 1
         if self.model_class.__name__ == "UNet2DConditionModel":
             recompile_limit = 2
+        elif self.model_class.__name__ == "ZImageTransformer2DModel":
+            recompile_limit = 3
 
         with (
             torch._inductor.utils.fresh_inductor_cache(),
@@ -2179,7 +2264,6 @@ class LoraHotSwappingForModelTesterMixin:
         backend_empty_cache(torch_device)
 
     def get_lora_config(self, lora_rank, lora_alpha, target_modules):
-        # from diffusers test_models_unet_2d_condition.py
         from peft import LoraConfig
 
         lora_config = LoraConfig(

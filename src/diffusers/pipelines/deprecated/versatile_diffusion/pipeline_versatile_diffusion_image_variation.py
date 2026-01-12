@@ -18,7 +18,6 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import PIL.Image
 import torch
-import torch.utils.checkpoint
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ....image_processor import VaeImageProcessor
