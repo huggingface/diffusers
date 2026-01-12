@@ -663,6 +663,13 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         else:
             batch_size = prompt_embeds.shape[0]
 
+        # QwenImageEditPlusPipeline does not currently support batch_size > 1
+        if batch_size > 1:
+            raise ValueError(
+                f"QwenImageEditPlusPipeline currently only supports batch_size=1, but received batch_size={batch_size}. "
+                "Please process prompts one at a time."
+            )
+
         device = self._execution_device
         # 3. Preprocess image
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
