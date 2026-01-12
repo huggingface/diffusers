@@ -121,12 +121,12 @@ class ImagePipelineOutput(BaseOutput):
     Output class for image pipelines.
 
     Args:
-        images (`list[PIL.Image.Image]` or `np.ndarray`)
-            list of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+        images (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
     """
 
-    images: list[PIL.Image.Image] | np.ndarray
+    images: Union[List[PIL.Image.Image], np.ndarray]
 
 
 @dataclass
@@ -136,7 +136,7 @@ class AudioPipelineOutput(BaseOutput):
 
     Args:
         audios (`np.ndarray`)
-            list of denoised audio samples of a NumPy array of shape `(batch_size, num_channels, sample_rate)`.
+            List of denoised audio samples of a NumPy array of shape `(batch_size, num_channels, sample_rate)`.
     """
 
     audios: np.ndarray
@@ -193,7 +193,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         - **config_name** (`str`) -- The configuration filename that stores the class and module names of all the
           diffusion pipeline's components.
-        - **_optional_components** (`list[str]`) -- list of all optional components that don't have to be passed to the
+        - **_optional_components** (`List[str]`) -- List of all optional components that don't have to be passed to the
           pipeline to function (should be overridden by subclasses).
     """
 
@@ -268,7 +268,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
 
-            kwargs (`dict[str, Any]`, *optional*):
+            kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         model_index_dict = dict(self.config)
@@ -592,7 +592,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: str | os.PathLike | None, **kwargs) -> Self:
+    def from_pretrained(cls, pretrained_model_name_or_path: str | os.PathLike, **kwargs) -> Self:
         r"""
         Instantiate a PyTorch diffusion pipeline from pretrained pipeline weights.
 
@@ -616,7 +616,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                       saved using
                     [`~DiffusionPipeline.save_pretrained`].
                     - A path to a *directory* (for example `./my_pipeline_directory/`) containing a dduf file
-            torch_dtype (`torch.dtype` or `dict[str, str | torch.dtype]`, *optional*):
+            torch_dtype (`torch.dtype` or `dict[str, Union[str, torch.dtype]]`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. To load submodels with
                 different dtype pass a `dict` (for example `{'transformer': torch.bfloat16, 'vae': torch.float16}`).
                 Set the default dtype for unspecified components with `default` (for example `{'transformer':
@@ -645,11 +645,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            cache_dir (`str | os.PathLike`, *optional*):
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
 
-            proxies (`dict[str, str]`, *optional*):
+            proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -1078,7 +1078,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # 10. Type checking init arguments
-        print(f"{expected_types.keys()=}")
         for kw, arg in init_kwargs.items():
             # Too complex to validate with type annotation alone
             if "scheduler" in kw:
@@ -1153,7 +1152,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
 
-    def enable_model_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
+    def enable_model_cpu_offload(self, gpu_id: int | None = None, device: Union[torch.device, str] = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the accelerator when its
@@ -1269,7 +1268,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # make sure the model is in the same state as before calling it
         self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
-    def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
+    def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device: Union[torch.device, str] = None):
         r"""
         Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the state
         dicts of all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are saved to CPU
@@ -1407,7 +1406,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them.
                 This option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be
                 useful when the CPU memory is a bottleneck but may counteract the benefits of using streams.
-            exclude_modules (`str | list[str]`, defaults to `None`): list of modules to exclude from offloading.
+            exclude_modules (`Union[str, List[str]]`, defaults to `None`): List of modules to exclude from offloading.
 
         Example:
             ```python
@@ -1478,7 +1477,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def download(cls, pretrained_model_name, **kwargs) -> str | os.PathLike:
+    def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
         r"""
         Download and cache a PyTorch diffusion pipeline from pretrained pipeline weights.
 
@@ -1511,7 +1510,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`dict[str, str]`, *optional*):
+            proxies (`Dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -1831,7 +1830,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         return signature_types
 
     @property
-    def parameters(self) -> dict[str, Any]:
+    def parameters(self) -> Dict[str, Any]:
         r"""
         The `self.parameters` property can be useful to run different pipelines with the same weights and
         configurations without reallocating additional memory.
@@ -1861,7 +1860,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         return pipeline_parameters
 
     @property
-    def components(self) -> dict[str, Any]:
+    def components(self) -> Dict[str, Any]:
         r"""
         The `self.components` property can be useful to run different pipelines with the same weights and
         configurations without reallocating additional memory.
@@ -1983,7 +1982,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for module in modules:
             fn_recursive_set_mem_eff(module)
 
-    def enable_attention_slicing(self, slice_size: str | int | None = "auto"):
+    def enable_attention_slicing(self, slice_size: str | int = "auto"):
         r"""
         Enable sliced attention computation. When this option is enabled, the attention module splits the input tensor
         in slices to compute attention in several steps. For more than one attention head, the computation is performed
@@ -2092,11 +2091,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for name, component in pipeline.components.items():
             if name in expected_modules and name not in passed_class_obj:
                 # for model components, we will not switch over if the class does not matches the type hint in the new pipeline's signature
-                expected = component_types.get(name, ())
                 if (
                     not isinstance(component, ModelMixin)
-                    or not expected
-                    or _is_valid_type(component, expected)
+                    or type(component) in component_types[name]
                     or (component is None and name in cls._optional_components)
                 ):
                     original_class_obj[name] = component
