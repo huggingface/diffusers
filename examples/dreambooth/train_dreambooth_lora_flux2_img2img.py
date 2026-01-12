@@ -1654,7 +1654,8 @@ def main(args):
                 packed_noisy_model_input = Flux2Pipeline._pack_latents(noisy_model_input)
                 packed_cond_model_input = Flux2Pipeline._pack_latents(cond_model_input)
 
-                noisy_len = packed_noisy_model_input.shape[1]
+                orig_input_shape = packed_noisy_model_input.shape
+                orig_input_ids_shape = model_input_ids.shape
 
                 # concatenate the model inputs with the cond inputs
                 packed_noisy_model_input = torch.cat([packed_noisy_model_input, packed_cond_model_input], dim=1)
@@ -1674,8 +1675,8 @@ def main(args):
                     img_ids=model_input_ids,  # B, image_seq_len, 4
                     return_dict=False,
                 )[0]
-                model_pred = model_pred[:, :noisy_len:]
-                model_input_ids = model_input_ids[:, :noisy_len:]
+                model_pred = model_pred[:, : orig_input_shape[1], :]
+                model_input_ids = model_input_ids[:, : orig_input_ids_shape[1], :]
 
                 model_pred = Flux2Pipeline._unpack_latents_with_ids(model_pred, model_input_ids)
 
