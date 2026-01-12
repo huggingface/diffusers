@@ -36,7 +36,7 @@ from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
-    repo = "hf-internal-testing/tiny-flux-modular"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_params = frozenset(["prompt"])
@@ -62,7 +62,7 @@ class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
 class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
-    repo = "hf-internal-testing/tiny-flux-modular"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
@@ -128,7 +128,7 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxKontextModularPipeline
     pipeline_blocks_class = FluxKontextAutoBlocks
-    repo = "hf-internal-testing/tiny-flux-kontext-pipe"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-kontext-pipe"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
