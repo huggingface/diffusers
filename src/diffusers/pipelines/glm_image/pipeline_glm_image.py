@@ -251,7 +251,6 @@ class GlmImagePipeline(DiffusionPipeline):
         messages = [{"role": "user", "content": content}]
         inputs = self.processor.apply_chat_template(
             messages,
-            add_generation_prompt=True,
             tokenize=True,
             target_h=height,
             target_w=width,
