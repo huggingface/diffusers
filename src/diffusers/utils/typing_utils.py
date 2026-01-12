@@ -15,7 +15,7 @@
 Typing utilities: Utilities related to type checking and validation
 """
 
-from typing import Any, Set, Type, Union, UnionType, get_args, get_origin
+from typing import Any, Dict, List, Set, Tuple, Type, Union, get_args, get_origin
 
 
 def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
@@ -29,12 +29,7 @@ def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
     # Unpack unions
     unpacked_class_or_tuple = []
     for t in class_or_tuple:
-        origin = get_origin(t)
-        is_union = origin is Union or origin is UnionType
-        # For PEP 604 unions (e.g. int | float), origin can be None but the object itself is a UnionType
-        if not is_union and isinstance(t, UnionType):
-            is_union = True
-        if is_union:
+        if get_origin(t) is Union:
             unpacked_class_or_tuple.extend(get_args(t))
         else:
             unpacked_class_or_tuple.append(t)
@@ -48,7 +43,7 @@ def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
     class_or_tuple = {t for t in class_or_tuple if isinstance(obj, get_origin(t) or t)}
 
     # Singular types (e.g. int, ControlNet, ...)
-    # Untyped collections (e.g. list, but not list[int])
+    # Untyped collections (e.g. List, but not List[int])
     elem_class_or_tuple = {get_args(t) for t in class_or_tuple}
     if () in elem_class_or_tuple:
         return True
@@ -58,10 +53,10 @@ def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
     # Typed tuples
     elif obj_type is tuple:
         return any(
-            # tuples with any length and single type (e.g. tuple[int, ...])
+            # Tuples with any length and single type (e.g. Tuple[int, ...])
             (len(t) == 2 and t[-1] is Ellipsis and all(_is_valid_type(x, t[0]) for x in obj))
             or
-            # tuples with fixed length and any types (e.g. tuple[int, str])
+            # Tuples with fixed length and any types (e.g. Tuple[int, str])
             (len(obj) == len(t) and all(_is_valid_type(x, tt) for x, tt in zip(obj, t)))
             for t in elem_class_or_tuple
         )
@@ -83,14 +78,14 @@ def _get_detailed_type(obj: Any) -> Type:
     obj_type = type(obj)
 
     if obj_type in (list, set):
-        obj_origin_type = list if obj_type is list else Set
-        elems_type = tuple({_get_detailed_type(x) for x in obj})
+        obj_origin_type = List if obj_type is list else Set
+        elems_type = Union[tuple({_get_detailed_type(x) for x in obj})]
         return obj_origin_type[elems_type]
     elif obj_type is tuple:
-        return tuple[tuple(_get_detailed_type(x) for x in obj)]
+        return Tuple[tuple(_get_detailed_type(x) for x in obj)]
     elif obj_type is dict:
-        keys_type = tuple({_get_detailed_type(k) for k in obj.keys()})
-        values_type = tuple({_get_detailed_type(k) for k in obj.values()})
-        return dict[keys_type, values_type]
+        keys_type = Union[tuple({_get_detailed_type(k) for k in obj.keys()})]
+        values_type = Union[tuple({_get_detailed_type(k) for k in obj.values()})]
+        return Dict[keys_type, values_type]
     else:
         return obj_type
