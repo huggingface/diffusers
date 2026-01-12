@@ -36,11 +36,11 @@ from diffusers import (
     HunyuanVideoFramepackPipeline,
     HunyuanVideoFramepackTransformer3DModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
     torch_device,
 )
-
 from ..test_pipelines_common import (
     FasterCacheTesterMixin,
     PipelineTesterMixin,
@@ -227,11 +227,18 @@ class HunyuanVideoFramepackPipelineFastTests(
         inputs = self.get_dummy_inputs(device)
         video = pipe(**inputs).frames
         generated_video = video[0]
-
         self.assertEqual(generated_video.shape, (13, 3, 32, 32))
-        expected_video = torch.randn(13, 3, 32, 32)
-        max_diff = np.abs(generated_video - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.363, 0.3384, 0.3426, 0.3512, 0.3372, 0.3276, 0.417, 0.4061, 0.5221, 0.467, 0.4813, 0.4556, 0.4107, 0.3945, 0.4049, 0.4551])
+        # fmt: on
+
+        generated_slice = generated_video.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        self.assertTrue(
+            torch.allclose(generated_slice, expected_slice, atol=1e-3),
+            "The generated video does not match the expected slice.",
+        )
 
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)

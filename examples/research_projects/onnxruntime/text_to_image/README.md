@@ -4,7 +4,7 @@ The `train_text_to_image.py` script shows how to fine-tune stable diffusion mode
 
 ___Note___:
 
-___This script is experimental. The script fine-tunes the whole model and often times the model overfits and runs into issues like catastrophic forgetting. It's recommended to try different hyperparamters to get the best result on your dataset.___
+___This script is experimental. The script fine-tunes the whole model and often times the model overfits and runs into issues like catastrophic forgetting. It's recommended to try different hyperparameters to get the best result on your dataset.___
 
 
 ## Running locally with PyTorch
@@ -41,7 +41,7 @@ You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need 
 Run the following command to authenticate your token
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 If you have already cloned the repo, then you won't need to go through these steps.

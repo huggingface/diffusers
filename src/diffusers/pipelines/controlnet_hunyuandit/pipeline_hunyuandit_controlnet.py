@@ -17,7 +17,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from transformers import BertModel, BertTokenizer, CLIPImageProcessor, MT5Tokenizer, T5EncoderModel
+from transformers import BertModel, BertTokenizer, CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 
@@ -27,11 +27,7 @@ from ...models import AutoencoderKL, HunyuanDiT2DControlNetModel, HunyuanDiT2DMo
 from ...models.embeddings import get_2d_rotary_pos_embed
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import DDPMScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
@@ -189,7 +185,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
             The HunyuanDiT model designed by Tencent Hunyuan.
         text_encoder_2 (`T5EncoderModel`):
             The mT5 embedder. Specifically, it is 't5-v1_1-xxl'.
-        tokenizer_2 (`MT5Tokenizer`):
+        tokenizer_2 (`T5Tokenizer`):
             The tokenizer for the mT5 embedder.
         scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with HunyuanDiT to denoise the encoded image latents.
@@ -233,7 +229,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
             HunyuanDiT2DMultiControlNetModel,
         ],
         text_encoder_2: Optional[T5EncoderModel] = None,
-        tokenizer_2: Optional[MT5Tokenizer] = None,
+        tokenizer_2: Optional[T5Tokenizer] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()

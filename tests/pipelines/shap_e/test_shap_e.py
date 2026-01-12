@@ -21,14 +21,14 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 
 from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEPipeline
 from diffusers.pipelines.shap_e import ShapERenderer
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     load_numpy,
     nightly,
     require_torch_accelerator,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 
