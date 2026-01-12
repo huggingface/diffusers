@@ -240,14 +240,44 @@ class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol, rtol)
 
-    @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
-    def test_num_images_per_prompt():
-        super().test_num_images_per_prompt()
+    def test_inference_batch_single_identical(self):
+        # Test that batch_size=1 gives identical results to non-batched inference
+        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
-    @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
-    def test_inference_batch_consistent():
-        super().test_inference_batch_consistent()
+    def test_inference_batch_consistent(self):
+        # Test that batched inference gives consistent results
+        self._test_inference_batch_consistent()
 
-    @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
-    def test_inference_batch_single_identical():
-        super().test_inference_batch_single_identical()
+    def test_batch_processing_multiple_prompts(self):
+        # Test batch processing with multiple prompts (batch_size > 1)
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=device).manual_seed(0)
+
+        image = Image.new("RGB", (32, 32))
+
+        # Test with nested list format for batch_size=2
+        inputs = {
+            "prompt": ["dance monkey", "jump around"],
+            "image": [[image], [image]],  # Nested list for batch_size=2
+            "generator": generator,
+            "num_inference_steps": 2,
+            "height": 32,
+            "width": 32,
+            "max_sequence_length": 16,
+            "output_type": "pt",
+        }
+
+        images = pipe(**inputs).images
+
+        # Should return 2 images (batch_size=2)
+        self.assertEqual(len(images), 2)
+        self.assertEqual(images[0].shape, (3, 32, 32))
+        self.assertEqual(images[1].shape, (3, 32, 32))
