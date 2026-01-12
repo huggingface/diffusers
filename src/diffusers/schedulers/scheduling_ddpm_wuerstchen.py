@@ -17,7 +17,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 
@@ -125,7 +124,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         ) ** 2 / self._init_alpha_cumprod.to(device)
         return alpha_cumprod.clamp(0.0001, 0.9999)
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -142,7 +141,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int = None,
-        timesteps: Optional[list[int]] = None,
+        timesteps: list[int] | None = None,
         device: str | torch.device = None,
     ):
         """

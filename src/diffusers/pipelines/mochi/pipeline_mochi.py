@@ -668,10 +668,14 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         sigmas = linear_quadratic_schedule(num_inference_steps, threshold_noise)
         sigmas = np.array(sigmas)
 
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
-            device,
+            timestep_device,
             timesteps,
             sigmas,
         )

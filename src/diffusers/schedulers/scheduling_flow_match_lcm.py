@@ -14,7 +14,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import torch
@@ -96,18 +95,18 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         shift: float = 1.0,
         use_dynamic_shifting: bool = False,
-        base_shift: Optional[float] = 0.5,
-        max_shift: Optional[float] = 1.15,
-        base_image_seq_len: Optional[int] = 256,
-        max_image_seq_len: Optional[int] = 4096,
+        base_shift: float = 0.5,
+        max_shift: float = 1.15,
+        base_image_seq_len: int = 256,
+        max_image_seq_len: int = 4096,
         invert_sigmas: bool = False,
-        shift_terminal: Optional[float] = None,
-        use_karras_sigmas: Optional[bool] = False,
-        use_exponential_sigmas: Optional[bool] = False,
-        use_beta_sigmas: Optional[bool] = False,
+        shift_terminal: float | None = None,
+        use_karras_sigmas: bool = False,
+        use_exponential_sigmas: bool = False,
+        use_beta_sigmas: bool = False,
         time_shift_type: str = "exponential",
-        scale_factors: Optional[list[float]] = None,
-        upscale_mode: Optional[str] = "bicubic",
+        scale_factors: list[float] | None = None,
+        upscale_mode: str = "bicubic",
     ):
         if self.config.use_beta_sigmas and not is_scipy_available():
             raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
@@ -168,7 +167,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
@@ -193,7 +192,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         self,
         sample: torch.FloatTensor,
         timestep: float | torch.FloatTensor,
-        noise: Optional[torch.FloatTensor] = None,
+        noise: torch.FloatTensor | None = None,
     ) -> torch.FloatTensor:
         """
         Forward process in flow-matching
@@ -201,8 +200,10 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`):
                 The input sample.
-            timestep (`int`, *optional*):
+            timestep (`torch.FloatTensor`):
                 The current timestep in the diffusion chain.
+            noise (`torch.FloatTensor`):
+                The noise tensor.
 
         Returns:
             `torch.FloatTensor`:
@@ -269,11 +270,11 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: Optional[int] = None,
+        num_inference_steps: int = None,
         device: str | torch.device = None,
-        sigmas: Optional[list[float]] = None,
-        mu: Optional[float] = None,
-        timesteps: Optional[list[float]] = None,
+        sigmas: list[float] | None = None,
+        mu: float = None,
+        timesteps: list[float] | None = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -396,7 +397,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: float | torch.FloatTensor,
         sample: torch.FloatTensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
     ) -> FlowMatchLCMSchedulerOutput | tuple:
         """
@@ -473,7 +474,20 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps) -> torch.Tensor:
-        """Constructs the noise schedule of Karras et al. (2022)."""
+        """
+        Construct the noise schedule as proposed in [Elucidating the Design Space of Diffusion-Based Generative
+        Models](https://huggingface.co/papers/2206.00364).
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+            num_inference_steps (`int`):
+                The number of inference steps to generate the noise schedule for.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following the Karras noise schedule.
+        """
 
         # Hack to make sure that other schedulers which copy this function don't break
         # TODO: Add this logic to the other schedulers
@@ -499,7 +513,19 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_exponential
     def _convert_to_exponential(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
-        """Constructs an exponential noise schedule."""
+        """
+        Construct an exponential noise schedule.
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+            num_inference_steps (`int`):
+                The number of inference steps to generate the noise schedule for.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following an exponential schedule.
+        """
 
         # Hack to make sure that other schedulers which copy this function don't break
         # TODO: Add this logic to the other schedulers
@@ -523,7 +549,24 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_beta(
         self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
     ) -> torch.Tensor:
-        """From "Beta Sampling is All You Need" [arXiv:2407.12173] (Lee et. al, 2024)"""
+        """
+        Construct a beta noise schedule as proposed in [Beta Sampling is All You
+        Need](https://huggingface.co/papers/2407.12173).
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+            num_inference_steps (`int`):
+                The number of inference steps to generate the noise schedule for.
+            alpha (`float`, *optional*, defaults to `0.6`):
+                The alpha parameter for the beta distribution.
+            beta (`float`, *optional*, defaults to `0.6`):
+                The beta parameter for the beta distribution.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following a beta distribution schedule.
+        """
 
         # Hack to make sure that other schedulers which copy this function don't break
         # TODO: Add this logic to the other schedulers

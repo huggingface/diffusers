@@ -97,7 +97,7 @@ class SchedulerMixin(PushToHubMixin):
     def from_pretrained(
         cls,
         pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
-        subfolder: Optional[str] = None,
+        subfolder: str | None = None,
         return_unused_kwargs=False,
         **kwargs,
     ) -> Self:

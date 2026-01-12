@@ -16,7 +16,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 
@@ -86,7 +85,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
         self.set_sigmas(num_train_timesteps, sigma_min, sigma_max, sampling_eps)
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -160,7 +159,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: int,
         sample: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
     ) -> SdeVeOutput | tuple:
         """
@@ -227,7 +226,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self,
         model_output: torch.Tensor,
         sample: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
     ) -> SchedulerOutput | tuple:
         """

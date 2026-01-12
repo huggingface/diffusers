@@ -68,6 +68,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
+from ..utils.distributed_utils import is_torch_dist_rank_zero
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
 
@@ -983,7 +984,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 7. Load each module in the pipeline
         current_device_map = None
         _maybe_warn_for_wrong_component_in_quant_config(init_dict, quantization_config)
-        for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
+        logging_tqdm_kwargs = {"desc": "Loading pipeline components..."}
+        if not is_torch_dist_rank_zero():
+            logging_tqdm_kwargs["disable"] = True
+
+        for name, (library_name, class_name) in logging.tqdm(init_dict.items(), **logging_tqdm_kwargs):
             # 7.1 device_map shenanigans
             if final_device_map is not None:
                 if isinstance(final_device_map, dict) and len(final_device_map) > 0:
@@ -1979,10 +1984,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
             )
 
+        progress_bar_config = dict(self._progress_bar_config)
+        if "disable" not in progress_bar_config:
+            progress_bar_config["disable"] = not is_torch_dist_rank_zero()
+
         if iterable is not None:
-            return tqdm(iterable, **self._progress_bar_config)
+            return tqdm(iterable, **progress_bar_config)
         elif total is not None:
-            return tqdm(total=total, **self._progress_bar_config)
+            return tqdm(total=total, **progress_bar_config)
         else:
             raise ValueError("Either `total` or `iterable` has to be defined.")
 

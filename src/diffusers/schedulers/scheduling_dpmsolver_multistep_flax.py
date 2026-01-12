@@ -41,7 +41,7 @@ class DPMSolverMultistepSchedulerState:
     # setable values
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
-    num_inference_steps: Optional[int] = None
+    num_inference_steps: int = None
 
     # running values
     model_outputs: Optional[jnp.ndarray] = None
@@ -615,7 +615,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         return FlaxDPMSolverMultistepSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def scale_model_input(
-        self, state: DPMSolverMultistepSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+        self, state: DPMSolverMultistepSchedulerState, sample: jnp.ndarray, timestep: int = None
     ) -> jnp.ndarray:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the

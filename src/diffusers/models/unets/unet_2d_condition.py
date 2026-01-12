@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -22,11 +22,11 @@ from ...loaders import PeftAdapterMixin, UNet2DConditionLoadersMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ..activations import get_activation
+from ..attention import AttentionMixin
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
     Attention,
-    AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
     FusedAttnProcessor2_0,
@@ -68,7 +68,7 @@ class UNet2DConditionOutput(BaseOutput):
 
 
 class UNet2DConditionModel(
-    ModelMixin, ConfigMixin, FromOriginalModelMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin
+    ModelMixin, AttentionMixin, ConfigMixin, FromOriginalModelMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin
 ):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
@@ -177,17 +177,22 @@ class UNet2DConditionModel(
         center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        down_block_types: tuple[str] = (
+        down_block_types: tuple[str, ...] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
         mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
-        up_block_types: tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
-        only_cross_attention: bool | tuple[bool] = False,
-        block_out_channels: tuple[int] = (320, 640, 1280, 1280),
-        layers_per_block: int | tuple[int] = 2,
+        up_block_types: tuple[str, ...] = (
+            "UpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+        ),
+        only_cross_attention: Union[bool, tuple[bool]] = False,
+        block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
+        layers_per_block: Union[int, tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         dropout: float = 0.0,
@@ -486,13 +491,13 @@ class UNet2DConditionModel(
 
     def _check_config(
         self,
-        down_block_types: tuple[str],
-        up_block_types: tuple[str],
-        only_cross_attention: bool | tuple[bool],
-        block_out_channels: tuple[int],
-        layers_per_block: int | tuple[int],
-        cross_attention_dim: int | tuple[int],
-        transformer_layers_per_block: int | tuple[int] | tuple[tuple[int]],
+        down_block_types: tuple[str, ...],
+        up_block_types: tuple[str, ...],
+        only_cross_attention: Union[bool, tuple[bool]],
+        block_out_channels: tuple[int, ...],
+        layers_per_block: Union[int, tuple[int]],
+        cross_attention_dim: Union[int, tuple[int]],
+        transformer_layers_per_block: Union[int, tuple[int], tuple[tuple[int]]],
         reverse_transformer_layers_per_block: bool,
         attention_head_dim: int,
         num_attention_heads: Optional[int | tuple[int]],
@@ -695,64 +700,6 @@ class UNet2DConditionModel(
             self.position_net = GLIGENTextBoundingboxProjection(
                 positive_len=positive_len, out_dim=cross_attention_dim, feature_type=feature_type
             )
-
-    @property
-    def attn_processors(self) -> dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
 
     def set_default_attn_processor(self):
         """

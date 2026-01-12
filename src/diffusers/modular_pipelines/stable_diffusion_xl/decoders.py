@@ -21,8 +21,7 @@ import torch
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
-from ...models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
-from ...utils import logging
+from ...utils import deprecate, logging
 from ..modular_pipeline import (
     ModularPipelineBlocks,
     PipelineState,
@@ -77,21 +76,12 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
     @staticmethod
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae with self->components
     def upcast_vae(components):
-        dtype = components.vae.dtype
-        components.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            components.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-            ),
+        deprecate(
+            "upcast_vae",
+            "1.0.0",
+            "`upcast_vae` is deprecated. Please use `pipe.vae.to(torch.float32)`. For more details, please refer to: https://github.com/huggingface/diffusers/pull/12619#issue-3606633695.",
         )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            components.vae.post_quant_conv.to(dtype)
-            components.vae.decoder.conv_in.to(dtype)
-            components.vae.decoder.mid_block.to(dtype)
+        components.vae.to(dtype=torch.float32)
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:

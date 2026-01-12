@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -173,7 +172,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
             The HunyuanDiT model designed by Tencent Hunyuan.
         text_encoder_2 (`T5EncoderModel`):
             The mT5 embedder. Specifically, it is 't5-v1_1-xxl'.
-        tokenizer_2 (`MT5Tokenizer`):
+        tokenizer_2 (`T5Tokenizer`):
             The tokenizer for the mT5 embedder.
         scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with HunyuanDiT to denoise the encoded image latents.
@@ -204,11 +203,11 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         tokenizer: BertTokenizer,
         transformer: HunyuanDiT2DModel,
         scheduler: DDPMScheduler,
-        safety_checker: Optional[StableDiffusionSafetyChecker] = None,
-        feature_extractor: Optional[CLIPImageProcessor] = None,
+        safety_checker: StableDiffusionSafetyChecker | None = None,
+        feature_extractor: CLIPImageProcessor | None = None,
         requires_safety_checker: bool = True,
-        text_encoder_2: Optional[T5EncoderModel] = None,
-        tokenizer_2: Optional[MT5Tokenizer] = None,
+        text_encoder_2: T5EncoderModel | None = None,
+        tokenizer_2: MT5Tokenizer | None = None,
         pag_applied_layers: str | list[str] = "blocks.1",  # "blocks.16.attn1", "blocks.16", "16", 16
     ):
         super().__init__()
@@ -262,12 +261,12 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         dtype: torch.dtype = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        max_sequence_length: Optional[int] = None,
+        negative_prompt: str | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        max_sequence_length: int = None,
         text_encoder_index: int = 0,
     ):
         r"""
@@ -581,32 +580,33 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
     def __call__(
         self,
         prompt: str | list[str] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 5.0,
-        negative_prompt: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        eta: Optional[float] = 0.0,
-        generator: Optional[torch.Generator | list[torch.Generator]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_2: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_2: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        prompt_attention_mask_2: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask_2: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        height: int | None = None,
+        width: int | None = None,
+        num_inference_steps: int = 50,
+        guidance_scale: float = 5.0,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int = 1,
+        eta: float = 0.0,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_embeds_2: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds_2: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        prompt_attention_mask_2: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask_2: torch.Tensor | None = None,
+        output_type: str = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
-        ] = None,
+        callback_on_step_end: callable[[int, int, dict], None]
+        | PipelineCallback
+        | MultiPipelineCallbacks
+        | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         guidance_rescale: float = 0.0,
-        original_size: Optional[tuple[int, int]] = (1024, 1024),
-        target_size: Optional[tuple[int, int]] = None,
+        original_size: tuple[int, int] = (1024, 1024),
+        target_size: tuple[int, int] = None,
         crops_coords_top_left: tuple[int, int] = (0, 0),
         use_resolution_binning: bool = True,
         pag_scale: float = 3.0,

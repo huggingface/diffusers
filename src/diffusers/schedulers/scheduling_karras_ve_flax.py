@@ -29,7 +29,7 @@ from .scheduling_utils_flax import FlaxSchedulerMixin
 @flax.struct.dataclass
 class KarrasVeSchedulerState:
     # setable values
-    num_inference_steps: Optional[int] = None
+    num_inference_steps: int = None
     timesteps: Optional[jnp.ndarray] = None
     schedule: Optional[jnp.ndarray] = None  # sigma(t_i)
 

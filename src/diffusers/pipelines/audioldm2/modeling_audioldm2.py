@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -21,10 +20,10 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
 from ...models.activations import get_activation
+from ...models.attention import AttentionMixin
 from ...models.attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
-    AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
@@ -75,7 +74,7 @@ class AudioLDM2ProjectionModelOutput(BaseOutput):
     """
 
     hidden_states: torch.Tensor
-    attention_mask: Optional[torch.LongTensor] = None
+    attention_mask: torch.LongTensor | None = None
 
 
 class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
@@ -124,10 +123,10 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        hidden_states: Optional[torch.Tensor] = None,
-        hidden_states_1: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.LongTensor] = None,
-        attention_mask_1: Optional[torch.LongTensor] = None,
+        hidden_states: torch.Tensor | None = None,
+        hidden_states_1: torch.Tensor | None = None,
+        attention_mask: torch.LongTensor | None = None,
+        attention_mask_1: torch.LongTensor | None = None,
     ):
         hidden_states = self.projection(hidden_states)
         hidden_states, attention_mask = add_special_tokens(
@@ -163,7 +162,7 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
         )
 
 
-class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+class AudioLDM2UNet2DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
     shaped output. Compared to the vanilla [`UNet2DConditionModel`], this variant optionally includes an additional
@@ -240,7 +239,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[int] = None,
+        sample_size: int | None = None,
         in_channels: int = 4,
         out_channels: int = 4,
         flip_sin_to_cos: bool = True,
@@ -251,7 +250,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
+        mid_block_type: str = "UNetMidBlock2DCrossAttn",
         up_block_types: tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
         only_cross_attention: bool | tuple[bool] = False,
         block_out_channels: tuple[int] = (320, 640, 1280, 1280),
@@ -259,25 +258,25 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
-        norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int | None = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int | tuple[int] = 1280,
         transformer_layers_per_block: int | tuple[int] = 1,
         attention_head_dim: int | tuple[int] = 8,
-        num_attention_heads: Optional[int | tuple[int]] = None,
+        num_attention_heads: int | tuple[int] | None = None,
         use_linear_projection: bool = False,
-        class_embed_type: Optional[str] = None,
-        num_class_embeds: Optional[int] = None,
+        class_embed_type: str | None = None,
+        num_class_embeds: int | None = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
         time_embedding_type: str = "positional",
-        time_embedding_dim: Optional[int] = None,
-        time_embedding_act_fn: Optional[str] = None,
-        timestep_post_act: Optional[str] = None,
-        time_cond_proj_dim: Optional[int] = None,
+        time_embedding_dim: int | None = None,
+        time_embedding_act_fn: str | None = None,
+        timestep_post_act: str | None = None,
+        time_cond_proj_dim: int | None = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
-        projection_class_embeddings_input_dim: Optional[int] = None,
+        projection_class_embeddings_input_dim: int | None = None,
         class_embeddings_concat: bool = False,
     ):
         super().__init__()
@@ -530,66 +529,6 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
 
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
-
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
@@ -677,14 +616,14 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         sample: torch.Tensor,
         timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
-        class_labels: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        class_labels: torch.Tensor | None = None,
+        timestep_cond: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
         return_dict: bool = True,
-        encoder_hidden_states_1: Optional[torch.Tensor] = None,
-        encoder_attention_mask_1: Optional[torch.Tensor] = None,
+        encoder_hidden_states_1: torch.Tensor | None = None,
+        encoder_attention_mask_1: torch.Tensor | None = None,
     ) -> UNet2DConditionOutput | tuple:
         r"""
         The [`AudioLDM2UNet2DConditionModel`] forward method.
@@ -1087,13 +1026,13 @@ class CrossAttnDownBlock2D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        encoder_hidden_states_1: Optional[torch.Tensor] = None,
-        encoder_attention_mask_1: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        encoder_hidden_states_1: torch.Tensor | None = None,
+        encoder_attention_mask_1: torch.Tensor | None = None,
     ):
         output_states = ()
         num_layers = len(self.resnets)
@@ -1249,13 +1188,13 @@ class UNetMidBlock2DCrossAttn(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        encoder_hidden_states_1: Optional[torch.Tensor] = None,
-        encoder_attention_mask_1: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, any] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        encoder_hidden_states_1: torch.Tensor | None = None,
+        encoder_attention_mask_1: torch.Tensor | None = None,
     ) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         num_attention_per_layer = len(self.attentions) // (len(self.resnets) - 1)
@@ -1400,14 +1339,14 @@ class CrossAttnUpBlock2D(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        upsample_size: Optional[int] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        encoder_hidden_states_1: Optional[torch.Tensor] = None,
-        encoder_attention_mask_1: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, any] | None = None,
+        upsample_size: int | None = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        encoder_hidden_states_1: torch.Tensor | None = None,
+        encoder_attention_mask_1: torch.Tensor | None = None,
     ):
         num_layers = len(self.resnets)
         num_attention_per_layer = len(self.attentions) // num_layers

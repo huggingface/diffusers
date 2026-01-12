@@ -145,10 +145,10 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         timestep_ratio_embedding_dim: int = 64,
         patch_size: int = 1,
         conditioning_dim: int = 2048,
-        block_out_channels: tuple[int] = (2048, 2048),
-        num_attention_heads: tuple[int] = (32, 32),
-        down_num_layers_per_block: tuple[int] = (8, 24),
-        up_num_layers_per_block: tuple[int] = (24, 8),
+        block_out_channels: tuple[int, ...] = (2048, 2048),
+        num_attention_heads: tuple[int, ...] = (32, 32),
+        down_num_layers_per_block: tuple[int, ...] = (8, 24),
+        up_num_layers_per_block: tuple[int, ...] = (24, 8),
         down_blocks_repeat_mappers: Optional[tuple[int]] = (
             1,
             1,
@@ -167,8 +167,8 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         kernel_size=3,
         dropout: float | tuple[float] = (0.1, 0.1),
         self_attn: bool | tuple[bool] = True,
-        timestep_conditioning_type: tuple[str] = ("sca", "crp"),
-        switch_level: Optional[tuple[bool]] = None,
+        timestep_conditioning_type: tuple[str, ...] = ("sca", "crp"),
+        switch_level: tuple[bool] | None = None,
     ):
         """
 

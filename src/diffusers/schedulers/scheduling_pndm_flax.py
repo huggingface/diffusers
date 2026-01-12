@@ -39,7 +39,7 @@ class PNDMSchedulerState:
     # setable values
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
-    num_inference_steps: Optional[int] = None
+    num_inference_steps: int = None
     prk_timesteps: Optional[jnp.ndarray] = None
     plms_timesteps: Optional[jnp.ndarray] = None
 
@@ -103,7 +103,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
+            https://huggingface.co/papers/2210.02303)
         dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
             the `dtype` used for params and computation.
     """
@@ -217,9 +217,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             ets=ets,
         )
 
-    def scale_model_input(
-        self, state: PNDMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
-    ) -> jnp.ndarray:
+    def scale_model_input(self, state: PNDMSchedulerState, sample: jnp.ndarray, timestep: int = None) -> jnp.ndarray:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.

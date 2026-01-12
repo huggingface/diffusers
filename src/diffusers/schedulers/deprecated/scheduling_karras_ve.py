@@ -14,7 +14,6 @@
 
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import torch
@@ -43,7 +42,7 @@ class KarrasVeOutput(BaseOutput):
 
     prev_sample: torch.Tensor
     derivative: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
@@ -93,7 +92,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps: np.IntTensor = None
         self.schedule: torch.Tensor = None  # sigma(t_i)
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -133,7 +132,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.schedule = torch.tensor(schedule, dtype=torch.float32, device=device)
 
     def add_noise_to_input(
-        self, sample: torch.Tensor, sigma: float, generator: Optional[torch.Generator] = None
+        self, sample: torch.Tensor, sigma: float, generator: torch.Generator | None = None
     ) -> tuple[torch.Tensor, float]:
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a `gamma_i ≥ 0` to reach a

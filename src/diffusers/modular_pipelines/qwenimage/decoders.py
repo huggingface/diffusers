@@ -23,12 +23,94 @@ from ...models import AutoencoderKLQwenImage
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier
+from .modular_pipeline import QwenImageLayeredPachifier, QwenImageModularPipeline, QwenImagePachifier
 
 
 logger = logging.get_logger(__name__)
 
 
+# after denoising loop (unpack latents)
+class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
+    model_name = "qwenimage"
+
+    @property
+    def description(self) -> str:
+        return "Step that unpack the latents from 3D tensor (batch_size, sequence_length, channels) into 5D tensor (batch_size, channels, 1, height, width)"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        components = [
+            ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
+        ]
+
+        return components
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(name="height", required=True),
+            InputParam(name="width", required=True),
+            InputParam(
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The latents to decode, can be generated in the denoise step",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        vae_scale_factor = components.vae_scale_factor
+        block_state.latents = components.pachifier.unpack_latents(
+            block_state.latents, block_state.height, block_state.width, vae_scale_factor=vae_scale_factor
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
+    model_name = "qwenimage-layered"
+
+    @property
+    def description(self) -> str:
+        return "Unpack latents from (B, seq, C*4) to (B, C, layers+1, H, W) after denoising."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("pachifier", QwenImageLayeredPachifier, default_creation_method="from_config"),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("latents", required=True, type_hint=torch.Tensor),
+            InputParam("height", required=True, type_hint=int),
+            InputParam("width", required=True, type_hint=int),
+            InputParam("layers", required=True, type_hint=int),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        # Unpack: (B, seq, C*4) -> (B, C, layers+1, H, W)
+        block_state.latents = components.pachifier.unpack_latents(
+            block_state.latents,
+            block_state.height,
+            block_state.width,
+            block_state.layers,
+            components.vae_scale_factor,
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# decode step
 class QwenImageDecoderStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -40,7 +122,6 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         components = [
             ComponentSpec("vae", AutoencoderKLQwenImage),
-            ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
         ]
 
         return components
@@ -48,8 +129,6 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
             InputParam(
                 name="latents",
                 required=True,
@@ -73,9 +152,12 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         # YiYi Notes: remove support for output_type = "latents', we can just skip decode/encode step in modular
-        block_state.latents = components.pachifier.unpack_latents(
-            block_state.latents, block_state.height, block_state.width
-        )
+        if block_state.latents.ndim == 4:
+            block_state.latents = block_state.latents.unsqueeze(dim=1)
+        elif block_state.latents.ndim != 5:
+            raise ValueError(
+                f"expect latents to be a 4D or 5D tensor but got: {block_state.latents.shape}. Please make sure the latents are unpacked before decode step."
+            )
         block_state.latents = block_state.latents.to(components.vae.dtype)
 
         latents_mean = (
@@ -93,6 +175,81 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         return components, state
 
 
+class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
+    model_name = "qwenimage-layered"
+
+    @property
+    def description(self) -> str:
+        return "Decode unpacked latents (B, C, layers+1, H, W) into layer images."
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLQwenImage),
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("latents", required=True, type_hint=torch.Tensor),
+            InputParam("output_type", default="pil", type_hint=str),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(name="images", type_hint=list[list[PIL.Image.Image]]),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        latents = block_state.latents
+
+        # 1. VAE normalization
+        latents = latents.to(components.vae.dtype)
+        latents_mean = (
+            torch.tensor(components.vae.config.latents_mean)
+            .view(1, components.vae.config.z_dim, 1, 1, 1)
+            .to(latents.device, latents.dtype)
+        )
+        latents_std = 1.0 / torch.tensor(components.vae.config.latents_std).view(
+            1, components.vae.config.z_dim, 1, 1, 1
+        ).to(latents.device, latents.dtype)
+        latents = latents / latents_std + latents_mean
+
+        # 2. Reshape for batch decoding: (B, C, layers+1, H, W) -> (B*layers, C, 1, H, W)
+        b, c, f, h, w = latents.shape
+        # 3. Remove first frame (composite), keep layers frames
+        latents = latents[:, :, 1:]
+        latents = latents.permute(0, 2, 1, 3, 4).reshape(-1, c, 1, h, w)
+
+        # 4. Decode: (B*layers, C, 1, H, W) -> (B*layers, C, H, W)
+        image = components.vae.decode(latents, return_dict=False)[0]
+        image = image.squeeze(2)
+
+        # 5. Postprocess - returns flat list of B*layers images
+        image = components.image_processor.postprocess(image, output_type=block_state.output_type)
+
+        # 6. Chunk into list per batch item
+        images = []
+        for bidx in range(b):
+            images.append(image[bidx * f : (bidx + 1) * f])
+
+        block_state.images = images
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# postprocess the decoded images
 class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 

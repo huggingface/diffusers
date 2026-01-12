@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -102,14 +102,14 @@ def get_block(
     attention_head_dim: int,
     norm_type: str,
     act_fn: str,
-    qkv_mutliscales: tuple[int] = (),
+    qkv_multiscales: tuple[int, ...] = (),
 ):
     if block_type == "ResBlock":
         block = ResBlock(in_channels, out_channels, norm_type, act_fn)
 
     elif block_type == "EfficientViTBlock":
         block = EfficientViTBlock(
-            in_channels, attention_head_dim=attention_head_dim, norm_type=norm_type, qkv_multiscales=qkv_mutliscales
+            in_channels, attention_head_dim=attention_head_dim, norm_type=norm_type, qkv_multiscales=qkv_multiscales
         )
 
     else:
@@ -205,9 +205,9 @@ class Encoder(nn.Module):
         in_channels: int,
         latent_channels: int,
         attention_head_dim: int = 32,
-        block_type: str | tuple[str] = "ResBlock",
-        block_out_channels: tuple[int] = (128, 256, 512, 512, 1024, 1024),
-        layers_per_block: tuple[int] = (2, 2, 2, 2, 2, 2),
+        block_type: Union[str, tuple[str]] = "ResBlock",
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
+        layers_per_block: tuple[int, ...] = (2, 2, 2, 2, 2, 2),
         qkv_multiscales: tuple[tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         downsample_block_type: str = "pixel_unshuffle",
         out_shortcut: bool = True,
@@ -247,7 +247,7 @@ class Encoder(nn.Module):
                     attention_head_dim=attention_head_dim,
                     norm_type="rms_norm",
                     act_fn="silu",
-                    qkv_mutliscales=qkv_multiscales[i],
+                    qkv_multiscales=qkv_multiscales[i],
                 )
                 down_block_list.append(block)
 
@@ -291,12 +291,12 @@ class Decoder(nn.Module):
         in_channels: int,
         latent_channels: int,
         attention_head_dim: int = 32,
-        block_type: str | tuple[str] = "ResBlock",
-        block_out_channels: tuple[int] = (128, 256, 512, 512, 1024, 1024),
-        layers_per_block: tuple[int] = (2, 2, 2, 2, 2, 2),
+        block_type: Union[str, tuple[str]] = "ResBlock",
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
+        layers_per_block: tuple[int, ...] = (2, 2, 2, 2, 2, 2),
         qkv_multiscales: tuple[tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
-        norm_type: str | tuple[str] = "rms_norm",
-        act_fn: str | tuple[str] = "silu",
+        norm_type: Union[str, tuple[str]] = "rms_norm",
+        act_fn: Union[str, tuple[str]] = "silu",
         upsample_block_type: str = "pixel_shuffle",
         in_shortcut: bool = True,
         conv_act_fn: str = "relu",
@@ -339,7 +339,7 @@ class Decoder(nn.Module):
                     attention_head_dim=attention_head_dim,
                     norm_type=norm_type[i],
                     act_fn=act_fn[i],
-                    qkv_mutliscales=qkv_multiscales[i],
+                    qkv_multiscales=qkv_multiscales[i],
                 )
                 up_block_list.append(block)
 
@@ -436,18 +436,18 @@ class AutoencoderDC(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
         in_channels: int = 3,
         latent_channels: int = 32,
         attention_head_dim: int = 32,
-        encoder_block_types: str | tuple[str] = "ResBlock",
-        decoder_block_types: str | tuple[str] = "ResBlock",
+        encoder_block_types: Union[str, tuple[str]] = "ResBlock",
+        decoder_block_types: Union[str, tuple[str]] = "ResBlock",
         encoder_block_out_channels: tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
         decoder_block_out_channels: tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
-        encoder_layers_per_block: tuple[int] = (2, 2, 2, 3, 3, 3),
-        decoder_layers_per_block: tuple[int] = (3, 3, 3, 3, 3, 3),
+        encoder_layers_per_block: tuple[int, ...] = (2, 2, 2, 3, 3, 3),
+        decoder_layers_per_block: tuple[int, ...] = (3, 3, 3, 3, 3, 3),
         encoder_qkv_multiscales: tuple[tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         decoder_qkv_multiscales: tuple[tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         upsample_block_type: str = "pixel_shuffle",
         downsample_block_type: str = "pixel_unshuffle",
-        decoder_norm_types: str | tuple[str] = "rms_norm",
-        decoder_act_fns: str | tuple[str] = "silu",
+        decoder_norm_types: Union[str, tuple[str]] = "rms_norm",
+        decoder_act_fns: Union[str, tuple[str]] = "silu",
         encoder_out_shortcut: bool = True,
         decoder_in_shortcut: bool = True,
         decoder_conv_act_fn: str = "relu",
@@ -547,7 +547,7 @@ class AutoencoderDC(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
         return encoded
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> EncoderOutput | tuple[torch.Tensor]:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[EncoderOutput, tuple[torch.Tensor]]:
         r"""
         Encode a batch of images into latents.
 
@@ -581,7 +581,7 @@ class AutoencoderDC(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
         return decoded
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         r"""
         Decode a batch of images.
 
@@ -665,7 +665,7 @@ class AutoencoderDC(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
             return (encoded,)
         return EncoderOutput(latent=encoded)
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         batch_size, num_channels, height, width = z.shape
 
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio

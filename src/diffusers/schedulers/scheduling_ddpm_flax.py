@@ -39,7 +39,7 @@ class DDPMSchedulerState:
     # setable values
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
-    num_inference_steps: Optional[int] = None
+    num_inference_steps: int = None
 
     @classmethod
     def create(cls, common: CommonSchedulerState, init_noise_sigma: jnp.ndarray, timesteps: jnp.ndarray):
@@ -122,9 +122,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
             timesteps=timesteps,
         )
 
-    def scale_model_input(
-        self, state: DDPMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
-    ) -> jnp.ndarray:
+    def scale_model_input(self, state: DDPMSchedulerState, sample: jnp.ndarray, timestep: int = None) -> jnp.ndarray:
         """
         Args:
             state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.

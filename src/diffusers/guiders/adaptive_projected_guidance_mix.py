@@ -99,6 +99,19 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: dict[str, str | tuple[str, str]]
+    ) -> List["BlockState"]:
+        if self._step == 0:
+            if self.adaptive_projected_guidance_momentum is not None:
+                self.momentum_buffer = MomentumBuffer(self.adaptive_projected_guidance_momentum)
+        tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
+        data_batches = []
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch_from_block_state(input_fields, data, tuple_idx, input_prediction)
+            data_batches.append(data_batch)
+        return data_batches
+
     def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
         pred = None
 

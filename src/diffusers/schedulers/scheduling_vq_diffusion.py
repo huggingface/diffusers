@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import torch
@@ -59,7 +58,7 @@ def index_to_log_onehot(x: torch.LongTensor, num_classes: int) -> torch.Tensor:
     return log_x
 
 
-def gumbel_noised(logits: torch.Tensor, generator: Optional[torch.Generator]) -> torch.Tensor:
+def gumbel_noised(logits: torch.Tensor, generator: torch.Generator | None) -> torch.Tensor:
     """
     Apply gumbel noise to `logits`
     """
@@ -202,7 +201,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: torch.long,
         sample: torch.LongTensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
     ) -> VQDiffusionSchedulerOutput | tuple:
         """

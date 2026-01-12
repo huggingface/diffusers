@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import torch
@@ -102,7 +101,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
@@ -111,7 +110,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         sample: torch.FloatTensor,
         timestep: float | torch.FloatTensor,
-        noise: Optional[torch.FloatTensor] = None,
+        noise: torch.FloatTensor | None = None,
     ) -> torch.FloatTensor:
         """
         Forward process in flow-matching
@@ -119,8 +118,10 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`):
                 The input sample.
-            timestep (`int`, *optional*):
+            timestep (`torch.FloatTensor`):
                 The current timestep in the diffusion chain.
+            noise (`torch.FloatTensor`):
+                The noise tensor.
 
         Returns:
             `torch.FloatTensor`:
@@ -130,6 +131,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
+
         sample = sigma * noise + (1.0 - sigma) * sample
 
         return sample
@@ -206,7 +208,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         s_tmin: float = 0.0,
         s_tmax: float = float("inf"),
         s_noise: float = 1.0,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
     ) -> FlowMatchHeunDiscreteSchedulerOutput | tuple:
         """

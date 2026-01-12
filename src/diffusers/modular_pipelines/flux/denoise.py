@@ -59,7 +59,7 @@ class FluxLoopDenoiser(ModularPipelineBlocks):
             ),
             InputParam(
                 "guidance",
-                required=True,
+                required=False,
                 type_hint=torch.Tensor,
                 description="Guidance scale as a tensor",
             ),
@@ -141,7 +141,7 @@ class FluxKontextLoopDenoiser(ModularPipelineBlocks):
             ),
             InputParam(
                 "guidance",
-                required=True,
+                required=False,
                 type_hint=torch.Tensor,
                 description="Guidance scale as a tensor",
             ),

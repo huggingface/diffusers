@@ -203,10 +203,12 @@ class ContextParallelSplitHook(ModelHook):
 
     def _prepare_cp_input(self, x: torch.Tensor, cp_input: ContextParallelInput) -> torch.Tensor:
         if cp_input.expected_dims is not None and x.dim() != cp_input.expected_dims:
-            raise ValueError(
-                f"Expected input tensor to have {cp_input.expected_dims} dimensions, but got {x.dim()} dimensions."
+            logger.warning_once(
+                f"Expected input tensor to have {cp_input.expected_dims} dimensions, but got {x.dim()} dimensions, split will not be applied."
             )
-        return EquipartitionSharder.shard(x, cp_input.split_dim, self.parallel_config._flattened_mesh)
+            return x
+        else:
+            return EquipartitionSharder.shard(x, cp_input.split_dim, self.parallel_config._flattened_mesh)
 
 
 class ContextParallelGatherHook(ModelHook):

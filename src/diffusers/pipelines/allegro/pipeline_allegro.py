@@ -887,7 +887,13 @@ class AllegroPipeline(DiffusionPipeline):
             prompt_embeds = prompt_embeds.unsqueeze(1)  # b l d -> b 1 l d
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, timestep_device, timesteps
+        )
         self.scheduler.set_timesteps(num_inference_steps, device=device)
 
         # 5. Prepare latents.

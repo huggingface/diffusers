@@ -14,7 +14,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import torch
@@ -301,7 +300,7 @@ class BoundingBoxVolume(nn.Module):
         self,
         origin: torch.Tensor,
         direction: torch.Tensor,
-        t0_lower: Optional[torch.Tensor] = None,
+        t0_lower: torch.Tensor | None = None,
         epsilon=1e-6,
     ):
         """

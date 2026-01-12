@@ -19,10 +19,9 @@ from __future__ import annotations
 
 import functools
 import os
-from typing import Callable, Optional
 
 from . import logging
-from .import_utils import is_torch_available, is_torch_npu_available, is_torch_version
+from .import_utils import is_torch_available, is_torch_mlu_available, is_torch_npu_available, is_torch_version
 
 
 if is_torch_available():
@@ -90,7 +89,7 @@ except (ImportError, ModuleNotFoundError):
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
-def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, Callable], *args, **kwargs):
+def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, callable], *args, **kwargs):
     if device not in dispatch_table:
         return dispatch_table["default"](*args, **kwargs)
 
@@ -147,10 +146,10 @@ def backend_supports_training(device: str):
 
 def randn_tensor(
     shape: tuple | list,
-    generator: Optional[list["torch.Generator"] | "torch.Generator"] = None,
-    device: Optional[str | "torch.device"] = None,
-    dtype: Optional["torch.dtype"] = None,
-    layout: Optional["torch.layout"] = None,
+    generator: list["torch.Generator"] | "torch.Generator" | None = None,
+    device: str | "torch.device" | None = None,
+    dtype: "torch.dtype" | None = None,
+    layout: "torch.layout" | None = None,
 ):
     """A helper function to create random tensors on the desired `device` with the desired `dtype`. When
     passing a list of generators, you can seed each batch size individually. If CPU generators are passed, the tensor
@@ -288,11 +287,13 @@ def get_device():
         return "xpu"
     elif torch.backends.mps.is_available():
         return "mps"
+    elif is_torch_mlu_available():
+        return "mlu"
     else:
         return "cpu"
 
 
-def empty_device_cache(device_type: Optional[str] = None):
+def empty_device_cache(device_type: str | None = None):
     if device_type is None:
         device_type = get_device()
     if device_type in ["cpu"]:
@@ -301,7 +302,7 @@ def empty_device_cache(device_type: Optional[str] = None):
     device_mod.empty_cache()
 
 
-def device_synchronize(device_type: Optional[str] = None):
+def device_synchronize(device_type: str | None = None):
     if device_type is None:
         device_type = get_device()
     device_mod = getattr(torch, device_type, torch.cuda)

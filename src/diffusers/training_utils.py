@@ -6,10 +6,17 @@ import random
 import re
 import warnings
 from contextlib import contextmanager
-from typing import Any, Iterable, Optional
+from functools import partial
+from typing import Any, Iterable
 
 import numpy as np
 import torch
+
+
+if getattr(torch, "distributed", None) is not None:
+    from torch.distributed.fsdp import CPUOffload, ShardingStrategy
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+    from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 
 from .models import UNet2DConditionModel
 from .pipelines import DiffusionPipeline
@@ -18,6 +25,7 @@ from .utils import (
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
     deprecate,
+    is_accelerate_available,
     is_peft_available,
     is_torch_npu_available,
     is_torchvision_available,
@@ -30,6 +38,9 @@ if is_transformers_available():
 
     if transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
         import deepspeed
+
+if is_accelerate_available():
+    from accelerate.logging import get_logger
 
 if is_peft_available():
     from peft import set_peft_model_state_dict
@@ -151,7 +162,7 @@ def compute_dream_and_update_latents(
     target: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
     dream_detail_preservation: float = 1.0,
-) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Implements "DREAM (Diffusion Rectification and Estimation-Adaptive Models)" from
     https://huggingface.co/papers/2312.00210. DREAM helps align training with sampling to help training be more
@@ -266,7 +277,7 @@ def compute_density_for_timestep_sampling(
     logit_std: float = None,
     mode_scale: float = None,
     device: torch.device | str = "cpu",
-    generator: Optional[torch.Generator] = None,
+    generator: torch.Generator | None = None,
 ):
     """
     Compute the density for sampling the timesteps when doing SD3 training.
@@ -392,6 +403,83 @@ def find_nearest_bucket(h, w, bucket_options):
     return best_bucket_idx
 
 
+def _to_cpu_contiguous(state_dicts) -> dict:
+    return {k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v for k, v in state_dicts.items()}
+
+
+def get_fsdp_kwargs_from_accelerator(accelerator) -> dict:
+    """
+    Extract and convert FSDP config from Accelerator into PyTorch FSDP kwargs.
+    """
+
+    kwargs = {}
+    fsdp_state = getattr(accelerator.state, "fsdp_plugin", None)
+
+    if fsdp_state is None:
+        raise ValueError("Accelerate isn't configured to handle FSDP. Please update your installation.")
+
+    fsdp_plugin = accelerator.state.fsdp_plugin
+
+    if fsdp_plugin is None:
+        # FSDP not enabled in Accelerator
+        kwargs["sharding_strategy"] = ShardingStrategy.FULL_SHARD
+    else:
+        # FSDP is enabled → use plugin's strategy, or default if None
+        kwargs["sharding_strategy"] = fsdp_plugin.sharding_strategy or ShardingStrategy.FULL_SHARD
+
+    return kwargs
+
+
+def wrap_with_fsdp(
+    model: torch.nn.Module,
+    device: str | torch.Device,
+    offload: bool = True,
+    use_orig_params: bool = True,
+    limit_all_gathers: bool = True,
+    fsdp_kwargs: dict[str, any] | None = None,
+    transformer_layer_cls: set[type[torch.nn.Module]] | None = None,
+) -> FSDP:
+    """
+    Wrap a model with FSDP using common defaults and optional transformer auto-wrapping.
+
+    Args:
+        model: Model to wrap
+        device: Target device (e.g., accelerator.device)
+        offload: Whether to enable CPU parameter offloading
+        use_orig_params: Whether to use original parameters
+        limit_all_gathers: Whether to limit all gathers
+        fsdp_kwargs: FSDP arguments (sharding_strategy, etc.) — usually from Accelerate config
+        transformer_layer_cls: Classes for auto-wrapping (if not using policy from fsdp_kwargs)
+
+    Returns:
+        FSDP-wrapped model
+    """
+
+    logger = get_logger(__name__)
+
+    if transformer_layer_cls is None:
+        # Set the default layers if transformer_layer_cls is not provided
+        transformer_layer_cls = type(model.model.language_model.layers[0])
+        logger.info(f"transformer_layer_cls is not provided, auto-inferred as {transformer_layer_cls.__name__}")
+
+    # Add auto-wrap policy if transformer layers specified
+    auto_wrap_policy = partial(transformer_auto_wrap_policy, transformer_layer_cls={transformer_layer_cls})
+
+    config = {
+        "device_id": device,
+        "cpu_offload": CPUOffload(offload_params=offload) if offload else None,
+        "use_orig_params": use_orig_params,
+        "limit_all_gathers": limit_all_gathers,
+        "auto_wrap_policy": auto_wrap_policy,
+    }
+
+    if fsdp_kwargs:
+        config.update(fsdp_kwargs)
+
+    fsdp_model = FSDP(model, **config)
+    return fsdp_model
+
+
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
 class EMAModel:
     """
@@ -408,8 +496,8 @@ class EMAModel:
         inv_gamma: float | int = 1.0,
         power: float | int = 2 / 3,
         foreach: bool = False,
-        model_cls: Optional[Any] = None,
-        model_config: dict[str, Any] = None,
+        model_cls: any | None = None,
+        model_config: dict[str, any] | None = None,
         **kwargs,
     ):
         """
