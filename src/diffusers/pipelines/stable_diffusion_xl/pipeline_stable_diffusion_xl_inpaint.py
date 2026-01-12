@@ -1399,8 +1399,12 @@ class StableDiffusionXLInpaintPipeline(
         def denoising_value_valid(dnv):
             return isinstance(dnv, float) and 0 < dnv < 1
 
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas
+            self.scheduler, num_inference_steps, timestep_device, timesteps, sigmas
         )
         timesteps, num_inference_steps = self.get_timesteps(
             num_inference_steps,

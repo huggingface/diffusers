@@ -99,6 +99,7 @@ from .qwenimage import (
     QwenImageEditPlusPipeline,
     QwenImageImg2ImgPipeline,
     QwenImageInpaintPipeline,
+    QwenImageLayeredPipeline,
     QwenImagePipeline,
 )
 from .sana import SanaPipeline
@@ -202,6 +203,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("qwenimage", QwenImageImg2ImgPipeline),
         ("qwenimage-edit", QwenImageEditPipeline),
         ("qwenimage-edit-plus", QwenImageEditPlusPipeline),
+        ("qwenimage-layered", QwenImageLayeredPipeline),
         ("z-image", ZImageImg2ImgPipeline),
     ]
 )
