@@ -556,7 +556,7 @@ class WanAttnProcessor:
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -738,7 +738,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> torch.Tensor:
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
@@ -821,7 +821,7 @@ class WanRotaryPosEmbed(nn.Module):
     def __init__(
         self,
         attention_head_dim: int,
-        patch_size: Tuple[int, int, int],
+        patch_size: tuple[int, int, int],
         max_seq_len: int,
         theta: float = 10000.0,
     ):

@@ -270,7 +270,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.set_timesteps
     def set_timesteps(
         self,
-        num_inference_steps: int | None = None,
+        num_inference_steps: int = None,
         device: str | torch.device = None,
         timesteps: list[int] | None = None,
     ):

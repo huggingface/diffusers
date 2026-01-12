@@ -1,3 +1,5 @@
+from typing import Any, Optional
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -1749,7 +1751,7 @@ class UpBlockFlat(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
-        resolution_idx: int | None = None,
+        resolution_idx: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -1796,8 +1798,8 @@ class UpBlockFlat(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: torch.Tensor | None = None,
-        upsample_size: int | None = None,
+        temb: Optional[torch.Tensor] = None,
+        upsample_size: Optional[int] = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
@@ -1851,7 +1853,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
-        resolution_idx: int | None = None,
+        resolution_idx: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: int | tuple[int] = 1,
@@ -1939,12 +1941,12 @@ class CrossAttnUpBlockFlat(nn.Module):
         self,
         hidden_states: torch.Tensor,
         res_hidden_states_tuple: tuple[torch.Tensor, ...],
-        temb: torch.Tensor | None = None,
-        encoder_hidden_states: torch.Tensor | None = None,
-        cross_attention_kwargs: dict[str, any] | None = None,
-        upsample_size: int | None = None,
-        attention_mask: torch.Tensor | None = None,
-        encoder_attention_mask: torch.Tensor | None = None,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        upsample_size: Optional[int] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -2021,7 +2023,7 @@ class UNetMidBlockFlat(nn.Module):
         resnet_act_fn (`str`, *optional*, defaults to `swish`): The activation function for the resnet blocks.
         resnet_groups (`int`, *optional*, defaults to 32):
             The number of groups to use in the group normalization layers of the resnet blocks.
-        attn_groups (`int | None`, *optional*, defaults to None): The number of groups for the attention blocks.
+        attn_groups (`Optional[int]`, *optional*, defaults to None): The number of groups for the attention blocks.
         resnet_pre_norm (`bool`, *optional*, defaults to `True`):
             Whether to use pre-normalization for the resnet blocks.
         add_attention (`bool`, *optional*, defaults to `True`): Whether to add attention blocks.
@@ -2046,7 +2048,7 @@ class UNetMidBlockFlat(nn.Module):
         resnet_time_scale_shift: str = "default",  # default, spatial
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        attn_groups: int | None = None,
+        attn_groups: Optional[int] = None,
         resnet_pre_norm: bool = True,
         add_attention: bool = True,
         attention_head_dim: int = 1,
@@ -2152,7 +2154,7 @@ class UNetMidBlockFlat(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -2173,7 +2175,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         self,
         in_channels: int,
         temb_channels: int,
-        out_channels: int | None = None,
+        out_channels: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: int | tuple[int] = 1,
@@ -2181,7 +2183,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_groups_out: int | None = None,
+        resnet_groups_out: Optional[int] = None,
         resnet_pre_norm: bool = True,
         num_attention_heads: int = 1,
         output_scale_factor: float = 1.0,
@@ -2274,11 +2276,11 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: torch.Tensor | None = None,
-        encoder_hidden_states: torch.Tensor | None = None,
-        attention_mask: torch.Tensor | None = None,
-        cross_attention_kwargs: dict[str, any] | None = None,
-        encoder_attention_mask: torch.Tensor | None = None,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -2328,7 +2330,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         cross_attention_dim: int = 1280,
         skip_time_act: bool = False,
         only_cross_attention: bool = False,
-        cross_attention_norm: str | None = None,
+        cross_attention_norm: Optional[str] = None,
     ):
         super().__init__()
 
@@ -2399,11 +2401,11 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: torch.Tensor | None = None,
-        encoder_hidden_states: torch.Tensor | None = None,
-        attention_mask: torch.Tensor | None = None,
-        cross_attention_kwargs: dict[str, any] | None = None,
-        encoder_attention_mask: torch.Tensor | None = None,
+        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         if cross_attention_kwargs.get("scale", None) is not None:

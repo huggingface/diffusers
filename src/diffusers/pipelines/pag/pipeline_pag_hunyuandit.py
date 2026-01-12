@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+from typing import Optional
 
 import numpy as np
 import torch
@@ -261,12 +262,12 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         dtype: torch.dtype = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: str | None = None,
-        prompt_embeds: torch.Tensor | None = None,
-        negative_prompt_embeds: torch.Tensor | None = None,
-        prompt_attention_mask: torch.Tensor | None = None,
-        negative_prompt_attention_mask: torch.Tensor | None = None,
-        max_sequence_length: int = None,
+        negative_prompt: Optional[str] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        max_sequence_length: Optional[int] = None,
         text_encoder_index: int = 0,
     ):
         r"""

@@ -277,7 +277,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> torch.Tensor:
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)

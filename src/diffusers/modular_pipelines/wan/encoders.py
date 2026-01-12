@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import html
+from typing import Optional
 
 import numpy as np
 import PIL
@@ -103,7 +104,7 @@ def encode_image(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)

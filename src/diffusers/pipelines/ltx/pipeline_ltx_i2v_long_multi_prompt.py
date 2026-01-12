@@ -500,7 +500,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
     # Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: str | list[str] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 128,
         device: Optional[torch.device] = None,
@@ -549,8 +549,8 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
     # Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: Optional[str | list[str]] = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -565,9 +565,9 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
