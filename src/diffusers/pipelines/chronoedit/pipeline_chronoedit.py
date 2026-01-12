@@ -485,7 +485,7 @@ class ChronoEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         output_type: str | None = "np",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
-        callback_on_step_end: Callable[[int, int, None], PipelineCallback, MultiPipelineCallbacks] | None = None,
+        callback_on_step_end: Callable[[int, int, None], PipelineCallback | MultiPipelineCallbacks] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
         enable_temporal_reasoning: bool = False,
