@@ -315,7 +315,35 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, device)
+            # Check if image is a nested list (batch_size > 1)
+            if image is not None and isinstance(image, list) and image and isinstance(image[0], list):
+                # Process each batch item separately
+                all_prompt_embeds = []
+                all_prompt_embeds_mask = []
+                for i, (single_prompt, batch_images) in enumerate(zip(prompt, image)):
+                    embeds, mask = self._get_qwen_prompt_embeds([single_prompt], batch_images, device)
+                    all_prompt_embeds.append(embeds)
+                    all_prompt_embeds_mask.append(mask)
+
+                # Find max sequence length across all batch items
+                max_seq_len = max(e.shape[1] for e in all_prompt_embeds)
+
+                # Pad all embeddings to same length and concatenate
+                padded_embeds = []
+                padded_masks = []
+                for embeds, mask in zip(all_prompt_embeds, all_prompt_embeds_mask):
+                    if embeds.shape[1] < max_seq_len:
+                        pad_len = max_seq_len - embeds.shape[1]
+                        embeds = torch.cat([embeds, torch.zeros(embeds.shape[0], pad_len, embeds.shape[2], device=embeds.device, dtype=embeds.dtype)], dim=1)
+                        mask = torch.cat([mask, torch.zeros(mask.shape[0], pad_len, device=mask.device, dtype=mask.dtype)], dim=1)
+                    padded_embeds.append(embeds)
+                    padded_masks.append(mask)
+
+                prompt_embeds = torch.cat(padded_embeds, dim=0)
+                prompt_embeds_mask = torch.cat(padded_masks, dim=0)
+            else:
+                # Single batch or batch_size == 1
+                prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, device)
 
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -407,6 +435,32 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return latents
 
+    def _preprocess_image_list(self, images):
+        """
+        Preprocess a list of PIL images for both condition encoder and VAE.
+
+        Args:
+            images: List of PIL images
+
+        Returns:
+            Tuple of (condition_sizes, condition_images, vae_sizes, vae_images)
+        """
+        condition_sizes = []
+        condition_images = []
+        vae_sizes = []
+        vae_images = []
+
+        for img in images:
+            image_width, image_height = img.size
+            condition_width, condition_height = calculate_dimensions(CONDITION_IMAGE_SIZE, image_width / image_height)
+            vae_width, vae_height = calculate_dimensions(VAE_IMAGE_SIZE, image_width / image_height)
+            condition_sizes.append((condition_width, condition_height))
+            vae_sizes.append((vae_width, vae_height))
+            condition_images.append(self.image_processor.resize(img, condition_height, condition_width))
+            vae_images.append(self.image_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
+
+        return condition_sizes, condition_images, vae_sizes, vae_images
+
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit.QwenImageEditPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
@@ -431,6 +485,18 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return image_latents
 
+    def _encode_and_pack_image(self, image, num_channels_latents, device, dtype, generator):
+        """Encode a single image and pack it. Returns packed latents."""
+        image = image.to(device=device, dtype=dtype)
+        if image.shape[1] != self.latent_channels:
+            img_latents = self._encode_vae_image(image=image, generator=generator)
+        else:
+            img_latents = image
+
+        image_latent_height, image_latent_width = img_latents.shape[3:]
+        img_latents = self._pack_latents(img_latents, 1, num_channels_latents, image_latent_height, image_latent_width)
+        return img_latents
+
     def prepare_latents(
         self,
         images,
@@ -454,30 +520,28 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if images is not None:
             if not isinstance(images, list):
                 images = [images]
-            all_image_latents = []
-            for image in images:
-                image = image.to(device=device, dtype=dtype)
-                if image.shape[1] != self.latent_channels:
-                    image_latents = self._encode_vae_image(image=image, generator=generator)
-                else:
-                    image_latents = image
-                if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
-                    # expand init_latents for batch_size
-                    additional_image_per_prompt = batch_size // image_latents.shape[0]
-                    image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
-                elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
-                    raise ValueError(
-                        f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
-                    )
-                else:
-                    image_latents = torch.cat([image_latents], dim=0)
 
-                image_latent_height, image_latent_width = image_latents.shape[3:]
-                image_latents = self._pack_latents(
-                    image_latents, batch_size, num_channels_latents, image_latent_height, image_latent_width
-                )
-                all_image_latents.append(image_latents)
-            image_latents = torch.cat(all_image_latents, dim=1)
+            # Check if nested list (batch_size > 1): [[img1, img2], [img3, img4]]
+            is_nested = images and isinstance(images[0], list)
+
+            if is_nested:
+                # batch_size > 1: Process each batch item separately
+                batch_image_latents = []
+                for batch_images in images:
+                    batch_item_latents = [
+                        self._encode_and_pack_image(img, num_channels_latents, device, dtype, generator)
+                        for img in batch_images
+                    ]
+                    # Concatenate all images for this batch item along sequence dimension
+                    batch_image_latents.append(torch.cat(batch_item_latents, dim=1))
+                # Stack all batch items to create final batch dimension
+                image_latents = torch.cat(batch_image_latents, dim=0)
+            else:
+                # batch_size == 1: Process flat list [img1, img2]
+                all_image_latents = [
+                    self._encode_and_pack_image(img, num_channels_latents, device, dtype, generator) for img in images
+                ]
+                image_latents = torch.cat(all_image_latents, dim=1)
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -627,7 +691,17 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             [`~pipelines.qwenimage.QwenImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is a list with the generated images.
         """
-        image_size = image[-1].size if isinstance(image, list) else image.size
+        # Handle both flat list [img1, img2] and nested list [[img1, img2], [img3, img4]]
+        if isinstance(image, list):
+            # Check if nested list (batch_size > 1)
+            if isinstance(image[0], list):
+                # Use last image from first batch item
+                image_size = image[0][-1].size
+            else:
+                # Flat list (batch_size == 1)
+                image_size = image[-1].size
+        else:
+            image_size = image.size
         calculated_width, calculated_height = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
         height = height or calculated_height
         width = width or calculated_width
@@ -663,32 +737,34 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        # QwenImageEditPlusPipeline does not currently support batch_size > 1
-        if batch_size > 1:
-            raise ValueError(
-                f"QwenImageEditPlusPipeline currently only supports batch_size=1, but received batch_size={batch_size}. "
-                "Please process prompts one at a time."
-            )
-
         device = self._execution_device
         # 3. Preprocess image
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
             if not isinstance(image, list):
                 image = [image]
-            condition_image_sizes = []
-            condition_images = []
-            vae_image_sizes = []
-            vae_images = []
-            for img in image:
-                image_width, image_height = img.size
-                condition_width, condition_height = calculate_dimensions(
-                    CONDITION_IMAGE_SIZE, image_width / image_height
+
+            # Check if nested list (batch_size > 1) or flat list (batch_size == 1)
+            is_nested = isinstance(image[0], list)
+
+            if is_nested:
+                # batch_size > 1: image = [[img1, img2], [img3, img4]]
+                # Process each batch item separately
+                condition_image_sizes = []
+                condition_images = []
+                vae_image_sizes = []
+                vae_images = []
+
+                for batch_images in image:
+                    cond_sizes, cond_imgs, vae_szs, vae_imgs = self._preprocess_image_list(batch_images)
+                    condition_image_sizes.append(cond_sizes)
+                    condition_images.append(cond_imgs)
+                    vae_image_sizes.append(vae_szs)
+                    vae_images.append(vae_imgs)
+            else:
+                # batch_size == 1: image = [img1, img2]
+                condition_image_sizes, condition_images, vae_image_sizes, vae_images = self._preprocess_image_list(
+                    image
                 )
-                vae_width, vae_height = calculate_dimensions(VAE_IMAGE_SIZE, image_width / image_height)
-                condition_image_sizes.append((condition_width, condition_height))
-                vae_image_sizes.append((vae_width, vae_height))
-                condition_images.append(self.image_processor.resize(img, condition_height, condition_width))
-                vae_images.append(self.image_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
 
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
@@ -737,15 +813,19 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             generator,
             latents,
         )
+        # Build img_shapes for each batch item (avoid shared references!)
+        # Normalize vae_image_sizes to nested list format for uniform processing
+        sizes_list = vae_image_sizes if is_nested else [vae_image_sizes]
         img_shapes = [
             [
                 (1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2),
                 *[
                     (1, vae_height // self.vae_scale_factor // 2, vae_width // self.vae_scale_factor // 2)
-                    for vae_width, vae_height in vae_image_sizes
+                    for vae_width, vae_height in batch_vae_sizes
                 ],
             ]
-        ] * batch_size
+            for batch_vae_sizes in sizes_list
+        ]
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
