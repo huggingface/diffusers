@@ -44,9 +44,9 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import Flux2Pipeline
+        >>> from diffusers import Flux2KleinPipeline
 
-        >>> pipe = Flux2Pipeline.from_pretrained("black-forest-labs/FLUX.2-dev", torch_dtype=torch.bfloat16)
+        >>> pipe = Flux2KleinPipeline.from_pretrained("TODO", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
@@ -56,8 +56,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-# Taken from
-# https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/sampling.py#L251
+# Copied from diffusers.pipelines.flux2.pipeline_flux2.compute_empiricial_mu
 def compute_empirical_mu(image_seq_len: int, num_steps: int) -> float:
     a1, b1 = 8.73809524e-05, 1.89833333
     a2, b2 = 0.00016927, 0.45666666
