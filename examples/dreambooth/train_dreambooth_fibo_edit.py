@@ -755,7 +755,12 @@ class DreamBoothDataset(Dataset):
 def clean_json_caption(caption):
     """Validate and normalize JSON caption format. Raises ValueError if caption is not valid JSON."""
     try:
-        caption = json.loads(caption)
+        if isinstance(caption, str):
+            caption = json.loads(caption)
+        elif isinstance(caption, dict):
+            caption = caption
+        else:
+            raise ValueError(f"Caption must be a string or dict. Got {type(caption)}")
         return ujson.dumps(caption, escape_forward_slashes=False)
     except (json.JSONDecodeError, TypeError) as e:
         raise ValueError(
