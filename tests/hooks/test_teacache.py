@@ -55,13 +55,11 @@ class TeaCacheConfigTests(unittest.TestCase):
 
     def test_very_low_threshold_accepted(self):
         """Test very low threshold is accepted (with logging warning)."""
-        # Very low threshold should be accepted but logged as warning
         config = TeaCacheConfig(rel_l1_thresh=0.01)
         self.assertEqual(config.rel_l1_thresh, 0.01)
 
     def test_very_high_threshold_accepted(self):
         """Test very high threshold is accepted (with logging warning)."""
-        # Very high threshold should be accepted but logged as warning
         config = TeaCacheConfig(rel_l1_thresh=1.5)
         self.assertEqual(config.rel_l1_thresh, 1.5)
 
@@ -98,17 +96,14 @@ class TeaCacheStateTests(unittest.TestCase):
         from diffusers.hooks.teacache import TeaCacheState
 
         state = TeaCacheState()
-        # Modify state
         state.cnt = 5
         state.num_steps = 10
         state.accumulated_rel_l1_distance = 0.5
         state.previous_modulated_input = torch.randn(1, 10)
         state.previous_residual = torch.randn(1, 10)
 
-        # Reset
         state.reset()
 
-        # Verify reset
         self.assertEqual(state.cnt, 0)
         self.assertEqual(state.num_steps, 0)
         self.assertEqual(state.accumulated_rel_l1_distance, 0.0)
