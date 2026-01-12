@@ -720,7 +720,7 @@ class ChromaImg2ImgPipeline(
         negative_ip_adapter_image_embeds: list[torch.Tensor] | None = None,
         negative_prompt_embeds: torch.Tensor | None = None,
         prompt_attention_mask: torch.Tensor | None = None,
-        negative_prompt_attention_mask: torch.tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
         output_type: str | None = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: dict[str, Any] | None = None,
