@@ -768,7 +768,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         negative_prompt_cu_seqlens: torch.Tensor | None = None,
         output_type: str | None = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Callable[[int, int, None], PipelineCallback, MultiPipelineCallbacks] | None = None,
+        callback_on_step_end: Callable[[int, int, None], PipelineCallback | MultiPipelineCallbacks] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
     ):
