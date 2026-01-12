@@ -456,5 +456,81 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         self.assertEqual(cogvideox_hook.model_type, "CogVideoX")
 
 
+class StateManagerContextTests(unittest.TestCase):
+    """Tests for StateManager context isolation and backward compatibility."""
+
+    def test_context_isolation(self):
+        """Test that different contexts maintain separate states."""
+        from diffusers.hooks import StateManager
+        from diffusers.hooks.teacache import TeaCacheState
+
+        state_manager = StateManager(TeaCacheState, (), {})
+
+        # Set context "cond" and modify state
+        state_manager.set_context("cond")
+        cond_state = state_manager.get_state()
+        cond_state.cnt = 5
+        cond_state.accumulated_rel_l1_distance = 0.3
+
+        # Set context "uncond" and modify state
+        state_manager.set_context("uncond")
+        uncond_state = state_manager.get_state()
+        uncond_state.cnt = 10
+        uncond_state.accumulated_rel_l1_distance = 0.7
+
+        # Verify isolation - switch back to "cond"
+        state_manager.set_context("cond")
+        self.assertEqual(state_manager.get_state().cnt, 5)
+        self.assertEqual(state_manager.get_state().accumulated_rel_l1_distance, 0.3)
+
+        # Verify isolation - switch back to "uncond"
+        state_manager.set_context("uncond")
+        self.assertEqual(state_manager.get_state().cnt, 10)
+        self.assertEqual(state_manager.get_state().accumulated_rel_l1_distance, 0.7)
+
+    def test_default_context_fallback(self):
+        """Test that state works without explicit context (backward compatibility)."""
+        from diffusers.hooks import StateManager
+        from diffusers.hooks.teacache import TeaCacheState
+
+        state_manager = StateManager(TeaCacheState, (), {})
+
+        # Don't set context - should use "_default" fallback
+        state = state_manager.get_state()
+        self.assertIsNotNone(state)
+        self.assertEqual(state.cnt, 0)
+
+        # Modify state
+        state.cnt = 42
+
+        # Should still get the same state via default context
+        state2 = state_manager.get_state()
+        self.assertEqual(state2.cnt, 42)
+
+    def test_default_context_separate_from_named(self):
+        """Test that default context is separate from named contexts."""
+        from diffusers.hooks import StateManager
+        from diffusers.hooks.teacache import TeaCacheState
+
+        state_manager = StateManager(TeaCacheState, (), {})
+
+        # Use default context (no explicit set_context)
+        default_state = state_manager.get_state()
+        default_state.cnt = 100
+
+        # Now set a named context
+        state_manager.set_context("named")
+        named_state = state_manager.get_state()
+        named_state.cnt = 200
+
+        # Clear context to use default again
+        state_manager._current_context = None
+        self.assertEqual(state_manager.get_state().cnt, 100)
+
+        # Named context should still have its value
+        state_manager.set_context("named")
+        self.assertEqual(state_manager.get_state().cnt, 200)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -28,23 +28,18 @@ _TEACACHE_HOOK = "teacache"
 
 
 def _handle_accelerate_hook(module: torch.nn.Module, *args, **kwargs) -> Tuple[tuple, dict]:
-    """Handle compatibility with accelerate's CPU offload hooks.
-
-    When TeaCache's new_forward replaces the forward chain, accelerate's hooks are bypassed.
-    This function manually triggers accelerate's pre_forward to ensure proper device placement.
-
-    Args:
-        module: The model module that may have accelerate hooks attached.
-        *args: Forward arguments to potentially move to the execution device.
-        **kwargs: Forward keyword arguments to potentially move to the execution device.
-
-    Returns:
-        Tuple of (args, kwargs) potentially moved to the correct device.
-    """
+    """Handle compatibility with accelerate's CPU offload hooks."""
     if hasattr(module, "_hf_hook") and hasattr(module._hf_hook, "pre_forward"):
-        # Accelerate's CpuOffload hook will move the module to GPU and return modified args/kwargs
         args, kwargs = module._hf_hook.pre_forward(module, *args, **kwargs)
     return args, kwargs
+
+
+def _extract_lora_scale(attention_kwargs: Optional[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], float]:
+    """Extract LoRA scale from attention kwargs, returning (modified_kwargs, scale)."""
+    if attention_kwargs is None:
+        return None, 1.0
+    attention_kwargs = attention_kwargs.copy()
+    return attention_kwargs, attention_kwargs.pop("scale", 1.0)
 
 
 def _get_model_config():
@@ -113,39 +108,35 @@ def _rescale_distance(coefficients, x):
     return c[0] * x**4 + c[1] * x**3 + c[2] * x**2 + c[3] * x + c[4]
 
 
+def _compute_rel_l1_distance(current: torch.Tensor, previous: torch.Tensor) -> float:
+    """Compute relative L1 distance between current and previous tensors."""
+    prev_mean = previous.abs().mean()
+    if prev_mean.item() > 1e-9:
+        return ((current - previous).abs().mean() / prev_mean).item()
+    # Near-zero previous: if current also near-zero, no change; otherwise force recompute
+    return 0.0 if current.abs().mean().item() < 1e-9 else float("inf")
+
+
 @torch.compiler.disable
 def _should_compute(state, modulated_inp, coefficients, rel_l1_thresh):
     """Determine if full computation is needed (single residual models)."""
-    # First timestep always computes
-    if state.cnt == 0:
+    # First/last timesteps and missing state always require computation
+    is_first_step = state.cnt == 0
+    is_last_step = state.num_steps > 0 and state.cnt == state.num_steps - 1
+    missing_state = state.previous_modulated_input is None or state.previous_residual is None
+
+    if is_first_step or is_last_step or missing_state:
         state.accumulated_rel_l1_distance = 0
         return True
-    # Last timestep always computes
-    if state.num_steps > 0 and state.cnt == state.num_steps - 1:
+
+    # Compute accumulated distance and check threshold
+    rel_distance = _compute_rel_l1_distance(modulated_inp, state.previous_modulated_input)
+    state.accumulated_rel_l1_distance += _rescale_distance(coefficients, rel_distance)
+
+    if state.accumulated_rel_l1_distance >= rel_l1_thresh:
         state.accumulated_rel_l1_distance = 0
         return True
-    # No previous state - must compute
-    if state.previous_modulated_input is None:
-        return True
-    if state.previous_residual is None:
-        return True
-
-    # Compute L1 distance and check threshold
-    # Note: .item() implicitly syncs GPU->CPU. This is necessary for the threshold comparison.
-    prev_mean = state.previous_modulated_input.abs().mean()
-    if prev_mean.item() > 1e-9:
-        rel_distance = ((modulated_inp - state.previous_modulated_input).abs().mean() / prev_mean).item()
-    else:
-        # Handle near-zero previous input: if current is also near-zero, no change; otherwise force recompute
-        rel_distance = 0.0 if modulated_inp.abs().mean().item() < 1e-9 else float("inf")
-    rescaled = _rescale_distance(coefficients, rel_distance)
-    state.accumulated_rel_l1_distance += rescaled
-
-    if state.accumulated_rel_l1_distance < rel_l1_thresh:
-        return False
-
-    state.accumulated_rel_l1_distance = 0
-    return True
+    return False
 
 
 @torch.compiler.disable
@@ -259,7 +250,11 @@ class TeaCacheConfig:
     num_inference_steps_callback: Optional[Callable[[], int]] = None
 
     def __post_init__(self):
-        # Validate rel_l1_thresh
+        self._validate_threshold()
+        self._validate_coefficients()
+
+    def _validate_threshold(self):
+        """Validate rel_l1_thresh parameter."""
         if not isinstance(self.rel_l1_thresh, (int, float)):
             raise TypeError(
                 f"rel_l1_thresh must be a number, got {type(self.rel_l1_thresh).__name__}. "
@@ -282,23 +277,25 @@ class TeaCacheConfig:
                 f"Consider using values between 0.1 and 0.6 for better quality-speed tradeoff."
             )
 
-        # Validate coefficients only if explicitly provided (None = auto-detect later)
-        if self.coefficients is not None:
-            if not isinstance(self.coefficients, (list, tuple)):
-                raise TypeError(
-                    f"coefficients must be a list or tuple, got {type(self.coefficients).__name__}. "
-                    f"Please provide a list of 5 polynomial coefficients."
-                )
-            if len(self.coefficients) != 5:
-                raise ValueError(
-                    f"coefficients must contain exactly 5 elements for 4th-degree polynomial, "
-                    f"got {len(self.coefficients)}. The polynomial is evaluated as: "
-                    f"c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]"
-                )
-            if not all(isinstance(c, (int, float)) for c in self.coefficients):
-                raise TypeError(
-                    f"All coefficients must be numbers. Got types: {[type(c).__name__ for c in self.coefficients]}"
-                )
+    def _validate_coefficients(self):
+        """Validate coefficients parameter if provided."""
+        if self.coefficients is None:
+            return
+        if not isinstance(self.coefficients, (list, tuple)):
+            raise TypeError(
+                f"coefficients must be a list or tuple, got {type(self.coefficients).__name__}. "
+                f"Please provide a list of 5 polynomial coefficients."
+            )
+        if len(self.coefficients) != 5:
+            raise ValueError(
+                f"coefficients must contain exactly 5 elements for 4th-degree polynomial, "
+                f"got {len(self.coefficients)}. The polynomial is evaluated as: "
+                f"c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]"
+            )
+        if not all(isinstance(c, (int, float)) for c in self.coefficients):
+            raise TypeError(
+                f"All coefficients must be numbers. Got types: {[type(c).__name__ for c in self.coefficients]}"
+            )
 
     def __repr__(self) -> str:
         return (
@@ -451,11 +448,9 @@ class TeaCacheHook(ModelHook):
                 logger.debug(f"TeaCache: Using {state.num_steps} inference steps")
 
     def initialize_hook(self, module):
-        # TODO: DN6 raised concern about context setting timing.
-        # Currently set in initialize_hook(). Should this be in denoising loop instead?
-        # See PR #12652 for discussion. Keeping current behavior pending clarification.
-        self.state_manager.set_context("teacache")
-
+        # Context is set by pipeline's cache_context() calls in the denoising loop.
+        # This enables proper state isolation between cond/uncond branches.
+        # See PR #12652 for discussion on this design decision.
         model_config = _get_model_config()
 
         # Auto-detect model type and get forward function
@@ -589,7 +584,6 @@ def _mochi_teacache_forward(
     return_dict: bool = True,
 ):
     """TeaCache forward for Mochi models."""
-    # Handle accelerate CPU offload compatibility - moves module and inputs to GPU if needed
     args, kwargs = _handle_accelerate_hook(
         module,
         hidden_states,
@@ -603,12 +597,7 @@ def _mochi_teacache_forward(
     attention_kwargs = kwargs.get("attention_kwargs", attention_kwargs)
     return_dict = kwargs.get("return_dict", return_dict)
 
-    if attention_kwargs is not None:
-        attention_kwargs = attention_kwargs.copy()
-        lora_scale = attention_kwargs.pop("scale", 1.0)
-    else:
-        lora_scale = 1.0
-
+    attention_kwargs, lora_scale = _extract_lora_scale(attention_kwargs)
     if USE_PEFT_BACKEND:
         scale_lora_layers(module, lora_scale)
 
@@ -697,7 +686,6 @@ def _lumina2_teacache_forward(
     return_dict: bool = True,
 ):
     """TeaCache forward for Lumina2 models (handles variable seq lens + per-len caches)."""
-    # Handle accelerate CPU offload compatibility - moves module and inputs to GPU if needed
     args, kwargs = _handle_accelerate_hook(
         module,
         hidden_states,
@@ -711,12 +699,7 @@ def _lumina2_teacache_forward(
     attention_kwargs = kwargs.get("attention_kwargs", attention_kwargs)
     return_dict = kwargs.get("return_dict", return_dict)
 
-    if attention_kwargs is not None:
-        attention_kwargs = attention_kwargs.copy()
-        lora_scale = attention_kwargs.pop("scale", 1.0)
-    else:
-        lora_scale = 1.0
-
+    attention_kwargs, lora_scale = _extract_lora_scale(attention_kwargs)
     if USE_PEFT_BACKEND:
         scale_lora_layers(module, lora_scale)
 
@@ -760,6 +743,7 @@ def _lumina2_teacache_forward(
     # Inline extractor: Lumina2 uses layers[0].norm1
     modulated_inp = module.layers[0].norm1(input_to_main_loop, temb)[0]
 
+    # Per-sequence-length caching for variable sequence lengths
     cache_key = max_seq_len
     if cache_key not in state.cache_dict:
         state.cache_dict[cache_key] = {
@@ -767,32 +751,27 @@ def _lumina2_teacache_forward(
             "previous_residual": None,
             "accumulated_rel_l1_distance": 0.0,
         }
-    current_cache = state.cache_dict[cache_key]
+    cache = state.cache_dict[cache_key]
 
-    if state.cnt == 0 or state.cnt == state.num_steps - 1:
+    # Determine if computation is needed
+    is_boundary_step = state.cnt == 0 or state.cnt == state.num_steps - 1
+    has_previous = cache["previous_modulated_input"] is not None
+
+    if is_boundary_step or not has_previous:
         should_calc = True
-        current_cache["accumulated_rel_l1_distance"] = 0.0
+        cache["accumulated_rel_l1_distance"] = 0.0
     else:
-        if current_cache["previous_modulated_input"] is not None:
-            prev_mod_input = current_cache["previous_modulated_input"]
-            prev_mean = prev_mod_input.abs().mean()
-            if prev_mean.item() > 1e-9:
-                rel_l1_change = ((modulated_inp - prev_mod_input).abs().mean() / prev_mean).item()
-            else:
-                rel_l1_change = 0.0 if modulated_inp.abs().mean().item() < 1e-9 else float("inf")
-            rescaled_distance = _rescale_distance(hook.coefficients, rel_l1_change)
-            current_cache["accumulated_rel_l1_distance"] += rescaled_distance
-            if current_cache["accumulated_rel_l1_distance"] < hook.config.rel_l1_thresh:
-                should_calc = False
-            else:
-                should_calc = True
-                current_cache["accumulated_rel_l1_distance"] = 0.0
-        else:
+        rel_distance = _compute_rel_l1_distance(modulated_inp, cache["previous_modulated_input"])
+        cache["accumulated_rel_l1_distance"] += _rescale_distance(hook.coefficients, rel_distance)
+        if cache["accumulated_rel_l1_distance"] >= hook.config.rel_l1_thresh:
             should_calc = True
-            current_cache["accumulated_rel_l1_distance"] = 0.0
+            cache["accumulated_rel_l1_distance"] = 0.0
+        else:
+            should_calc = False
 
-    current_cache["previous_modulated_input"] = modulated_inp.clone()
+    cache["previous_modulated_input"] = modulated_inp.clone()
 
+    # Track sequence length for step counting (CFG handling)
     if state.uncond_seq_len is None:
         state.uncond_seq_len = cache_key
     if cache_key != state.uncond_seq_len:
@@ -800,16 +779,16 @@ def _lumina2_teacache_forward(
         if state.cnt >= state.num_steps:
             state.cnt = 0
 
-    if not should_calc and current_cache["previous_residual"] is not None:
-        processed_hidden_states = input_to_main_loop + current_cache["previous_residual"]
+    # Apply cached residual or compute full forward
+    if not should_calc and cache["previous_residual"] is not None:
+        processed_hidden_states = input_to_main_loop + cache["previous_residual"]
     else:
-        current_processing_states = input_to_main_loop
+        processed_hidden_states = input_to_main_loop
         for layer in module.layers:
-            current_processing_states = layer(
-                current_processing_states, attention_mask_for_main_loop_arg, joint_rotary_emb, temb
+            processed_hidden_states = layer(
+                processed_hidden_states, attention_mask_for_main_loop_arg, joint_rotary_emb, temb
             )
-        processed_hidden_states = current_processing_states
-        current_cache["previous_residual"] = processed_hidden_states - input_to_main_loop
+        cache["previous_residual"] = processed_hidden_states - input_to_main_loop
 
     output_after_norm = module.norm_out(processed_hidden_states, temb)
     p = module.config.patch_size
@@ -844,7 +823,6 @@ def _cogvideox_teacache_forward(
     return_dict: bool = True,
 ):
     """TeaCache forward for CogVideoX models (handles dual residual caching)."""
-    # Handle accelerate CPU offload compatibility - moves module and inputs to GPU if needed
     args, kwargs = _handle_accelerate_hook(
         module,
         hidden_states,
@@ -863,12 +841,7 @@ def _cogvideox_teacache_forward(
     attention_kwargs = kwargs.get("attention_kwargs", attention_kwargs)
     return_dict = kwargs.get("return_dict", return_dict)
 
-    if attention_kwargs is not None:
-        attention_kwargs = attention_kwargs.copy()
-        lora_scale = attention_kwargs.pop("scale", 1.0)
-    else:
-        lora_scale = 1.0
-
+    attention_kwargs, lora_scale = _extract_lora_scale(attention_kwargs)
     if USE_PEFT_BACKEND:
         scale_lora_layers(module, lora_scale)
 
