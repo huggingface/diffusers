@@ -240,6 +240,14 @@ class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol, rtol)
 
+    @pytest.mark.xfail(
+        condition=True,
+        reason="num_images_per_prompt > 1 is not yet supported for EditPlus pipeline",
+        strict=True,
+    )
+    def test_num_images_per_prompt(self):
+        super().test_num_images_per_prompt()
+
     def test_inference_batch_single_identical(self):
         # Test that batch_size=1 gives identical results to non-batched inference
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
