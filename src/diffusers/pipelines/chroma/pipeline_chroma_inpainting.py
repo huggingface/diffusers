@@ -761,7 +761,7 @@ class ChromaInpaintPipeline(
 
         # Extend the prompt attention mask to account for image tokens in the final sequence
         attention_mask = torch.cat(
-            [attention_mask, torch.ones(batch_size, sequence_length, device=attention_mask.device)],
+            [attention_mask, torch.ones(batch_size, sequence_length, device=attention_mask.device, dtype=torch.bool)],
             dim=1,
         )
         attention_mask = attention_mask.to(dtype)
