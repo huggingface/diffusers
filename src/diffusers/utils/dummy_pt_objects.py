@@ -982,7 +982,7 @@ class FluxTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class HiDreamImageTransformer2DModel(metaclass=DummyObject):
+class GlmImageTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -997,7 +997,7 @@ class HiDreamImageTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class GlmImageTransformer2DModel(metaclass=DummyObject):
+class HiDreamImageTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
