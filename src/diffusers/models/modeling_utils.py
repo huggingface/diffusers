@@ -1412,12 +1412,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
 
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            if getattr(self, "is_loaded_in_8bit", False) and not is_bitsandbytes_version("<", "0.48.0"):
+            if getattr(self, "is_loaded_in_8bit", False) and is_bitsandbytes_version("<", "0.48.0"):
                 raise ValueError(
                     "Calling `to()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
                 )
-            elif getattr(self, "is_loaded_in_4bit", False) and not is_bitsandbytes_version("<", "0.43.2"):
+            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
                 raise ValueError(
                     "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
