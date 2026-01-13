@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL
 import torch
-from transformers import ByT5Tokenizer, T5EncoderModel
+from transformers import ByT5Tokenizer, PreTrainedModel, ProcessorMixin, T5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
@@ -34,6 +34,8 @@ from .pipeline_output import GlmImagePipelineOutput
 
 
 # Because it's not released in stable as of 13/01/2026. So this is just a proxy.
+GlmImageProcessor = ProcessorMixin
+GlmImageForConditionalGeneration = PreTrainedModel
 if is_transformers_version(">=", "4.57.4"):
     from transformers import GlmImageForConditionalGeneration, GlmImageProcessor
 
