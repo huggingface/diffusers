@@ -159,8 +159,15 @@ class GlmImageLayerKVCache:
             self.v_cache = torch.cat([self.v_cache, v], dim=1)
 
     def get(self, k: torch.Tensor, v: torch.Tensor):
-        k_cache = torch.cat([self.k_cache, k], dim=1)
-        v_cache = torch.cat([self.v_cache, v], dim=1)
+        if self.k_cache.shape[0] != k.shape[0]:
+            k_cache_expanded = self.k_cache.expand(k.shape[0], -1, -1, -1)
+            v_cache_expanded = self.v_cache.expand(v.shape[0], -1, -1, -1)
+        else:
+            k_cache_expanded = self.k_cache
+            v_cache_expanded = self.v_cache
+
+        k_cache = torch.cat([k_cache_expanded, k], dim=1)
+        v_cache = torch.cat([v_cache_expanded, v], dim=1)
         return k_cache, v_cache
 
     def clear(self):
