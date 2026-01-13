@@ -529,7 +529,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if is_loaded_in_8bit_bnb and device is not None and is_bitsandbytes_version("<", "0.48.0"):
                 logger.warning(
                     f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` 8bit and moving it to {device} via `.to()` is not supported. Module is still on {module.device}."
-                    "You need to upgrade bitandbytes to at least 0.48.0"
+                    "You need to upgrade bitsandbytes to at least 0.48.0"
                 )
 
             # Note: we also handle this at the ModelMixin level. The reason for doing it here too is that modeling
