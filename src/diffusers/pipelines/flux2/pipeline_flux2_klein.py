@@ -417,6 +417,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         max_sequence_length: int = 512,
+        text_encoder_out_layers: Tuple[int] = (9, 18, 27),
     ):
         device = device or self._execution_device
 
@@ -432,6 +433,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 prompt=prompt,
                 device=device,
                 max_sequence_length=max_sequence_length,
+                hidden_states_layers=text_encoder_out_layers
             )
 
         batch_size, seq_len, _ = prompt_embeds.shape
@@ -604,6 +606,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        text_encoder_out_layers: Tuple[int] = (9, 18, 27)
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -666,6 +669,8 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
+            text_encoder_out_layers (`Tuple[int]`):
+                Layer indices to use in the `text_encoder` to derive the final prompt embeddings.
 
         Examples:
 
@@ -706,15 +711,20 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             device=device,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
+            text_encoder_out_layers=text_encoder_out_layers
         )
 
         if self.do_classifier_free_guidance:
+            negative_prompt = ""
+            if prompt is not None and isinstance(prompt, list):
+                negative_prompt = [negative_prompt] * len(prompt)
             negative_prompt_embeds, negative_text_ids = self.encode_prompt(
-                prompt="",
+                prompt=negative_prompt,
                 prompt_embeds=None,
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
+                text_encoder_out_layers=text_encoder_out_layers,
             )
 
         # 4. process images
