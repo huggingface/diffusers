@@ -21,7 +21,7 @@ GLM-Image is an image generation model adopts a hybrid autoregressive + diffusio
 
 Model architecture: a hybrid autoregressive + diffusion decoder design、
 
-+ Autoregressive generator: a 9B-parameter model initialized from [GLM-4-9B-0414](https://huggingface.co/zai-org/GLM-4-9B-0414), with an expanded vocabulary to incorporate visual tokens. The model first generates a compact encoding of approximately 256 tokens, then expands to 1K–4K tokens, corresponding to 1K–2K high-resolution image outputs. You can check AR model in class `GlmImageForConditionalGeneration` of transformers library.
++ Autoregressive generator: a 9B-parameter model initialized from [GLM-4-9B-0414](https://huggingface.co/zai-org/GLM-4-9B-0414), with an expanded vocabulary to incorporate visual tokens. The model first generates a compact encoding of approximately 256 tokens, then expands to 1K–4K tokens, corresponding to 1K–2K high-resolution image outputs. You can check AR model in class `GlmImageForConditionalGeneration` of `transformers` library.
 + Diffusion Decoder: a 7B-parameter decoder based on a single-stream DiT architecture for latent-space image decoding. It is equipped with a Glyph Encoder text module, significantly improving accurate text rendering within images.
 
 Post-training with decoupled reinforcement learning: the model introduces a fine-grained, modular feedback strategy using the GRPO algorithm, substantially enhancing both semantic understanding and visual detail quality.
@@ -86,10 +86,10 @@ image.save("output_i2i.png")
 
 ## GlmImagePipeline
 
-[[autodoc]] GlmImagePipeline
+[[autodoc]] pipelines.glm_image.pipeline_glm_image.GlmImagePipeline
   - all
   - __call__
 
 ## GlmImagePipelineOutput
 
-[[autodoc]] pipelines.cogview4.pipeline_output.GlmImagePipelineOutput
+[[autodoc]] pipelines.glm_image.pipeline_output.GlmImagePipelineOutput

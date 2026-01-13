@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # GlmImageTransformer2DModel
 
-A Diffusion Transformer model for 2D data from [GlmImageTransformer2DModel]()
+A Diffusion Transformer model for 2D data from [GlmImageTransformer2DModel] (TODO).
 
 ## GlmImageTransformer2DModel
 
