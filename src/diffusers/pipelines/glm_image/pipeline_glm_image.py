@@ -446,7 +446,14 @@ class GlmImagePipeline(DiffusionPipeline):
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
-
+        if prompt is not None and prior_token_ids is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prior_token_ids`: {prior_token_ids}. Please make sure to"
+                " only forward one of the two."
+         elif prompt is None and prior_token_ids is None:
+            raise ValueError(
+                "Provide either `prompt` or `prior_token_ids`. Cannot leave both `prompt` and `prior_token_ids` undefined."
+            )
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
                 raise ValueError(
