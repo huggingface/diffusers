@@ -430,7 +430,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
         elif self.config.use_flow_sigmas:
             if sigmas is None:
-                sigmas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)[:-1]
+                sigmas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps)
             if self.config.use_dynamic_shifting:
                 sigmas = self.time_shift(mu, 1.0, sigmas)
             else:
@@ -439,9 +439,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 sigmas = self.stretch_shift_to_terminal(sigmas)
             eps = 1e-6
             if np.fabs(sigmas[0] - 1) < eps:
-                sigmas[0] -= (
-                    eps  # to avoid inf torch.log(alpha_si) in multistep_uni_p_bh_update during first/second update
-                )
+                # to avoid inf torch.log(alpha_si) in multistep_uni_p_bh_update during first/second update
+                sigmas[0] -= eps
             if not is_timesteps_provided:
                 timesteps = (sigmas * self.config.num_train_timesteps).copy()
             if self.config.final_sigmas_type == "sigma_min":
