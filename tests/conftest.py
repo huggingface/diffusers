@@ -47,6 +47,8 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "gguf: marks tests for GGUF quantization functionality")
     config.addinivalue_line("markers", "modelopt: marks tests for NVIDIA ModelOpt quantization functionality")
     config.addinivalue_line("markers", "context_parallel: marks tests for context parallel inference functionality")
+    config.addinivalue_line("markers", "slow: mark test as slow")
+    config.addinivalue_line("markers", "nightly: mark test as nightly")
 
 
 def pytest_addoption(parser):

@@ -33,6 +33,7 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`QwenImageLoraLoaderMixin`] provides similar functions for [Qwen Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/qwen).
 - [`ZImageLoraLoaderMixin`] provides similar functions for [Z-Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/zimage).
 - [`Flux2LoraLoaderMixin`] provides similar functions for [Flux2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux2).
+- [`LTX2LoraLoaderMixin`] provides similar functions for [Flux2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ltx2).
 - [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
 
 > [!TIP]
@@ -61,6 +62,10 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 ## Flux2LoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.Flux2LoraLoaderMixin
+
+## LTX2LoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.LTX2LoraLoaderMixin
 
 ## CogVideoXLoraLoaderMixin
 

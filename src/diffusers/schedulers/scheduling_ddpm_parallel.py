@@ -76,6 +76,13 @@ def betas_for_alpha_bar(
         def alpha_bar_fn(t):
             return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
 
+    elif alpha_transform_type == "laplace":
+
+        def alpha_bar_fn(t):
+            lmb = -0.5 * math.copysign(1, 0.5 - t) * math.log(1 - 2 * math.fabs(0.5 - t) + 1e-6)
+            snr = math.exp(lmb)
+            return math.sqrt(snr / (1 + snr))
+
     elif alpha_transform_type == "exp":
 
         def alpha_bar_fn(t):
@@ -217,6 +224,8 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
+        elif beta_schedule == "laplace":
+            self.betas = betas_for_alpha_bar(num_train_timesteps, alpha_transform_type="laplace")
         elif beta_schedule == "sigmoid":
             # GeoDiff sigmoid schedule
             betas = torch.linspace(-6, 6, num_train_timesteps)

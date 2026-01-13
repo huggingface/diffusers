@@ -63,6 +63,8 @@ else:
         "QwenImageEditAutoBlocks",
         "QwenImageEditPlusModularPipeline",
         "QwenImageEditPlusAutoBlocks",
+        "QwenImageLayeredModularPipeline",
+        "QwenImageLayeredAutoBlocks",
     ]
     _import_structure["z_image"] = [
         "ZImageAutoBlocks",
@@ -96,6 +98,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageEditModularPipeline,
             QwenImageEditPlusAutoBlocks,
             QwenImageEditPlusModularPipeline,
+            QwenImageLayeredAutoBlocks,
+            QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
         )
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
