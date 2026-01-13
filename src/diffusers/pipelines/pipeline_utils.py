@@ -60,6 +60,7 @@ from ..utils import (
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
+    is_bitsandbytes_version,
     is_hpu_available,
     is_torch_npu_available,
     is_torch_version,
@@ -444,7 +445,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             _, _, is_loaded_in_8bit_bnb = _check_bnb_status(module)
 
-            if is_loaded_in_8bit_bnb:
+            if is_loaded_in_8bit_bnb and (is_bitsandbytes_version("<","0.48.0") or is_accelerate_available("<","1.13.0.dev0")):
                 return False
 
             return hasattr(module, "_hf_hook") and (
@@ -523,9 +524,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` {'4bit' if is_loaded_in_4bit_bnb else '8bit'} and conversion to {dtype} is not supported. Module is still in {'4bit' if is_loaded_in_4bit_bnb else '8bit'} precision."
                 )
 
-            if is_loaded_in_8bit_bnb and device is not None:
+            if is_loaded_in_8bit_bnb and device is not None and is_bitsandbytes_version("<","0.48.0"):
                 logger.warning(
                     f"The module '{module.__class__.__name__}' has been loaded in `bitsandbytes` 8bit and moving it to {device} via `.to()` is not supported. Module is still on {module.device}."
+                    "You need to upgrade bitandbytes to at least 0.48.0"
                 )
 
             # Note: we also handle this at the ModelMixin level. The reason for doing it here too is that modeling
@@ -541,6 +543,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # This can happen for `transformer` models. CPU placement was added in
             # https://github.com/huggingface/transformers/pull/33122. So, we guard this accordingly.
             if is_loaded_in_4bit_bnb and device is not None and is_transformers_version(">", "4.44.0"):
+                module.to(device=device)
+            # added here https://github.com/huggingface/transformers/pull/43258
+            if is_loaded_in_8bit_bnb and device is not None and is_transformers_version(">", "4.58.0") and is_bitsandbytes_version(">=","0.48.0"):
                 module.to(device=device)
             elif not is_loaded_in_4bit_bnb and not is_loaded_in_8bit_bnb and not is_group_offloaded:
                 module.to(device, dtype)
@@ -1223,7 +1228,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # This is because the model would already be placed on a CUDA device.
             _, _, is_loaded_in_8bit_bnb = _check_bnb_status(model)
-            if is_loaded_in_8bit_bnb:
+            if is_loaded_in_8bit_bnb and (is_transformers_version("<", "4.58.0") or is_bitsandbytes_version("<","0.48.0")):
                 logger.info(
                     f"Skipping the hook placement for the {model.__class__.__name__} as it is loaded in `bitsandbytes` 8bit."
                 )
