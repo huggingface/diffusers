@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
+
 import pytest
 import torch
 
@@ -23,6 +25,7 @@ from diffusers.models.attention_processor import (
 
 from ...testing_utils import (
     assert_tensors_close,
+    backend_empty_cache,
     is_attention,
     torch_device,
 )
@@ -38,17 +41,24 @@ class AttentionTesterMixin:
         - QKV projection fusion/unfusion
         - Attention backends (XFormers, NPU, etc.)
 
-    Expected class attributes to be set by subclasses:
+    Expected from config mixin:
         - model_class: The model class to test
-        - uses_custom_attn_processor: Whether model uses custom attention processors (default: False)
 
-    Expected methods to be implemented by subclasses:
+    Expected methods from config mixin:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
 
     Pytest mark: attention
         Use `pytest -m "not attention"` to skip these tests
     """
+
+    def setup_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def teardown_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     @torch.no_grad()
     def test_fuse_unfuse_qkv_projections(self):

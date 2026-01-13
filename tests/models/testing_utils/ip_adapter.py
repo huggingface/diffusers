@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 
 import pytest
 import torch
 
-from ...testing_utils import is_ip_adapter, torch_device
+from ...testing_utils import backend_empty_cache, is_ip_adapter, torch_device
 
 
 def check_if_ip_adapter_correctly_set(model, processor_cls) -> bool:
@@ -41,10 +42,17 @@ class IPAdapterTesterMixin:
     """
     Mixin class for testing IP Adapter functionality on models.
 
-    Expected class attributes to be set by subclasses:
+    Expected from config mixin:
         - model_class: The model class to test
 
-    Expected methods to be implemented by subclasses:
+    Required properties (must be implemented by subclasses):
+        - ip_adapter_processor_cls: The IP Adapter processor class to use
+
+    Required methods (must be implemented by subclasses):
+        - create_ip_adapter_state_dict(): Creates IP Adapter state dict for testing
+        - modify_inputs_for_ip_adapter(): Modifies inputs to include IP Adapter data
+
+    Expected methods from config mixin:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
 
@@ -52,7 +60,18 @@ class IPAdapterTesterMixin:
         Use `pytest -m "not ip_adapter"` to skip these tests
     """
 
-    ip_adapter_processor_cls = None
+    def setup_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def teardown_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    @property
+    def ip_adapter_processor_cls(self):
+        """IP Adapter processor class to use for testing. Must be implemented by subclasses."""
+        raise NotImplementedError("Subclasses must implement the `ip_adapter_processor_cls` property.")
 
     def create_ip_adapter_state_dict(self, model):
         raise NotImplementedError("child class must implement method to create IPAdapter State Dict")

@@ -67,10 +67,10 @@ class LoraTesterMixin:
     """
     Mixin class for testing LoRA/PEFT functionality on models.
 
-    Expected class attributes to be set by subclasses:
+    Expected from config mixin:
         - model_class: The model class to test
 
-    Expected methods to be implemented by subclasses:
+    Expected methods from config mixin:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
 
@@ -254,11 +254,13 @@ class LoraHotSwappingForModelTesterMixin:
     See https://github.com/huggingface/peft/blob/eaab05e18d51fb4cce20a73c9acd82a00c013b83/tests/test_gpu_examples.py#L4252
     for the analogous PEFT test.
 
-    Expected class attributes to be set by subclasses:
+    Expected from config mixin:
         - model_class: The model class to test
-        - different_shapes_for_compilation: Optional list of (height, width) tuples for dynamic compilation tests
 
-    Expected methods to be implemented by subclasses:
+    Optional properties:
+        - different_shapes_for_compilation: List of (height, width) tuples for dynamic compilation tests (default: None)
+
+    Expected methods from config mixin:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
 
@@ -266,7 +268,10 @@ class LoraHotSwappingForModelTesterMixin:
         Use `pytest -m "not lora"` or `pytest -m "not torch_compile"` to skip these tests
     """
 
-    different_shapes_for_compilation = None
+    @property
+    def different_shapes_for_compilation(self) -> list[tuple[int, int]] | None:
+        """Optional list of (height, width) tuples for dynamic compilation tests."""
+        return None
 
     def setup_method(self):
         if not issubclass(self.model_class, PeftAdapterMixin):

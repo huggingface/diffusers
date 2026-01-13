@@ -198,31 +198,25 @@ class TestFluxTransformer(FluxTransformerTesterConfig, ModelTesterMixin):
 class TestFluxTransformerMemory(FluxTransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for Flux Transformer."""
 
-    pass
-
 
 class TestFluxTransformerTraining(FluxTransformerTesterConfig, TrainingTesterMixin):
     """Training tests for Flux Transformer."""
-
-    pass
 
 
 class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterMixin):
     """Attention processor tests for Flux Transformer."""
 
-    pass
-
 
 class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux Transformer"""
-
-    pass
 
 
 class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterMixin):
     """IP Adapter tests for Flux Transformer."""
 
-    ip_adapter_processor_cls = FluxIPAdapterAttnProcessor
+    @property
+    def ip_adapter_processor_cls(self):
+        return FluxIPAdapterAttnProcessor
 
     def modify_inputs_for_ip_adapter(self, model, inputs_dict):
         torch.manual_seed(0)
@@ -241,13 +235,13 @@ class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterM
 class TestFluxTransformerLoRA(FluxTransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for Flux Transformer."""
 
-    pass
-
 
 class TestFluxTransformerLoRAHotSwap(FluxTransformerTesterConfig, LoraHotSwappingForModelTesterMixin):
     """LoRA hot-swapping tests for Flux Transformer."""
 
-    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
+    @property
+    def different_shapes_for_compilation(self):
+        return [(4, 4), (4, 8), (8, 8)]
 
     def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
         """Override to support dynamic height/width for LoRA hotswap tests."""
@@ -268,7 +262,9 @@ class TestFluxTransformerLoRAHotSwap(FluxTransformerTesterConfig, LoraHotSwappin
 
 
 class TestFluxTransformerCompile(FluxTransformerTesterConfig, TorchCompileTesterMixin):
-    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
+    @property
+    def different_shapes_for_compilation(self):
+        return [(4, 4), (4, 8), (8, 8)]
 
     def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
         """Override to support dynamic height/width for compilation tests."""
@@ -289,11 +285,17 @@ class TestFluxTransformerCompile(FluxTransformerTesterConfig, TorchCompileTester
 
 
 class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
-    ckpt_path = "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors"
-    alternate_keys_ckpt_paths = ["https://huggingface.co/Comfy-Org/flux1-dev/blob/main/flux1-dev-fp8.safetensors"]
-    pretrained_model_name_or_path = "black-forest-labs/FLUX.1-dev"
-    subfolder = "transformer"
-    pass
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors"
+
+    @property
+    def alternate_ckpt_paths(self):
+        return ["https://huggingface.co/Comfy-Org/flux1-dev/blob/main/flux1-dev-fp8.safetensors"]
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "black-forest-labs/FLUX.1-dev"
 
 
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
@@ -433,13 +435,9 @@ class TestFluxTransformerModelOptCompile(FluxTransformerTesterConfig, ModelOptCo
 class TestFluxTransformerPABCache(FluxTransformerTesterConfig, PyramidAttentionBroadcastTesterMixin):
     """PyramidAttentionBroadcast cache tests for Flux Transformer."""
 
-    pass
-
 
 class TestFluxTransformerFBCCache(FluxTransformerTesterConfig, FirstBlockCacheTesterMixin):
     """FirstBlockCache tests for Flux Transformer."""
-
-    pass
 
 
 class TestFluxTransformerFasterCache(FluxTransformerTesterConfig, FasterCacheTesterMixin):

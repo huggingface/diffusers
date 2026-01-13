@@ -24,7 +24,7 @@ from diffusers.hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK
 from diffusers.hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
 from diffusers.models.cache_utils import CacheMixin
 
-from ...testing_utils import backend_empty_cache, is_cache, torch_device
+from ...testing_utils import assert_tensors_close, backend_empty_cache, is_cache, torch_device
 
 
 def require_cache_mixin(func):
@@ -53,7 +53,14 @@ class CacheTesterMixin:
     Expected methods in test classes:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Optional overrides:
+        - cache_input_key: Property returning the input tensor key to vary between passes (default: "hidden_states")
     """
+
+    @property
+    def cache_input_key(self):
+        return "hidden_states"
 
     def setup_method(self):
         gc.collect()
@@ -161,12 +168,14 @@ class CacheTesterMixin:
         # First pass populates the cache
         _ = model(**inputs_dict, return_dict=False)[0]
 
-        # Create modified inputs for second pass (vary hidden_states to simulate denoising)
+        # Create modified inputs for second pass (vary input tensor to simulate denoising)
         inputs_dict_step2 = inputs_dict.copy()
-        if "hidden_states" in inputs_dict_step2:
-            inputs_dict_step2["hidden_states"] = inputs_dict_step2["hidden_states"] + 0.1
+        if self.cache_input_key in inputs_dict_step2:
+            inputs_dict_step2[self.cache_input_key] = inputs_dict_step2[self.cache_input_key] + torch.randn_like(
+                inputs_dict_step2[self.cache_input_key]
+            )
 
-        # Second pass uses cached attention with different hidden_states (produces approximated output)
+        # Second pass uses cached attention with different inputs (produces approximated output)
         output_with_cache = model(**inputs_dict_step2, return_dict=False)[0]
 
         assert output_with_cache is not None, "Model output should not be None with cache enabled."
@@ -181,18 +190,32 @@ class CacheTesterMixin:
             "Cached output should be different from non-cached output due to cache approximation."
         )
 
+    @torch.no_grad()
     def _test_cache_context_manager(self):
-        """Test the cache_context context manager."""
+        """Test the cache_context context manager properly isolates cache state."""
         init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
+        model.eval()
 
         config = self._get_cache_config()
-
         model.enable_cache(config)
 
-        # Test cache_context works without error
-        with model.cache_context("test_context"):
-            pass
+        # Run inference in first context
+        with model.cache_context("context_1"):
+            output_ctx1 = model(**inputs_dict, return_dict=False)[0]
+
+        # Run same inference in second context (cache should be reset)
+        with model.cache_context("context_2"):
+            output_ctx2 = model(**inputs_dict, return_dict=False)[0]
+
+        # Both contexts should produce the same output (first pass in each)
+        assert_tensors_close(
+            output_ctx1,
+            output_ctx2,
+            atol=1e-5,
+            msg="First pass in different cache contexts should produce the same output.",
+        )
 
         model.disable_cache()
 
@@ -336,10 +359,12 @@ class FirstBlockCacheTesterMixin(FirstBlockCacheConfigMixin, CacheTesterMixin):
             # First pass populates the cache
             _ = model(**inputs_dict, return_dict=False)[0]
 
-            # Create modified inputs for second pass (small perturbation keeps residuals similar)
+            # Create modified inputs for second pass
             inputs_dict_step2 = inputs_dict.copy()
-            if "hidden_states" in inputs_dict_step2:
-                inputs_dict_step2["hidden_states"] = inputs_dict_step2["hidden_states"] + 0.01
+            if self.cache_input_key in inputs_dict_step2:
+                inputs_dict_step2[self.cache_input_key] = inputs_dict_step2[self.cache_input_key] + torch.randn_like(
+                    inputs_dict_step2[self.cache_input_key]
+                )
 
             # Second pass - FBC should skip remaining blocks and use cached residuals
             output_with_cache = model(**inputs_dict_step2, return_dict=False)[0]
@@ -415,13 +440,11 @@ class FasterCacheConfigMixin:
         "tensor_format": "BCHW",
     }
 
-    # Store timestep for callback - use a list so it can be mutated during test
-    # Starts outside skip range so first pass computes; changed to inside range for subsequent passes
-    _current_timestep = [1000]
-
-    def _get_cache_config(self):
+    def _get_cache_config(self, current_timestep_callback=None):
         config_kwargs = self.FASTER_CACHE_CONFIG.copy()
-        config_kwargs["current_timestep_callback"] = lambda: self._current_timestep[0]
+        if current_timestep_callback is None:
+            current_timestep_callback = lambda: 1000  # noqa: E731
+        config_kwargs["current_timestep_callback"] = current_timestep_callback
         return FasterCacheConfig(**config_kwargs)
 
     def _get_hook_names(self):
@@ -456,23 +479,26 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
         model = self.model_class(**init_dict).to(torch_device)
         model.eval()
 
-        config = self._get_cache_config()
+        current_timestep = [1000]
+        config = self._get_cache_config(current_timestep_callback=lambda: current_timestep[0])
 
         model.enable_cache(config)
 
         # First pass with timestep outside skip range - computes and populates cache
-        self._current_timestep[0] = 1000
+        current_timestep[0] = 1000
         _ = model(**inputs_dict, return_dict=False)[0]
 
         # Move timestep inside skip range so subsequent passes use cache
-        self._current_timestep[0] = 500
+        current_timestep[0] = 500
 
         # Create modified inputs for second pass
         inputs_dict_step2 = inputs_dict.copy()
-        if "hidden_states" in inputs_dict_step2:
-            inputs_dict_step2["hidden_states"] = inputs_dict_step2["hidden_states"] + 0.1
+        if self.cache_input_key in inputs_dict_step2:
+            inputs_dict_step2[self.cache_input_key] = inputs_dict_step2[self.cache_input_key] + torch.randn_like(
+                inputs_dict_step2[self.cache_input_key]
+            )
 
-        # Second pass uses cached attention with different hidden_states
+        # Second pass uses cached attention with different inputs
         output_with_cache = model(**inputs_dict_step2, return_dict=False)[0]
 
         assert output_with_cache is not None, "Model output should not be None with cache enabled."
@@ -498,7 +524,6 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
         config = self._get_cache_config()
         model.enable_cache(config)
 
-        self._current_timestep[0] = 1000
         _ = model(**inputs_dict, return_dict=False)[0]
 
         model._reset_stateful_cache()

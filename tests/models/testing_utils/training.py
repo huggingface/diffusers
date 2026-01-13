@@ -14,13 +14,20 @@
 # limitations under the License.
 
 import copy
+import gc
 
 import pytest
 import torch
 
 from diffusers.training_utils import EMAModel
 
-from ...testing_utils import is_training, require_torch_accelerator_with_training, torch_all_close, torch_device
+from ...testing_utils import (
+    backend_empty_cache,
+    is_training,
+    require_torch_accelerator_with_training,
+    torch_all_close,
+    torch_device,
+)
 
 
 @is_training
@@ -29,19 +36,25 @@ class TrainingTesterMixin:
     """
     Mixin class for testing training functionality on models.
 
-    Expected class attributes to be set by subclasses:
+    Expected from config mixin:
         - model_class: The model class to test
+        - output_shape: Tuple defining the expected output shape
 
-    Expected methods to be implemented by subclasses:
+    Expected methods from config mixin:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
-
-    Expected properties to be implemented by subclasses:
-        - output_shape: Tuple defining the expected output shape
 
     Pytest mark: training
         Use `pytest -m "not training"` to skip these tests
     """
+
+    def setup_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def teardown_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
 
     def test_training(self):
         init_dict = self.get_init_dict()

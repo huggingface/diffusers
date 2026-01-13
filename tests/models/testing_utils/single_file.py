@@ -63,19 +63,40 @@ class SingleFileTesterMixin:
     """
     Mixin class for testing single file loading for models.
 
-    Expected class attributes:
+    Required properties (must be implemented by subclasses):
+        - ckpt_path: Path or Hub path to the single file checkpoint
+
+    Optional properties:
+        - torch_dtype: torch dtype to use for testing (default: None)
+        - alternate_ckpt_paths: List of alternate checkpoint paths for variant testing (default: None)
+
+    Expected from config mixin:
         - model_class: The model class to test
         - pretrained_model_name_or_path: Hub repository ID for the pretrained model
-        - ckpt_path: Path or Hub path to the single file checkpoint
-        - subfolder: (Optional) Subfolder within the repo
-        - torch_dtype: (Optional) torch dtype to use for testing
+        - pretrained_model_kwargs: Additional kwargs for from_pretrained (e.g., subfolder)
 
     Pytest mark: single_file
         Use `pytest -m "not single_file"` to skip these tests
     """
 
-    pretrained_model_name_or_path = None
-    ckpt_path = None
+    # ==================== Required Properties ====================
+
+    @property
+    def ckpt_path(self) -> str:
+        """Path or Hub path to the single file checkpoint. Must be implemented by subclasses."""
+        raise NotImplementedError("Subclasses must implement the `ckpt_path` property.")
+
+    # ==================== Optional Properties ====================
+
+    @property
+    def torch_dtype(self) -> torch.dtype | None:
+        """torch dtype to use for single file testing."""
+        return None
+
+    @property
+    def alternate_ckpt_paths(self) -> list[str] | None:
+        """List of alternate checkpoint paths for variant testing."""
+        return None
 
     def setup_method(self):
         gc.collect()
@@ -86,16 +107,10 @@ class SingleFileTesterMixin:
         backend_empty_cache(torch_device)
 
     def test_single_file_model_config(self):
-        pretrained_kwargs = {}
-        single_file_kwargs = {}
+        pretrained_kwargs = {"device": torch_device, **self.pretrained_model_kwargs}
+        single_file_kwargs = {"device": torch_device}
 
-        pretrained_kwargs["device"] = torch_device
-        single_file_kwargs["device"] = torch_device
-
-        if hasattr(self, "subfolder") and self.subfolder:
-            pretrained_kwargs["subfolder"] = self.subfolder
-
-        if hasattr(self, "torch_dtype") and self.torch_dtype:
+        if self.torch_dtype:
             pretrained_kwargs["torch_dtype"] = self.torch_dtype
             single_file_kwargs["torch_dtype"] = self.torch_dtype
 
@@ -112,16 +127,10 @@ class SingleFileTesterMixin:
             )
 
     def test_single_file_model_parameters(self):
-        pretrained_kwargs = {}
-        single_file_kwargs = {}
+        pretrained_kwargs = {"device": torch_device, **self.pretrained_model_kwargs}
+        single_file_kwargs = {"device": torch_device}
 
-        pretrained_kwargs["device"] = torch_device
-        single_file_kwargs["device"] = torch_device
-
-        if hasattr(self, "subfolder") and self.subfolder:
-            pretrained_kwargs["subfolder"] = self.subfolder
-
-        if hasattr(self, "torch_dtype") and self.torch_dtype:
+        if self.torch_dtype:
             pretrained_kwargs["torch_dtype"] = self.torch_dtype
             single_file_kwargs["torch_dtype"] = self.torch_dtype
 
@@ -153,7 +162,7 @@ class SingleFileTesterMixin:
     def test_single_file_loading_local_files_only(self, tmp_path):
         single_file_kwargs = {}
 
-        if hasattr(self, "torch_dtype") and self.torch_dtype:
+        if self.torch_dtype:
             single_file_kwargs["torch_dtype"] = self.torch_dtype
 
         pretrained_model_name_or_path, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
@@ -168,7 +177,7 @@ class SingleFileTesterMixin:
     def test_single_file_loading_with_diffusers_config(self):
         single_file_kwargs = {}
 
-        if hasattr(self, "torch_dtype") and self.torch_dtype:
+        if self.torch_dtype:
             single_file_kwargs["torch_dtype"] = self.torch_dtype
 
         # Load with config parameter
@@ -177,10 +186,8 @@ class SingleFileTesterMixin:
         )
 
         # Load pretrained for comparison
-        pretrained_kwargs = {}
-        if hasattr(self, "subfolder") and self.subfolder:
-            pretrained_kwargs["subfolder"] = self.subfolder
-        if hasattr(self, "torch_dtype") and self.torch_dtype:
+        pretrained_kwargs = {**self.pretrained_model_kwargs}
+        if self.torch_dtype:
             pretrained_kwargs["torch_dtype"] = self.torch_dtype
 
         model = self.model_class.from_pretrained(self.pretrained_model_name_or_path, **pretrained_kwargs)
@@ -197,7 +204,7 @@ class SingleFileTesterMixin:
     def test_single_file_loading_with_diffusers_config_local_files_only(self, tmp_path):
         single_file_kwargs = {}
 
-        if hasattr(self, "torch_dtype") and self.torch_dtype:
+        if self.torch_dtype:
             single_file_kwargs["torch_dtype"] = self.torch_dtype
 
         pretrained_model_name_or_path, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
@@ -225,14 +232,14 @@ class SingleFileTesterMixin:
             backend_empty_cache(torch_device)
 
     def test_checkpoint_variant_loading(self):
-        if not hasattr(self, "alternate_ckpt_paths") or not self.alternate_ckpt_paths:
+        if not self.alternate_ckpt_paths:
             return
 
         for ckpt_path in self.alternate_ckpt_paths:
             backend_empty_cache(torch_device)
 
             single_file_kwargs = {}
-            if hasattr(self, "torch_dtype") and self.torch_dtype:
+            if self.torch_dtype:
                 single_file_kwargs["torch_dtype"] = self.torch_dtype
 
             model = self.model_class.from_single_file(ckpt_path, **single_file_kwargs)

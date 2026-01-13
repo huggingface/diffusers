@@ -35,11 +35,13 @@ class TorchCompileTesterMixin:
     """
     Mixin class for testing torch.compile functionality on models.
 
-    Expected class attributes to be set by subclasses:
+    Expected from config mixin:
         - model_class: The model class to test
-        - different_shapes_for_compilation: Optional list of (height, width) tuples for dynamic shape testing
 
-    Expected methods to be implemented by subclasses:
+    Optional properties:
+        - different_shapes_for_compilation: List of (height, width) tuples for dynamic shape testing (default: None)
+
+    Expected methods from config mixin:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
 
@@ -47,7 +49,10 @@ class TorchCompileTesterMixin:
         Use `pytest -m "not compile"` to skip these tests
     """
 
-    different_shapes_for_compilation = None
+    @property
+    def different_shapes_for_compilation(self) -> list[tuple[int, int]] | None:
+        """Optional list of (height, width) tuples for dynamic shape testing."""
+        return None
 
     def setup_method(self):
         torch.compiler.reset()

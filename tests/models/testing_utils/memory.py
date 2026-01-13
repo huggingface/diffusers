@@ -81,11 +81,13 @@ class CPUOffloadTesterMixin:
     """
     Mixin class for testing CPU offloading functionality.
 
-    Expected class attributes to be set by subclasses:
+    Expected from config mixin:
         - model_class: The model class to test
-        - model_split_percents: List of percentages for splitting model across devices
 
-    Expected methods to be implemented by subclasses:
+    Optional properties:
+        - model_split_percents: List of percentages for splitting model across devices (default: [0.5, 0.7])
+
+    Expected methods from config mixin:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
 
@@ -93,7 +95,10 @@ class CPUOffloadTesterMixin:
         Use `pytest -m "not cpu_offload"` to skip these tests
     """
 
-    model_split_percents = [0.5, 0.7]
+    @property
+    def model_split_percents(self) -> list[float]:
+        """List of percentages for splitting model across devices during offloading tests."""
+        return [0.5, 0.7]
 
     @require_offload_support
     @torch.no_grad()
@@ -199,10 +204,10 @@ class GroupOffloadTesterMixin:
     """
     Mixin class for testing group offloading functionality.
 
-    Expected class attributes to be set by subclasses:
+    Expected from config mixin:
         - model_class: The model class to test
 
-    Expected methods to be implemented by subclasses:
+    Expected methods from config mixin:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
 
@@ -385,10 +390,10 @@ class LayerwiseCastingTesterMixin:
     """
     Mixin class for testing layerwise dtype casting for memory optimization.
 
-    Expected class attributes to be set by subclasses:
+    Expected from config mixin:
         - model_class: The model class to test
 
-    Expected methods to be implemented by subclasses:
+    Expected methods from config mixin:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
     """
@@ -456,7 +461,7 @@ class LayerwiseCastingTesterMixin:
             model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
             model.train()
 
-            inputs_dict = self.get_inputs_dict()
+            inputs_dict = self.get_dummy_inputs()
             inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
             with torch.amp.autocast(device_type=torch.device(torch_device).type):
                 output = model(**inputs_dict, return_dict=False)[0]
@@ -486,16 +491,16 @@ class MemoryTesterMixin(CPUOffloadTesterMixin, GroupOffloadTesterMixin, Layerwis
         - GroupOffloadTesterMixin: Group offloading tests (block-level and leaf-level)
         - LayerwiseCastingTesterMixin: Layerwise dtype casting tests
 
-    Expected class attributes to be set by subclasses:
+    Expected from config mixin:
         - model_class: The model class to test
+
+    Optional properties:
         - model_split_percents: List of percentages for splitting model across devices (default: [0.5, 0.7])
 
-    Expected methods to be implemented by subclasses:
+    Expected methods from config mixin:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
 
     Pytest mark: memory
         Use `pytest -m "not memory"` to skip these tests
     """
-
-    pass
