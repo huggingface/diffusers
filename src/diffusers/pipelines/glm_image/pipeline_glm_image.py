@@ -152,19 +152,6 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-def calculate_dimensions(target_area, ratio):
-    width = math.sqrt(target_area * ratio)
-    height = width / ratio
-
-    width = width if width % 32 == 0 else (width // 32 + 1) * 32
-    height = height if height % 32 == 0 else (height // 32 + 1) * 32
-
-    width = int(width)
-    height = int(height)
-
-    return width, height
-
-
 class GlmImagePipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using GLM-Image.
@@ -627,14 +614,7 @@ class GlmImagePipeline(DiffusionPipeline):
 
         device = self._execution_device
 
-        # 2. Preprocess image for AR:
-        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
-            image_size = image[0].size if isinstance(image, list) else image.size
-            calculated_width, calculated_height = calculate_dimensions(
-                2048 * 2048, image_size[0] * 1.0 / image_size[1]
-            )
-            image = self.image_processor.resize(image, calculated_height, calculated_width)
-
+        # 2. Preprocess image tokens and prompt tokens
         if prior_token_ids is None:
             prior_token_id, prior_token_image_ids = self.generate_prior_tokens(
                 prompt=prompt[0] if isinstance(prompt, list) else prompt,
@@ -643,10 +623,19 @@ class GlmImagePipeline(DiffusionPipeline):
                 width=width,
             )
 
-        # 4. Preprocess image for DIT
-        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
-            image = self.image_processor.preprocess(image, calculated_height, calculated_width)
-            image = image.unsqueeze(2)
+        # 3. Preprocess image
+        if image is not None:
+            preprocessed_condition_images = []
+            for img in image:
+                image_height, image_width = img.size[::-1] if isinstance(img, PIL.Image.Image) else img.shape[:2]
+                multiple_of = self.vae_scale_factor * self.transformer.config.patch_size
+                image_height = (image_height // multiple_of) * multiple_of
+                image_width = (image_width // multiple_of) * multiple_of
+                img = self.image_processor.preprocess(img, height=image_height, width=image_width)
+                preprocessed_condition_images.append(img)
+                height = height or image_height
+                width = width or image_width
+            image = preprocessed_condition_images
 
         # 5. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
