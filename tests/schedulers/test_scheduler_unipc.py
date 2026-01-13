@@ -399,3 +399,32 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+    def test_flow_and_karras_sigmas(self):
+        self.check_over_configs(use_flow_sigmas=True, use_karras_sigmas=True)
+
+    def test_flow_and_karras_sigmas_values(self):
+        num_train_timesteps = 1000
+        num_inference_steps = 5
+        scheduler = UniPCMultistepScheduler(
+            sigma_min=0.01,
+            sigma_max=200.0,
+            use_flow_sigmas=True,
+            use_karras_sigmas=True,
+            num_train_timesteps=num_train_timesteps,
+        )
+        scheduler.set_timesteps(num_inference_steps=num_inference_steps)
+
+        expected_sigmas = [
+            0.9950248599052429,
+            0.9787454605102539,
+            0.8774884343147278,
+            0.3604971766471863,
+            0.009900986216962337,
+            0.0,  # 0 appended as default
+        ]
+        expected_sigmas = torch.tensor(expected_sigmas)
+        expected_timesteps = (expected_sigmas * num_train_timesteps).to(torch.int64)
+        expected_timesteps = expected_timesteps[0:-1]
+        self.assertTrue(torch.allclose(scheduler.sigmas, expected_sigmas))
+        self.assertTrue(torch.all(expected_timesteps == scheduler.timesteps))

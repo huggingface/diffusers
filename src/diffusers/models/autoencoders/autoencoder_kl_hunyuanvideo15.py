@@ -26,7 +26,7 @@ from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DiagonalGaussianDistribution
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -625,7 +625,7 @@ class HunyuanVideo15Decoder3D(nn.Module):
         return hidden_states
 
 
-class AutoencoderKLHunyuanVideo15(ModelMixin, ConfigMixin):
+class AutoencoderKLHunyuanVideo15(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Used for
     HunyuanVideo-1.5.
@@ -722,27 +722,6 @@ class AutoencoderKLHunyuanVideo15(ModelMixin, ConfigMixin):
         self.tile_latent_min_height = tile_latent_min_height or self.tile_latent_min_height
         self.tile_latent_min_width = tile_latent_min_width or self.tile_latent_min_width
         self.tile_overlap_factor = tile_overlap_factor or self.tile_overlap_factor
-
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_tiling = False
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         _, _, _, height, width = x.shape
