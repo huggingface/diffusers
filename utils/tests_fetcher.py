@@ -56,7 +56,7 @@ import os
 import re
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 from git import Repo
 
@@ -864,7 +864,7 @@ def update_test_map_with_core_pipelines(json_output_file: str):
         json.dump(test_map, fp, ensure_ascii=False)
 
 
-def create_json_map(test_files_to_run: List[str], json_output_file: Optional[str] = None):
+def create_json_map(test_files_to_run: List[str], json_output_file: str | None = None):
     """
     Creates a map from a list of tests to run to easily split them by category, when running parallelism of slow tests.
 
@@ -909,7 +909,7 @@ def create_json_map(test_files_to_run: List[str], json_output_file: Optional[str
 def infer_tests_to_run(
     output_file: str,
     diff_with_last_commit: bool = False,
-    json_output_file: Optional[str] = None,
+    json_output_file: str | None = None,
 ):
     """
     The main function called by the test fetcher. Determines the tests to run from the diff.

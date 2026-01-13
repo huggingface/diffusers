@@ -6,7 +6,7 @@ import queue
 import threading
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable
 
 import pandas as pd
 import torch
@@ -91,10 +91,10 @@ def model_init_fn(model_cls, group_offload_kwargs=None, layerwise_upcasting=Fals
 class BenchmarkScenario:
     name: str
     model_cls: ModelMixin
-    model_init_kwargs: Dict[str, Any]
+    model_init_kwargs: dict[str, Any]
     model_init_fn: Callable
     get_model_input_dict: Callable
-    compile_kwargs: Optional[Dict[str, Any]] = None
+    compile_kwargs: dict[str, Any] | None = None
 
 
 @require_torch_gpu
@@ -176,7 +176,7 @@ class BenchmarkMixin:
             result["fullgraph"], result["mode"] = None, None
         return result
 
-    def run_bencmarks_and_collate(self, scenarios: Union[BenchmarkScenario, list[BenchmarkScenario]], filename: str):
+    def run_bencmarks_and_collate(self, scenarios: BenchmarkScenario | list[BenchmarkScenario], filename: str):
         if not isinstance(scenarios, list):
             scenarios = [scenarios]
         record_queue = queue.Queue()
@@ -214,9 +214,9 @@ class BenchmarkMixin:
         *,
         model_cls: ModelMixin,
         init_fn: Callable,
-        init_kwargs: Dict[str, Any],
+        init_kwargs: dict[str, Any],
         get_input_fn: Callable,
-        compile_kwargs: Optional[Dict[str, Any]],
+        compile_kwargs: dict[str, Any] | None = None,
     ) -> dict[str, float]:
         # setup
         self.pre_benchmark()

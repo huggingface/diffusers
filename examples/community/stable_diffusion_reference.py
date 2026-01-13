@@ -276,7 +276,7 @@ class StableDiffusionReferencePipeline(
         height: int,
         width: int,
         callback_steps: Optional[int],
-        negative_prompt: Optional[str] = None,
+        negative_prompt: str | None = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[torch.Tensor] = None,
@@ -291,7 +291,7 @@ class StableDiffusionReferencePipeline(
             height (int): The height of the input image.
             width (int): The width of the input image.
             callback_steps (Optional[int]): The number of steps to perform the callback on.
-            negative_prompt (Optional[str]): The negative prompt text.
+            negative_prompt (str | None): The negative prompt text.
             prompt_embeds (Optional[torch.Tensor]): The prompt embeddings.
             negative_prompt_embeds (Optional[torch.Tensor]): The negative prompt embeddings.
             ip_adapter_image (Optional[torch.Tensor]): The input adapter image.
@@ -411,11 +411,11 @@ class StableDiffusionReferencePipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Optional[str],
+        prompt: str | None,
         device: torch.device,
         num_images_per_prompt: int,
         do_classifier_free_guidance: bool,
-        negative_prompt: Optional[str] = None,
+        negative_prompt: str | None = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
@@ -834,7 +834,7 @@ class StableDiffusionReferencePipeline(
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,

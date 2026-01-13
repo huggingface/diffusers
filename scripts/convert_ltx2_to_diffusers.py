@@ -1,7 +1,7 @@
 import argparse
 import os
 from contextlib import nullcontext
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 import safetensors.torch
 import torch
@@ -605,7 +605,7 @@ def convert_ltx2_spatial_latent_upsampler(
     return latent_upsampler
 
 
-def load_original_checkpoint(args, filename: Optional[str]) -> dict[str, Any]:
+def load_original_checkpoint(args, filename: str | None) -> dict[str, Any]:
     if args.original_state_dict_repo_id is not None:
         ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename=filename)
     elif args.checkpoint_path is not None:
@@ -617,7 +617,7 @@ def load_original_checkpoint(args, filename: Optional[str]) -> dict[str, Any]:
     return original_state_dict
 
 
-def load_hub_or_local_checkpoint(repo_id: Optional[str] = None, filename: Optional[str] = None) -> dict[str, Any]:
+def load_hub_or_local_checkpoint(repo_id: str | None = None, filename: str | None = None) -> dict[str, Any]:
     if repo_id is None and filename is None:
         raise ValueError("Please supply at least one of `repo_id` or `filename`")
 
