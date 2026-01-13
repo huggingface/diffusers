@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import inspect
+import math
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -151,6 +152,19 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
+def calculate_dimensions(target_area, ratio):
+    width = math.sqrt(target_area * ratio)
+    height = width / ratio
+
+    width = width if width % 32 == 0 else (width // 32 + 1) * 32
+    height = height if height % 32 == 0 else (height // 32 + 1) * 32
+
+    width = int(width)
+    height = int(height)
+
+    return width, height
+
+
 class GlmImagePipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using GLM-Image.
@@ -279,7 +293,7 @@ class GlmImagePipeline(DiffusionPipeline):
 
         image_grid_thw = inputs.get("image_grid_thw")
         max_new_tokens, large_image_offset, token_h, token_w = self._compute_generation_params(
-            image_grid_thw, is_text_to_image
+            image_grid_thw=image_grid_thw, is_text_to_image=is_text_to_image
         )
 
         prior_token_image_ids = None
@@ -291,12 +305,15 @@ class GlmImagePipeline(DiffusionPipeline):
             prior_token_image_ids = self.vision_language_encoder.get_image_tokens(
                 prior_token_image_embed, image_grid_thw[:-1]
             )
+
+        # For GLM-Image, greedy decoding is not allowed; it may cause repetitive outputs.
+        # max_new_tokens must be exactly grid_h * grid_w + 1 (the +1 is for EOS).
         outputs = self.vision_language_encoder.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=True,
         )
-        print(outputs)
+
         prior_token_ids_d32 = self._extract_large_image_tokens(
             outputs, inputs["input_ids"].shape[-1], large_image_offset, token_h * token_w
         )
@@ -391,6 +408,7 @@ class GlmImagePipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
+        # For GLM-Image, negative_prompt must be "" instead of None
         negative_prompt_embeds = None
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = ""
@@ -435,12 +453,13 @@ class GlmImagePipeline(DiffusionPipeline):
     ):
         if (
             height is not None
-            and height % (self.vae_scale_factor * self.transformer.config.patch_size) != 0
+            and height % (self.vae_scale_factor * self.transformer.config.patch_size * 2) != 0
             or width is not None
-            and width % (self.transformer.config.patch_size) != 0
+            and width % (self.transformer.config.patch_size * 2) != 0
         ):
-            logger.warning(
-                f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
+            # GLM-Image uses 32× downsampling, so the image dimensions must be multiples of 32.
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * 4} but are {height} and {width}."
             )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
@@ -607,6 +626,15 @@ class GlmImagePipeline(DiffusionPipeline):
             raise ValueError(f"batch_size must be 1 due to AR model limitations, got {batch_size}")
 
         device = self._execution_device
+
+        # 2. Preprocess image for AR:
+        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
+            image_size = image[0].size if isinstance(image, list) else image.size
+            calculated_width, calculated_height = calculate_dimensions(
+                2048 * 2048, image_size[0] * 1.0 / image_size[1]
+            )
+            image = self.image_processor.resize(image, calculated_height, calculated_width)
+
         if prior_token_ids is None:
             prior_token_id, prior_token_image_ids = self.generate_prior_tokens(
                 prompt=prompt[0] if isinstance(prompt, list) else prompt,
@@ -615,7 +643,12 @@ class GlmImagePipeline(DiffusionPipeline):
                 width=width,
             )
 
-        # 3. Encode input prompt
+        # 4. Preprocess image for DIT
+        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
+            image = self.image_processor.preprocess(image, calculated_height, calculated_width)
+            image = image.unsqueeze(2)
+
+        # 5. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             self.do_classifier_free_guidance,
@@ -626,23 +659,7 @@ class GlmImagePipeline(DiffusionPipeline):
             dtype=self.dtype,
         )
 
-        # 4. process images
-        if image is not None:
-            preprocessed_condition_images = []
-            for img in image:
-                image_height, image_width = img.size[::-1] if isinstance(img, PIL.Image.Image) else img.shape[:2]
-                multiple_of = self.vae_scale_factor * self.transformer.config.patch_size
-                image_height = (image_height // multiple_of) * multiple_of
-                image_width = (image_width // multiple_of) * multiple_of
-                img = self.image_processor.preprocess(img, height=image_height, width=image_width)
-                preprocessed_condition_images.append(img)
-                height = height or image_height
-                width = width or image_width
-            image = preprocessed_condition_images
-        height = height or self.default_sample_size * self.vae_scale_factor
-        width = width or self.default_sample_size * self.vae_scale_factor
-
-        # 5. Prepare latents and (optional) image kv cache
+        # 4. Prepare latents and (optional) image kv cache
         latent_channels = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size=batch_size * num_images_per_prompt,
