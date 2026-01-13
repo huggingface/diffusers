@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import inspect
-import math
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -356,6 +355,7 @@ class GlmImagePipeline(DiffusionPipeline):
         do_classifier_free_guidance: bool = True,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
         max_sequence_length: int = 2048,
@@ -396,7 +396,6 @@ class GlmImagePipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         # For GLM-Image, negative_prompt must be "" instead of None
-        negative_prompt_embeds = None
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
@@ -429,7 +428,6 @@ class GlmImagePipeline(DiffusionPipeline):
     def check_inputs(
         self,
         prompt,
-        negative_prompt,
         height,
         width,
         callback_on_step_end_tensor_inputs,
@@ -466,11 +464,6 @@ class GlmImagePipeline(DiffusionPipeline):
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        if negative_prompt is not None and negative_prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
-                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
-            )
         if prompt is not None and prior_token_ids is not None:
             raise ValueError(
                 f"Cannot forward both `prompt`: {prompt} and `prior_token_ids`: {prior_token_ids}. Please make sure to"
@@ -491,8 +484,8 @@ class GlmImagePipeline(DiffusionPipeline):
             prior_token_ids is not None and prior_image_token_ids is None
         ):
             raise ValueError(
-                f"Cannot forward only one `prior_token_ids`: {negative_prompt} or `prior_image_token_ids`:"
-                f" {negative_prompt_embeds} provided. Please make sure both are provided or neither."
+                f"Cannot forward only one `prior_token_ids`: {prior_token_ids} or `prior_image_token_ids`:"
+                f" {prior_image_token_ids} provided. Please make sure both are provided or neither."
             )
 
     @property
@@ -524,7 +517,6 @@ class GlmImagePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
         image: Optional[
             Union[
                 torch.Tensor, PIL.Image.Image, np.ndarray, List[torch.Tensor], List[PIL.Image.Image], List[np.ndarray]
@@ -589,7 +581,6 @@ class GlmImagePipeline(DiffusionPipeline):
         # 1. Check inputs
         self.check_inputs(
             prompt,
-            negative_prompt,
             height,
             width,
             callback_on_step_end_tensor_inputs,
@@ -643,6 +634,7 @@ class GlmImagePipeline(DiffusionPipeline):
             self.do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
             device=device,
             dtype=self.dtype,
