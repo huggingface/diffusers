@@ -22,7 +22,7 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Union, get_args, get_origin
+from typing import Any, Callable, Dict, List, Union, get_args, get_origin, get_type_hints
 
 import httpx
 import numpy as np
@@ -1819,16 +1819,26 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     @classmethod
     def _get_signature_types(cls):
         signature_types = {}
-        for k, v in inspect.signature(cls.__init__).parameters.items():
-            if inspect.isclass(v.annotation):
-                signature_types[k] = (v.annotation,)
-            elif get_origin(v.annotation) == Union:
-                signature_types[k] = get_args(v.annotation)
-            elif isinstance(v.annotation, types.UnionType):
+        # Use get_type_hints to properly resolve string annotations (from __future__ import annotations)
+        try:
+            type_hints = get_type_hints(cls.__init__)
+        except Exception:
+            # Fallback to direct annotation access if get_type_hints fails
+            type_hints = {}
+            for k, v in inspect.signature(cls.__init__).parameters.items():
+                if v.annotation != inspect.Parameter.empty:
+                    type_hints[k] = v.annotation
+
+        for k, annotation in type_hints.items():
+            if inspect.isclass(annotation):
+                signature_types[k] = (annotation,)
+            elif get_origin(annotation) == Union:
+                signature_types[k] = get_args(annotation)
+            elif isinstance(annotation, types.UnionType):
                 # Handle PEP 604 union syntax (X | Y) introduced in Python 3.10+
-                signature_types[k] = get_args(v.annotation)
-            elif get_origin(v.annotation) in [List, Dict, list, dict]:
-                signature_types[k] = (v.annotation,)
+                signature_types[k] = get_args(annotation)
+            elif get_origin(annotation) in [List, Dict, list, dict]:
+                signature_types[k] = (annotation,)
             else:
                 logger.warning(f"cannot get type annotation for Parameter {k} of {cls}.")
         return signature_types
