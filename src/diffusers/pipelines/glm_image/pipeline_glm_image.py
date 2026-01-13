@@ -461,7 +461,8 @@ class GlmImagePipeline(DiffusionPipeline):
             raise ValueError(
                 f"Cannot forward both `prompt`: {prompt} and `prior_token_ids`: {prior_token_ids}. Please make sure to"
                 " only forward one of the two."
-         elif prompt is None and prior_token_ids is None:
+            )
+        elif prompt is None and prior_token_ids is None:
             raise ValueError(
                 "Provide either `prompt` or `prior_token_ids`. Cannot leave both `prompt` and `prior_token_ids` undefined."
             )
