@@ -912,7 +912,6 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     encoder_hidden_states=prompt_embeds,
                     encoder_hidden_states_mask=prompt_embeds_mask,
                     img_shapes=img_shapes,
-                    txt_seq_lens=[prompt_embeds.shape[1]] * prompt_embeds.shape[0],
                     return_dict=False,
                 )
 
@@ -923,7 +922,6 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                         encoder_hidden_states=prompt_embeds,
                         encoder_hidden_states_mask=prompt_embeds_mask,
                         img_shapes=img_shapes,
-                        txt_seq_lens=[prompt_embeds.shape[1]] * prompt_embeds.shape[0],
                         controlnet_block_samples=controlnet_block_samples,
                         attention_kwargs=self.attention_kwargs,
                         return_dict=False,
@@ -938,7 +936,6 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                             encoder_hidden_states_mask=negative_prompt_embeds_mask,
                             encoder_hidden_states=negative_prompt_embeds,
                             img_shapes=img_shapes,
-                            txt_seq_lens=[negative_prompt_embeds.shape[1]] * negative_prompt_embeds.shape[0],
                             controlnet_block_samples=controlnet_block_samples,
                             attention_kwargs=self.attention_kwargs,
                             return_dict=False,

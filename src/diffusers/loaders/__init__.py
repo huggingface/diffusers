@@ -67,6 +67,7 @@ if is_torch_available():
             "SD3LoraLoaderMixin",
             "AuraFlowLoraLoaderMixin",
             "StableDiffusionXLLoraLoaderMixin",
+            "LTX2LoraLoaderMixin",
             "LTXVideoLoraLoaderMixin",
             "LoraLoaderMixin",
             "FluxLoraLoaderMixin",
@@ -81,6 +82,8 @@ if is_torch_available():
             "HiDreamImageLoraLoaderMixin",
             "SkyReelsV2LoraLoaderMixin",
             "QwenImageLoraLoaderMixin",
+            "ZImageLoraLoaderMixin",
+            "Flux2LoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
@@ -113,11 +116,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 AuraFlowLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
                 CogView4LoraLoaderMixin,
+                Flux2LoraLoaderMixin,
                 FluxLoraLoaderMixin,
                 HiDreamImageLoraLoaderMixin,
                 HunyuanVideoLoraLoaderMixin,
                 KandinskyLoraLoaderMixin,
                 LoraLoaderMixin,
+                LTX2LoraLoaderMixin,
                 LTXVideoLoraLoaderMixin,
                 Lumina2LoraLoaderMixin,
                 Mochi1LoraLoaderMixin,
@@ -128,6 +133,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 StableDiffusionLoraLoaderMixin,
                 StableDiffusionXLLoraLoaderMixin,
                 WanLoraLoaderMixin,
+                ZImageLoraLoaderMixin,
             )
             from .single_file import FromSingleFileMixin
             from .textual_inversion import TextualInversionLoaderMixin

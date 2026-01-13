@@ -59,11 +59,8 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import (
-    PushToHubMixin,
-    load_or_create_model_card,
-    populate_model_card,
-)
+from ..utils.distributed_utils import is_torch_dist_rank_zero
+from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache
 from ._modeling_parallel import ContextParallelConfig, ContextParallelModelPlan, ParallelConfig
 from .model_loading_utils import (
@@ -531,6 +528,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         record_stream: bool = False,
         low_cpu_mem_usage=False,
         offload_to_disk_path: Optional[str] = None,
+        block_modules: Optional[str] = None,
+        exclude_kwargs: Optional[str] = None,
     ) -> None:
         r"""
         Activates group offloading for the current model.
@@ -570,6 +569,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"`_supports_group_offloading` to `True` in the class definition. If you believe this is a mistake, please "
                 f"open an issue at https://github.com/huggingface/diffusers/issues."
             )
+
         apply_group_offloading(
             module=self,
             onload_device=onload_device,
@@ -581,6 +581,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
             offload_to_disk_path=offload_to_disk_path,
+            block_modules=block_modules,
+            exclude_kwargs=exclude_kwargs,
         )
 
     def set_attention_backend(self, backend: str) -> None:
@@ -595,7 +597,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 attention as backend.
         """
         from .attention import AttentionModuleMixin
-        from .attention_dispatch import AttentionBackendName, _check_attention_backend_requirements
+        from .attention_dispatch import (
+            AttentionBackendName,
+            _check_attention_backend_requirements,
+            _maybe_download_kernel_for_backend,
+        )
 
         # TODO: the following will not be required when everything is refactored to AttentionModuleMixin
         from .attention_processor import Attention, MochiAttention
@@ -606,8 +612,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         available_backends = {x.value for x in AttentionBackendName.__members__.values()}
         if backend not in available_backends:
             raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
+
         backend = AttentionBackendName(backend)
         _check_attention_backend_requirements(backend)
+        _maybe_download_kernel_for_backend(backend)
 
         attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
         for module in self.modules():
@@ -1661,7 +1669,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             shard_files = resolved_model_file
             if len(resolved_model_file) > 1:
-                shard_files = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
+                shard_tqdm_kwargs = {"desc": "Loading checkpoint shards"}
+                if not is_torch_dist_rank_zero():
+                    shard_tqdm_kwargs["disable"] = True
+                shard_files = logging.tqdm(resolved_model_file, **shard_tqdm_kwargs)
 
             for shard_file in shard_files:
                 offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(shard_file)

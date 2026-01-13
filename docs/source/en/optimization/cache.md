@@ -67,3 +67,47 @@ config = FasterCacheConfig(
 )
 pipeline.transformer.enable_cache(config)
 ```
+
+## FirstBlockCache
+
+[FirstBlock Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) checks how much the early layers of the denoiser changes from one timestep to the next. If the change is small, the model skips the expensive later layers and reuses the previous output.
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.hooks import apply_first_block_cache, FirstBlockCacheConfig
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "Qwen/Qwen-Image", torch_dtype=torch.bfloat16
+)
+apply_first_block_cache(pipeline.transformer, FirstBlockCacheConfig(threshold=0.2))
+```
+## TaylorSeer Cache
+
+[TaylorSeer Cache](https://huggingface.co/papers/2403.06923) accelerates diffusion inference by using Taylor series expansions to approximate and cache intermediate activations across denoising steps. The method predicts future outputs based on past computations, reusing them at specified intervals to reduce redundant calculations.
+
+This caching mechanism delivers strong results with minimal additional memory overhead. For detailed performance analysis, see [our findings here](https://github.com/huggingface/diffusers/pull/12648#issuecomment-3610615080).
+
+To enable TaylorSeer Cache, create a [`TaylorSeerCacheConfig`] and pass it to your pipeline's transformer:
+
+- `cache_interval`: Number of steps to reuse cached outputs before performing a full forward pass
+- `disable_cache_before_step`: Initial steps that use full computations to gather data for approximations
+- `max_order`: Approximation accuracy (in theory, higher values improve quality but increase memory usage but we recommend it should be set to `1`)
+
+```python
+import torch
+from diffusers import FluxPipeline, TaylorSeerCacheConfig
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+config = TaylorSeerCacheConfig(
+    cache_interval=5,
+    max_order=1,
+    disable_cache_before_step=10,
+    taylor_factors_dtype=torch.bfloat16,
+)
+pipe.transformer.enable_cache(config)
+```
