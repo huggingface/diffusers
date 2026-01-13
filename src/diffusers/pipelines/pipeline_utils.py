@@ -445,7 +445,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             _, _, is_loaded_in_8bit_bnb = _check_bnb_status(module)
 
-            if is_loaded_in_8bit_bnb and (is_bitsandbytes_version("<","0.48.0") or is_accelerate_available("<","1.13.0.dev0")):
+            if is_loaded_in_8bit_bnb and (is_bitsandbytes_version("<","0.48.0") or is_accelerate_version("<","1.13.0.dev0")):
                 return False
 
             return hasattr(module, "_hf_hook") and (
