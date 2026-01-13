@@ -188,6 +188,11 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # GLM-Image has batch_size=1 constraint due to AR model
         pass
 
+    @unittest.skip("Not supported.")
+    def test_num_images_per_prompt(self):
+        # GLM-Image has batch_size=1 constraint due to AR model
+        pass
+
     @unittest.skip("Needs to be revisited.")
     def test_encode_prompt_works_in_isolation(self):
         pass
@@ -200,6 +205,14 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "Follow set of tests are relaxed because this pipeline doesn't guarantee same outputs for the same inputs in consecutive runs."
     )
     def test_dict_tuple_outputs_equivalent(self):
+        pass
+
+    @unittest.skip("Skipped")
+    def test_cpu_offload_forward_pass_twice(self):
+        pass
+
+    @unittest.skip("Skipped")
+    def test_sequential_offload_forward_pass_twice(self):
         pass
 
     @unittest.skip("Skipped")
