@@ -259,8 +259,9 @@ class GlmImagePipeline(DiffusionPipeline):
         height: int,
         width: int,
         image: Optional[List[PIL.Image.Image]] = None,
+        device: Optional[torch.device] = None,
     ):
-        device = self.vision_language_encoder.device
+        device = device or self._execution_device
         is_text_to_image = image is None or len(image) == 0
         content = []
         if image is not None:
@@ -615,6 +616,7 @@ class GlmImagePipeline(DiffusionPipeline):
                 image=image,
                 height=height,
                 width=width,
+                device=device,
             )
 
         # 3. Preprocess image
@@ -803,10 +805,9 @@ class GlmImagePipeline(DiffusionPipeline):
             )
             latents = latents * latents_std + latents_mean
             image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
+            image = self.image_processor.postprocess(image, output_type=output_type)
         else:
             image = latents
-
-        image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
