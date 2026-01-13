@@ -181,6 +181,10 @@ class MellonParam:
         return cls(name="num_frames", label="Frames", type="int", default=default, min=1, max=480, display="slider")
 
     @classmethod
+    def layers(cls, default: int = 4) -> "MellonParam":
+        return cls(name="layers", label="Layers", type="int", default=default, min=1, max=10, display="slider")
+
+    @classmethod
     def videos(cls) -> "MellonParam":
         return cls(name="videos", label="Videos", type="video", display="output")
 
