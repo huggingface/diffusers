@@ -16,19 +16,18 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import (
-    AutoTokenizer,
-    GlmImageConfig,
-    GlmImageForConditionalGeneration,
-    GlmImageProcessor,
-    T5EncoderModel,
-)
+from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, GlmImagePipeline, GlmImageTransformer2DModel
+from diffusers.utils import is_transformers_version
 
 from ...testing_utils import enable_full_determinism, require_torch_accelerator, require_transformers_version_greater
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
+
+
+if is_transformers_version(">=", "4.57.4"):
+    from transformers import GlmImageConfig, GlmImageForConditionalGeneration, GlmImageProcessor
 
 
 enable_full_determinism()
@@ -38,7 +37,7 @@ enable_full_determinism()
 @require_torch_accelerator
 class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = GlmImagePipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "negative_prompt"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -185,7 +184,7 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pass
 
     @unittest.skip("Not supported.")
-    def test_inference_batch_consisten(self):
+    def test_inference_batch_consistent(self):
         # GLM-Image has batch_size=1 constraint due to AR model
         pass
 
