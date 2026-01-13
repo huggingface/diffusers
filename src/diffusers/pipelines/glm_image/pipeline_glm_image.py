@@ -488,6 +488,9 @@ class GlmImagePipeline(DiffusionPipeline):
                 f" {prior_image_token_ids} provided. Please make sure both are provided or neither."
             )
 
+        if prior_token_ids is not None and prompt_embeds is None:
+            raise ValueError("`prompt_embeds` must also be provided with `prior_token_ids`.")
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
