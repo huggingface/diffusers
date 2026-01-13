@@ -616,7 +616,7 @@ class GlmImagePipeline(DiffusionPipeline):
 
         # 2. Preprocess image tokens and prompt tokens
         if prior_token_ids is None:
-            prior_token_id, prior_token_image_ids = self.generate_prior_tokens(
+            prior_token_ids, prior_token_image_ids = self.generate_prior_tokens(
                 prompt=prompt[0] if isinstance(prompt, list) else prompt,
                 image=image,
                 height=height,
@@ -660,7 +660,6 @@ class GlmImagePipeline(DiffusionPipeline):
             generator=generator,
             latents=latents,
         )
-
         kv_caches = GlmImageKVCache(num_layers=self.transformer.config.num_layers)
 
         if image is not None:
@@ -727,8 +726,8 @@ class GlmImagePipeline(DiffusionPipeline):
         transformer_dtype = self.transformer.dtype
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
-        prior_token_drop_cond = torch.full_like(prior_token_id, False, dtype=torch.bool)
-        prior_token_drop_uncond = torch.full_like(prior_token_id, True, dtype=torch.bool)
+        prior_token_drop_cond = torch.full_like(prior_token_ids, False, dtype=torch.bool)
+        prior_token_drop_uncond = torch.full_like(prior_token_ids, True, dtype=torch.bool)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -745,7 +744,7 @@ class GlmImagePipeline(DiffusionPipeline):
                 noise_pred_cond = self.transformer(
                     hidden_states=latent_model_input,
                     encoder_hidden_states=prompt_embeds,
-                    prior_token_id=prior_token_id,
+                    prior_token_id=prior_token_ids,
                     prior_token_drop=prior_token_drop_cond,
                     timestep=timestep,
                     target_size=target_size,
@@ -762,7 +761,7 @@ class GlmImagePipeline(DiffusionPipeline):
                     noise_pred_uncond = self.transformer(
                         hidden_states=latent_model_input,
                         encoder_hidden_states=negative_prompt_embeds,
-                        prior_token_id=prior_token_id,
+                        prior_token_id=prior_token_ids,
                         prior_token_drop=prior_token_drop_uncond,
                         timestep=timestep,
                         target_size=target_size,
