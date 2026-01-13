@@ -294,11 +294,11 @@ class BnB8bitBasicTests(Base8bitTests):
         Test whether trying to cast (or assigning a device to) a model after converting it in 8-bit will throw an error.
         Checks also if other models are casted correctly.
         """
-        
+
         with self.assertRaises(ValueError):
             # Tries with a `dtype``
             self.model_8bit.to(torch.float16)
-            
+
         with self.assertRaises(ValueError):
             # Tries with a `device`
             self.model_8bit.float()
@@ -306,7 +306,7 @@ class BnB8bitBasicTests(Base8bitTests):
         with self.assertRaises(ValueError):
             # Tries with a `dtype`
             self.model_8bit.half()
-            
+
         # This should work with 0.48.0
         self.model_8bit.to("cpu")
         self.model_8bit.to(torch.device(f"{torch_device}:0"))
