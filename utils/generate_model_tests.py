@@ -243,9 +243,17 @@ def generate_config_class(model_info: dict, model_name: str) -> str:
 
     lines = [
         f"class {class_name}:",
-        f"    model_class = {model_class}",
-        '    pretrained_model_name_or_path = ""',
-        '    pretrained_model_kwargs = {"subfolder": "transformer"}',
+        "    @property",
+        "    def model_class(self):",
+        f"        return {model_class}",
+        "",
+        "    @property",
+        "    def pretrained_model_name_or_path(self):",
+        '        return ""  # TODO: Set Hub repository ID',
+        "",
+        "    @property",
+        "    def pretrained_model_kwargs(self):",
+        '        return {"subfolder": "transformer"}',
         "",
         "    @property",
         "    def generator(self):",
@@ -303,7 +311,9 @@ def generate_test_class(model_name: str, config_class: str, tester: str) -> str:
     if tester == "TorchCompileTesterMixin":
         lines.extend(
             [
-                "    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]",
+                "    @property",
+                "    def different_shapes_for_compilation(self):",
+                "        return [(4, 4), (4, 8), (8, 8)]",
                 "",
                 "    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:",
                 "        # TODO: Implement dynamic input generation",
@@ -313,7 +323,9 @@ def generate_test_class(model_name: str, config_class: str, tester: str) -> str:
     elif tester == "IPAdapterTesterMixin":
         lines.extend(
             [
-                "    ip_adapter_processor_cls = None  # TODO: Set processor class",
+                "    @property",
+                "    def ip_adapter_processor_cls(self):",
+                "        return None  # TODO: Set processor class",
                 "",
                 "    def modify_inputs_for_ip_adapter(self, model, inputs_dict):",
                 "        # TODO: Add IP adapter image embeds to inputs",
@@ -327,16 +339,25 @@ def generate_test_class(model_name: str, config_class: str, tester: str) -> str:
     elif tester == "SingleFileTesterMixin":
         lines.extend(
             [
-                '    ckpt_path = ""  # TODO: Set checkpoint path',
-                "    alternate_keys_ckpt_paths = []",
-                '    pretrained_model_name_or_path = ""',
-                '    subfolder = "transformer"',
+                "    @property",
+                "    def ckpt_path(self):",
+                '        return ""  # TODO: Set checkpoint path',
+                "",
+                "    @property",
+                "    def alternate_ckpt_paths(self):",
+                "        return []",
+                "",
+                "    @property",
+                "    def pretrained_model_name_or_path(self):",
+                '        return ""  # TODO: Set Hub repository ID',
             ]
         )
     elif tester == "GGUFTesterMixin":
         lines.extend(
             [
-                '    gguf_filename = ""  # TODO: Set GGUF filename',
+                "    @property",
+                "    def gguf_filename(self):",
+                '        return ""  # TODO: Set GGUF filename',
                 "",
                 "    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:",
                 "        # TODO: Override with larger inputs for quantization tests",
@@ -367,7 +388,9 @@ def generate_test_class(model_name: str, config_class: str, tester: str) -> str:
     elif tester == "GGUFCompileTesterMixin":
         lines.extend(
             [
-                '    gguf_filename = ""  # TODO: Set GGUF filename',
+                "    @property",
+                "    def gguf_filename(self):",
+                '        return ""  # TODO: Set GGUF filename',
                 "",
                 "    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:",
                 "        # TODO: Override with larger inputs for quantization compile tests",
@@ -383,7 +406,9 @@ def generate_test_class(model_name: str, config_class: str, tester: str) -> str:
     elif tester == "LoraHotSwappingForModelTesterMixin":
         lines.extend(
             [
-                "    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]",
+                "    @property",
+                "    def different_shapes_for_compilation(self):",
+                "        return [(4, 4), (4, 8), (8, 8)]",
                 "",
                 "    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:",
                 "        # TODO: Implement dynamic input generation",

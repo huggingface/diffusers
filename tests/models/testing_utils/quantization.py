@@ -865,12 +865,17 @@ class GGUFConfigMixin:
     """
     Base mixin providing GGUF quantization config and model creation.
 
-    Expected class attributes:
+    Expected from config mixin:
         - model_class: The model class to test
+
+    Required properties (must be implemented by subclasses):
         - gguf_filename: URL or path to the GGUF file
     """
 
-    gguf_filename = None
+    @property
+    def gguf_filename(self):
+        """URL or path to the GGUF file. Must be implemented by subclasses."""
+        raise NotImplementedError("Subclasses must implement the `gguf_filename` property.")
 
     def _create_quantized_model(self, config_kwargs=None, **extra_kwargs):
         if config_kwargs is None:
@@ -900,11 +905,13 @@ class GGUFTesterMixin(GGUFConfigMixin, QuantizationTesterMixin):
     """
     Mixin class for testing GGUF quantization on models.
 
-    Expected class attributes:
+    Expected from config mixin:
         - model_class: The model class to test
+
+    Required properties (must be implemented by subclasses):
         - gguf_filename: URL or path to the GGUF file
 
-    Expected methods to be implemented by subclasses:
+    Expected methods from config mixin:
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
 
     Pytest mark: gguf
@@ -1237,11 +1244,13 @@ class GGUFCompileTesterMixin(GGUFConfigMixin, QuantizationCompileTesterMixin):
     """
     Mixin class for testing torch.compile with GGUF quantized models.
 
-    Expected class attributes:
+    Expected from config mixin:
         - model_class: The model class to test
+
+    Required properties (must be implemented by subclasses):
         - gguf_filename: URL or path to the GGUF file
 
-    Expected methods to be implemented by subclasses:
+    Expected methods from config mixin:
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
 
     Pytest mark: gguf

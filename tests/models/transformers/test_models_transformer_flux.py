@@ -338,7 +338,9 @@ class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin
 
 
 class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
-    gguf_filename = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q8_0.gguf"
+    @property
+    def gguf_filename(self):
+        return "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q8_0.gguf"
 
     def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         return {
@@ -405,7 +407,9 @@ class TestFluxTransformerTorchAoCompile(FluxTransformerTesterConfig, TorchAoComp
 
 
 class TestFluxTransformerGGUFCompile(FluxTransformerTesterConfig, GGUFCompileTesterMixin):
-    gguf_filename = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q8_0.gguf"
+    @property
+    def gguf_filename(self):
+        return "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q8_0.gguf"
 
     def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         return {
