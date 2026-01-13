@@ -19,6 +19,7 @@ import inspect
 import os
 import re
 import sys
+import types
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Union, get_args, get_origin
@@ -1822,6 +1823,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if inspect.isclass(v.annotation):
                 signature_types[k] = (v.annotation,)
             elif get_origin(v.annotation) == Union:
+                signature_types[k] = get_args(v.annotation)
+            elif isinstance(v.annotation, types.UnionType):
+                # Handle PEP 604 union syntax (X | Y) introduced in Python 3.10+
                 signature_types[k] = get_args(v.annotation)
             elif get_origin(v.annotation) in [List, Dict, list, dict]:
                 signature_types[k] = (v.annotation,)
