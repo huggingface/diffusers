@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
 import unittest
 
 import numpy as np
@@ -27,7 +26,7 @@ from transformers import (
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, GlmImagePipeline, GlmImageTransformer2DModel
 
-from ...testing_utils import enable_full_determinism, require_transformers_version_greater, require_torch_accelerator
+from ...testing_utils import enable_full_determinism, require_torch_accelerator, require_transformers_version_greater
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -168,7 +167,7 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = pipe(**inputs).images[0]
         generated_slice = image.flatten()
         generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
-        
+
         # fmt: off
         expected_slice = np.array(
             [
@@ -197,13 +196,11 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Needs to be revisited.")
     def test_pipeline_level_group_offloading_inference(self):
         pass
-    
-    @unittest.skip("Follow set of tests are relaxed because this pipeline doesn't guarantee same outputs for the same inputs in consecutive runs.")
-    def test_dict_tuple_outputs_equivalent(self):
-        pass
 
-    @unittest.skip("Skipped")
-    def test_float16_inference(self):
+    @unittest.skip(
+        "Follow set of tests are relaxed because this pipeline doesn't guarantee same outputs for the same inputs in consecutive runs."
+    )
+    def test_dict_tuple_outputs_equivalent(self):
         pass
 
     @unittest.skip("Skipped")
