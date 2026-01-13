@@ -28,6 +28,7 @@ from ...testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
+from .common import check_device_map_is_respected
 
 
 def download_single_file_checkpoint(pretrained_model_name_or_path, filename, tmpdir):
@@ -249,3 +250,16 @@ class SingleFileTesterMixin:
             del model
             gc.collect()
             backend_empty_cache(torch_device)
+
+    def test_single_file_loading_with_device_map(self):
+        single_file_kwargs = {"device_map": torch_device}
+
+        if self.torch_dtype:
+            single_file_kwargs["torch_dtype"] = self.torch_dtype
+
+        model = self.model_class.from_single_file(self.ckpt_path, **single_file_kwargs)
+
+        assert model is not None, "Failed to load model with device_map"
+        assert hasattr(model, "hf_device_map"), "Model should have hf_device_map attribute when loaded with device_map"
+        assert model.hf_device_map is not None, "hf_device_map should not be None when loaded with device_map"
+        check_device_map_is_respected(model, model.hf_device_map)
