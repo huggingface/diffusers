@@ -23,6 +23,7 @@ from .utils import (
     is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
+    is_transformers_version,
 )
 
 
@@ -493,7 +494,6 @@ else:
             "FluxKontextPipeline",
             "FluxPipeline",
             "FluxPriorReduxPipeline",
-            "GlmImagePipeline",
             "HiDreamImagePipeline",
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPAGPipeline",
@@ -691,6 +691,8 @@ else:
             "ZImagePipeline",
         ]
     )
+    if is_transformers_version(">=", "4.57.4"):
+        _import_structure["pipelines"].extend(["GlmImagePipeline"])
 
 
 try:
@@ -1219,7 +1221,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxKontextPipeline,
             FluxPipeline,
             FluxPriorReduxPipeline,
-            GlmImagePipeline,
             HiDreamImagePipeline,
             HunyuanDiTControlNetPipeline,
             HunyuanDiTPAGPipeline,
@@ -1414,6 +1415,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageOmniPipeline,
             ZImagePipeline,
         )
+
+        if is_transformers_version(">=", "4.57.4"):
+            from .pipelines import GlmImagePipeline
 
     try:
         if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
