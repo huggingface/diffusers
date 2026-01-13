@@ -27,7 +27,7 @@ if is_transformers_available() and is_transformers_version(">=", "4.57.4"):
         pass
 
 try:
-    if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.57.4")):
+    if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils import dummy_torch_and_transformers_objects  # noqa F403
@@ -37,7 +37,7 @@ else:
     _import_structure["pipeline_glm_image"] = ["GlmImagePipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
-        if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.57.4")):
+        if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
