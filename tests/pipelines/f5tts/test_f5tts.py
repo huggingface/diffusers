@@ -14,30 +14,17 @@
 # limitations under the License.
 
 
-import gc
 import unittest
 
-import numpy as np
 import torch
 
-from diffusers import (
-    F5FlowPipeline,
-    F5DiTModel,
-    F5ConditioningEncoder,
-    FlowMatchEulerDiscreteScheduler
-    
-)
+from diffusers import F5ConditioningEncoder, F5DiTModel, F5FlowPipeline, FlowMatchEulerDiscreteScheduler
 from diffusers.utils import is_xformers_available
 
 from ...testing_utils import (
-    Expectations,
-    backend_empty_cache,
     enable_full_determinism,
-    nightly,
-    require_torch_accelerator,
     torch_device,
 )
-from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -67,7 +54,7 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        
+
         transformer = F5DiTModel(
             dim=1024,
             depth=2,
@@ -83,8 +70,7 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             attn_mask_enabled=False,
             checkpoint_activations=False,
         )
-        
-        
+
         conditioning_encoder = F5ConditioningEncoder(
             dim=1024,
             text_num_embeds=2546,
@@ -93,11 +79,10 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             conv_layers=4,
             mel_dim=100,
         )
-        
-        
+
         scheduler = FlowMatchEulerDiscreteScheduler()
         torch.manual_seed(0)
-        
+
         vocab_char_map = {chr(i + 97): i for i in range(26)}
 
         components = {
@@ -147,7 +132,6 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         super().test_save_load_optional_components(expected_max_difference=7e-3)
 
     def test_f5tts_forward_pass(self):
-
         components = self.get_dummy_components()
         f5tts_pipe = F5FlowPipeline(**components)
         f5tts_pipe = f5tts_pipe.to(torch_device)
@@ -159,8 +143,6 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert audio.ndim == 2
         assert audio.shape == (100, 204)
-
-
 
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
@@ -175,7 +157,6 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
 
-
     @unittest.skip("Not supported yet")
     def test_sequential_cpu_offload_forward_pass(self):
         pass
@@ -187,5 +168,3 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Test not supported because `rotary_embed_dim` doesn't have any sensible default.")
     def test_encode_prompt_works_in_isolation(self):
         pass
-
-

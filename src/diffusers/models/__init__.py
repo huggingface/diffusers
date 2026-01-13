@@ -75,6 +75,7 @@ if is_torch_available():
     _import_structure["transformers.consisid_transformer_3d"] = ["ConsisIDTransformer3DModel"]
     _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
     _import_structure["transformers.dual_transformer_2d"] = ["DualTransformer2DModel"]
+    _import_structure["transformers.f5tts_transformer"] = ["F5ConditioningEncoder", "F5DiTModel"]
     _import_structure["transformers.hunyuan_transformer_2d"] = ["HunyuanDiT2DModel"]
     _import_structure["transformers.latte_transformer_3d"] = ["LatteTransformer3DModel"]
     _import_structure["transformers.lumina_nextdit2d"] = ["LuminaNextDiT2DModel"]
@@ -82,7 +83,6 @@ if is_torch_available():
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
     _import_structure["transformers.sana_transformer"] = ["SanaTransformer2DModel"]
     _import_structure["transformers.stable_audio_transformer"] = ["StableAudioDiTModel"]
-    _import_structure["transformers.f5tts_transformer"] = ["F5DiTModel", "F5ConditioningEncoder"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
@@ -199,9 +199,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DiTTransformer2DModel,
             DualTransformer2DModel,
             EasyAnimateTransformer3DModel,
+            F5DiTModel,
             Flux2Transformer2DModel,
             FluxTransformer2DModel,
-            F5DiTModel,
             HiDreamImageTransformer2DModel,
             HunyuanDiT2DModel,
             HunyuanImageTransformer2DModel,

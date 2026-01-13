@@ -3117,7 +3117,7 @@ class StableAudioAttnProcessor2_0:
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
-    
+
 
 class F5TTSAttnProcessor2_0:
     r"""
@@ -3127,11 +3127,8 @@ class F5TTSAttnProcessor2_0:
 
     def __init__(self, pe_attn_head: Optional[int] = None):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                "F5TTSAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
+            raise ImportError("F5TTSAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
         self.pe_attn_head = pe_attn_head
-
 
     def __call__(
         self,
@@ -3198,20 +3195,19 @@ class F5TTSAttnProcessor2_0:
             query = query.to(torch.float32)
             key = key.to(torch.float32)
 
-
             if self.pe_attn_head is not None:
                 query_rotated = apply_rotary_emb(
-                    query[..., :self.pe_attn_head, :], rotary_emb, use_real=True, use_real_unbind_dim=-1
+                    query[..., : self.pe_attn_head, :], rotary_emb, use_real=True, use_real_unbind_dim=-1
                 )
 
-                query_unrotated = query[..., self.pe_attn_head:, :]
+                query_unrotated = query[..., self.pe_attn_head :, :]
                 query = torch.cat((query_rotated, query_unrotated), dim=-1)
             else:
                 query = apply_rotary_emb(query, rotary_emb, use_real=True, use_real_unbind_dim=-1)
 
-            if not attn.is_cross_attention :
+            if not attn.is_cross_attention:
                 if self.pe_attn_head is not None:
-                    key_to_rotate, key_unrotated = key[..., :self.pe_attn_head, :], key[..., self.pe_attn_head:, :]
+                    key_to_rotate, key_unrotated = key[..., : self.pe_attn_head, :], key[..., self.pe_attn_head :, :]
                     key_rotated = apply_rotary_emb(key_to_rotate, rotary_emb, use_real=True, use_real_unbind_dim=-1)
                     key = torch.cat((key_rotated, key_unrotated), dim=-1)
                 else:
@@ -3235,8 +3231,7 @@ class F5TTSAttnProcessor2_0:
 
         if input_ndim == 4:
             hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-        
-        
+
         # these two need to be no-ops
         if attn.residual_connection:
             hidden_states = hidden_states + residual
@@ -3244,8 +3239,6 @@ class F5TTSAttnProcessor2_0:
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
-    
-
 
 
 class HunyuanAttnProcessor2_0:

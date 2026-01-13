@@ -1,47 +1,25 @@
 """
-ein notation:
-b - batch
-n - sequence
-nt - text sequence
-nw - raw wave length
-d - dimension
+ein notation: b - batch n - sequence nt - text sequence nw - raw wave length d - dimension
 """
 
-from random import random
-from typing import Callable
+import os
+
+# helpers
+from typing import Dict, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
-from torch import nn
 from torch.nn.utils.rnn import pad_sequence
-from torchdiffeq import odeint
-import torchaudio
 
-import os
-import random
-from collections import defaultdict
-from importlib.resources import files
-
-import torch
-from torch.nn.utils.rnn import pad_sequence
-from diffusers.utils.torch_utils import randn_tensor
+from diffusers.models.transformers.f5tts_transformer import F5ConditioningEncoder, F5DiTModel, MelSpec
 from diffusers.pipelines.pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from vocos import Vocos
-from diffusers.models.transformers.f5tts_transformer import   F5DiTModel, MelSpec, F5ConditioningEncoder
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
-# helpers
-import jieba
-from pypinyin import lazy_pinyin, Style
-from typing import Optional, Union, List, Dict
-
-
-
-
+from diffusers.utils.torch_utils import randn_tensor
 
 
 class F5FlowPipeline(DiffusionPipeline):
     model_cpu_offload_seq = "conditioning_encoder->transformer"
-    
+
     def __init__(
         self,
         transformer: F5DiTModel,
@@ -74,6 +52,7 @@ class F5FlowPipeline(DiffusionPipeline):
         # Save vocab_char_map as JSON
         if self.vocab_char_map is not None:
             import json
+
             vocab_path = os.path.join(save_directory, "vocab_char_map.json")
             with open(vocab_path, "w") as f:
                 json.dump(self.vocab_char_map, f)
@@ -82,12 +61,13 @@ class F5FlowPipeline(DiffusionPipeline):
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
         # Load vocab_char_map if it exists
         import json
+
         vocab_path = os.path.join(pretrained_model_name_or_path, "vocab_char_map.json")
         vocab_char_map = None
         if os.path.exists(vocab_path):
             with open(vocab_path, "r") as f:
                 vocab_char_map = json.load(f)
-        
+
         pipe = super().from_pretrained(pretrained_model_name_or_path, **kwargs)
         pipe.vocab_char_map = vocab_char_map
         return pipe
@@ -102,7 +82,6 @@ class F5FlowPipeline(DiffusionPipeline):
         list_idx_tensors = [torch.tensor([vocab_char_map.get(c, 0) for c in t]) for t in text]  # pinyin or char style
         text = pad_sequence(list_idx_tensors, padding_value=padding_value, batch_first=True)
         return text
-
 
     def get_epss_timesteps(self, n, device, dtype):
         dt = 1 / 32
@@ -119,19 +98,20 @@ class F5FlowPipeline(DiffusionPipeline):
             return torch.linspace(0, 1, n + 1, device=device, dtype=dtype)
         return dt * torch.tensor(t, device=device, dtype=dtype)
 
-        
-
-
-
     def lens_to_mask(self, t: "int[b]", length: int | None = None) -> "bool[b n]":  # noqa: F722 F821
         if length is None:
             length = t.amax()
 
         seq = torch.arange(length, device=t.device)
         return seq[None, :] < t[:, None]
-    
-    
-    def check_inputs(self, ref_audio: torch.Tensor | None, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], speed: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None): 
+
+    def check_inputs(
+        self,
+        ref_audio: torch.Tensor | None,
+        ref_text: Union[str, List[str]],
+        gen_text: Union[str, List[str]],
+        speed: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
+    ):
         if ref_audio is None:
             raise ValueError("`ref_audio` must be provided.")
         if not isinstance(ref_text, (str, list)):
@@ -141,11 +121,11 @@ class F5FlowPipeline(DiffusionPipeline):
 
         if not isinstance(ref_text, List):
             ref_text = [ref_text]
-        
+
         if not isinstance(gen_text, List):
             gen_text = [gen_text]
-        
-        if  len(ref_text) != len(gen_text):
+
+        if len(ref_text) != len(gen_text):
             raise ValueError("`ref_text` and `gen_text` must have the same length.")
 
         # check if speed is non negative
@@ -161,8 +141,16 @@ class F5FlowPipeline(DiffusionPipeline):
                 raise ValueError("`speed` must be a 1D tensor.")
             if speed.shape[0] != len(ref_text):
                 raise ValueError("`speed` must have the same length as `ref_text` and `gen_text`.")
-            
-    def prepare_latents(self, ref_audio:torch.Tensor, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], speed: Optional[torch.Tensor] = None, guidance_scale=2.0, generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None):
+
+    def prepare_latents(
+        self,
+        ref_audio: torch.Tensor,
+        ref_text: Union[str, List[str]],
+        gen_text: Union[str, List[str]],
+        speed: Optional[torch.Tensor] = None,
+        guidance_scale=2.0,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+    ):
         # each text in text_list is a combination of ref_text and gen_text
         if isinstance(ref_text, str):
             ref_text = [ref_text]
@@ -170,7 +158,7 @@ class F5FlowPipeline(DiffusionPipeline):
             gen_text = [gen_text]
         text_list = [f"{r} {g}" for r, g in zip(ref_text, gen_text)]
         ref_audio_len = ref_audio.shape[-1] // self.mel_spec.hop_length
-        
+
         if isinstance(speed, List):
             speed = torch.stack(speed)
             speed = speed.squeeze(-1)
@@ -179,17 +167,19 @@ class F5FlowPipeline(DiffusionPipeline):
             speed = torch.ones(len(ref_text), device=ref_audio.device)
         # Calculate duration from speed
         duration_list = []
-        
+
         for i in range(len(ref_text)):
             ref_text_len = len(ref_text[i].encode("utf-8"))
             gen_text_len = len(gen_text[i].encode("utf-8"))
-            duration = ref_audio_len + int((ref_audio_len * speed[i]) * ((ref_text_len + gen_text_len + 1)/ ref_text_len ))
+            duration = ref_audio_len + int(
+                (ref_audio_len * speed[i]) * ((ref_text_len + gen_text_len + 1) / ref_text_len)
+            )
             duration_list.append(duration)
         duration = torch.tensor(duration_list, dtype=torch.long, device=ref_audio.device)
 
         cond = ref_audio
         if cond.ndim == 2:
-            cond = cond.to('cpu') # mel spec needs cpu
+            cond = cond.to("cpu")  # mel spec needs cpu
             cond = self.mel_spec(cond)
             cond = cond.to(self._execution_device)
             cond = cond.permute(0, 2, 1)
@@ -222,20 +212,25 @@ class F5FlowPipeline(DiffusionPipeline):
             mask = self.lens_to_mask(duration)
         else:  # save memory and speed up, as single inference need no mask currently
             mask = None
-            
+
         if guidance_scale >= 1e-5 and mask is not None:
             mask = torch.cat((mask, mask), dim=0)  # for classifier-free guidance, we need to double the batch size
-            
+
         # noise input
         # to make sure batch inference result is same with different batch size, and for sure single inference
         # still some difference maybe due to convolutional layers
         y0 = []
         for i, dur in enumerate(duration):
-            y0.append(randn_tensor((dur, self.num_channels), device=device, generator=generator[i] if isinstance(generator, list) else generator))
+            y0.append(
+                randn_tensor(
+                    (dur, self.num_channels),
+                    device=device,
+                    generator=generator[i] if isinstance(generator, list) else generator,
+                )
+            )
         y0 = pad_sequence(y0, padding_value=0, batch_first=True)
 
         return y0, step_cond_input, text, cond, cond_mask, mask
-
 
     @torch.no_grad()
     def __call__(
@@ -250,8 +245,6 @@ class F5FlowPipeline(DiffusionPipeline):
         speed: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
-
-
         # Check inputs
         self.check_inputs(ref_audio, ref_text, gen_text, speed)
         device = self._execution_device
@@ -264,18 +257,21 @@ class F5FlowPipeline(DiffusionPipeline):
             guidance_scale=guidance_scale,
             generator=generator,
         )
-            
-            
+
         sigmas = self.get_epss_timesteps(num_inference_steps, device, step_cond_input.dtype)
         if sway_sampling_coef is not None:
             sigmas = sigmas + sway_sampling_coef * (torch.cos(torch.pi / 2 * sigmas) - 1 + sigmas)
         timesteps = sigmas * (self.scheduler.num_train_timesteps - 1)
         timesteps = timesteps.round().long()
-        self.scheduler.set_timesteps(num_inference_steps+1, device=device, sigmas=sigmas.cpu(), timesteps=timesteps.cpu())
-        
+        self.scheduler.set_timesteps(
+            num_inference_steps + 1, device=device, sigmas=sigmas.cpu(), timesteps=timesteps.cpu()
+        )
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(sigmas[:-1]):
-                step_cond = self.conditioning_encoder(y0, step_cond_input, text, drop_audio_cond=False, drop_text=False)
+                step_cond = self.conditioning_encoder(
+                    y0, step_cond_input, text, drop_audio_cond=False, drop_text=False
+                )
                 # predict flow (cond)
                 if guidance_scale < 1e-5:
                     pred = self.transformer(
@@ -288,8 +284,10 @@ class F5FlowPipeline(DiffusionPipeline):
                     return pred
 
                 # predict flow (cond and uncond), for classifier-free guidance
-                step_uncond = self.conditioning_encoder(y0, step_cond_input, text, drop_audio_cond=True, drop_text=True)
-                step_cond = torch.cat((step_cond, step_uncond), dim=0)            
+                step_uncond = self.conditioning_encoder(
+                    y0, step_cond_input, text, drop_audio_cond=True, drop_text=True
+                )
+                step_cond = torch.cat((step_cond, step_uncond), dim=0)
                 pred_cfg = self.transformer(
                     x=step_cond,
                     time=t,
@@ -298,17 +296,11 @@ class F5FlowPipeline(DiffusionPipeline):
                 )
                 pred, null_pred = torch.chunk(pred_cfg, 2, dim=0)
                 pred = pred + (pred - null_pred) * guidance_scale
-                
-                y0 = self.scheduler.step(
-                    pred,
-                    t,
-                    y0,
-                    generator=generator
-                ).prev_sample
-                
-                
+
+                y0 = self.scheduler.step(pred, t, y0, generator=generator).prev_sample
+
                 progress_bar.update()
-                
+
         sampled = y0
         out = sampled
         out = torch.where(cond_mask, cond, out)
@@ -324,8 +316,8 @@ class F5FlowPipeline(DiffusionPipeline):
 
 
 if __name__ == "__main__":
-    print('entering main funcitn')
-    
+    print("entering main funcitn")
+
     dit_config = {
         "dim": 1024,
         "depth": 22,
@@ -341,8 +333,7 @@ if __name__ == "__main__":
         "attn_mask_enabled": False,
         "checkpoint_activations": False,  # recompute activations and save memory for extra compute
     }
-    
-  
+
     mel_spec_config = {
         "target_sample_rate": 24000,
         "n_mel_channels": 100,
@@ -351,51 +342,45 @@ if __name__ == "__main__":
         "n_fft": 1024,
     }
 
-
-    with open('vocab.txt', "r", encoding="utf-8") as f:
+    with open("vocab.txt", "r", encoding="utf-8") as f:
         vocab_char_map = {}
         for i, char in enumerate(f):
             vocab_char_map[char[:-1]] = i
     vocab_size = len(vocab_char_map)
 
-
     dit = F5DiTModel(**dit_config)
     print("DiT model initialized with config:", dit_config)
-    
+
     conditioning_encoder_config = {
-        'dim': 1024,
-        'text_num_embeds': vocab_size,
-        'text_dim': 512,
-        'text_mask_padding': True,
-        'conv_layers': 4,
-        'mel_dim': mel_spec_config['n_mel_channels'],
+        "dim": 1024,
+        "text_num_embeds": vocab_size,
+        "text_dim": 512,
+        "text_mask_padding": True,
+        "conv_layers": 4,
+        "mel_dim": mel_spec_config["n_mel_channels"],
     }
     conditioning_encoder = F5ConditioningEncoder(**conditioning_encoder_config)
     print("Conditioning Encoder initialized with config:", conditioning_encoder_config)
-    
+
     scheduler = FlowMatchEulerDiscreteScheduler()
-    
+
     f5_pipeline = F5FlowPipeline(
-        transformer=dit,
-        conditioning_encoder=conditioning_encoder,
-        vocab_char_map=vocab_char_map,
-        scheduler=scheduler
+        transformer=dit, conditioning_encoder=conditioning_encoder, vocab_char_map=vocab_char_map, scheduler=scheduler
     )
     print("F5FlowPipeline initialized with DiT and Conditioning Encoder.")
 
-    import torch 
+    import torch
+
     ref_audio = torch.randn(2, 16000)  # Dummy reference audio
     duration = 250
 
     ref_text = "This is a test sentence."  # Dummy reference text
     gen_text = "This is a generated sentence."  # Dummy generated text
 
-    ref_text = [ref_text]*2
-    gen_text = [gen_text]*2
+    ref_text = [ref_text] * 2
+    gen_text = [gen_text] * 2
 
-    x = f5_pipeline(ref_audio=ref_audio,
-                    ref_text=ref_text,
-                     gen_text=gen_text,
-                     num_inference_steps=2, return_dict=False)
+    x = f5_pipeline(
+        ref_audio=ref_audio, ref_text=ref_text, gen_text=gen_text, num_inference_steps=2, return_dict=False
+    )
     print("Generated output shape:", x[0].shape)
-                            

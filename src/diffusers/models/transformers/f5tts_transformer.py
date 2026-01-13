@@ -1,31 +1,26 @@
 """
-ein notation:
-b - batch
-n - sequence
-nt - text sequence
-nw - raw wave length
-d - dimension
+ein notation: b - batch n - sequence nt - text sequence nw - raw wave length d - dimension
 """
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn.functional as F
-from torch import nn
 import torchaudio
-from ..normalization import GlobalResponseNorm, AdaLayerNorm, RMSNorm
-import math
-from ..embeddings import get_1d_rotary_pos_embed, apply_rotary_emb
-from typing import Optional, Union
-from ..attention_processor import F5TTSAttnProcessor2_0
-from ..attention import Attention
-from einops import rearrange, repeat, reduce, pack, unpack
-from torch import nn, einsum, tensor, Tensor, cat, stack, arange, is_tensor
-from ..modeling_utils import ModelMixin
+from torch import nn
+
 from ...configuration_utils import ConfigMixin, register_to_config
+from ..attention import Attention
+from ..attention_processor import F5TTSAttnProcessor2_0
+from ..embeddings import get_1d_rotary_pos_embed
+from ..modeling_utils import ModelMixin
+from ..normalization import GlobalResponseNorm
+
+
 # import jieba
 # from pypinyin import Style, lazy_pinyin
-
 
 
 class AdaLayerNorm2(nn.Module):
@@ -45,16 +40,12 @@ class AdaLayerNorm2(nn.Module):
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
 
 
-
-
-
-
 class F5FeedForward(nn.Module):
     def __init__(self, dim, dim_out=None, mult=4, dropout=0.0, approximate: str = "none"):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
-        
+
         # a bit different ordering from the diffusers FeedForward class, here the inner projection weight comes first, in diffusers the activation comes first
         activation = nn.GELU(approximate=approximate)
         project_in = nn.Sequential(nn.Linear(dim, inner_dim), activation)
@@ -68,9 +59,6 @@ class F5FeedForward(nn.Module):
 # modified from diffusers/src/diffusers/models/attention_processor.py
 
 
-
-
-
 def is_package_available(package_name: str) -> bool:
     try:
         import importlib
@@ -79,8 +67,6 @@ def is_package_available(package_name: str) -> bool:
         return package_exists
     except Exception:
         return False
-
-
 
 
 class DiTBlock(nn.Module):
@@ -142,7 +128,7 @@ class ConvPositionEmbedding(nn.Module):
             nn.Mish(),
         )
 
-    def forward(self, x: float["b n d"], mask: bool["b n"] | None = None):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None):
         if mask is not None:
             mask = mask[..., None]
             x = x.masked_fill(~mask, 0.0)
@@ -155,7 +141,6 @@ class ConvPositionEmbedding(nn.Module):
             out = out.masked_fill(~mask, 0.0)
 
         return out
-
 
 
 class SinusPositionEmbedding(nn.Module):
@@ -173,18 +158,18 @@ class SinusPositionEmbedding(nn.Module):
         return emb
 
 
-
 class TimestepEmbedding(nn.Module):
     def __init__(self, dim, freq_embed_dim=256):
         super().__init__()
         self.time_embed = SinusPositionEmbedding(freq_embed_dim)
         self.time_mlp = nn.Sequential(nn.Linear(freq_embed_dim, dim), nn.SiLU(), nn.Linear(dim, dim))
 
-    def forward(self, timestep: float["b"]):
+    def forward(self, timestep: torch.Tensor):
         time_hidden = self.time_embed(timestep)
         time_hidden = time_hidden.to(timestep.dtype)
         time = self.time_mlp(time_hidden)  # b d
         return time
+
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, theta_rescale_factor=1.0):
     # proposed by reddit user bloc97, to rescale rotary embeddings to longer sequence length without fine-tuning
@@ -199,6 +184,7 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, theta_resca
     freqs_sin = torch.sin(freqs)  # imaginary part
     return torch.cat([freqs_cos, freqs_sin], dim=-1)
 
+
 def get_pos_embed_indices(start, length, max_pos, scale=1.0):
     # length = length if isinstance(length, int) else length.max()
     scale = scale * torch.ones_like(start, dtype=torch.float32)  # in case scale is a scalar
@@ -209,8 +195,6 @@ def get_pos_embed_indices(start, length, max_pos, scale=1.0):
     # avoid extra long error.
     pos = torch.where(pos < max_pos, pos, max_pos - 1)
     return pos
-
-
 
 
 class ConvNeXtV2Block(nn.Module):
@@ -239,11 +223,9 @@ class ConvNeXtV2Block(nn.Module):
         x = self.norm(x)
         x = self.pwconv1(x)
         x = self.act(x)
-        x = self.grn(x.unsqueeze(0)).squeeze(0)  
+        x = self.grn(x.unsqueeze(0)).squeeze(0)
         x = self.pwconv2(x)
         return residual + x
-
-
 
 
 # Text embedding
@@ -259,7 +241,9 @@ class TextEmbedding(nn.Module):
         if conv_layers > 0:
             self.extra_modeling = True
             self.precompute_max_pos = 4096  # ~44s of 24khz audio
-            self.register_buffer("freqs_cis", precompute_freqs_cis(text_dim, self.precompute_max_pos), persistent=False)
+            self.register_buffer(
+                "freqs_cis", precompute_freqs_cis(text_dim, self.precompute_max_pos), persistent=False
+            )
             self.text_blocks = nn.Sequential(
                 *[ConvNeXtV2Block(text_dim, text_dim * conv_mult) for _ in range(conv_layers)]
             )
@@ -319,15 +303,16 @@ class InputEmbedding(nn.Module):
 
 # Transformer backbone using DiT blocks
 
+
 # Adding this to decouple the conditoning encoding from the DiT backbone
 class F5ConditioningEncoder(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
         dim,
-        text_num_embeds, 
-        text_dim, 
-        text_mask_padding, 
+        text_num_embeds,
+        text_dim,
+        text_mask_padding,
         conv_layers,
         mel_dim,
     ):
@@ -366,6 +351,8 @@ class F5ConditioningEncoder(ModelMixin, ConfigMixin):
     @property
     def device(self):
         return self.text_embed.text_embed.weight.device
+
+
 class AdaLayerNorm_Final(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -431,12 +418,11 @@ class F5DiTModel(ModelMixin, ConfigMixin):
             ]
         )
         self.long_skip_connection = nn.Linear(dim * 2, dim, bias=False) if long_skip_connection else None
-        
+
         # can't use diffusers AdaLayerNorm here, because for chunk_dim = 1, it has shift, scale instead of scale, shift
-        # better to have this as a separate class than hackily using diffusers AdaLayerNorm 
+        # better to have this as a separate class than hackily using diffusers AdaLayerNorm
         self.norm_out = AdaLayerNorm_Final(dim)  # final modulation
         self.proj_out = nn.Linear(dim, mel_dim)
-
 
     def forward(
         self,
@@ -451,23 +437,23 @@ class F5DiTModel(ModelMixin, ConfigMixin):
         temb = self.time_embed(time)  # b d
         rope = get_1d_rotary_pos_embed(pos=seq_len, dim=self.dim_head, use_real=True)
         for block in self.transformer_blocks:
-                x = block(x, temb, mask=mask, rope=rope)
+            x = block(x, temb, mask=mask, rope=rope)
 
         x = self.norm_out(x, emb=temb)
         output = self.proj_out(x)
 
         return output
+
     @property
     def dtype(self):
         return self.proj_out.weight.dtype
+
     @property
     def device(self):
         return self.proj_out.weight.device
 
 
-
-
-#TODO - add BigVGAN support later 
+# TODO - add BigVGAN support later
 class MelSpec(nn.Module):
     def __init__(
         self,
@@ -497,10 +483,7 @@ class MelSpec(nn.Module):
             norm=None,
         )
 
-
     def forward(self, wav):
         mel = self.mel_stft(wav)
         mel = mel.clamp(min=1e-5).log()
         return mel
-
-
