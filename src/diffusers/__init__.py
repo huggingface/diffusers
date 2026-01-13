@@ -23,6 +23,7 @@ from .utils import (
     is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
+    is_transformers_version,
 )
 
 
@@ -225,6 +226,7 @@ else:
             "FluxControlNetModel",
             "FluxMultiControlNetModel",
             "FluxTransformer2DModel",
+            "GlmImageTransformer2DModel",
             "HiDreamImageTransformer2DModel",
             "HunyuanDiT2DControlNetModel",
             "HunyuanDiT2DModel",
@@ -492,6 +494,7 @@ else:
             "FluxKontextPipeline",
             "FluxPipeline",
             "FluxPriorReduxPipeline",
+            "GlmImagePipeline",
             "HiDreamImagePipeline",
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPAGPipeline",
@@ -979,6 +982,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxControlNetModel,
             FluxMultiControlNetModel,
             FluxTransformer2DModel,
+            GlmImageTransformer2DModel,
             HiDreamImageTransformer2DModel,
             HunyuanDiT2DControlNetModel,
             HunyuanDiT2DModel,
@@ -1216,6 +1220,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxKontextPipeline,
             FluxPipeline,
             FluxPriorReduxPipeline,
+            GlmImagePipeline,
             HiDreamImagePipeline,
             HunyuanDiTControlNetPipeline,
             HunyuanDiTPAGPipeline,
