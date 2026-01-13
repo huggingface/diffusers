@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL
 import torch
-from transformers import ByT5Tokenizer, GlmImageForConditionalGeneration, GlmImageProcessor, T5EncoderModel
+from transformers import ByT5Tokenizer, T5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
@@ -28,9 +28,14 @@ from ...models import AutoencoderKL, GlmImageTransformer2DModel
 from ...models.transformers.transformer_glm_image import GlmImageKVCache
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_torch_xla_available, is_transformers_version, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import GlmImagePipelineOutput
+
+
+# Because it's not released in stable as of 13/01/2026. So this is just a proxy.
+if is_transformers_version(">=", "4.57.4"):
+    from transformers import GlmImageForConditionalGeneration, GlmImageProcessor
 
 
 if is_torch_xla_available():

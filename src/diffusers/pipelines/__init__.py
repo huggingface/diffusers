@@ -435,8 +435,8 @@ else:
         "QwenImageLayeredPipeline",
     ]
     _import_structure["chronoedit"] = ["ChronoEditPipeline"]
-    if is_transformers_version(">=", "4.57.4"):
-        _import_structure["glm_image"] = ["GlmImagePipeline"]
+    _import_structure["glm_image"] = ["GlmImagePipeline"]
+
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -679,6 +679,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ReduxImageEncoder,
         )
         from .flux2 import Flux2Pipeline
+        from .glm_image import GlmImagePipeline
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
@@ -872,9 +873,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageOmniPipeline,
             ZImagePipeline,
         )
-
-        if is_transformers_version(">=", "4.57.4"):
-            from .glm_image import GlmImagePipeline
 
         try:
             if not is_onnx_available():
