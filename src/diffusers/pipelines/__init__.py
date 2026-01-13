@@ -15,6 +15,7 @@ from ..utils import (
     is_torch_available,
     is_torch_npu_available,
     is_transformers_available,
+    is_transformers_version,
 )
 
 
@@ -434,6 +435,8 @@ else:
         "QwenImageLayeredPipeline",
     ]
     _import_structure["chronoedit"] = ["ChronoEditPipeline"]
+    if is_transformers_version(">=", "4.57.4"):
+        _import_structure["glm_image"] = ["GlmImagePipeline"]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -869,6 +872,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageOmniPipeline,
             ZImagePipeline,
         )
+
+        if is_transformers_version(">=", "4.57.4"):
+            from .glm_image import GlmImagePipeline
 
         try:
             if not is_onnx_available():
