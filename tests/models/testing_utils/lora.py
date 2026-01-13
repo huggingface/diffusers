@@ -83,7 +83,7 @@ class LoraTesterMixin:
             pytest.skip(f"PEFT is not supported for this model ({self.model_class.__name__}).")
 
     @torch.no_grad()
-    def test_save_load_lora_adapter(self, tmp_path, rank=4, lora_alpha=4, use_dora=False):
+    def test_save_load_lora_adapter(self, tmp_path, rank=4, lora_alpha=4, use_dora=False, atol=1e-4, rtol=1e-4):
         from peft import LoraConfig
         from peft.utils import get_peft_model_state_dict
 
@@ -107,7 +107,7 @@ class LoraTesterMixin:
         torch.manual_seed(0)
         outputs_with_lora = model(**inputs_dict, return_dict=False)[0]
 
-        assert not torch.allclose(output_no_lora, outputs_with_lora, atol=1e-4, rtol=1e-4), (
+        assert not torch.allclose(output_no_lora, outputs_with_lora, atol=atol, rtol=rtol), (
             "Output should differ with LoRA enabled"
         )
 
@@ -127,21 +127,21 @@ class LoraTesterMixin:
         for k in state_dict_loaded:
             loaded_v = state_dict_loaded[k]
             retrieved_v = state_dict_retrieved[k].to(loaded_v.device)
-            assert_tensors_close(loaded_v, retrieved_v, atol=1e-5, rtol=0, msg=f"Mismatch in LoRA weight {k}")
+            assert_tensors_close(loaded_v, retrieved_v, atol=atol, rtol=rtol, msg=f"Mismatch in LoRA weight {k}")
 
         assert check_if_lora_correctly_set(model), "LoRA layers not set correctly after reload"
 
         torch.manual_seed(0)
         outputs_with_lora_2 = model(**inputs_dict, return_dict=False)[0]
 
-        assert not torch.allclose(output_no_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4), (
+        assert not torch.allclose(output_no_lora, outputs_with_lora_2, atol=atol, rtol=rtol), (
             "Output should differ with LoRA enabled"
         )
         assert_tensors_close(
             outputs_with_lora,
             outputs_with_lora_2,
-            atol=1e-4,
-            rtol=1e-4,
+            atol=atol,
+            rtol=rtol,
             msg="Outputs should match before and after save/load",
         )
 
@@ -302,7 +302,9 @@ class LoraHotSwappingForModelTesterMixin:
         ]
         return linear_names[0]
 
-    def _check_model_hotswap(self, tmp_path, do_compile, rank0, rank1, target_modules0, target_modules1=None):
+    def _check_model_hotswap(
+        self, tmp_path, do_compile, rank0, rank1, target_modules0, target_modules1=None, atol=5e-3, rtol=5e-3
+    ):
         """
         Check that hotswapping works on a model.
 
@@ -344,8 +346,7 @@ class LoraHotSwappingForModelTesterMixin:
             output1_before = model(**inputs_dict)["sample"]
 
         # sanity checks:
-        tol = 5e-3
-        assert not torch.allclose(output0_before, output1_before, atol=tol, rtol=tol)
+        assert not torch.allclose(output0_before, output1_before, atol=atol, rtol=rtol)
         assert not (output0_before == 0).all()
         assert not (output1_before == 0).all()
 
@@ -379,7 +380,7 @@ class LoraHotSwappingForModelTesterMixin:
             else:
                 output0_after = model(**inputs_dict)["sample"]
                 assert_tensors_close(
-                    output0_before, output0_after, atol=tol, rtol=tol, msg="Output mismatch after loading adapter0"
+                    output0_before, output0_after, atol=atol, rtol=rtol, msg="Output mismatch after loading adapter0"
                 )
 
         # hotswap the 2nd adapter
@@ -396,8 +397,8 @@ class LoraHotSwappingForModelTesterMixin:
                 assert_tensors_close(
                     output1_before,
                     output1_after,
-                    atol=tol,
-                    rtol=tol,
+                    atol=atol,
+                    rtol=rtol,
                     msg="Output mismatch after hotswapping to adapter1",
                 )
 

@@ -191,7 +191,7 @@ class CacheTesterMixin:
         )
 
     @torch.no_grad()
-    def _test_cache_context_manager(self):
+    def _test_cache_context_manager(self, atol=1e-5, rtol=0):
         """Test the cache_context context manager properly isolates cache state."""
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -213,7 +213,8 @@ class CacheTesterMixin:
         assert_tensors_close(
             output_ctx1,
             output_ctx2,
-            atol=1e-5,
+            atol=atol,
+            rtol=rtol,
             msg="First pass in different cache contexts should produce the same output.",
         )
 

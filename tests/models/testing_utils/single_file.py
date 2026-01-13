@@ -126,7 +126,7 @@ class SingleFileTesterMixin:
                 f"pretrained={model.config[param_name]}, single_file={param_value}"
             )
 
-    def test_single_file_model_parameters(self):
+    def test_single_file_model_parameters(self, atol=1e-5, rtol=1e-5):
         pretrained_kwargs = {"device": torch_device, **self.pretrained_model_kwargs}
         single_file_kwargs = {"device": torch_device}
 
@@ -156,7 +156,7 @@ class SingleFileTesterMixin:
             )
 
             assert_tensors_close(
-                param, param_single_file, atol=1e-5, rtol=1e-5, msg=f"Parameter values differ for {key}"
+                param, param_single_file, atol=atol, rtol=rtol, msg=f"Parameter values differ for {key}"
             )
 
     def test_single_file_loading_local_files_only(self, tmp_path):

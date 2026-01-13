@@ -354,7 +354,7 @@ class ModelTesterMixin:
         )
 
     @torch.no_grad()
-    def test_outputs_equivalence(self):
+    def test_outputs_equivalence(self, atol=1e-5, rtol=0):
         def set_nan_tensor_to_zero(t):
             device = t.device
             if device.type == "mps":
@@ -375,8 +375,8 @@ class ModelTesterMixin:
                 assert_tensors_close(
                     set_nan_tensor_to_zero(tuple_object),
                     set_nan_tensor_to_zero(dict_object),
-                    atol=1e-5,
-                    rtol=0,
+                    atol=atol,
+                    rtol=rtol,
                     msg="Tuple and dict output are not equal",
                 )
 
@@ -476,11 +476,17 @@ class ModelTesterMixin:
         output = model(**self.get_dummy_inputs(), return_dict=False)[0]
         output_loaded = model_loaded(**self.get_dummy_inputs(), return_dict=False)[0]
 
-        assert_tensors_close(output, output_loaded, atol=1e-4, rtol=0, msg=f"Loaded model output differs for {dtype}")
+        self._check_dtype_inference_output(output, output_loaded, dtype)
+
+    def _check_dtype_inference_output(self, output, output_loaded, dtype, atol=1e-4, rtol=0):
+        """Check dtype inference output with configurable tolerance."""
+        assert_tensors_close(
+            output, output_loaded, atol=atol, rtol=rtol, msg=f"Loaded model output differs for {dtype}"
+        )
 
     @require_accelerator
     @torch.no_grad()
-    def test_sharded_checkpoints(self, tmp_path):
+    def test_sharded_checkpoints(self, tmp_path, atol=1e-5, rtol=0):
         torch.manual_seed(0)
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -510,12 +516,12 @@ class ModelTesterMixin:
         new_output = new_model(**inputs_dict_new, return_dict=False)[0]
 
         assert_tensors_close(
-            base_output, new_output, atol=1e-5, rtol=0, msg="Output should match after sharded save/load"
+            base_output, new_output, atol=atol, rtol=rtol, msg="Output should match after sharded save/load"
         )
 
     @require_accelerator
     @torch.no_grad()
-    def test_sharded_checkpoints_with_variant(self, tmp_path):
+    def test_sharded_checkpoints_with_variant(self, tmp_path, atol=1e-5, rtol=0):
         torch.manual_seed(0)
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -550,11 +556,11 @@ class ModelTesterMixin:
         new_output = new_model(**inputs_dict_new, return_dict=False)[0]
 
         assert_tensors_close(
-            base_output, new_output, atol=1e-5, rtol=0, msg="Output should match after variant sharded save/load"
+            base_output, new_output, atol=atol, rtol=rtol, msg="Output should match after variant sharded save/load"
         )
 
     @torch.no_grad()
-    def test_sharded_checkpoints_with_parallel_loading(self, tmp_path):
+    def test_sharded_checkpoints_with_parallel_loading(self, tmp_path, atol=1e-5, rtol=0):
         from diffusers.utils import constants
 
         torch.manual_seed(0)
@@ -601,7 +607,7 @@ class ModelTesterMixin:
             output_parallel = model_parallel(**inputs_dict_parallel, return_dict=False)[0]
 
             assert_tensors_close(
-                base_output, output_parallel, atol=1e-5, rtol=0, msg="Output should match with parallel loading"
+                base_output, output_parallel, atol=atol, rtol=rtol, msg="Output should match with parallel loading"
             )
 
         finally:
@@ -612,7 +618,7 @@ class ModelTesterMixin:
 
     @require_torch_multi_accelerator
     @torch.no_grad()
-    def test_model_parallelism(self, tmp_path):
+    def test_model_parallelism(self, tmp_path, atol=1e-5, rtol=0):
         if self.model_class._no_split_modules is None:
             pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
 
@@ -642,5 +648,5 @@ class ModelTesterMixin:
             new_output = new_model(**inputs_dict, return_dict=False)[0]
 
             assert_tensors_close(
-                base_output, new_output, atol=1e-5, rtol=0, msg="Output should match with model parallelism"
+                base_output, new_output, atol=atol, rtol=rtol, msg="Output should match with model parallelism"
             )

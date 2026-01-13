@@ -102,7 +102,7 @@ class CPUOffloadTesterMixin:
 
     @require_offload_support
     @torch.no_grad()
-    def test_cpu_offload(self, tmp_path):
+    def test_cpu_offload(self, tmp_path, atol=1e-5, rtol=0):
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
@@ -128,12 +128,12 @@ class CPUOffloadTesterMixin:
             new_output = new_model(**inputs_dict)
 
             assert_tensors_close(
-                base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match with CPU offloading"
+                base_output[0], new_output[0], atol=atol, rtol=rtol, msg="Output should match with CPU offloading"
             )
 
     @require_offload_support
     @torch.no_grad()
-    def test_disk_offload_without_safetensors(self, tmp_path):
+    def test_disk_offload_without_safetensors(self, tmp_path, atol=1e-5, rtol=0):
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
@@ -162,12 +162,12 @@ class CPUOffloadTesterMixin:
         new_output = new_model(**inputs_dict)
 
         assert_tensors_close(
-            base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match with disk offloading"
+            base_output[0], new_output[0], atol=atol, rtol=rtol, msg="Output should match with disk offloading"
         )
 
     @require_offload_support
     @torch.no_grad()
-    def test_disk_offload_with_safetensors(self, tmp_path):
+    def test_disk_offload_with_safetensors(self, tmp_path, atol=1e-5, rtol=0):
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
@@ -193,8 +193,8 @@ class CPUOffloadTesterMixin:
         assert_tensors_close(
             base_output[0],
             new_output[0],
-            atol=1e-5,
-            rtol=0,
+            atol=atol,
+            rtol=rtol,
             msg="Output should match with disk offloading (safetensors)",
         )
 
@@ -217,7 +217,7 @@ class GroupOffloadTesterMixin:
 
     @require_group_offload_support
     @pytest.mark.parametrize("record_stream", [False, True])
-    def test_group_offloading(self, record_stream):
+    def test_group_offloading(self, record_stream, atol=1e-5, rtol=0):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         torch.manual_seed(0)
@@ -262,29 +262,29 @@ class GroupOffloadTesterMixin:
         assert_tensors_close(
             output_without_group_offloading,
             output_with_group_offloading1,
-            atol=1e-5,
-            rtol=0,
+            atol=atol,
+            rtol=rtol,
             msg="Output should match with block-level offloading",
         )
         assert_tensors_close(
             output_without_group_offloading,
             output_with_group_offloading2,
-            atol=1e-5,
-            rtol=0,
+            atol=atol,
+            rtol=rtol,
             msg="Output should match with non-blocking block-level offloading",
         )
         assert_tensors_close(
             output_without_group_offloading,
             output_with_group_offloading3,
-            atol=1e-5,
-            rtol=0,
+            atol=atol,
+            rtol=rtol,
             msg="Output should match with leaf-level offloading",
         )
         assert_tensors_close(
             output_without_group_offloading,
             output_with_group_offloading4,
-            atol=1e-5,
-            rtol=0,
+            atol=atol,
+            rtol=rtol,
             msg="Output should match with leaf-level offloading with stream",
         )
 
@@ -321,7 +321,7 @@ class GroupOffloadTesterMixin:
     @pytest.mark.parametrize("offload_type", ["block_level", "leaf_level"])
     @torch.no_grad()
     @torch.inference_mode()
-    def test_group_offloading_with_disk(self, tmp_path, record_stream, offload_type, atol=1e-5):
+    def test_group_offloading_with_disk(self, tmp_path, record_stream, offload_type, atol=1e-5, rtol=0):
         def _has_generator_arg(model):
             sig = inspect.signature(model.forward)
             params = sig.parameters
@@ -381,7 +381,7 @@ class GroupOffloadTesterMixin:
             output_without_group_offloading,
             output_with_group_offloading,
             atol=atol,
-            rtol=0,
+            rtol=rtol,
             msg="Output should match with disk-based group offloading",
         )
 

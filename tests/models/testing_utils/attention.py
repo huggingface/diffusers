@@ -61,7 +61,7 @@ class AttentionTesterMixin:
         backend_empty_cache(torch_device)
 
     @torch.no_grad()
-    def test_fuse_unfuse_qkv_projections(self):
+    def test_fuse_unfuse_qkv_projections(self, atol=1e-3, rtol=0):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict)
@@ -89,8 +89,8 @@ class AttentionTesterMixin:
             assert_tensors_close(
                 output_before_fusion,
                 output_after_fusion,
-                atol=1e-3,
-                rtol=0,
+                atol=atol,
+                rtol=rtol,
                 msg="Output should not change after fusing projections",
             )
 
@@ -107,8 +107,8 @@ class AttentionTesterMixin:
             assert_tensors_close(
                 output_before_fusion,
                 output_after_unfusion,
-                atol=1e-3,
-                rtol=0,
+                atol=atol,
+                rtol=rtol,
                 msg="Output should match original after unfusing projections",
             )
 
