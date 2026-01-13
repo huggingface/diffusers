@@ -951,7 +951,13 @@ class StableDiffusion3PAGImg2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         image = self.image_processor.preprocess(image, height=height, width=width)
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, timestep_device, sigmas=sigmas
+        )
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         # 5. Prepare latent variables
