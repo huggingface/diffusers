@@ -41,6 +41,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "group_offload: marks tests for group offloading functionality")
     config.addinivalue_line("markers", "compile: marks tests for torch.compile functionality")
     config.addinivalue_line("markers", "single_file: marks tests for single file checkpoint loading")
+    config.addinivalue_line("markers", "quantization: marks tests for quantization functionality")
     config.addinivalue_line("markers", "bitsandbytes: marks tests for BitsAndBytes quantization functionality")
     config.addinivalue_line("markers", "quanto: marks tests for Quanto quantization functionality")
     config.addinivalue_line("markers", "torchao: marks tests for TorchAO quantization functionality")

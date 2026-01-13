@@ -130,6 +130,17 @@ def check_device_map_is_respected(model, device_map):
             )
 
 
+def cast_inputs_to_dtype(inputs, current_dtype, target_dtype):
+    if torch.is_tensor(inputs):
+        return inputs.to(target_dtype) if inputs.dtype == current_dtype else inputs
+    if isinstance(inputs, dict):
+        return {k: cast_inputs_to_dtype(v, current_dtype, target_dtype) for k, v in inputs.items()}
+    if isinstance(inputs, list):
+        return [cast_inputs_to_dtype(v, current_dtype, target_dtype) for v in inputs]
+
+    return inputs
+
+
 class BaseModelTesterConfig:
     """
     Base class defining the configuration interface for model testing.
@@ -475,8 +486,9 @@ class ModelTesterMixin:
             else:
                 assert param.data.dtype == dtype
 
-        output = model(**self.get_dummy_inputs(), return_dict=False)[0]
-        output_loaded = model_loaded(**self.get_dummy_inputs(), return_dict=False)[0]
+        inputs = cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, dtype)
+        output = model(**inputs, return_dict=False)[0]
+        output_loaded = model_loaded(**inputs, return_dict=False)[0]
 
         self._check_dtype_inference_output(output, output_loaded, dtype)
 

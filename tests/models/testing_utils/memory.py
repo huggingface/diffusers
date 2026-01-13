@@ -37,15 +37,7 @@ from ...testing_utils import (
     require_accelerator,
     torch_device,
 )
-from .common import check_device_map_is_respected
-
-
-def cast_maybe_tensor_dtype(inputs_dict, from_dtype, to_dtype):
-    """Helper to cast tensor inputs from one dtype to another."""
-    for key, value in inputs_dict.items():
-        if isinstance(value, torch.Tensor) and value.dtype == from_dtype:
-            inputs_dict[key] = value.to(to_dtype)
-    return inputs_dict
+from .common import cast_inputs_to_dtype, check_device_map_is_respected
 
 
 def require_offload_support(func):
@@ -306,7 +298,7 @@ class GroupOffloadTesterMixin:
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         storage_dtype, compute_dtype = torch.float16, torch.float32
-        inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+        inputs_dict = cast_inputs_to_dtype(inputs_dict, torch.float32, compute_dtype)
         model = self.model_class(**init_dict)
         model.eval()
         additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": 1}
@@ -413,7 +405,7 @@ class LayerwiseCastingTesterMixin:
             torch.manual_seed(0)
             config = self.get_init_dict()
             inputs_dict = self.get_dummy_inputs()
-            inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+            inputs_dict = cast_inputs_to_dtype(inputs_dict, torch.float32, compute_dtype)
             model = self.model_class(**config).eval()
             model = model.to(torch_device, dtype=compute_dtype)
             model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
@@ -462,13 +454,13 @@ class LayerwiseCastingTesterMixin:
             model.train()
 
             inputs_dict = self.get_dummy_inputs()
-            inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+            inputs_dict = cast_inputs_to_dtype(inputs_dict, torch.float32, compute_dtype)
             with torch.amp.autocast(device_type=torch.device(torch_device).type):
                 output = model(**inputs_dict, return_dict=False)[0]
 
                 input_tensor = inputs_dict[self.main_input_name]
                 noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
-                noise = cast_maybe_tensor_dtype(noise, torch.float32, compute_dtype)
+                noise = cast_inputs_to_dtype(noise, torch.float32, compute_dtype)
                 loss = torch.nn.functional.mse_loss(output, noise)
 
             loss.backward()
