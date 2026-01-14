@@ -678,7 +678,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
-        from .flux2 import Flux2Pipeline, Flux2KleinPipeline
+        from .flux2 import Flux2KleinPipeline, Flux2Pipeline
         from .glm_image import GlmImagePipeline
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline

@@ -586,10 +586,10 @@ class Flux2PosEmbed(nn.Module):
 
 class Flux2TimestepGuidanceEmbeddings(nn.Module):
     def __init__(
-        self, 
-        in_channels: int = 256, 
-        embedding_dim: int = 6144, 
-        bias: bool = False, 
+        self,
+        in_channels: int = 256,
+        embedding_dim: int = 6144,
+        bias: bool = False,
         guidance_embeds: bool = True,
     ):
         super().__init__()
@@ -601,8 +601,8 @@ class Flux2TimestepGuidanceEmbeddings(nn.Module):
 
         if guidance_embeds:
             self.guidance_embedder = TimestepEmbedding(
-                    in_channels=in_channels, time_embed_dim=embedding_dim, sample_proj_bias=bias
-                )
+                in_channels=in_channels, time_embed_dim=embedding_dim, sample_proj_bias=bias
+            )
         else:
             self.guidance_embedder = None
 
@@ -719,7 +719,10 @@ class Flux2Transformer2DModel(
 
         # 2. Combined timestep + guidance embedding
         self.time_guidance_embed = Flux2TimestepGuidanceEmbeddings(
-            in_channels=timestep_guidance_channels, embedding_dim=self.inner_dim, bias=False, guidance_embeds=guidance_embeds
+            in_channels=timestep_guidance_channels,
+            embedding_dim=self.inner_dim,
+            bias=False,
+            guidance_embeds=guidance_embeds,
         )
 
         # 3. Modulation (double stream and single stream blocks share modulation parameters, resp.)

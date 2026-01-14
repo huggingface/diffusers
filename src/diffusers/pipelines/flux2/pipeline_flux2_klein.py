@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL
 import torch
-from transformers import Qwen3ForCausalLM, Qwen2TokenizerFast
+from transformers import Qwen2TokenizerFast, Qwen3ForCausalLM
 
 from ...loaders import Flux2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
@@ -55,6 +55,7 @@ EXAMPLE_DOC_STRING = """
         >>> image.save("flux2_output.png")
         ```
 """
+
 
 # Copied from diffusers.pipelines.flux2.pipeline_flux2.compute_empiricial_mu
 def compute_empirical_mu(image_seq_len: int, num_steps: int) -> float:
@@ -200,7 +201,6 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         self.tokenizer_max_length = 512
         self.default_sample_size = 128
 
-
     @staticmethod
     def _get_qwen3_prompt_embeds(
         text_encoder: Qwen3ForCausalLM,
@@ -220,7 +220,6 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         all_attention_masks = []
 
         for single_prompt in prompt:
-
             messages = [{"role": "user", "content": single_prompt}]
             text = tokenizer.apply_chat_template(
                 messages,
@@ -420,7 +419,6 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         return torch.stack(x_list, dim=0)
 
-
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -444,7 +442,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 prompt=prompt,
                 device=device,
                 max_sequence_length=max_sequence_length,
-                hidden_states_layers=text_encoder_out_layers
+                hidden_states_layers=text_encoder_out_layers,
             )
 
         batch_size, seq_len, _ = prompt_embeds.shape
@@ -625,7 +623,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        text_encoder_out_layers: Tuple[int] = (9, 18, 27)
+        text_encoder_out_layers: Tuple[int] = (9, 18, 27),
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -645,7 +643,8 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality. For step-wise distilled models, `guidance_scale` is ignored.
+                the text `prompt`, usually at the expense of lower image quality. For step-wise distilled models,
+                `guidance_scale` is ignored.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -734,7 +733,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             device=device,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
-            text_encoder_out_layers=text_encoder_out_layers
+            text_encoder_out_layers=text_encoder_out_layers,
         )
 
         if self.do_classifier_free_guidance:
@@ -816,7 +815,6 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
-
 
         # 7. Denoising loop
         # We set the index here to remove DtoH sync, helpful especially during compilation.
