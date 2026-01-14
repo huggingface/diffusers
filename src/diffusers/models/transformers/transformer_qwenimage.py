@@ -826,6 +826,17 @@ class QwenImageTransformer2DModel(
         self.gradient_checkpointing = False
         self.zero_cond_t = zero_cond_t
 
+        # Make CP plan compatible with zero_cond_t
+        if self.zero_cond_t:
+            # modulate_index: [b, l=seq_len], introduce by Qwen-Image-Edit-2511
+            self._cp_plan.update(
+                {
+                    "transformer_blocks.*": {
+                        "modulate_index": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+                    }
+                }
+            )
+
     def forward(
         self,
         hidden_states: torch.Tensor,
