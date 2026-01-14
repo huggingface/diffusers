@@ -2140,6 +2140,54 @@ def _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict, non_diffusers_pref
     return converted_state_dict
 
 
+def _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict, non_diffusers_prefix="diffusion_model"):
+    # Remove the prefix
+    state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{non_diffusers_prefix}.")}
+    converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
+
+    if non_diffusers_prefix == "diffusion_model":
+        rename_dict = {
+            "patchify_proj": "proj_in",
+            "audio_patchify_proj": "audio_proj_in",
+            "av_ca_video_scale_shift_adaln_single": "av_cross_attn_video_scale_shift",
+            "av_ca_a2v_gate_adaln_single": "av_cross_attn_video_a2v_gate",
+            "av_ca_audio_scale_shift_adaln_single": "av_cross_attn_audio_scale_shift",
+            "av_ca_v2a_gate_adaln_single": "av_cross_attn_audio_v2a_gate",
+            "scale_shift_table_a2v_ca_video": "video_a2v_cross_attn_scale_shift_table",
+            "scale_shift_table_a2v_ca_audio": "audio_a2v_cross_attn_scale_shift_table",
+            "q_norm": "norm_q",
+            "k_norm": "norm_k",
+        }
+    else:
+        rename_dict = {"aggregate_embed": "text_proj_in"}
+
+    # Apply renaming
+    renamed_state_dict = {}
+    for key, value in converted_state_dict.items():
+        new_key = key[:]
+        for old_pattern, new_pattern in rename_dict.items():
+            new_key = new_key.replace(old_pattern, new_pattern)
+        renamed_state_dict[new_key] = value
+
+    # Handle adaln_single -> time_embed and audio_adaln_single -> audio_time_embed
+    final_state_dict = {}
+    for key, value in renamed_state_dict.items():
+        if key.startswith("adaln_single."):
+            new_key = key.replace("adaln_single.", "time_embed.")
+            final_state_dict[new_key] = value
+        elif key.startswith("audio_adaln_single."):
+            new_key = key.replace("audio_adaln_single.", "audio_time_embed.")
+            final_state_dict[new_key] = value
+        else:
+            final_state_dict[key] = value
+
+    # Add transformer prefix
+    prefix = "transformer" if non_diffusers_prefix == "diffusion_model" else "connectors"
+    final_state_dict = {f"{prefix}.{k}": v for k, v in final_state_dict.items()}
+
+    return final_state_dict
+
+
 def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     has_diffusion_model = any(k.startswith("diffusion_model.") for k in state_dict)
     if has_diffusion_model:
