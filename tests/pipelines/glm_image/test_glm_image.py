@@ -86,8 +86,7 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         vision_language_encoder = GlmImageForConditionalGeneration(glm_config)
 
-        # TODO: move to a public checkpoint
-        processor = GlmImageProcessor.from_pretrained("ZP2Test/GLM-Image", subfolder="processor")
+        processor = GlmImageProcessor.from_pretrained("zai-org/GLM-Image", subfolder="processor")
 
         torch.manual_seed(0)
         # For GLM-Image, the relationship between components must satisfy:
