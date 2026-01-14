@@ -179,6 +179,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         text_encoder: Qwen3ForCausalLM,
         tokenizer: Qwen2TokenizerFast,
         transformer: Flux2Transformer2DModel,
+        is_distilled: bool = False,
     ):
         super().__init__()
 
@@ -189,6 +190,9 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             scheduler=scheduler,
             transformer=transformer,
         )
+
+        self.register_to_config(is_distilled=is_distilled)
+
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
@@ -531,6 +535,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         width,
         prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
+        guidance_scale=None,
     ):
         if (
             height is not None
@@ -561,13 +566,16 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
+        if guidance_scale > 1.0 and self.config.is_distilled:
+            logger.warning(f"Guidance scale {guidance_scale} is ignored for step-wise distilled models.")
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
 
     @property
     def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1 and not self.transformer.config.guidance_embeds
+        return self._guidance_scale > 1 and not self.config.is_distilled
 
     @property
     def attention_kwargs(self):
@@ -687,6 +695,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             width=width,
             prompt_embeds=prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            guidance_scale=guidance_scale,
         )
 
         self._guidance_scale = guidance_scale
@@ -794,12 +803,6 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        if self.transformer.config.guidance_embeds:
-            guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
-            guidance = guidance.expand(latents.shape[0])
-        else:
-            guidance = None
-
 
         # 7. Denoising loop
         # We set the index here to remove DtoH sync, helpful especially during compilation.
@@ -825,7 +828,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,  # (B, image_seq_len, C)
                         timestep=timestep / 1000,
-                        guidance=guidance,
+                        guidance=None,
                         encoder_hidden_states=prompt_embeds,
                         txt_ids=text_ids,  # B, text_seq_len, 4
                         img_ids=latent_image_ids,  # B, image_seq_len, 4
@@ -840,7 +843,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                         neg_noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep / 1000,
-                            guidance=guidance,
+                            guidance=None,
                             encoder_hidden_states=negative_prompt_embeds,
                             txt_ids=negative_text_ids,
                             img_ids=latent_image_ids,
