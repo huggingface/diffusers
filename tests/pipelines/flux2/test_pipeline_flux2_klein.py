@@ -12,13 +12,8 @@ from diffusers import (
     Flux2Transformer2DModel,
 )
 
-from ...testing_utils import (
-    torch_device
-)
-from ..test_pipelines_common import (
-    PipelineTesterMixin,
-    check_qkv_fused_layers_exist
-)
+from ...testing_utils import torch_device
+from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
 
 
 class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -44,7 +39,7 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             joint_attention_dim=16,
             timestep_guidance_channels=256,
             axes_dims_rope=[4, 4, 4, 4],
-            guidance_embeds=False
+            guidance_embeds=False,
         )
 
         # Create minimal Qwen3 config
@@ -61,7 +56,9 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder = Qwen3ForCausalLM(config)
 
         # Use a simple tokenizer for testing
-        tokenizer = Qwen2TokenizerFast.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
+        tokenizer = Qwen2TokenizerFast.from_pretrained(
+            "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration"
+        )
 
         torch.manual_seed(0)
         vae = AutoencoderKLFlux2(
@@ -103,7 +100,7 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "width": 8,
             "max_sequence_length": 64,
             "output_type": "np",
-            "text_encoder_out_layers": (1,)
+            "text_encoder_out_layers": (1,),
         }
         return inputs
 
