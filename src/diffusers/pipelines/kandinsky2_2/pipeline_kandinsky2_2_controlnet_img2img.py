@@ -72,8 +72,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to("cuda")
 
         >>> img = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-        ...     "/kandinsky/cat.png"
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
         ... ).resize((768, 768))
 
 
