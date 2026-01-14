@@ -314,25 +314,6 @@ Pass the [`ContextParallelConfig`] to [`~ModelMixin.enable_parallelism`].
 pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2))
 ```
 
-### parallel_config
-
-Pass `parallel_config` during model initialization to enable context parallelism.
-
-```py
-CKPT_ID = "black-forest-labs/FLUX.1-dev"
-
-cp_config = ContextParallelConfig(ring_degree=2)
-transformer = AutoModel.from_pretrained(
-    CKPT_ID, 
-    subfolder="transformer", 
-    torch_dtype=torch.bfloat16, 
-    parallel_config=cp_config
-)
-
-pipeline = DiffusionPipeline.from_pretrained(
-    CKPT_ID, transformer=transformer, torch_dtype=torch.bfloat16,
-).to(device)
-```
 ### Unified Attention
 
 [Unified Sequence Parallelism](https://huggingface.co/papers/2405.07719) combines Ring Attention and Ulysses Attention into a single approach for efficient long-sequence processing. It applies Ulysses's *all-to-all* communication first to redistribute heads and sequence tokens, then uses Ring Attention to process the redistributed data, and finally reverses the *all-to-all* to restore the original layout.
@@ -360,4 +341,24 @@ We ran a benchmark with Ulysess, Ring, and Unified Attention with [this script](
 | ring               | 13076.492        | 3.82        | 56.02            |
 | unified_balanced   | 11068.705        | 4.52        | 33.85            |
 
-From the above table, it's clear that Ulysses provides better throughput, but the number of devices it can use remains limited to number of attention-heads, a limitation that is solved by unified attention.
+From the above table, it's clear that Ulysses provides better throughput, but the number of devices it can use remains limited to the number of attention heads, a limitation that is solved by unified attention.
+
+### parallel_config
+
+Pass `parallel_config` during model initialization to enable context parallelism.
+
+```py
+CKPT_ID = "black-forest-labs/FLUX.1-dev"
+
+cp_config = ContextParallelConfig(ring_degree=2)
+transformer = AutoModel.from_pretrained(
+    CKPT_ID, 
+    subfolder="transformer", 
+    torch_dtype=torch.bfloat16, 
+    parallel_config=cp_config
+)
+
+pipeline = DiffusionPipeline.from_pretrained(
+    CKPT_ID, transformer=transformer, torch_dtype=torch.bfloat16,
+).to(device)
+```
