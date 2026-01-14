@@ -51,8 +51,8 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=50, guidance_scale=2.5).images[0]
-        >>> image.save("flux.png")
+        >>> image = pipe(prompt, num_inference_steps=50, guidance_scale=4.0).images[0]
+        >>> image.save("flux2_output.png")
         ```
 """
 
@@ -618,6 +618,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[Union[str, List[str]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -639,12 +640,12 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            guidance_scale (`float`, *optional*, defaults to 1.0):
-                Embedded guiddance scale is enabled by setting `guidance_scale` > 1. Higher `guidance_scale` encourages
-                a model to generate images more aligned with `prompt` at the expense of lower image quality.
-
-                Guidance-distilled models approximates true classifer-free guidance for `guidance_scale` > 1. Refer to
-                the [paper](https://huggingface.co/papers/2210.03142) to learn more.
+            guidance_scale (`float`, *optional*, defaults to 4.0):
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality. For step-wise distilled models, `guidance_scale` is ignored.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -668,6 +669,9 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings. Note that "" is used as the negative prompt in this pipeline.
+                If not provided, will be generated from "".
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -739,7 +743,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 negative_prompt = [negative_prompt] * len(prompt)
             negative_prompt_embeds, negative_text_ids = self.encode_prompt(
                 prompt=negative_prompt,
-                prompt_embeds=None,
+                prompt_embeds=negative_prompt_embeds,
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
