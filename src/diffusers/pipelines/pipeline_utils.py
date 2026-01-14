@@ -445,6 +445,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             _, _, is_loaded_in_8bit_bnb = _check_bnb_status(module)
 
+            # https://github.com/huggingface/accelerate/pull/3907
             if is_loaded_in_8bit_bnb and (
                 is_bitsandbytes_version("<", "0.48.0") or is_accelerate_version("<", "1.13.0.dev0")
             ):
