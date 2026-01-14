@@ -373,6 +373,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._unpatchify_latents
     def _unpatchify_latents(latents):
         batch_size, num_channels_latents, height, width = latents.shape
         latents = latents.reshape(batch_size, num_channels_latents // (2 * 2), 2, 2, height, width)
