@@ -26,7 +26,7 @@ from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PA
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-if is_transformers_version(">=", "4.57.4"):
+if is_transformers_version(">=", "5.0.0.dev0"):
     from transformers import GlmImageConfig, GlmImageForConditionalGeneration, GlmImageProcessor
 
 
