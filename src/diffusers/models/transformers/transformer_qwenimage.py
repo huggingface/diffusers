@@ -767,6 +767,9 @@ class QwenImageTransformer2DModel(
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
             "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
+        "transformer_blocks.*": {
+            "modulate_index": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        },
         "pos_embed": {
             0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
             1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
@@ -825,17 +828,6 @@ class QwenImageTransformer2DModel(
 
         self.gradient_checkpointing = False
         self.zero_cond_t = zero_cond_t
-
-        # Make CP plan compatible with zero_cond_t
-        if self.zero_cond_t:
-            # modulate_index: [b, l=seq_len], introduce by Qwen-Image-Edit-2511
-            self._cp_plan.update(
-                {
-                    "transformer_blocks.*": {
-                        "modulate_index": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
-                    }
-                }
-            )
 
     def forward(
         self,
