@@ -303,14 +303,14 @@ class CosmosAttnProcessor2_5(CosmosAttnProcessor2_0):
         return hidden_states
 
 class CosmosAttention(Attention):
-    def __init__(self, img_context_dim: int, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # add parameters for image q/k/v
         inner_dim = self.heads * self.to_q.out_features // self.heads
         self.q_img = nn.Linear(self.query_dim, inner_dim, bias=False)
-        self.k_img = nn.Linear(img_context_dim, inner_dim, bias=False)
-        self.v_img = nn.Linear(img_context_dim, inner_dim, bias=False)
+        self.k_img = nn.Linear(self.query_dim, inner_dim, bias=False)
+        self.v_img = nn.Linear(self.query_dim, inner_dim, bias=False)
         self.q_img_norm = RMSNorm(self.to_q.out_features // self.heads, eps=1e-6, elementwise_affine=True)
         self.k_img_norm = RMSNorm(self.to_k.out_features // self.heads, eps=1e-6, elementwise_affine=True)
 
@@ -323,7 +323,7 @@ class CosmosAttention(Attention):
     ) -> torch.Tensor:
         return super().forward(
             hidden_states=hidden_states,
-            # NOTE: type-hint in base class doesn't matter
+            # NOTE: type-hint in base class can be ignored
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
@@ -340,13 +340,15 @@ class CosmosTransformerBlock(nn.Module):
         adaln_lora_dim: int = 256,
         qk_norm: str = "rms_norm",
         out_bias: bool = False,
+        img_context: bool = False,
     ) -> None:
         super().__init__()
 
         hidden_size = num_attention_heads * attention_head_dim
 
         self.norm1 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
-        self.attn1 = ComsosAttention(
+        self.img_context = img_context
+        self.attn1 = Attention(
             query_dim=hidden_size,
             cross_attention_dim=None,
             heads=num_attention_heads,
@@ -358,16 +360,28 @@ class CosmosTransformerBlock(nn.Module):
         )
 
         self.norm2 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
-        self.attn2 = Attention(
-            query_dim=hidden_size,
-            cross_attention_dim=cross_attention_dim,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            qk_norm=qk_norm,
-            elementwise_affine=True,
-            out_bias=out_bias,
-            processor=CosmosAttnProcessor2_0(),
-        )
+        if img_context:
+            self.attn2 = CosmosAttention(
+                query_dim=hidden_size,
+                cross_attention_dim=cross_attention_dim,
+                heads=num_attention_heads,
+                dim_head=attention_head_dim,
+                qk_norm=qk_norm,
+                elementwise_affine=True,
+                out_bias=out_bias,
+                processor=CosmosAttnProcessor2_5(),
+            )
+        else:
+            self.attn2 = Attention(
+                query_dim=hidden_size,
+                cross_attention_dim=cross_attention_dim,
+                heads=num_attention_heads,
+                dim_head=attention_head_dim,
+                qk_norm=qk_norm,
+                elementwise_affine=True,
+                out_bias=out_bias,
+                processor=CosmosAttnProcessor2_0(),
+            )
 
         self.norm3 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
         self.ff = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu", bias=out_bias)
@@ -542,6 +556,11 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         controlnet_block_every_n (`int`, *optional*):
             Interval between transformer blocks that should receive control residuals (for example, `7` to inject after
             every seventh block). Required for Cosmos Transfer2.5.
+        n_controlnet_blocks (`int`, *optional*):
+            The number of control net blocks. If None provided: as many as possible will be placed respecting `controlnet_block_every_n`
+        img_context_dim (`int`, *optional*):
+            TODO document me
+            TODO rename?
     """
 
     _supports_gradient_checkpointing = True
@@ -570,6 +589,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         encoder_hidden_states_channels: int = 1024,
         controlnet_block_every_n: Optional[int] = None,
         n_control_net_blocks: Optional[int] = None,
+        img_context_dim: Optional[int] = None,
     ) -> None:
         super().__init__()
         hidden_size = num_attention_heads * attention_head_dim
@@ -605,6 +625,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     adaln_lora_dim=adaln_lora_dim,
                     qk_norm="rms_norm",
                     out_bias=False,
+                    img_context=self.config.img_context_dim > 0,
                 )
                 for _ in range(num_layers)
             ]
@@ -623,6 +644,13 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             )
 
         self.gradient_checkpointing = False
+
+        if self.config.img_context_dim > 0:
+            self.img_context_proj = nn.Sequential(
+                # TODO: config
+                nn.Linear(self.config.img_context_dim, 2048, bias=True),
+                nn.GELU(),
+            )
 
     def forward(
         self,

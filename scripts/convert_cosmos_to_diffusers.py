@@ -395,6 +395,7 @@ TRANSFORMER_CONFIGS = {
         "encoder_hidden_states_channels": 1024,
         "n_control_net_blocks": 4,
         "controlnet_block_every_n": 7,
+        "img_context_dim": 1152,
     },
 }
 
@@ -548,6 +549,8 @@ def convert_transformer(
         config = TRANSFORMER_CONFIGS[transformer_type]
         transformer = CosmosTransformer3DModel(**config)
 
+    old2new = {}
+    new2old = {}
     for key in list(state_dict.keys()):
         new_key = key[:]
         if new_key.startswith(PREFIX_KEY):
@@ -555,6 +558,10 @@ def convert_transformer(
         for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
         print(key, "->", new_key, flush=True)
+        assert new_key not in new2old, f"new key {new_key} already mapped"
+        assert key not in old2new, f"old key {key} already mapped"
+        old2new[key] = new_key
+        new2old[new_key] = key
         update_state_dict_(state_dict, key, new_key)
 
     for key in list(state_dict.keys()):
@@ -567,7 +574,6 @@ def convert_transformer(
     mapped_keys = set(state_dict.keys())
     missing_keys = expected_keys - mapped_keys
     unexpected_keys = mapped_keys - expected_keys
-    breakpoint()
     if missing_keys:
         print(f"ERROR: missing keys ({len(missing_keys)} from state_dict:", flush=True, file=sys.stderr)
         for k in missing_keys:
@@ -579,7 +585,6 @@ def convert_transformer(
             print(k)
         sys.exit(2)
 
-    breakpoint()
     transformer.load_state_dict(state_dict, strict=True, assign=True)
     return transformer
 
