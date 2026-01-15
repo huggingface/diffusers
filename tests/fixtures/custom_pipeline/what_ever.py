@@ -15,8 +15,6 @@
 # limitations under the License.
 
 
-from typing import Tuple, Union
-
 import torch
 
 from diffusers import SchedulerMixin, UNet2DModel
@@ -48,7 +46,7 @@ class CustomLocalPipeline(DiffusionPipeline):
         output_type: str | None = "pil",
         return_dict: bool = True,
         **kwargs,
-    ) -> Union[ImagePipelineOutput, Tuple]:
+    ) -> ImagePipelineOutput | tuple:
         r"""
         Args:
             batch_size (`int`, *optional*, defaults to 1):

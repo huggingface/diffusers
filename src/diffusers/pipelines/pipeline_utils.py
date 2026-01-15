@@ -128,7 +128,7 @@ class ImagePipelineOutput(BaseOutput):
             num_channels)`.
     """
 
-    images: Union[List[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
 
 
 @dataclass
@@ -1171,7 +1171,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
 
-    def enable_model_cpu_offload(self, gpu_id: int | None = None, device: Union[torch.device, str] = None):
+    def enable_model_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the accelerator when its
@@ -1289,7 +1289,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # make sure the model is in the same state as before calling it
         self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
-    def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device: Union[torch.device, str] = None):
+    def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the state
         dicts of all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are saved to CPU
@@ -1498,7 +1498,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
+    def download(cls, pretrained_model_name, **kwargs) -> str | os.PathLike:
         r"""
         Download and cache a PyTorch diffusion pipeline from pretrained pipeline weights.
 
@@ -1880,7 +1880,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         return signature_types
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         r"""
         The `self.parameters` property can be useful to run different pipelines with the same weights and
         configurations without reallocating additional memory.
@@ -1910,7 +1910,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         return pipeline_parameters
 
     @property
-    def components(self) -> Dict[str, Any]:
+    def components(self) -> dict[str, Any]:
         r"""
         The `self.components` property can be useful to run different pipelines with the same weights and
         configurations without reallocating additional memory.
