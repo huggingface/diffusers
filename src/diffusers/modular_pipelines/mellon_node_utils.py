@@ -23,18 +23,18 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class MellonParam:
     """
-    Parameter definition for Mellon nodes.
+        Parameter definition for Mellon nodes.
 
-    Use factory methods for common params (e.g., MellonParam.seed()) or create custom ones with MellonParam(name="...",
-    label="...", type="...").
-    
-    Example:
-```python
-        # Custom param
-        MellonParam(name="my_param", label="My Param", type="float", default=0.5)
-        # Output in Mellon node definition:
-        # "my_param": {"label": "My Param", "type": "float", "default": 0.5}
-```
+        Use factory methods for common params (e.g., MellonParam.seed()) or create custom ones with
+        MellonParam(name="...", label="...", type="...").
+
+        Example:
+    ```python
+            # Custom param
+            MellonParam(name="my_param", label="My Param", type="float", default=0.5)
+            # Output in Mellon node definition:
+            # "my_param": {"label": "My Param", "type": "float", "default": 0.5}
+    ```
     """
 
     name: str
@@ -61,7 +61,7 @@ class MellonParam:
     def image(cls) -> "MellonParam":
         """
         Image input parameter.
-        
+
         Mellon node definition:
             "image": {"label": "Image", "type": "image", "display": "input"}
         """
@@ -71,7 +71,7 @@ class MellonParam:
     def images(cls) -> "MellonParam":
         """
         Images output parameter.
-        
+
         Mellon node definition:
             "images": {"label": "Images", "type": "image", "display": "output"}
         """
@@ -81,7 +81,7 @@ class MellonParam:
     def control_image(cls, display: str = "input") -> "MellonParam":
         """
         Control image parameter for ControlNet.
-        
+
         Mellon node definition (display="input"):
             "control_image": {"label": "Control Image", "type": "image", "display": "input"}
         """
@@ -97,10 +97,10 @@ class MellonParam:
     def latents(cls, display: str = "input") -> "MellonParam":
         """
         Latents parameter.
-        
+
         Mellon node definition (display="input"):
             "latents": {"label": "Latents", "type": "latents", "display": "input"}
-        
+
         Mellon node definition (display="output"):
             "latents": {"label": "Latents", "type": "latents", "display": "output"}
         """
@@ -110,7 +110,7 @@ class MellonParam:
     def image_latents(cls, display: str = "input") -> "MellonParam":
         """
         Image latents parameter for img2img workflows.
-        
+
         Mellon node definition (display="input"):
             "image_latents": {"label": "Image Latents", "type": "latents", "display": "input"}
         """
@@ -126,7 +126,7 @@ class MellonParam:
     def first_frame_latents(cls, display: str = "input") -> "MellonParam":
         """
         First frame latents for video generation.
-        
+
         Mellon node definition (display="input"):
             "first_frame_latents": {"label": "First Frame Latents", "type": "latents", "display": "input"}
         """
@@ -141,15 +141,13 @@ class MellonParam:
     @classmethod
     def image_latents_with_strength(cls) -> "MellonParam":
         """
-        Image latents with strength-based onChange behavior.
-        When connected, shows strength slider; when disconnected, shows height/width.
-        
+        Image latents with strength-based onChange behavior. When connected, shows strength slider; when disconnected,
+        shows height/width.
+
         Mellon node definition:
             "image_latents": {
-                "label": "Image Latents",
-                "type": "latents",
-                "display": "input",
-                "onChange": {"false": ["height", "width"], "true": ["strength"]}
+                "label": "Image Latents", "type": "latents", "display": "input", "onChange": {"false": ["height",
+                "width"], "true": ["strength"]}
             }
         """
         return cls(
@@ -165,7 +163,7 @@ class MellonParam:
     def latents_preview(cls) -> "MellonParam":
         """
         Latents preview output for visualizing latents in the UI.
-        
+
         Mellon node definition:
             "latents_preview": {"label": "Latents Preview", "type": "latent", "display": "output"}
         """
@@ -175,10 +173,10 @@ class MellonParam:
     def embeddings(cls, display: str = "output") -> "MellonParam":
         """
         Text embeddings parameter.
-        
+
         Mellon node definition (display="output"):
             "embeddings": {"label": "Text Embeddings", "type": "embeddings", "display": "output"}
-        
+
         Mellon node definition (display="input"):
             "embeddings": {"label": "Text Embeddings", "type": "embeddings", "display": "input"}
         """
@@ -188,7 +186,7 @@ class MellonParam:
     def image_embeds(cls, display: str = "output") -> "MellonParam":
         """
         Image embeddings parameter for IP-Adapter workflows.
-        
+
         Mellon node definition (display="output"):
             "image_embeds": {"label": "Image Embeddings", "type": "image_embeds", "display": "output"}
         """
@@ -204,14 +202,10 @@ class MellonParam:
     def controlnet_conditioning_scale(cls, default: float = 0.5) -> "MellonParam":
         """
         ControlNet conditioning scale slider.
-        
+
         Mellon node definition (default=0.5):
             "controlnet_conditioning_scale": {
-                "label": "Controlnet Conditioning Scale",
-                "type": "float",
-                "default": 0.5,
-                "min": 0.0,
-                "max": 1.0,
+                "label": "Controlnet Conditioning Scale", "type": "float", "default": 0.5, "min": 0.0, "max": 1.0,
                 "step": 0.01
             }
         """
@@ -230,15 +224,11 @@ class MellonParam:
     def control_guidance_start(cls, default: float = 0.0) -> "MellonParam":
         """
         Control guidance start timestep.
-        
+
         Mellon node definition (default=0.0):
             "control_guidance_start": {
-                "label": "Control Guidance Start",
-                "type": "float",
-                "default": 0.0,
-                "min": 0.0,
-                "max": 1.0,
-                "step": 0.01
+                "label": "Control Guidance Start", "type": "float", "default": 0.0, "min": 0.0, "max": 1.0, "step":
+                0.01
             }
         """
         return cls(
@@ -256,15 +246,10 @@ class MellonParam:
     def control_guidance_end(cls, default: float = 1.0) -> "MellonParam":
         """
         Control guidance end timestep.
-        
+
         Mellon node definition (default=1.0):
             "control_guidance_end": {
-                "label": "Control Guidance End",
-                "type": "float",
-                "default": 1.0,
-                "min": 0.0,
-                "max": 1.0,
-                "step": 0.01
+                "label": "Control Guidance End", "type": "float", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01
             }
         """
         return cls(
@@ -282,7 +267,7 @@ class MellonParam:
     def prompt(cls, default: str = "") -> "MellonParam":
         """
         Text prompt input as textarea.
-        
+
         Mellon node definition (default=""):
             "prompt": {"label": "Prompt", "type": "string", "default": "", "display": "textarea"}
         """
@@ -299,7 +284,7 @@ class MellonParam:
     def negative_prompt(cls, default: str = "") -> "MellonParam":
         """
         Negative prompt input as textarea.
-        
+
         Mellon node definition (default=""):
             "negative_prompt": {"label": "Negative Prompt", "type": "string", "default": "", "display": "textarea"}
         """
@@ -316,7 +301,7 @@ class MellonParam:
     def strength(cls, default: float = 0.5) -> "MellonParam":
         """
         Denoising strength for img2img.
-        
+
         Mellon node definition (default=0.5):
             "strength": {"label": "Strength", "type": "float", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}
         """
@@ -335,16 +320,11 @@ class MellonParam:
     def guidance_scale(cls, default: float = 5.0) -> "MellonParam":
         """
         CFG guidance scale slider.
-        
+
         Mellon node definition (default=5.0):
             "guidance_scale": {
-                "label": "Guidance Scale",
-                "type": "float",
-                "display": "slider",
-                "default": 5.0,
-                "min": 1.0,
-                "max": 30.0,
-                "step": 0.1
+                "label": "Guidance Scale", "type": "float", "display": "slider", "default": 5.0, "min": 1.0, "max":
+                30.0, "step": 0.1
             }
         """
         return cls(
@@ -362,7 +342,7 @@ class MellonParam:
     def height(cls, default: int = 1024) -> "MellonParam":
         """
         Image height in pixels.
-        
+
         Mellon node definition (default=1024):
             "height": {"label": "Height", "type": "int", "default": 1024, "min": 64, "step": 8}
         """
@@ -380,7 +360,7 @@ class MellonParam:
     def width(cls, default: int = 1024) -> "MellonParam":
         """
         Image width in pixels.
-        
+
         Mellon node definition (default=1024):
             "width": {"label": "Width", "type": "int", "default": 1024, "min": 64, "step": 8}
         """
@@ -392,15 +372,10 @@ class MellonParam:
     def seed(cls, default: int = 0) -> "MellonParam":
         """
         Random seed with randomize button.
-        
+
         Mellon node definition (default=0):
             "seed": {
-                "label": "Seed",
-                "type": "int",
-                "default": 0,
-                "min": 0,
-                "max": 4294967295,
-                "display": "random"
+                "label": "Seed", "type": "int", "default": 0, "min": 0, "max": 4294967295, "display": "random"
             }
         """
         return cls(
@@ -418,15 +393,10 @@ class MellonParam:
     def num_inference_steps(cls, default: int = 25) -> "MellonParam":
         """
         Number of denoising steps slider.
-        
+
         Mellon node definition (default=25):
             "num_inference_steps": {
-                "label": "Steps",
-                "type": "int",
-                "default": 25,
-                "min": 1,
-                "max": 100,
-                "display": "slider"
+                "label": "Steps", "type": "int", "default": 25, "min": 1, "max": 100, "display": "slider"
             }
         """
         return cls(
@@ -444,7 +414,7 @@ class MellonParam:
     def num_frames(cls, default: int = 81) -> "MellonParam":
         """
         Number of video frames slider.
-        
+
         Mellon node definition (default=81):
             "num_frames": {"label": "Frames", "type": "int", "default": 81, "min": 1, "max": 480, "display": "slider"}
         """
@@ -463,7 +433,7 @@ class MellonParam:
     def layers(cls, default: int = 4) -> "MellonParam":
         """
         Number of layers slider (for layered diffusion).
-        
+
         Mellon node definition (default=4):
             "layers": {"label": "Layers", "type": "int", "default": 4, "min": 1, "max": 10, "display": "slider"}
         """
@@ -482,7 +452,7 @@ class MellonParam:
     def videos(cls) -> "MellonParam":
         """
         Video output parameter.
-        
+
         Mellon node definition:
             "videos": {"label": "Videos", "type": "video", "display": "output"}
         """
@@ -492,12 +462,12 @@ class MellonParam:
     def vae(cls) -> "MellonParam":
         """
         VAE model input.
-        
+
         Mellon node definition:
             "vae": {"label": "VAE", "type": "diffusers_auto_model", "display": "input"}
-        
-        Note: The value received is a model info dict with keys like 'model_id', 'repo_id', 
-        'execution_device'. Use components.get_one(model_id) to retrieve the actual model.
+
+        Note: The value received is a model info dict with keys like 'model_id', 'repo_id', 'execution_device'. Use
+        components.get_one(model_id) to retrieve the actual model.
         """
         return cls(
             name="vae", label="VAE", type="diffusers_auto_model", display="input", required_block_params=["vae"]
@@ -507,12 +477,12 @@ class MellonParam:
     def image_encoder(cls) -> "MellonParam":
         """
         Image encoder model input.
-        
+
         Mellon node definition:
             "image_encoder": {"label": "Image Encoder", "type": "diffusers_auto_model", "display": "input"}
-        
-        Note: The value received is a model info dict with keys like 'model_id', 'repo_id',
-        'execution_device'. Use components.get_one(model_id) to retrieve the actual model.
+
+        Note: The value received is a model info dict with keys like 'model_id', 'repo_id', 'execution_device'. Use
+        components.get_one(model_id) to retrieve the actual model.
         """
         return cls(
             name="image_encoder",
@@ -526,12 +496,12 @@ class MellonParam:
     def unet(cls) -> "MellonParam":
         """
         Denoising model (UNet/Transformer) input.
-        
+
         Mellon node definition:
             "unet": {"label": "Denoise Model", "type": "diffusers_auto_model", "display": "input"}
-        
-        Note: The value received is a model info dict with keys like 'model_id', 'repo_id',
-        'execution_device'. Use components.get_one(model_id) to retrieve the actual model.
+
+        Note: The value received is a model info dict with keys like 'model_id', 'repo_id', 'execution_device'. Use
+        components.get_one(model_id) to retrieve the actual model.
         """
         return cls(name="unet", label="Denoise Model", type="diffusers_auto_model", display="input")
 
@@ -539,12 +509,12 @@ class MellonParam:
     def scheduler(cls) -> "MellonParam":
         """
         Scheduler model input.
-        
+
         Mellon node definition:
             "scheduler": {"label": "Scheduler", "type": "diffusers_auto_model", "display": "input"}
-        
-        Note: The value received is a model info dict with keys like 'model_id', 'repo_id'.
-        Use components.get_one(model_id) to retrieve the actual scheduler.
+
+        Note: The value received is a model info dict with keys like 'model_id', 'repo_id'. Use
+        components.get_one(model_id) to retrieve the actual scheduler.
         """
         return cls(name="scheduler", label="Scheduler", type="diffusers_auto_model", display="input")
 
@@ -552,12 +522,12 @@ class MellonParam:
     def controlnet(cls) -> "MellonParam":
         """
         ControlNet model input.
-        
+
         Mellon node definition:
             "controlnet": {"label": "ControlNet Model", "type": "diffusers_auto_model", "display": "input"}
-        
-        Note: The value received is a model info dict with keys like 'model_id', 'repo_id',
-        'execution_device'. Use components.get_one(model_id) to retrieve the actual model.
+
+        Note: The value received is a model info dict with keys like 'model_id', 'repo_id', 'execution_device'. Use
+        components.get_one(model_id) to retrieve the actual model.
         """
         return cls(
             name="controlnet",
@@ -571,14 +541,13 @@ class MellonParam:
     def text_encoders(cls) -> "MellonParam":
         """
         Text encoders dict input (multiple encoders).
-        
+
         Mellon node definition:
             "text_encoders": {"label": "Text Encoders", "type": "diffusers_auto_models", "display": "input"}
-        
+
         Note: The value received is a dict of model info dicts:
             {
-                'text_encoder': {'model_id': ..., 'execution_device': ..., ...},
-                'tokenizer': {'model_id': ..., ...},
+                'text_encoder': {'model_id': ..., 'execution_device': ..., ...}, 'tokenizer': {'model_id': ..., ...},
                 'repo_id': '...'
             }
         Use components.get_one(model_id) to retrieve each model.
@@ -594,20 +563,19 @@ class MellonParam:
     @classmethod
     def controlnet_bundle(cls, display: str = "input") -> "MellonParam":
         """
-        ControlNet bundle containing model and processed control inputs.
-        Output from ControlNet node, input to Denoise node.
-        
+        ControlNet bundle containing model and processed control inputs. Output from ControlNet node, input to Denoise
+        node.
+
         Mellon node definition (display="input"):
             "controlnet_bundle": {"label": "ControlNet", "type": "custom_controlnet", "display": "input"}
-        
+
         Mellon node definition (display="output"):
             "controlnet_bundle": {"label": "ControlNet", "type": "custom_controlnet", "display": "output"}
-        
+
         Note: The value is a dict containing:
             {
-                'controlnet': {'model_id': ..., ...},  # controlnet model info
-                'control_image': ...,                   # processed control image/embeddings
-                'controlnet_conditioning_scale': ...,   # and other denoise block inputs
+                'controlnet': {'model_id': ..., ...}, # controlnet model info 'control_image': ..., # processed control
+                image/embeddings 'controlnet_conditioning_scale': ..., # and other denoise block inputs
             }
         """
         return cls(
@@ -622,7 +590,7 @@ class MellonParam:
     def ip_adapter(cls) -> "MellonParam":
         """
         IP-Adapter input.
-        
+
         Mellon node definition:
             "ip_adapter": {"label": "IP Adapter", "type": "custom_ip_adapter", "display": "input"}
         """
@@ -632,13 +600,11 @@ class MellonParam:
     def guider(cls) -> "MellonParam":
         """
         Custom guider input. When connected, hides the guidance_scale slider.
-        
+
         Mellon node definition:
             "guider": {
-                "label": "Guider",
-                "type": "custom_guider",
-                "display": "input",
-                "onChange": {false: ["guidance_scale"], true: []}
+                "label": "Guider", "type": "custom_guider", "display": "input", "onChange": {false: ["guidance_scale"],
+                true: []}
             }
         """
         return cls(
@@ -653,7 +619,7 @@ class MellonParam:
     def doc(cls) -> "MellonParam":
         """
         Documentation output for inspecting the underlying modular pipeline.
-        
+
         Mellon node definition:
             "doc": {"label": "Doc", "type": "string", "display": "output"}
         """
