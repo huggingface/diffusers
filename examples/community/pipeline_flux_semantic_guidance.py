@@ -664,7 +664,7 @@ class FluxSemanticGuidancePipeline(
         return latents
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
+    # Copied from diffusers.pipelines.flux.pipeline_flux_utils.FluxMixin._unpack_latents
     def _unpack_latents(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 
