@@ -326,6 +326,8 @@ class F5FlowPipeline(DiffusionPipeline):
 
         out = out.to(torch.float32)  # generated mel spectrogram
         audio = out.permute(0, 2, 1)
+        ref_audio_len = ref_audio.shape[-1] // self.mel_spec.hop_length
+        audio = audio[:, :, ref_audio_len:]
 
         # Offload all models
         self.maybe_free_model_hooks()

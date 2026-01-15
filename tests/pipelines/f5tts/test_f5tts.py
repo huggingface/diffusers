@@ -142,7 +142,7 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         audio = output.audios[0]
 
         assert audio.ndim == 2
-        assert audio.shape == (100, 204)
+        assert audio.shape == (100, 142)
 
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
