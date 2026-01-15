@@ -191,7 +191,7 @@ class F5FlowPipeline(DiffusionPipeline):
             ref_text_len = len(ref_text[i].encode("utf-8"))
             gen_text_len = len(gen_text[i].encode("utf-8"))
             duration = ref_audio_len + int(
-                (ref_audio_len * speed[i]) * ((ref_text_len + gen_text_len + 1) / ref_text_len)
+                (ref_audio_len * (1 / speed[i])) * ((ref_text_len + gen_text_len + 1) / ref_text_len)
             )
             duration_list.append(duration)
         duration = torch.tensor(duration_list, dtype=torch.long, device=ref_audio.device)
