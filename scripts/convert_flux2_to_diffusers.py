@@ -519,8 +519,15 @@ def main(args):
             "black-forest-labs/FLUX.1-dev", subfolder="scheduler"
         )
 
+        if_distilled = "base" not in args.dit_filename
+
         pipe = Flux2Pipeline(
-            vae=vae, transformer=transformer, text_encoder=text_encoder, tokenizer=tokenizer, scheduler=scheduler
+            vae=vae,
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            scheduler=scheduler,
+            if_distilled=if_distilled,
         )
         pipe.save_pretrained(args.output_path)
 
