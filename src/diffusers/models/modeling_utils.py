@@ -1306,6 +1306,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             keep_in_fp32_modules=keep_in_fp32_modules,
             dduf_entries=dduf_entries,
             is_parallel_loading_enabled=is_parallel_loading_enabled,
+            disable_mmap=disable_mmap,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1360,12 +1361,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # Checks if the model has been loaded in 4-bit or 8-bit with BNB
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            if getattr(self, "is_loaded_in_8bit", False):
+            if getattr(self, "is_loaded_in_8bit", False) and is_bitsandbytes_version("<", "0.48.0"):
                 raise ValueError(
-                    "Calling `cuda()` is not supported for `8-bit` quantized models. "
-                    " Please use the model as it is, since the model has already been set to the correct devices."
+                    "Calling `cuda()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
+                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
                 )
-            elif is_bitsandbytes_version("<", "0.43.2"):
+            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
                 raise ValueError(
                     "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
@@ -1412,17 +1413,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
 
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            if getattr(self, "is_loaded_in_8bit", False):
+            if getattr(self, "is_loaded_in_8bit", False) and is_bitsandbytes_version("<", "0.48.0"):
                 raise ValueError(
-                    "`.to` is not supported for `8-bit` bitsandbytes models. Please use the model as it is, since the"
-                    " model has already been set to the correct devices and casted to the correct `dtype`."
+                    "Calling `to()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
+                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
                 )
-            elif is_bitsandbytes_version("<", "0.43.2"):
+            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
                 raise ValueError(
                     "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
-
         if _is_group_offload_enabled(self) and device_arg_or_kwarg_present:
             logger.warning(
                 f"The module '{self.__class__.__name__}' is group offloaded and moving it using `.to()` is not supported."
@@ -1592,6 +1592,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         offload_folder: Optional[Union[str, os.PathLike]] = None,
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
         is_parallel_loading_enabled: Optional[bool] = False,
+        disable_mmap: bool = False,
     ):
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
@@ -1660,6 +1661,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             state_dict_folder=state_dict_folder,
             ignore_mismatched_sizes=ignore_mismatched_sizes,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            disable_mmap=disable_mmap,
         )
 
         if is_parallel_loading_enabled:
