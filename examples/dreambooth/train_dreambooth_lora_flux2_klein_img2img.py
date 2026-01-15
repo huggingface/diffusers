@@ -61,7 +61,7 @@ from torch.utils.data.sampler import BatchSampler
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.auto import tqdm
-from transformers import Qwen3ForCausalLM, Qwen2TokenizerFast
+from transformers import Qwen2TokenizerFast, Qwen3ForCausalLM
 
 import diffusers
 from diffusers import (
@@ -1418,26 +1418,25 @@ def main(args):
             )
         return prompt_embeds, text_ids
 
-
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-                instance_prompt_hidden_states, instance_text_ids = compute_text_embeddings(
-                    args.instance_prompt, text_encoding_pipeline
-                )
+            instance_prompt_hidden_states, instance_text_ids = compute_text_embeddings(
+                args.instance_prompt, text_encoding_pipeline
+            )
 
     if args.validation_prompt is not None:
         validation_image = load_image(args.validation_image).convert("RGB")
         validation_kwargs = {"image": validation_image}
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-                validation_kwargs["prompt_embeds"], _text_ids = compute_text_embeddings(
-                    args.validation_prompt, text_encoding_pipeline
-                )
-                validation_kwargs["negative_prompt_embeds"], _text_ids = compute_text_embeddings(
-                    "", text_encoding_pipeline
-                )
+            validation_kwargs["prompt_embeds"], _text_ids = compute_text_embeddings(
+                args.validation_prompt, text_encoding_pipeline
+            )
+            validation_kwargs["negative_prompt_embeds"], _text_ids = compute_text_embeddings(
+                "", text_encoding_pipeline
+            )
 
     # Init FSDP for text encoder
     if args.fsdp_text_encoder:
@@ -1687,7 +1686,7 @@ def main(args):
                     guidance = torch.full([1], args.guidance_scale, device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
-                    guidance=None
+                    guidance = None
 
                 # Predict the noise residual
                 model_pred = transformer(

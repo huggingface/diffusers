@@ -63,7 +63,7 @@ from torch.utils.data.sampler import BatchSampler
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.auto import tqdm
-from transformers import Qwen3ForCausalLM, Qwen2TokenizerFast
+from transformers import Qwen2TokenizerFast, Qwen3ForCausalLM
 
 import diffusers
 from diffusers import (
@@ -1231,7 +1231,6 @@ def main(args):
             transformer, module_filter_fn=module_filter_fn, config=Float8LinearConfig(pad_inner_dim=True)
         )
 
-
     text_encoder.to(**to_kwargs)
     # Initialize a text encoding pipeline and keep it to CPU for now.
     text_encoding_pipeline = Flux2KleinPipeline.from_pretrained(
@@ -1473,28 +1472,27 @@ def main(args):
             )
         return prompt_embeds, text_ids
 
-
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-                instance_prompt_hidden_states, instance_text_ids = compute_text_embeddings(
-                    args.instance_prompt, text_encoding_pipeline
-                )
+            instance_prompt_hidden_states, instance_text_ids = compute_text_embeddings(
+                args.instance_prompt, text_encoding_pipeline
+            )
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-                class_prompt_hidden_states, class_text_ids = compute_text_embeddings(
-                    args.class_prompt, text_encoding_pipeline
-                )
+            class_prompt_hidden_states, class_text_ids = compute_text_embeddings(
+                args.class_prompt, text_encoding_pipeline
+            )
     validation_embeddings = {}
     if args.validation_prompt is not None:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-                (validation_embeddings["prompt_embeds"], validation_embeddings["text_ids"]) = compute_text_embeddings(
-                    args.validation_prompt, text_encoding_pipeline
-                )
+            (validation_embeddings["prompt_embeds"], validation_embeddings["text_ids"]) = compute_text_embeddings(
+                args.validation_prompt, text_encoding_pipeline
+            )
 
     # Init FSDP for text encoder
     if args.fsdp_text_encoder:
