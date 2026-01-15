@@ -52,6 +52,7 @@ from .flux import (
     FluxKontextPipeline,
     FluxPipeline,
 )
+from .glm_image import GlmImagePipeline
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -99,6 +100,7 @@ from .qwenimage import (
     QwenImageEditPlusPipeline,
     QwenImageImg2ImgPipeline,
     QwenImageInpaintPipeline,
+    QwenImageLayeredPipeline,
     QwenImagePipeline,
 )
 from .sana import SanaPipeline
@@ -167,6 +169,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("chroma", ChromaPipeline),
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
+        ("glm_image", GlmImagePipeline),
         ("cogview4-control", CogView4ControlPipeline),
         ("qwenimage", QwenImagePipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
@@ -202,6 +205,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("qwenimage", QwenImageImg2ImgPipeline),
         ("qwenimage-edit", QwenImageEditPipeline),
         ("qwenimage-edit-plus", QwenImageEditPlusPipeline),
+        ("qwenimage-layered", QwenImageLayeredPipeline),
         ("z-image", ZImageImg2ImgPipeline),
     ]
 )

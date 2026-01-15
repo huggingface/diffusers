@@ -965,14 +965,18 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
         # 5. Prepare timesteps
         mu = calculate_shift(self.transformer.max_seq)
         scheduler_kwargs = {"mu": mu}
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         if isinstance(self.scheduler, UniPCMultistepScheduler):
-            self.scheduler.set_timesteps(num_inference_steps, device=device)  # , shift=math.exp(mu))
+            self.scheduler.set_timesteps(num_inference_steps, device=timestep_device)  # , shift=math.exp(mu))
             timesteps = self.scheduler.timesteps
         else:
             timesteps, num_inference_steps = retrieve_timesteps(
                 self.scheduler,
                 num_inference_steps,
-                device,
+                timestep_device,
                 sigmas=sigmas,
                 **scheduler_kwargs,
             )

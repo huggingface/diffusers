@@ -897,16 +897,20 @@ class AnimateDiffVideoToVideoPipeline(
         dtype = self.dtype
 
         # 3. Prepare timesteps
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         if not enforce_inference_steps:
             timesteps, num_inference_steps = retrieve_timesteps(
-                self.scheduler, num_inference_steps, device, timesteps, sigmas
+                self.scheduler, num_inference_steps, timestep_device, timesteps, sigmas
             )
             timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
             latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
         else:
             denoising_inference_steps = int(num_inference_steps / strength)
             timesteps, denoising_inference_steps = retrieve_timesteps(
-                self.scheduler, denoising_inference_steps, device, timesteps, sigmas
+                self.scheduler, denoising_inference_steps, timestep_device, timesteps, sigmas
             )
             timesteps = timesteps[-num_inference_steps:]
             latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)

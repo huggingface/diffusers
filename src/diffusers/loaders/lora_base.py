@@ -70,6 +70,7 @@ LORA_ADAPTER_METADATA_KEY = "lora_adapter_metadata"
 TEXT_ENCODER_NAME = "text_encoder"
 UNET_NAME = "unet"
 TRANSFORMER_NAME = "transformer"
+LTX2_CONNECTOR_NAME = "connectors"
 
 _LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
 if is_torch_version(">=", "1.9.0"):

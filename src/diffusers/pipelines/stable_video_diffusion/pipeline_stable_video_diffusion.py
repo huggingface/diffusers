@@ -544,7 +544,13 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         added_time_ids = added_time_ids.to(device)
 
         # 6. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, None, sigmas)
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, timestep_device, None, sigmas
+        )
 
         # 7. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels

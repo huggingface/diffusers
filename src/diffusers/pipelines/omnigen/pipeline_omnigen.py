@@ -459,8 +459,12 @@ class OmniGenPipeline(
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1, 0, num_inference_steps + 1)[:num_inference_steps]
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas=sigmas
+            self.scheduler, num_inference_steps, timestep_device, timesteps, sigmas=sigmas
         )
         self._num_timesteps = len(timesteps)
 

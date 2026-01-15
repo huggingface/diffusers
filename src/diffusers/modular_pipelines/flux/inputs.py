@@ -121,7 +121,7 @@ class FluxTextInputStep(ModularPipelineBlocks):
         return components, state
 
 
-# Adapted from `QwenImageInputsDynamicStep`
+# Adapted from `QwenImageAdditionalInputsStep`
 class FluxInputsDynamicStep(ModularPipelineBlocks):
     model_name = "flux"
 

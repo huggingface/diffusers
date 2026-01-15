@@ -586,7 +586,13 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
         # 4. Prepare timesteps
 
         # sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, timestep_device, sigmas=sigmas
+        )
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels

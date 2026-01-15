@@ -790,10 +790,14 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         )
 
         # 4. Prepare timesteps
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
-            device,
+            timestep_device,
             timesteps,
             sigmas=None,
             max_timesteps=max_timesteps,
