@@ -17,6 +17,9 @@ import logging
 import os
 import sys
 import tempfile
+import unittest
+
+from diffusers.utils import is_transformers_version
 
 
 sys.path.append("..")
@@ -30,6 +33,7 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
+@unittest.skipIf(is_transformers_version(">=", "4.57.5"), "Size mismatch")
 class CustomDiffusion(ExamplesTestsAccelerate):
     def test_custom_diffusion(self):
         with tempfile.TemporaryDirectory() as tmpdir:
