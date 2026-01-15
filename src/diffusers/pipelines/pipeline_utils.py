@@ -1367,6 +1367,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         low_cpu_mem_usage=False,
         offload_to_disk_path: Optional[str] = None,
         exclude_modules: Optional[Union[str, List[str]]] = None,
+        pin_groups: Optional[Union[str, Callable]] = None,
     ) -> None:
         r"""
         Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is,
@@ -1427,6 +1428,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 This option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be
                 useful when the CPU memory is a bottleneck but may counteract the benefits of using streams.
             exclude_modules (`Union[str, List[str]]`, defaults to `None`): List of modules to exclude from offloading.
+            pin_groups (`\"first_last\"` | `\"all\"` | `Callable`, *optional*):
+                Optionally keep selected groups on the onload device permanently. See `ModelMixin.enable_group_offload`
+                for details.
 
         Example:
             ```python
@@ -1467,6 +1471,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             "record_stream": record_stream,
             "low_cpu_mem_usage": low_cpu_mem_usage,
             "offload_to_disk_path": offload_to_disk_path,
+            "pin_groups": pin_groups,
         }
         for name, component in self.components.items():
             if name not in exclude_modules and isinstance(component, torch.nn.Module):
