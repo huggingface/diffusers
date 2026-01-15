@@ -1573,8 +1573,6 @@ def _templated_context_parallel_attention(
     backward_op,
     _parallel_config: Optional["ParallelConfig"] = None,
 ):
-    if attn_mask is not None:
-        raise ValueError("Attention mask is not yet supported for templated attention.")
     if is_causal:
         raise ValueError("Causal attention is not yet supported for templated attention.")
     if enable_gqa:
