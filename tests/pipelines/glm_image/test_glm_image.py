@@ -21,20 +21,24 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, GlmImagePipeline, GlmImageTransformer2DModel
 from diffusers.utils import is_transformers_version
 
-from ...testing_utils import enable_full_determinism, require_torch_accelerator, require_transformers_version_greater
+from ...testing_utils import enable_full_determinism, require_transformers_version_greater
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
 if is_transformers_version(">=", "5.0.0.dev0"):
-    from transformers import GlmImageConfig, GlmImageForConditionalGeneration, GlmImageProcessor
+    from transformers import (
+        GlmImageConfig,
+        GlmImageForConditionalGeneration,
+        GlmImageImageProcessor,
+        GlmImageProcessor,
+    )
 
 
 enable_full_determinism()
 
 
 @require_transformers_version_greater("4.57.4")
-@require_torch_accelerator
 class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = GlmImagePipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "negative_prompt"}
@@ -86,7 +90,23 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         vision_language_encoder = GlmImageForConditionalGeneration(glm_config)
 
-        processor = GlmImageProcessor.from_pretrained("zai-org/GLM-Image", subfolder="processor")
+        # Create small image_processor for testing instead of loading the huge processor
+        image_processor = GlmImageImageProcessor(
+            min_pixels=32 * 32,
+            max_pixels=32 * 32 * 4,
+            patch_size=8,
+            merge_size=1,
+            temporal_patch_size=1,
+            do_resize=True,
+            do_rescale=True,
+            do_normalize=True,
+        )
+        # Load the tokenizer from GLM-Image (small, just config files) - it has required attributes
+        # (image_token, grid_bos_token, grid_eos_token) that get properly serialized
+        processor_tokenizer = AutoTokenizer.from_pretrained("zai-org/GLM-Image", subfolder="processor")
+        processor = GlmImageProcessor(image_processor=image_processor, tokenizer=processor_tokenizer)
+        # Set chat template on processor (it checks self.chat_template, not self.tokenizer.chat_template)
+        processor.chat_template = processor_tokenizer.chat_template
 
         torch.manual_seed(0)
         # For GLM-Image, the relationship between components must satisfy:
