@@ -354,8 +354,9 @@ def _load_shard_file(
     state_dict_folder=None,
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
+    disable_mmap=False,
 ):
-    state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
+    state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries, disable_mmap=disable_mmap)
     mismatched_keys = _find_mismatched_keys(
         state_dict,
         model_state_dict,
@@ -401,6 +402,7 @@ def _load_shard_files_with_threadpool(
     state_dict_folder=None,
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
+    disable_mmap=False,
 ):
     # Do not spawn anymore workers than you need
     num_workers = min(len(shard_files), DEFAULT_HF_PARALLEL_LOADING_WORKERS)
@@ -427,6 +429,7 @@ def _load_shard_files_with_threadpool(
         state_dict_folder=state_dict_folder,
         ignore_mismatched_sizes=ignore_mismatched_sizes,
         low_cpu_mem_usage=low_cpu_mem_usage,
+        disable_mmap=disable_mmap,
     )
 
     tqdm_kwargs = {"total": len(shard_files), "desc": "Loading checkpoint shards"}
