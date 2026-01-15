@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
+from huggingface_hub import hf_hub_download
 from torch.nn.utils.rnn import pad_sequence
 
 from diffusers.models.transformers.f5tts_transformer import F5ConditioningEncoder, F5DiTModel, MelSpec
@@ -62,14 +63,32 @@ class F5FlowPipeline(DiffusionPipeline):
         # Load vocab_char_map if it exists
         import json
 
-        vocab_path = os.path.join(pretrained_model_name_or_path, "vocab_char_map.json")
         vocab_char_map = None
-        if os.path.exists(vocab_path):
+        vocab_file = "vocab_char_map.json"
+
+        # 1. Attempt to load from local directory
+        if os.path.isdir(pretrained_model_name_or_path):
+            vocab_path = os.path.join(pretrained_model_name_or_path, vocab_file)
+            if os.path.exists(vocab_path):
+                with open(vocab_path, "r") as f:
+                    vocab_char_map = json.load(f)
+        else:
+            # 2. Attempt to download from HF Hub
+            vocab_path = hf_hub_download(
+                repo_id=pretrained_model_name_or_path,
+                filename=vocab_file,
+                subfolder=kwargs.get("subfolder"),
+                revision=kwargs.get("revision"),
+                cache_dir=kwargs.get("cache_dir"),
+                token=kwargs.get("token"),
+                local_files_only=kwargs.get("local_files_only", False),
+            )
             with open(vocab_path, "r") as f:
                 vocab_char_map = json.load(f)
 
         pipe = super().from_pretrained(pretrained_model_name_or_path, **kwargs)
-        pipe.vocab_char_map = vocab_char_map
+        if vocab_char_map is not None:
+            pipe.vocab_char_map = vocab_char_map
         return pipe
 
     # char tokenizer, based on custom dataset's extracted .txt file
