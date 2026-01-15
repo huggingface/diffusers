@@ -39,6 +39,7 @@ from .modular_pipeline_utils import (
     InputParam,
     InsertableDict,
     OutputParam,
+    _validate_requirements,
     format_components,
     format_configs,
     make_doc_string,
@@ -242,6 +243,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     config_name = "modular_config.json"
     model_name = None
+    _requirements: Optional[Dict[str, str]] = None
 
     @classmethod
     def _get_signature_keys(cls, obj):
@@ -304,6 +306,19 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         trust_remote_code: bool = False,
         **kwargs,
     ):
+        config = cls.load_config(pretrained_model_name_or_path)
+        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
+        trust_remote_code = resolve_trust_remote_code(
+            trust_remote_code, pretrained_model_name_or_path, has_remote_code
+        )
+        if not (has_remote_code and trust_remote_code):
+            raise ValueError(
+                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+            )
+
+        if "requirements" in config and config["requirements"] is not None:
+            _ = _validate_requirements(config["requirements"])
+
         hub_kwargs_names = [
             "cache_dir",
             "force_download",
@@ -315,16 +330,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
-
-        config = cls.load_config(pretrained_model_name_or_path, **hub_kwargs)
-        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
-        trust_remote_code = resolve_trust_remote_code(
-            trust_remote_code, pretrained_model_name_or_path, has_remote_code
-        )
-        if not has_remote_code and trust_remote_code:
-            raise ValueError(
-                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
-            )
 
         class_ref = config["auto_map"][cls.__name__]
         module_file, class_name = class_ref.split(".")
@@ -350,8 +355,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         module = full_mod.rsplit(".", 1)[-1].replace("__dynamic__", "")
         parent_module = self.save_pretrained.__func__.__qualname__.split(".", 1)[0]
         auto_map = {f"{parent_module}": f"{module}.{cls_name}"}
-
         self.register_to_config(auto_map=auto_map)
+
+        # resolve requirements
+        requirements = _validate_requirements(getattr(self, "_requirements", None))
+        if requirements:
+            self.register_to_config(requirements=requirements)
+
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
         config = dict(self.config)
         self._internal_dict = FrozenDict(config)
@@ -1153,6 +1163,14 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             expected_components=self.expected_components,
             expected_configs=self.expected_configs,
         )
+
+    @property
+    def _requirements(self) -> Dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
 
 
 class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
