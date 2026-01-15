@@ -409,6 +409,7 @@ CONTROLNET_CONFIGS = {
     },
 }
 
+# TODO(migmartin): fix this, this is not correct
 CONTROLNET_KEYS_RENAME_DICT = {
     "controlnet_blocks": "control_blocks",
     "control_net_blocks": "control_blocks",
@@ -820,11 +821,12 @@ if __name__ == "__main__":
                     base_state_dict[k] = v
             assert len(base_state_dict.keys() & control_state_dict.keys()) == 0
 
+            transformer = convert_transformer(args.transformer_type, state_dict=base_state_dict, weights_only=weights_only)
+            transformer = transformer.to(dtype=dtype)
+
             controlnet = convert_controlnet(args.transformer_type, control_state_dict, weights_only=weights_only)
             controlnet = controlnet.to(dtype=dtype)
 
-            transformer = convert_transformer(args.transformer_type, state_dict=base_state_dict, weights_only=weights_only)
-            transformer = transformer.to(dtype=dtype)
             if not args.save_pipeline:
                 transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
                 controlnet.save_pretrained(
