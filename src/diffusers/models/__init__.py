@@ -78,6 +78,7 @@ if is_torch_available():
     _import_structure["transformers.consisid_transformer_3d"] = ["ConsisIDTransformer3DModel"]
     _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
     _import_structure["transformers.dual_transformer_2d"] = ["DualTransformer2DModel"]
+    _import_structure["transformers.f5tts_transformer"] = ["F5ConditioningEncoder", "F5DiTModel"]
     _import_structure["transformers.hunyuan_transformer_2d"] = ["HunyuanDiT2DModel"]
     _import_structure["transformers.latte_transformer_3d"] = ["LatteTransformer3DModel"]
     _import_structure["transformers.lumina_nextdit2d"] = ["LuminaNextDiT2DModel"]
@@ -207,6 +208,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DiTTransformer2DModel,
             DualTransformer2DModel,
             EasyAnimateTransformer3DModel,
+            F5DiTModel,
             Flux2Transformer2DModel,
             FluxTransformer2DModel,
             GlmImageTransformer2DModel,

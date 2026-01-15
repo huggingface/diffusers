@@ -7,6 +7,7 @@ if is_torch_available():
     from .consisid_transformer_3d import ConsisIDTransformer3DModel
     from .dit_transformer_2d import DiTTransformer2DModel
     from .dual_transformer_2d import DualTransformer2DModel
+    from .f5tts_transformer import F5ConditioningEncoder, F5DiTModel
     from .hunyuan_transformer_2d import HunyuanDiT2DModel
     from .latte_transformer_3d import LatteTransformer3DModel
     from .lumina_nextdit2d import LuminaNextDiT2DModel
