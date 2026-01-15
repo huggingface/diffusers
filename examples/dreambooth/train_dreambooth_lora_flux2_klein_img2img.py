@@ -61,14 +61,14 @@ from torch.utils.data.sampler import BatchSampler
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.auto import tqdm
-from transformers import Mistral3ForConditionalGeneration, PixtralProcessor
+from transformers import Qwen3ForCausalLM, Qwen2TokenizerFast
 
 import diffusers
 from diffusers import (
     AutoencoderKLFlux2,
     BitsAndBytesConfig,
     FlowMatchEulerDiscreteScheduler,
-    Flux2Pipeline,
+    Flux2KleinPipeline,
     Flux2Transformer2DModel,
 )
 from diffusers.optimization import get_scheduler
@@ -127,7 +127,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# Flux.2 DreamBooth LoRA - {repo_id}
+# Flux.2 [Klein] DreamBooth LoRA - {repo_id}
 
 <Gallery />
 
@@ -214,6 +214,7 @@ def log_validation(
             image = pipeline(
                 image=pipeline_args["image"],
                 prompt_embeds=pipeline_args["prompt_embeds"],
+                negative_prompt_embeds=pipeline_args["negative_prompt_embeds"],
                 generator=generator,
             ).images[0]
             images.append(image)
@@ -690,11 +691,6 @@ def parse_args(input_args=None):
         action="store_true",
         help="Whether to offload the VAE and the text encoder to CPU when they are not used.",
     )
-    parser.add_argument(
-        "--remote_text_encoder",
-        action="store_true",
-        help="Whether to use a remote text encoder. This means the text encoder will not be loaded locally and instead, the prompt embeddings will be computed remotely using the HuggingFace Inference API.",
-    )
 
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument("--enable_npu_flash_attention", action="store_true", help="Enabla Flash Attention for NPU")
@@ -1094,7 +1090,7 @@ def main(args):
             ).repo_id
 
     # Load the tokenizers
-    tokenizer = PixtralProcessor.from_pretrained(
+    tokenizer = Qwen2TokenizerFast.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
         revision=args.revision,
@@ -1145,11 +1141,10 @@ def main(args):
     if args.bnb_quantization_config_path is not None:
         transformer = prepare_model_for_kbit_training(transformer, use_gradient_checkpointing=False)
 
-    if not args.remote_text_encoder:
-        text_encoder = Mistral3ForConditionalGeneration.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
-        )
-        text_encoder.requires_grad_(False)
+    text_encoder = Qwen3ForCausalLM.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+    )
+    text_encoder.requires_grad_(False)
 
     # We only train the additional adapter LoRA layers
     transformer.requires_grad_(False)
@@ -1187,18 +1182,17 @@ def main(args):
             transformer, module_filter_fn=module_filter_fn, config=Float8LinearConfig(pad_inner_dim=True)
         )
 
-    if not args.remote_text_encoder:
-        text_encoder.to(**to_kwargs)
-        # Initialize a text encoding pipeline and keep it to CPU for now.
-        text_encoding_pipeline = Flux2Pipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            vae=None,
-            transformer=None,
-            tokenizer=tokenizer,
-            text_encoder=text_encoder,
-            scheduler=None,
-            revision=args.revision,
-        )
+    text_encoder.to(**to_kwargs)
+    # Initialize a text encoding pipeline and keep it to CPU for now.
+    text_encoding_pipeline = Flux2KleinPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        vae=None,
+        transformer=None,
+        tokenizer=tokenizer,
+        text_encoder=text_encoder,
+        scheduler=None,
+        revision=args.revision,
+    )
 
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
@@ -1263,7 +1257,7 @@ def main(args):
             if weights:
                 weights.pop()
 
-            Flux2Pipeline.save_lora_weights(
+            Flux2KleinPipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
                 **_collate_lora_metadata(modules_to_save),
@@ -1287,7 +1281,7 @@ def main(args):
             )
             transformer_.add_adapter(transformer_lora_config)
 
-        lora_state_dict = Flux2Pipeline.lora_state_dict(input_dir)
+        lora_state_dict = Flux2KleinPipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
             f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
@@ -1422,69 +1416,27 @@ def main(args):
             prompt_embeds, text_ids = text_encoding_pipeline.encode_prompt(
                 prompt=prompt, max_sequence_length=args.max_sequence_length
             )
-            # prompt_embeds = prompt_embeds.to(accelerator.device)
-            # text_ids = text_ids.to(accelerator.device)
         return prompt_embeds, text_ids
 
-    def compute_remote_text_embeddings(prompts: str | list[str]):
-        import io
-
-        import requests
-
-        if args.hub_token is not None:
-            hf_token = args.hub_token
-        else:
-            from huggingface_hub import get_token
-
-            hf_token = get_token()
-            if hf_token is None:
-                raise ValueError(
-                    "No HuggingFace token found. To use the remote text encoder please login using `hf auth login` or provide a token using --hub_token"
-                )
-
-        def _encode_single(prompt: str):
-            response = requests.post(
-                "https://remote-text-encoder-flux-2.huggingface.co/predict",
-                json={"prompt": prompt},
-                headers={"Authorization": f"Bearer {hf_token}", "Content-Type": "application/json"},
-            )
-            assert response.status_code == 200, f"{response.status_code=}"
-            return torch.load(io.BytesIO(response.content))
-
-        try:
-            if isinstance(prompts, (list, tuple)):
-                embeds = [_encode_single(p) for p in prompts]
-                prompt_embeds = torch.cat(embeds, dim=0).to(accelerator.device)
-            else:
-                prompt_embeds = _encode_single(prompts).to(accelerator.device)
-
-            text_ids = Flux2Pipeline._prepare_text_ids(prompt_embeds).to(accelerator.device)
-            return prompt_embeds, text_ids
-
-        except Exception as e:
-            raise RuntimeError("Remote text encoder inference failed.") from e
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
-        if args.remote_text_encoder:
-            instance_prompt_hidden_states, instance_text_ids = compute_remote_text_embeddings(args.instance_prompt)
-        else:
-            with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
                 instance_prompt_hidden_states, instance_text_ids = compute_text_embeddings(
                     args.instance_prompt, text_encoding_pipeline
                 )
 
     if args.validation_prompt is not None:
-        validation_image = load_image(args.validation_image_path).convert("RGB")
+        validation_image = load_image(args.validation_image).convert("RGB")
         validation_kwargs = {"image": validation_image}
-        if args.remote_text_encoder:
-            validation_kwargs["prompt_embeds"] = compute_remote_text_embeddings(args.validation_prompt)
-        else:
-            with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-                validation_kwargs["prompt_embeds"] = compute_text_embeddings(
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+                validation_kwargs["prompt_embeds"], _text_ids = compute_text_embeddings(
                     args.validation_prompt, text_encoding_pipeline
+                )
+                validation_kwargs["negative_prompt_embeds"], _text_ids = compute_text_embeddings(
+                    "", text_encoding_pipeline
                 )
 
     # Init FSDP for text encoder
@@ -1531,9 +1483,7 @@ def main(args):
                         )
                         cond_latents_cache.append(vae.encode(batch["cond_pixel_values"]).latent_dist)
                 if train_dataset.custom_instance_prompts:
-                    if args.remote_text_encoder:
-                        prompt_embeds, text_ids = compute_remote_text_embeddings(batch["prompts"])
-                    elif args.fsdp_text_encoder:
+                    if args.fsdp_text_encoder:
                         prompt_embeds, text_ids = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
                     else:
                         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
@@ -1547,9 +1497,8 @@ def main(args):
         del vae
 
     # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
-    if not args.remote_text_encoder:
-        text_encoding_pipeline = text_encoding_pipeline.to("cpu")
-        del text_encoder, tokenizer
+    text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+    del text_encoder, tokenizer
     free_memory()
 
     # Scheduler and math around the number of training steps.
@@ -1686,17 +1635,15 @@ def main(args):
                     model_input = vae.encode(pixel_values).latent_dist.mode()
                     cond_model_input = vae.encode(cond_pixel_values).latent_dist.mode()
 
-                    # model_input = Flux2Pipeline._encode_vae_image(pixel_values)
-
-                model_input = Flux2Pipeline._patchify_latents(model_input)
+                model_input = Flux2KleinPipeline._patchify_latents(model_input)
                 model_input = (model_input - latents_bn_mean) / latents_bn_std
 
-                cond_model_input = Flux2Pipeline._patchify_latents(cond_model_input)
+                cond_model_input = Flux2KleinPipeline._patchify_latents(cond_model_input)
                 cond_model_input = (cond_model_input - latents_bn_mean) / latents_bn_std
 
-                model_input_ids = Flux2Pipeline._prepare_latent_ids(model_input).to(device=model_input.device)
+                model_input_ids = Flux2KleinPipeline._prepare_latent_ids(model_input).to(device=model_input.device)
                 cond_model_input_list = [cond_model_input[i].unsqueeze(0) for i in range(cond_model_input.shape[0])]
-                cond_model_input_ids = Flux2Pipeline._prepare_image_ids(cond_model_input_list).to(
+                cond_model_input_ids = Flux2KleinPipeline._prepare_image_ids(cond_model_input_list).to(
                     device=cond_model_input.device
                 )
                 cond_model_input_ids = cond_model_input_ids.view(
@@ -1725,9 +1672,9 @@ def main(args):
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
                 # [B, C, H, W] -> [B, H*W, C]
-                packed_noisy_model_input = Flux2Pipeline._pack_latents(noisy_model_input)
-                packed_cond_model_input = Flux2Pipeline._pack_latents(cond_model_input)
-
+                # concatenate the model inputs with the cond inputs
+                packed_noisy_model_input = Flux2KleinPipeline._pack_latents(noisy_model_input)
+                packed_cond_model_input = Flux2KleinPipeline._pack_latents(cond_model_input)
                 orig_input_shape = packed_noisy_model_input.shape
                 orig_input_ids_shape = model_input_ids.shape
 
@@ -1736,8 +1683,11 @@ def main(args):
                 model_input_ids = torch.cat([model_input_ids, cond_model_input_ids], dim=1)
 
                 # handle guidance
-                guidance = torch.full([1], args.guidance_scale, device=accelerator.device)
-                guidance = guidance.expand(model_input.shape[0])
+                if transformer.config.guidance_embeds:
+                    guidance = torch.full([1], args.guidance_scale, device=accelerator.device)
+                    guidance = guidance.expand(model_input.shape[0])
+                else:
+                    guidance=None
 
                 # Predict the noise residual
                 model_pred = transformer(
@@ -1749,10 +1699,11 @@ def main(args):
                     img_ids=model_input_ids,  # B, image_seq_len, 4
                     return_dict=False,
                 )[0]
+                # pruning the condition information
                 model_pred = model_pred[:, : orig_input_shape[1], :]
                 model_input_ids = model_input_ids[:, : orig_input_ids_shape[1], :]
 
-                model_pred = Flux2Pipeline._unpack_latents_with_ids(model_pred, model_input_ids)
+                model_pred = Flux2KleinPipeline._unpack_latents_with_ids(model_pred, model_input_ids)
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
@@ -1818,7 +1769,7 @@ def main(args):
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
-                pipeline = Flux2Pipeline.from_pretrained(
+                pipeline = Flux2KleinPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     text_encoder=None,
                     tokenizer=None,
@@ -1878,7 +1829,7 @@ def main(args):
 
         modules_to_save["transformer"] = transformer
 
-        Flux2Pipeline.save_lora_weights(
+        Flux2KleinPipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
             **_collate_lora_metadata(modules_to_save),
@@ -1888,7 +1839,7 @@ def main(args):
         run_validation = (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt)
         should_run_final_inference = not args.skip_final_inference and run_validation
         if should_run_final_inference:
-            pipeline = Flux2Pipeline.from_pretrained(
+            pipeline = Flux2KleinPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 revision=args.revision,
                 variant=args.variant,
