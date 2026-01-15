@@ -18,7 +18,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -45,7 +45,7 @@ class DDIMSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -192,7 +192,7 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.00085,
         beta_end: float = 0.0120,
         beta_schedule: str = "scaled_linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        trained_betas: np.ndarray | list[float] | None = None,
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
@@ -249,7 +249,7 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -266,7 +266,7 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -345,9 +345,9 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
         generator=None,
-        variance_noise: Optional[torch.Tensor] = None,
+        variance_noise: torch.Tensor | None = None,
         return_dict: bool = False,
-    ) -> Union[DDIMSchedulerOutput, Tuple]:
+    ) -> DDIMSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

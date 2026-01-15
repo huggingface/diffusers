@@ -61,7 +61,7 @@ ASYMMETRIC_AUTOENCODER_KL_x_2_CONFIG = {
 }
 
 
-def convert_asymmetric_autoencoder_kl_state_dict(original_state_dict: Dict[str, Any]) -> Dict[str, Any]:
+def convert_asymmetric_autoencoder_kl_state_dict(original_state_dict: Dict[str, Any]) -> dict[str, Any]:
     converted_state_dict = {}
     for k, v in original_state_dict.items():
         if k.startswith("encoder."):

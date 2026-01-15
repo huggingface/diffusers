@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -45,7 +45,7 @@ class DPMSolverSDESchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 class BatchedBrownianTree:
@@ -96,7 +96,7 @@ class BrownianTreeNoiseSampler:
             random samples.
         sigma_min (float): The low end of the valid interval.
         sigma_max (float): The high end of the valid interval.
-        seed (int or List[int]): The random seed. If a list of seeds is
+        seed (int or list[int]): The random seed. If a list of seeds is
             supplied instead of a single integer, then the noise sampler will use one BrownianTree per batch item, each
             with its own seed.
         transform (callable): A function that maps sigma to the sampler's
@@ -217,12 +217,12 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.00085,  # sensible defaults
         beta_end: float = 0.012,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        trained_betas: np.ndarray | list[float] | None = None,
         prediction_type: str = "epsilon",
-        use_karras_sigmas: Optional[bool] = False,
-        use_exponential_sigmas: Optional[bool] = False,
-        use_beta_sigmas: Optional[bool] = False,
-        noise_sampler_seed: Optional[int] = None,
+        use_karras_sigmas: bool = False,
+        use_exponential_sigmas: bool = False,
+        use_beta_sigmas: bool = False,
+        noise_sampler_seed: int | None = None,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
     ):
@@ -259,7 +259,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(
-        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
     ) -> int:
         """
         Find the index of a given timestep in the timestep schedule.
@@ -289,7 +289,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
         """
         Initialize the step index for the scheduler based on the given timestep.
 
@@ -340,7 +340,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
     def scale_model_input(
         self,
         sample: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
     ) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -367,8 +367,8 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int,
-        device: Union[str, torch.device] = None,
-        num_train_timesteps: Optional[int] = None,
+        device: str | torch.device = None,
+        num_train_timesteps: int | None = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -609,12 +609,12 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: Union[torch.Tensor, np.ndarray],
-        timestep: Union[float, torch.Tensor],
-        sample: Union[torch.Tensor, np.ndarray],
+        model_output: torch.Tensor | np.ndarray,
+        timestep: float | torch.Tensor,
+        sample: torch.Tensor | np.ndarray,
         return_dict: bool = True,
         s_noise: float = 1.0,
-    ) -> Union[DPMSolverSDESchedulerOutput, Tuple]:
+    ) -> DPMSolverSDESchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

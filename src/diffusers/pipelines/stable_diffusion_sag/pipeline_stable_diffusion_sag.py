@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable
 
 import torch
 import torch.nn.functional as F
@@ -155,7 +155,7 @@ class StableDiffusionSAGPipeline(
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
-        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
+        image_encoder: CLIPVisionModelWithProjection | None = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -182,9 +182,9 @@ class StableDiffusionSAGPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
         **kwargs,
     ):
         deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
@@ -215,16 +215,16 @@ class StableDiffusionSAGPipeline(
         num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -232,7 +232,7 @@ class StableDiffusionSAGPipeline(
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -331,7 +331,7 @@ class StableDiffusionSAGPipeline(
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif prompt is not None and type(prompt) is not type(negative_prompt):
@@ -574,33 +574,33 @@ class StableDiffusionSAGPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        prompt: str | list[str] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         sag_scale: float = 0.75,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        ip_adapter_image: PipelineImageInput | None = None,
+        ip_adapter_image_embeds: list[torch.Tensor] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: Optional[int] = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        clip_skip: Optional[int] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
+        callback_steps: int | None = 1,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
@@ -614,7 +614,7 @@ class StableDiffusionSAGPipeline(
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             sag_scale (`float`, *optional*, defaults to 0.75):
                 Chosen between [0, 1.0] for better quality.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -622,7 +622,7 @@ class StableDiffusionSAGPipeline(
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
                 applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -637,7 +637,7 @@ class StableDiffusionSAGPipeline(
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
-            ip_adapter_image_embeds (`List[torch.Tensor]`, *optional*):
+            ip_adapter_image_embeds (`list[torch.Tensor]`, *optional*):
                 Pre-generated image embeddings for IP-Adapter. If not provided, embeddings are computed from the
                 `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -43,10 +42,10 @@ def calculate_shift(
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -61,15 +60,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -126,13 +125,13 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
         return "Prepare initial random noise for the generation process"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("latents"),
             InputParam(name="height"),
@@ -154,7 +153,7 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="latents",
@@ -217,13 +216,13 @@ class QwenImageLayeredPrepareLatentsStep(ModularPipelineBlocks):
         return "Prepare initial random noise (B, layers+1, C, H, W) for the generation process"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("pachifier", QwenImageLayeredPachifier, default_creation_method="from_config"),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("latents"),
             InputParam(name="height"),
@@ -246,7 +245,7 @@ class QwenImageLayeredPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="latents",
@@ -309,13 +308,13 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
         return "Step that adds noise to image latents for image-to-image/inpainting. Should be run after set_timesteps, prepare_latents. Both noise and image latents should alreadybe patchified."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="latents",
@@ -338,7 +337,7 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="initial_noise",
@@ -390,13 +389,13 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
         return "Step that creates mask latents from preprocessed mask_image by interpolating to latent space."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="processed_mask_image",
@@ -410,7 +409,7 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="mask", type_hint=torch.Tensor, description="The mask to use for the inpainting process."
@@ -458,13 +457,13 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
         return "Step that sets the scheduler's timesteps for text-to-image generation. Should be run after prepare latents step."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="num_inference_steps", default=50),
             InputParam(name="sigmas"),
@@ -477,7 +476,7 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"
@@ -524,21 +523,21 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
         return "Set timesteps step for QwenImage Layered with custom mu calculation based on image_latents."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_inference_steps", default=50, type_hint=int),
-            InputParam("sigmas", type_hint=List[float]),
+            InputParam("sigmas", type_hint=list[float]),
             InputParam("image_latents", required=True, type_hint=torch.Tensor),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(name="timesteps", type_hint=torch.Tensor),
         ]
@@ -582,13 +581,13 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
         return "Step that sets the scheduler's timesteps for image-to-image generation, and inpainting. Should be run after prepare latents step."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="num_inference_steps", default=50),
             InputParam(name="sigmas"),
@@ -602,7 +601,7 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="timesteps",
@@ -664,7 +663,7 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="batch_size", required=True),
             InputParam(name="height", required=True),
@@ -674,12 +673,12 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="img_shapes",
                 kwargs_type="denoiser_input_fields",
-                type_hint=List[List[Tuple[int, int, int]]],
+                type_hint=list[list[tuple[int, int, int]]],
                 description="The shapes of the images latents, used for RoPE calculation",
             ),
         ]
@@ -710,7 +709,7 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
         return "Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit. Should be placed after prepare_latents step"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="batch_size", required=True),
             InputParam(name="image_height", required=True),
@@ -722,12 +721,12 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="img_shapes",
                 kwargs_type="denoiser_input_fields",
-                type_hint=List[List[Tuple[int, int, int]]],
+                type_hint=list[list[tuple[int, int, int]]],
                 description="The shapes of the images latents, used for RoPE calculation",
             ),
         ]
@@ -768,11 +767,11 @@ class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="batch_size", required=True),
-            InputParam(name="image_height", required=True, type_hint=List[int]),
-            InputParam(name="image_width", required=True, type_hint=List[int]),
+            InputParam(name="image_height", required=True, type_hint=list[int]),
+            InputParam(name="image_width", required=True, type_hint=list[int]),
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
             InputParam(name="prompt_embeds_mask"),
@@ -780,24 +779,24 @@ class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="img_shapes",
                 kwargs_type="denoiser_input_fields",
-                type_hint=List[List[Tuple[int, int, int]]],
+                type_hint=list[list[tuple[int, int, int]]],
                 description="The shapes of the image latents, used for RoPE calculation",
             ),
             OutputParam(
                 name="txt_seq_lens",
                 kwargs_type="denoiser_input_fields",
-                type_hint=List[int],
+                type_hint=list[int],
                 description="The sequence lengths of the prompt embeds, used for RoPE calculation",
             ),
             OutputParam(
                 name="negative_txt_seq_lens",
                 kwargs_type="denoiser_input_fields",
-                type_hint=List[int],
+                type_hint=list[int],
                 description="The sequence lengths of the negative prompt embeds, used for RoPE calculation",
             ),
         ]
@@ -842,7 +841,7 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="batch_size", required=True),
             InputParam(name="layers", required=True),
@@ -853,23 +852,23 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="img_shapes",
-                type_hint=List[List[Tuple[int, int, int]]],
+                type_hint=list[list[tuple[int, int, int]]],
                 kwargs_type="denoiser_input_fields",
                 description="The shapes of the image latents, used for RoPE calculation",
             ),
             OutputParam(
                 name="txt_seq_lens",
-                type_hint=List[int],
+                type_hint=list[int],
                 kwargs_type="denoiser_input_fields",
                 description="The sequence lengths of the prompt embeds, used for RoPE calculation",
             ),
             OutputParam(
                 name="negative_txt_seq_lens",
-                type_hint=List[int],
+                type_hint=list[int],
                 kwargs_type="denoiser_input_fields",
                 description="The sequence lengths of the negative prompt embeds, used for RoPE calculation",
             ),
@@ -918,7 +917,7 @@ class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("controlnet", QwenImageControlNetModel),
         ]
@@ -928,7 +927,7 @@ class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
         return "step that prepare inputs for controlnet. Insert before the Denoise Step, after set_timesteps step."
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("control_guidance_start", default=0.0),
             InputParam("control_guidance_end", default=1.0),
@@ -943,9 +942,9 @@ class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("controlnet_keep", type_hint=List[float], description="The controlnet keep values"),
+            OutputParam("controlnet_keep", type_hint=list[float], description="The controlnet keep values"),
         ]
 
     @torch.no_grad()

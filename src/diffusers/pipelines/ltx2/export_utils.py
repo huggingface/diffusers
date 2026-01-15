@@ -14,7 +14,6 @@
 # limitations under the License.
 
 from fractions import Fraction
-from typing import Optional
 
 import torch
 
@@ -101,7 +100,7 @@ def _write_audio(
 
 
 def encode_video(
-    video: torch.Tensor, fps: int, audio: Optional[torch.Tensor], audio_sample_rate: Optional[int], output_path: str
+    video: torch.Tensor, fps: int, audio: torch.Tensor | None, audio_sample_rate: int | None, output_path: str
 ) -> None:
     video_np = video.cpu().numpy()
 

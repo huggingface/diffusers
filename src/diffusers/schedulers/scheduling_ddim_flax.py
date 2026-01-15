@@ -16,7 +16,6 @@
 # and https://github.com/hojonathanho/diffusion
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
@@ -40,7 +39,7 @@ class DDIMSchedulerState:
     # setable values
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
-    num_inference_steps: Optional[int] = None
+    num_inference_steps: int = None
 
     @classmethod
     def create(
@@ -117,7 +116,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         clip_sample: bool = True,
         clip_sample_range: float = 1.0,
         set_alpha_to_one: bool = True,
@@ -127,7 +126,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
     ):
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DDIMSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> DDIMSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 
@@ -151,9 +150,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
             timesteps=timesteps,
         )
 
-    def scale_model_input(
-        self, state: DDIMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
-    ) -> jnp.ndarray:
+    def scale_model_input(self, state: DDIMSchedulerState, sample: jnp.ndarray, timestep: int = None) -> jnp.ndarray:
         """
         Args:
             state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
@@ -166,7 +163,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         return sample
 
     def set_timesteps(
-        self, state: DDIMSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self, state: DDIMSchedulerState, num_inference_steps: int, shape: tuple = ()
     ) -> DDIMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -207,7 +204,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         eta: float = 0.0,
         return_dict: bool = True,
-    ) -> Union[FlaxDDIMSchedulerOutput, Tuple]:
+    ) -> FlaxDDIMSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

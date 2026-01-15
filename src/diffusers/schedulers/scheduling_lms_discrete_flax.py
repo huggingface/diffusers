@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
@@ -37,10 +36,10 @@ class LMSDiscreteSchedulerState:
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
     sigmas: jnp.ndarray
-    num_inference_steps: Optional[int] = None
+    num_inference_steps: int = None
 
     # running values
-    derivatives: Optional[jnp.ndarray] = None
+    derivatives: jnp.ndarray | None = None
 
     @classmethod
     def create(
@@ -97,13 +96,13 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         prediction_type: str = "epsilon",
         dtype: jnp.dtype = jnp.float32,
     ):
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> LMSDiscreteSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> LMSDiscreteSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 
@@ -165,7 +164,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         return integrated_coeff
 
     def set_timesteps(
-        self, state: LMSDiscreteSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self, state: LMSDiscreteSchedulerState, num_inference_steps: int, shape: tuple = ()
     ) -> LMSDiscreteSchedulerState:
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -208,7 +207,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         order: int = 4,
         return_dict: bool = True,
-    ) -> Union[FlaxLMSSchedulerOutput, Tuple]:
+    ) -> FlaxLMSSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import re
-from typing import List
 
 import torch
 
@@ -1021,7 +1020,7 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
     return new_state_dict
 
 
-def _custom_replace(key: str, substrings: List[str]) -> str:
+def _custom_replace(key: str, substrings: list[str]) -> str:
     # Replaces the "."s with "_"s upto the `substrings`.
     # Example:
     # lora_unet.foo.bar.lora_A.weight -> lora_unet_foo_bar.lora_A.weight

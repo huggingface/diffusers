@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal
 
 import torch
 
@@ -120,19 +120,9 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: Optional[int] = None,
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> None:
-        """
-        Sets the discrete timesteps used for the diffusion chain (to be run before inference).
-
-        Args:
-            num_inference_steps (`int`, *optional*):
-                The number of diffusion steps used when generating samples with a pre-trained model. Currently, only
-                `2` inference steps are supported.
-            device (`str` or `torch.device`, *optional*):
-                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        """
+        num_inference_steps: int | None = None,
+        device: str | torch.device = None,
+    ):
         if num_inference_steps != 2:
             raise ValueError("Currently more than 2 inference steps are not supported.")
 
@@ -155,7 +145,7 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
         """
         return self.sqrt_one_minus_alphas_cumprod[self.timesteps[0]]
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -175,11 +165,11 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
         sample: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[ConsistencyDecoderSchedulerOutput, Tuple]:
+    ) -> ConsistencyDecoderSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

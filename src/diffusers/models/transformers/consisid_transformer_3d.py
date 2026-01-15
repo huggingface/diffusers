@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 from torch import nn
@@ -34,7 +34,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class PerceiverAttention(nn.Module):
-    def __init__(self, dim: int, dim_head: int = 64, heads: int = 8, kv_dim: Optional[int] = None):
+    def __init__(self, dim: int, dim_head: int = 64, heads: int = 8, kv_dim: int | None = None):
         super().__init__()
 
         self.scale = dim_head**-0.5
@@ -152,7 +152,7 @@ class LocalFacialExtractor(nn.Module):
             nn.Linear(vit_dim, vit_dim * num_id_token),
         )
 
-    def forward(self, id_embeds: torch.Tensor, vit_hidden_states: List[torch.Tensor]) -> torch.Tensor:
+    def forward(self, id_embeds: torch.Tensor, vit_hidden_states: list[torch.Tensor]) -> torch.Tensor:
         # Repeat latent queries for the batch size
         latents = self.latents.repeat(id_embeds.size(0), 1, 1)
 
@@ -277,7 +277,7 @@ class ConsisIDBlock(nn.Module):
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         final_dropout: bool = True,
-        ff_inner_dim: Optional[int] = None,
+        ff_inner_dim: int | None = None,
         ff_bias: bool = True,
         attention_out_bias: bool = True,
     ):
@@ -314,8 +314,8 @@ class ConsisIDBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         text_seq_length = encoder_hidden_states.size(1)
 
         # norm & modulate
@@ -465,7 +465,7 @@ class ConsisIDTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAd
         num_attention_heads: int = 30,
         attention_head_dim: int = 64,
         in_channels: int = 16,
-        out_channels: Optional[int] = 16,
+        out_channels: int | None = 16,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         time_embed_dim: int = 512,
@@ -624,14 +624,14 @@ class ConsisIDTransformer3DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAd
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        timestep: Union[int, float, torch.LongTensor],
-        timestep_cond: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        id_cond: Optional[torch.Tensor] = None,
-        id_vit_hidden: Optional[torch.Tensor] = None,
+        timestep: int | float | torch.LongTensor,
+        timestep_cond: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        id_cond: torch.Tensor | None = None,
+        id_vit_hidden: torch.Tensor | None = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)

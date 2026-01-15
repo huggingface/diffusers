@@ -416,9 +416,9 @@ def get_args():
 class VideoDataset(Dataset):
     def __init__(
         self,
-        instance_data_root: Optional[str] = None,
-        dataset_name: Optional[str] = None,
-        dataset_config_name: Optional[str] = None,
+        instance_data_root: str | None = None,
+        dataset_name: str | None = None,
+        dataset_config_name: str | None = None,
         caption_column: str = "text",
         video_column: str = "video",
         height: int = 480,
@@ -428,8 +428,8 @@ class VideoDataset(Dataset):
         max_num_frames: int = 49,
         skip_frames_start: int = 0,
         skip_frames_end: int = 0,
-        cache_dir: Optional[str] = None,
-        id_token: Optional[str] = None,
+        cache_dir: str | None = None,
+        id_token: str | None = None,
     ) -> None:
         super().__init__()
 

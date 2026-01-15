@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -104,7 +104,7 @@ class GlmImageAdaLayerNormZero(nn.Module):
 
     def forward(
         self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         dtype = hidden_states.dtype
         norm_hidden_states = self.norm(hidden_states).to(dtype=dtype)
         norm_encoder_hidden_states = self.norm_context(encoder_hidden_states).to(dtype=dtype)
@@ -148,7 +148,7 @@ class GlmImageLayerKVCache:
     def __init__(self):
         self.k_cache = None
         self.v_cache = None
-        self.mode: Optional[str] = None  # "write", "read", "skip"
+        self.mode: str | None = None  # "write", "read", "skip"
 
     def store(self, k: torch.Tensor, v: torch.Tensor):
         if self.k_cache is None:
@@ -186,7 +186,7 @@ class GlmImageKVCache:
     def __getitem__(self, layer_idx: int) -> GlmImageLayerKVCache:
         return self.caches[layer_idx]
 
-    def set_mode(self, mode: Optional[str]):
+    def set_mode(self, mode: str):
         if mode is not None and mode not in ["write", "read", "skip"]:
             raise ValueError(f"Invalid mode: {mode}, must be one of 'write', 'read', 'skip'")
         for cache in self.caches:
@@ -218,10 +218,10 @@ class GlmImageAttnProcessor:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        kv_cache: Optional[GlmImageLayerKVCache] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        kv_cache: GlmImageLayerKVCache | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         dtype = encoder_hidden_states.dtype
 
         batch_size, text_seq_length, embed_dim = encoder_hidden_states.shape
@@ -330,14 +330,12 @@ class GlmImageTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[
-            Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]
-        ] = None,
-        attention_mask: Optional[Dict[str, torch.Tensor]] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        kv_cache: Optional[GlmImageLayerKVCache] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        temb: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]] | None = None,
+        attention_mask: dict[str, torch.Tensor] | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        kv_cache: GlmImageLayerKVCache | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # 1. Timestep conditioning
         (
             norm_hidden_states,
@@ -388,7 +386,7 @@ class GlmImageRotaryPosEmbed(nn.Module):
         self.patch_size = patch_size
         self.theta = theta
 
-    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, height, width = hidden_states.shape
         height, width = height // self.patch_size, width // self.patch_size
 
@@ -553,14 +551,12 @@ class GlmImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         timestep: torch.LongTensor,
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-        attention_mask: Optional[torch.Tensor] = None,
-        kv_caches: Optional[GlmImageKVCache] = None,
-        image_rotary_emb: Optional[
-            Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]
-        ] = None,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+        attention_mask: torch.Tensor | None = None,
+        kv_caches: GlmImageKVCache | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]] | None = None,
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         batch_size, num_channels, height, width = hidden_states.shape
 
         # 1. RoPE

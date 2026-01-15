@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -234,7 +233,7 @@ def split_tensor_along_last_dim(
     tensor: torch.Tensor,
     num_partitions: int,
     contiguous_split_chunks: bool = False,
-) -> List[torch.Tensor]:
+) -> list[torch.Tensor]:
     """Split a tensor along its last dimension.
 
     Arguments:
@@ -566,8 +565,8 @@ class GLMTransformer(torch.nn.Module):
         attention_mask,
         rotary_pos_emb,
         kv_caches=None,
-        use_cache: Optional[bool] = True,
-        output_hidden_states: Optional[bool] = False,
+        use_cache: bool | None = True,
+        output_hidden_states: bool | None = False,
     ):
         if not kv_caches:
             kv_caches = [None for _ in range(self.num_layers)]
@@ -799,14 +798,14 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
     def forward(
         self,
         input_ids,
-        position_ids: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.BoolTensor] = None,
-        full_attention_mask: Optional[torch.BoolTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        use_cache: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+        position_ids: torch.Tensor | None = None,
+        attention_mask: torch.BoolTensor | None = None,
+        full_attention_mask: torch.BoolTensor | None = None,
+        past_key_values: tuple[tuple[torch.Tensor, torch.Tensor], ...] | None = None,
+        inputs_embeds: torch.Tensor | None = None,
+        use_cache: bool | None = None,
+        output_hidden_states: bool | None = None,
+        return_dict: bool | None = None,
     ):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states

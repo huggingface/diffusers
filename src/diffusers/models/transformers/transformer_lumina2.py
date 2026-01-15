@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -58,7 +58,7 @@ class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
 
     def forward(
         self, hidden_states: torch.Tensor, timestep: torch.Tensor, encoder_hidden_states: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         timestep_proj = self.time_proj(timestep).type_as(hidden_states)
         time_embed = self.timestep_embedder(timestep_proj)
         caption_embed = self.caption_embedder(encoder_hidden_states)
@@ -80,9 +80,9 @@ class Lumina2AttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        base_sequence_length: Optional[int] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        base_sequence_length: int | None = None,
     ) -> torch.Tensor:
         batch_size, sequence_length, _ = hidden_states.shape
 
@@ -202,7 +202,7 @@ class Lumina2TransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
         image_rotary_emb: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if self.modulation:
             norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
@@ -231,7 +231,7 @@ class Lumina2TransformerBlock(nn.Module):
 
 
 class Lumina2RotaryPosEmbed(nn.Module):
-    def __init__(self, theta: int, axes_dim: List[int], axes_lens: List[int] = (300, 512, 512), patch_size: int = 2):
+    def __init__(self, theta: int, axes_dim: list[int], axes_lens: list[int] = (300, 512, 512), patch_size: int = 2):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
@@ -240,7 +240,7 @@ class Lumina2RotaryPosEmbed(nn.Module):
 
         self.freqs_cis = self._precompute_freqs_cis(axes_dim, axes_lens, theta)
 
-    def _precompute_freqs_cis(self, axes_dim: List[int], axes_lens: List[int], theta: int) -> List[torch.Tensor]:
+    def _precompute_freqs_cis(self, axes_dim: list[int], axes_lens: list[int], theta: int) -> list[torch.Tensor]:
         freqs_cis = []
         freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
         for i, (d, e) in enumerate(zip(axes_dim, axes_lens)):
@@ -368,18 +368,18 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         sample_size: int = 128,
         patch_size: int = 2,
         in_channels: int = 16,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         hidden_size: int = 2304,
         num_layers: int = 26,
         num_refiner_layers: int = 2,
         num_attention_heads: int = 24,
         num_kv_heads: int = 8,
         multiple_of: int = 256,
-        ffn_dim_multiplier: Optional[float] = None,
+        ffn_dim_multiplier: float | None = None,
         norm_eps: float = 1e-5,
         scaling_factor: float = 1.0,
-        axes_dim_rope: Tuple[int, int, int] = (32, 32, 32),
-        axes_lens: Tuple[int, int, int] = (300, 512, 512),
+        axes_dim_rope: tuple[int, int, int] = (32, 32, 32),
+        axes_lens: tuple[int, int, int] = (300, 512, 512),
         cap_feat_dim: int = 1024,
     ) -> None:
         super().__init__()
@@ -461,9 +461,9 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> torch.Tensor | Transformer2DModelOutput:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)

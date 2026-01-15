@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -34,8 +34,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class FluxControlNetOutput(BaseOutput):
-    controlnet_block_samples: Tuple[torch.Tensor]
-    controlnet_single_block_samples: Tuple[torch.Tensor]
+    controlnet_block_samples: tuple[torch.Tensor]
+    controlnet_single_block_samples: tuple[torch.Tensor]
 
 
 class FluxControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
@@ -53,7 +53,7 @@ class FluxControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
-        axes_dims_rope: List[int] = [16, 56, 56],
+        axes_dims_rope: list[int] = [16, 56, 56],
         num_mode: int = None,
         conditioning_embedding_channels: int = None,
     ):
@@ -162,9 +162,9 @@ class FluxControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
+    ) -> torch.FloatTensor | Transformer2DModelOutput:
         """
         The [`FluxTransformer2DModel`] forward method.
 
@@ -344,7 +344,7 @@ class FluxMultiControlNetModel(ModelMixin):
     compatible with `FluxControlNetModel`.
 
     Args:
-        controlnets (`List[FluxControlNetModel]`):
+        controlnets (`list[FluxControlNetModel]`):
             Provides additional conditioning to the unet during the denoising process. You must set multiple
             `FluxControlNetModel` as a list.
     """
@@ -356,18 +356,18 @@ class FluxMultiControlNetModel(ModelMixin):
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-        controlnet_cond: List[torch.tensor],
-        controlnet_mode: List[torch.tensor],
-        conditioning_scale: List[float],
+        controlnet_cond: list[torch.tensor],
+        controlnet_mode: list[torch.tensor],
+        conditioning_scale: list[float],
         encoder_hidden_states: torch.Tensor = None,
         pooled_projections: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[FluxControlNetOutput, Tuple]:
+    ) -> FluxControlNetOutput | tuple:
         # ControlNet-Union with multiple conditions
         # only load one ControlNet for saving memories
         if len(self.nets) == 1:

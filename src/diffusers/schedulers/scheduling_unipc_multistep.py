@@ -16,7 +16,7 @@
 # The codebase is modified based on https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
 
 import math
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -201,8 +201,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
-        beta_schedule: Literal["linear", "scaled_linear", "squaredcos_cap_v2"] = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        beta_schedule: str = "linear",
+        trained_betas: np.ndarray | list[float] | None = None,
         solver_order: int = 2,
         prediction_type: Literal["epsilon", "sample", "v_prediction", "flow_prediction"] = "epsilon",
         thresholding: bool = False,
@@ -211,21 +211,21 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         predict_x0: bool = True,
         solver_type: Literal["bh1", "bh2"] = "bh2",
         lower_order_final: bool = True,
-        disable_corrector: List[int] = [],
-        solver_p: Optional[SchedulerMixin] = None,
-        use_karras_sigmas: Optional[bool] = False,
-        use_exponential_sigmas: Optional[bool] = False,
-        use_beta_sigmas: Optional[bool] = False,
-        use_flow_sigmas: Optional[bool] = False,
-        flow_shift: Optional[float] = 1.0,
+        disable_corrector: list[int] = [],
+        solver_p: SchedulerMixin = None,
+        use_karras_sigmas: bool = False,
+        use_exponential_sigmas: bool = False,
+        use_beta_sigmas: bool = False,
+        use_flow_sigmas: bool = False,
+        flow_shift: float = 1.0,
         timestep_spacing: Literal["linspace", "leading", "trailing"] = "linspace",
         steps_offset: int = 0,
-        final_sigmas_type: Optional[Literal["zero", "sigma_min"]] = "zero",
+        final_sigmas_type: Literal["zero", "sigma_min"] = "zero",
         rescale_betas_zero_snr: bool = False,
         use_dynamic_shifting: bool = False,
         time_shift_type: Literal["exponential"] = "exponential",
-        sigma_min: Optional[float] = None,
-        sigma_max: Optional[float] = None,
+        sigma_min: float | None = None,
+        sigma_max: float | None = None,
     ) -> None:
         if self.config.use_beta_sigmas and not is_scipy_available():
             raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
@@ -288,14 +288,14 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
-    def step_index(self) -> Optional[int]:
+    def step_index(self) -> int:
         """
         The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
 
     @property
-    def begin_index(self) -> Optional[int]:
+    def begin_index(self) -> int:
         """
         The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
         """
@@ -312,9 +312,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(
-        self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None, mu: Optional[float] = None
-    ) -> None:
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None, mu: float | None = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -528,7 +526,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         return t
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
-    def _sigma_to_alpha_sigma_t(self, sigma: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _sigma_to_alpha_sigma_t(self, sigma: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Convert sigma values to alpha_t and sigma_t values.
 
@@ -537,7 +535,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 The sigma value(s) to convert.
 
         Returns:
-            `Tuple[torch.Tensor, torch.Tensor]`:
+            `tuple[torch.Tensor, torch.Tensor]`:
                 A tuple containing (alpha_t, sigma_t) values.
         """
         if self.config.use_flow_sigmas:
@@ -1011,9 +1009,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         return x_t
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
-    def index_for_timestep(
-        self, timestep: Union[int, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
-    ) -> int:
+    def index_for_timestep(self, timestep: int | torch.Tensor, schedule_timesteps: torch.Tensor | None = None) -> int:
         """
         Find the index for a given timestep in the schedule.
 
@@ -1046,7 +1042,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         return step_index
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
-    def _init_step_index(self, timestep: Union[int, torch.Tensor]) -> None:
+    def _init_step_index(self, timestep: int | torch.Tensor) -> None:
         """
         Initialize the step_index counter for the scheduler.
 
@@ -1065,10 +1061,10 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the multistep UniPC.

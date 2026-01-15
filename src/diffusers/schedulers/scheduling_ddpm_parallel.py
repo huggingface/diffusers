@@ -16,7 +16,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -43,7 +43,7 @@ class DDPMParallelSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -199,11 +199,9 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
-        beta_schedule: Literal["linear", "scaled_linear", "squaredcos_cap_v2", "sigmoid"] = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
-        variance_type: Literal[
-            "fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"
-        ] = "fixed_small",
+        beta_schedule: str = "linear",
+        trained_betas: np.ndarray | list[float] | None = None,
+        variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: Literal["epsilon", "sample", "v_prediction"] = "epsilon",
         thresholding: bool = False,
@@ -252,7 +250,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         self.variance_type = variance_type
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.scale_model_input
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -272,9 +270,9 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.set_timesteps
     def set_timesteps(
         self,
-        num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
-        timesteps: Optional[List[int]] = None,
+        num_inference_steps: int = None,
+        device: str | torch.device = None,
+        timesteps: list[int] | None = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -285,7 +283,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
                 `timesteps` must be `None`.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps is used. If `timesteps` is passed,
                 `num_inference_steps` must be `None`.
@@ -348,10 +346,11 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
     def _get_variance(
         self,
         t: int,
-        predicted_variance: Optional[torch.Tensor] = None,
-        variance_type: Optional[
-            Literal["fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"]
-        ] = None,
+        predicted_variance: torch.Tensor | None = None,
+        variance_type: Literal[
+            "fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"
+        ]
+        | None = None,
     ) -> torch.Tensor:
         """
         Compute the variance for a given timestep according to the specified variance type.
@@ -460,7 +459,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[DDPMParallelSchedulerOutput, Tuple]:
+    ) -> DDPMParallelSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -555,7 +554,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
     def batch_step_no_noise(
         self,
         model_output: torch.Tensor,
-        timesteps: List[int],
+        timesteps: list[int],
         sample: torch.Tensor,
     ) -> torch.Tensor:
         """
@@ -568,7 +567,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             model_output (`torch.Tensor`): direct output from learned diffusion model.
-            timesteps (`List[int]`):
+            timesteps (`list[int]`):
                 current discrete timesteps in the diffusion chain. This is now a list of integers.
             sample (`torch.Tensor`):
                 current instance of sample being created by diffusion process.

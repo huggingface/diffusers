@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Tuple
 
 import torch
 
@@ -47,7 +46,7 @@ class QwenImageLoopBeforeDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "latents",
@@ -77,7 +76,7 @@ class QwenImageEditLoopBeforeDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "latents",
@@ -106,7 +105,7 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
     model_name = "qwenimage"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -126,7 +125,7 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "control_image_latents",
@@ -142,7 +141,7 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
             InputParam(
                 "controlnet_keep",
                 required=True,
-                type_hint=List[float],
+                type_hint=list[float],
                 description="The controlnet keep values to use for the denoising process. Can be generated in prepare_controlnet_inputs step.",
             ),
             InputParam(
@@ -203,7 +202,7 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -215,7 +214,7 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("attention_kwargs"),
             InputParam(
@@ -237,7 +236,7 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
             InputParam(
                 "img_shapes",
                 required=True,
-                type_hint=List[Tuple[int, int]],
+                type_hint=list[tuple[int, int]],
                 description="The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.",
             ),
         ]
@@ -303,7 +302,7 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -315,7 +314,7 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("attention_kwargs"),
             InputParam(
@@ -337,7 +336,7 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
             InputParam(
                 "img_shapes",
                 required=True,
-                type_hint=List[Tuple[int, int]],
+                type_hint=list[tuple[int, int]],
                 description="The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.",
             ),
         ]
@@ -407,13 +406,13 @@ class QwenImageLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents."),
         ]
@@ -448,7 +447,7 @@ class QwenImageLoopAfterDenoiserInpaint(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "mask",
@@ -506,13 +505,13 @@ class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         )
 
     @property
-    def loop_expected_components(self) -> List[ComponentSpec]:
+    def loop_expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
 
     @property
-    def loop_inputs(self) -> List[InputParam]:
+    def loop_inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "timesteps",
