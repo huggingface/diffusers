@@ -147,6 +147,7 @@ CHECKPOINT_KEY_NAMES = {
         "net.pos_embedder.dim_spatial_range",
     ],
     "flux2": ["model.diffusion_model.single_stream_modulation.lin.weight", "single_stream_modulation.lin.weight"],
+    "ltx2": ["model.diffusion_model.av_ca_a2v_gate_adaln_single.emb.timestep_embedder.linear_1.weight"],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -228,6 +229,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "z-image-turbo-controlnet": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union"},
     "z-image-turbo-controlnet-2.0": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.0"},
     "z-image-turbo-controlnet-2.1": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.1"},
+    "ltx2-dev": {"pretrained_model_name_or_path": "Lightricks/LTX-2"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -795,6 +797,9 @@ def infer_diffusers_model_type(checkpoint):
 
     elif CHECKPOINT_KEY_NAMES["z-image-turbo-controlnet"] in checkpoint:
         model_type = "z-image-turbo-controlnet"
+
+    elif CHECKPOINT_KEY_NAMES["ltx2"] in checkpoint:
+        model_type = "ltx2-dev"
 
     else:
         model_type = "v1"
@@ -3920,3 +3925,76 @@ def convert_z_image_controlnet_checkpoint_to_diffusers(checkpoint, config, **kwa
         return converted_state_dict
     else:
         raise ValueError("Unknown Z-Image Turbo ControlNet type.")
+
+
+def convert_ltx2_transformer_to_diffusers(checkpoint, **kwargs):
+    LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT = {
+        # Transformer prefix
+        "model.diffusion_model.": "",
+        # Input Patchify Projections
+        "patchify_proj": "proj_in",
+        "audio_patchify_proj": "audio_proj_in",
+        # Modulation Parameters
+        # Handle adaln_single --> time_embed, audioln_single --> audio_time_embed separately as the original keys are
+        # substrings of the other modulation parameters below
+        "av_ca_video_scale_shift_adaln_single": "av_cross_attn_video_scale_shift",
+        "av_ca_a2v_gate_adaln_single": "av_cross_attn_video_a2v_gate",
+        "av_ca_audio_scale_shift_adaln_single": "av_cross_attn_audio_scale_shift",
+        "av_ca_v2a_gate_adaln_single": "av_cross_attn_audio_v2a_gate",
+        # Transformer Blocks
+        # Per-Block Cross Attention Modulation Parameters
+        "scale_shift_table_a2v_ca_video": "video_a2v_cross_attn_scale_shift_table",
+        "scale_shift_table_a2v_ca_audio": "audio_a2v_cross_attn_scale_shift_table",
+        # Attention QK Norms
+        "q_norm": "norm_q",
+        "k_norm": "norm_k",
+    }
+
+    def update_state_dict_inplace(state_dict, old_key: str, new_key: str) -> None:
+        state_dict[new_key] = state_dict.pop(old_key)
+
+    def remove_keys_inplace(key: str, state_dict) -> None:
+        state_dict.pop(key)
+
+    def convert_ltx2_transformer_adaln_single(key: str, state_dict) -> None:
+        # Skip if not a weight, bias
+        if ".weight" not in key and ".bias" not in key:
+            return
+
+        if key.startswith("adaln_single."):
+            new_key = key.replace("adaln_single.", "time_embed.")
+            param = state_dict.pop(key)
+            state_dict[new_key] = param
+
+        if key.startswith("audio_adaln_single."):
+            new_key = key.replace("audio_adaln_single.", "audio_time_embed.")
+            param = state_dict.pop(key)
+            state_dict[new_key] = param
+
+        return
+
+    LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP = {
+        "video_embeddings_connector": remove_keys_inplace,
+        "audio_embeddings_connector": remove_keys_inplace,
+        "adaln_single": convert_ltx2_transformer_adaln_single,
+    }
+
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    # Handle official code --> diffusers key remapping via the remap dict
+    for key in list(converted_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+
+        update_state_dict_inplace(converted_state_dict, key, new_key)
+
+    # Handle any special logic which can't be expressed by a simple 1:1 remapping with the handlers in
+    # special_keys_remap
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
