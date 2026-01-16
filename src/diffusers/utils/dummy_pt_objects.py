@@ -257,6 +257,21 @@ class SmoothedEnergyGuidanceConfig(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class TaylorSeerCacheConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 def apply_faster_cache(*args, **kwargs):
     requires_backends(apply_faster_cache, ["torch"])
 
@@ -271,6 +286,10 @@ def apply_layer_skip(*args, **kwargs):
 
 def apply_pyramid_attention_broadcast(*args, **kwargs):
     requires_backends(apply_pyramid_attention_broadcast, ["torch"])
+
+
+def apply_taylorseer_cache(*args, **kwargs):
+    requires_backends(apply_taylorseer_cache, ["torch"])
 
 
 class AllegroTransformer3DModel(metaclass=DummyObject):
@@ -469,6 +488,36 @@ class AutoencoderKLHunyuanVideo(metaclass=DummyObject):
 
 
 class AutoencoderKLHunyuanVideo15(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class AutoencoderKLLTX2Audio(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class AutoencoderKLLTX2Video(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -933,6 +982,21 @@ class FluxTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class GlmImageTransformer2DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class HiDreamImageTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1113,6 +1177,36 @@ class LatteTransformer3DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class LongCatImageTransformer2DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class LTX2VideoTransformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class LTXVideoTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1234,6 +1328,21 @@ class MultiControlNetModel(metaclass=DummyObject):
 
 
 class OmniGenTransformer2DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class OvisImageTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -1714,6 +1823,21 @@ class WanTransformer3DModel(metaclass=DummyObject):
 
 
 class WanVACETransformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class ZImageControlNetModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -2556,6 +2680,21 @@ class KDPM2DiscreteScheduler(metaclass=DummyObject):
 
 
 class LCMScheduler(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class LTXEulerAncestralRFScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

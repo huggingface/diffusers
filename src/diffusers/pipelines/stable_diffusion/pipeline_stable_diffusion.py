@@ -989,8 +989,11 @@ class StableDiffusionPipeline(
             )
 
         # 4. Prepare timesteps
+        timestep_device = device
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
         timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, sigmas
+            self.scheduler, num_inference_steps, timestep_device, timesteps, sigmas
         )
 
         # 5. Prepare latent variables
@@ -1093,6 +1096,8 @@ class StableDiffusionPipeline(
             do_denormalize = [True] * image.shape[0]
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
+        if XLA_AVAILABLE:
+            xm.mark_step()
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload all models
