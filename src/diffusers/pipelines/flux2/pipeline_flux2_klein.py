@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL
 import torch
-from transformers import AutoProcessor, Mistral3ForConditionalGeneration
+from transformers import Qwen2TokenizerFast, Qwen3ForCausalLM
 
 from ...loaders import Flux2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
@@ -28,7 +28,6 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import Flux2ImageProcessor
 from .pipeline_output import Flux2PipelineOutput
-from .system_messages import SYSTEM_MESSAGE, SYSTEM_MESSAGE_UPSAMPLING_I2I, SYSTEM_MESSAGE_UPSAMPLING_T2I
 
 
 if is_torch_xla_available():
@@ -45,117 +44,22 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import Flux2Pipeline
+        >>> from diffusers import Flux2KleinPipeline
 
-        >>> pipe = Flux2Pipeline.from_pretrained("black-forest-labs/FLUX.2-dev", torch_dtype=torch.bfloat16)
+        >>> pipe = Flux2KleinPipeline.from_pretrained(
+        ...     "black-forest-labs/FLUX.2-klein-base-9B", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=50, guidance_scale=2.5).images[0]
-        >>> image.save("flux.png")
+        >>> image = pipe(prompt, num_inference_steps=50, guidance_scale=4.0).images[0]
+        >>> image.save("flux2_output.png")
         ```
 """
 
-UPSAMPLING_MAX_IMAGE_SIZE = 768**2
 
-
-# Adapted from
-# https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/text_encoder.py#L68
-def format_input(
-    prompts: List[str],
-    system_message: str = SYSTEM_MESSAGE,
-    images: Optional[Union[List[PIL.Image.Image], List[List[PIL.Image.Image]]]] = None,
-):
-    """
-    Format a batch of text prompts into the conversation format expected by apply_chat_template. Optionally, add images
-    to the input.
-
-    Args:
-        prompts: List of text prompts
-        system_message: System message to use (default: CREATIVE_SYSTEM_MESSAGE)
-        images (optional): List of images to add to the input.
-
-    Returns:
-        List of conversations, where each conversation is a list of message dicts
-    """
-    # Remove [IMG] tokens from prompts to avoid Pixtral validation issues
-    # when truncation is enabled. The processor counts [IMG] tokens and fails
-    # if the count changes after truncation.
-    cleaned_txt = [prompt.replace("[IMG]", "") for prompt in prompts]
-
-    if images is None or len(images) == 0:
-        return [
-            [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": system_message}],
-                },
-                {"role": "user", "content": [{"type": "text", "text": prompt}]},
-            ]
-            for prompt in cleaned_txt
-        ]
-    else:
-        assert len(images) == len(prompts), "Number of images must match number of prompts"
-        messages = [
-            [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": system_message}],
-                },
-            ]
-            for _ in cleaned_txt
-        ]
-
-        for i, (el, images) in enumerate(zip(messages, images)):
-            # optionally add the images per batch element.
-            if images is not None:
-                el.append(
-                    {
-                        "role": "user",
-                        "content": [{"type": "image", "image": image_obj} for image_obj in images],
-                    }
-                )
-            # add the text.
-            el.append(
-                {
-                    "role": "user",
-                    "content": [{"type": "text", "text": cleaned_txt[i]}],
-                }
-            )
-
-        return messages
-
-
-# Adapted from
-# https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/text_encoder.py#L49C5-L66C19
-def _validate_and_process_images(
-    images: List[List[PIL.Image.Image]] | List[PIL.Image.Image],
-    image_processor: Flux2ImageProcessor,
-    upsampling_max_image_size: int,
-) -> List[List[PIL.Image.Image]]:
-    # Simple validation: ensure it's a list of PIL images or list of lists of PIL images
-    if not images:
-        return []
-
-    # Check if it's a list of lists or a list of images
-    if isinstance(images[0], PIL.Image.Image):
-        # It's a list of images, convert to list of lists
-        images = [[im] for im in images]
-
-    # potentially concatenate multiple images to reduce the size
-    images = [[image_processor.concatenate_images(img_i)] if len(img_i) > 1 else img_i for img_i in images]
-
-    # cap the pixels
-    images = [
-        [image_processor._resize_if_exceeds_area(img_i, upsampling_max_image_size) for img_i in img_i]
-        for img_i in images
-    ]
-    return images
-
-
-# Taken from
-# https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/sampling.py#L251
+# Copied from diffusers.pipelines.flux2.pipeline_flux2.compute_empirical_mu
 def compute_empirical_mu(image_seq_len: int, num_steps: int) -> float:
     a1, b1 = 8.73809524e-05, 1.89833333
     a2, b2 = 0.00016927, 0.45666666
@@ -248,9 +152,9 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
+class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     r"""
-    The Flux2 pipeline for text-to-image generation.
+    The Flux2 klein pipeline for text-to-image generation.
 
     Reference: [https://bfl.ai/blog/flux-2](https://bfl.ai/blog/flux-2)
 
@@ -261,11 +165,11 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLFlux2`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`Mistral3ForConditionalGeneration`]):
-            [Mistral3ForConditionalGeneration](https://huggingface.co/docs/transformers/en/model_doc/mistral3#transformers.Mistral3ForConditionalGeneration)
-        tokenizer (`AutoProcessor`):
+        text_encoder ([`Qwen3ForCausalLM`]):
+            [Qwen3ForCausalLM](https://huggingface.co/docs/transformers/en/model_doc/qwen3#transformers.Qwen3ForCausalLM)
+        tokenizer (`Qwen2TokenizerFast`):
             Tokenizer of class
-            [PixtralProcessor](https://huggingface.co/docs/transformers/en/model_doc/pixtral#transformers.PixtralProcessor).
+            [Qwen2TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/qwen2#transformers.Qwen2TokenizerFast).
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -275,9 +179,10 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKLFlux2,
-        text_encoder: Mistral3ForConditionalGeneration,
-        tokenizer: AutoProcessor,
+        text_encoder: Qwen3ForCausalLM,
+        tokenizer: Qwen2TokenizerFast,
         transformer: Flux2Transformer2DModel,
+        is_distilled: bool = False,
     ):
         super().__init__()
 
@@ -288,6 +193,9 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             scheduler=scheduler,
             transformer=transformer,
         )
+
+        self.register_to_config(is_distilled=is_distilled)
+
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
@@ -295,45 +203,45 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         self.tokenizer_max_length = 512
         self.default_sample_size = 128
 
-        self.system_message = SYSTEM_MESSAGE
-        self.system_message_upsampling_t2i = SYSTEM_MESSAGE_UPSAMPLING_T2I
-        self.system_message_upsampling_i2i = SYSTEM_MESSAGE_UPSAMPLING_I2I
-        self.upsampling_max_image_size = UPSAMPLING_MAX_IMAGE_SIZE
-
     @staticmethod
-    def _get_mistral_3_small_prompt_embeds(
-        text_encoder: Mistral3ForConditionalGeneration,
-        tokenizer: AutoProcessor,
+    def _get_qwen3_prompt_embeds(
+        text_encoder: Qwen3ForCausalLM,
+        tokenizer: Qwen2TokenizerFast,
         prompt: Union[str, List[str]],
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         max_sequence_length: int = 512,
-        system_message: str = SYSTEM_MESSAGE,
-        hidden_states_layers: List[int] = (10, 20, 30),
+        hidden_states_layers: List[int] = (9, 18, 27),
     ):
         dtype = text_encoder.dtype if dtype is None else dtype
         device = text_encoder.device if device is None else device
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
-        # Format input messages
-        messages_batch = format_input(prompts=prompt, system_message=system_message)
+        all_input_ids = []
+        all_attention_masks = []
 
-        # Process all messages at once
-        inputs = tokenizer.apply_chat_template(
-            messages_batch,
-            add_generation_prompt=False,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt",
-            padding="max_length",
-            truncation=True,
-            max_length=max_sequence_length,
-        )
+        for single_prompt in prompt:
+            messages = [{"role": "user", "content": single_prompt}]
+            text = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
+            inputs = tokenizer(
+                text,
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=max_sequence_length,
+            )
 
-        # Move to device
-        input_ids = inputs["input_ids"].to(device)
-        attention_mask = inputs["attention_mask"].to(device)
+            all_input_ids.append(inputs["input_ids"])
+            all_attention_masks.append(inputs["attention_mask"])
+
+        input_ids = torch.cat(all_input_ids, dim=0).to(device)
+        attention_mask = torch.cat(all_attention_masks, dim=0).to(device)
 
         # Forward pass through the model
         output = text_encoder(
@@ -353,6 +261,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return prompt_embeds
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_text_ids
     def _prepare_text_ids(
         x: torch.Tensor,  # (B, L, D) or (L, D)
         t_coord: Optional[torch.Tensor] = None,
@@ -372,6 +281,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return torch.stack(out_ids)
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_latent_ids
     def _prepare_latent_ids(
         latents: torch.Tensor,  # (B, C, H, W)
     ):
@@ -404,6 +314,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return latent_ids
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_image_ids
     def _prepare_image_ids(
         image_latents: List[torch.Tensor],  # [(1, C, H, W), (1, C, H, W), ...]
         scale: int = 10,
@@ -454,6 +365,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return image_latent_ids
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._patchify_latents
     def _patchify_latents(latents):
         batch_size, num_channels_latents, height, width = latents.shape
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
@@ -462,6 +374,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._unpatchify_latents
     def _unpatchify_latents(latents):
         batch_size, num_channels_latents, height, width = latents.shape
         latents = latents.reshape(batch_size, num_channels_latents // (2 * 2), 2, 2, height, width)
@@ -470,6 +383,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._pack_latents
     def _pack_latents(latents):
         """
         pack latents: (batch_size, num_channels, height, width) -> (batch_size, height * width, num_channels)
@@ -481,6 +395,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._unpack_latents_with_ids
     def _unpack_latents_with_ids(x: torch.Tensor, x_ids: torch.Tensor) -> list[torch.Tensor]:
         """
         using position ids to scatter tokens into place
@@ -506,68 +421,6 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         return torch.stack(x_list, dim=0)
 
-    def upsample_prompt(
-        self,
-        prompt: Union[str, List[str]],
-        images: Union[List[PIL.Image.Image], List[List[PIL.Image.Image]]] = None,
-        temperature: float = 0.15,
-        device: torch.device = None,
-    ) -> List[str]:
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-        device = self.text_encoder.device if device is None else device
-
-        # Set system message based on whether images are provided
-        if images is None or len(images) == 0 or images[0] is None:
-            system_message = SYSTEM_MESSAGE_UPSAMPLING_T2I
-        else:
-            system_message = SYSTEM_MESSAGE_UPSAMPLING_I2I
-
-        # Validate and process the input images
-        if images:
-            images = _validate_and_process_images(images, self.image_processor, self.upsampling_max_image_size)
-
-        # Format input messages
-        messages_batch = format_input(prompts=prompt, system_message=system_message, images=images)
-
-        # Process all messages at once
-        # with image processing a too short max length can throw an error in here.
-        inputs = self.tokenizer.apply_chat_template(
-            messages_batch,
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt",
-            padding="max_length",
-            truncation=True,
-            max_length=2048,
-        )
-
-        # Move to device
-        inputs["input_ids"] = inputs["input_ids"].to(device)
-        inputs["attention_mask"] = inputs["attention_mask"].to(device)
-
-        if "pixel_values" in inputs:
-            inputs["pixel_values"] = inputs["pixel_values"].to(device, self.text_encoder.dtype)
-
-        # Generate text using the model's generate method
-        generated_ids = self.text_encoder.generate(
-            **inputs,
-            max_new_tokens=512,
-            do_sample=True,
-            temperature=temperature,
-            use_cache=True,
-        )
-
-        # Decode only the newly generated tokens (skip input tokens)
-        # Extract only the generated portion
-        input_length = inputs["input_ids"].shape[1]
-        generated_tokens = generated_ids[:, input_length:]
-
-        upsampled_prompt = self.tokenizer.tokenizer.batch_decode(
-            generated_tokens, skip_special_tokens=True, clean_up_tokenization_spaces=True
-        )
-        return upsampled_prompt
-
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -575,7 +428,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         max_sequence_length: int = 512,
-        text_encoder_out_layers: Tuple[int] = (10, 20, 30),
+        text_encoder_out_layers: Tuple[int] = (9, 18, 27),
     ):
         device = device or self._execution_device
 
@@ -585,13 +438,12 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
         if prompt_embeds is None:
-            prompt_embeds = self._get_mistral_3_small_prompt_embeds(
+            prompt_embeds = self._get_qwen3_prompt_embeds(
                 text_encoder=self.text_encoder,
                 tokenizer=self.tokenizer,
                 prompt=prompt,
                 device=device,
                 max_sequence_length=max_sequence_length,
-                system_message=self.system_message,
                 hidden_states_layers=text_encoder_out_layers,
             )
 
@@ -603,6 +455,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         text_ids = text_ids.to(device)
         return prompt_embeds, text_ids
 
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if image.ndim != 4:
             raise ValueError(f"Expected image dims 4, got {image.ndim}.")
@@ -616,6 +469,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         return image_latents
 
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -649,6 +503,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         latents = self._pack_latents(latents)  # [B, C, H, W] -> [B, H*W, C]
         return latents, latent_ids
 
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline.prepare_image_latents
     def prepare_image_latents(
         self,
         images: List[torch.Tensor],
@@ -690,6 +545,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         width,
         prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
+        guidance_scale=None,
     ):
         if (
             height is not None
@@ -720,9 +576,16 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
+        if guidance_scale > 1.0 and self.config.is_distilled:
+            logger.warning(f"Guidance scale {guidance_scale} is ignored for step-wise distilled models.")
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
+
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1 and not self.config.is_distilled
 
     @property
     def attention_kwargs(self):
@@ -755,14 +618,14 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[Union[str, List[str]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        text_encoder_out_layers: Tuple[int] = (10, 20, 30),
-        caption_upsample_temperature: float = None,
+        text_encoder_out_layers: Tuple[int] = (9, 18, 27),
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -777,12 +640,13 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            guidance_scale (`float`, *optional*, defaults to 1.0):
-                Embedded guiddance scale is enabled by setting `guidance_scale` > 1. Higher `guidance_scale` encourages
-                a model to generate images more aligned with `prompt` at the expense of lower image quality.
-
-                Guidance-distilled models approximates true classifer-free guidance for `guidance_scale` > 1. Refer to
-                the [paper](https://huggingface.co/papers/2210.03142) to learn more.
+            guidance_scale (`float`, *optional*, defaults to 4.0):
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality. For step-wise distilled models,
+                `guidance_scale` is ignored.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -806,6 +670,9 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings. Note that "" is used as the negative prompt in this pipeline.
+                If not provided, will be generated from "".
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -827,9 +694,6 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
             text_encoder_out_layers (`Tuple[int]`):
                 Layer indices to use in the `text_encoder` to derive the final prompt embeddings.
-            caption_upsample_temperature (`float`):
-                When specified, we will try to perform caption upsampling for potentially improved outputs. We
-                recommend setting it to 0.15 if caption upsampling is to be performed.
 
         Examples:
 
@@ -846,6 +710,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             width=width,
             prompt_embeds=prompt_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            guidance_scale=guidance_scale,
         )
 
         self._guidance_scale = guidance_scale
@@ -864,10 +729,6 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         device = self._execution_device
 
         # 3. prepare text embeddings
-        if caption_upsample_temperature:
-            prompt = self.upsample_prompt(
-                prompt, images=image, temperature=caption_upsample_temperature, device=device
-            )
         prompt_embeds, text_ids = self.encode_prompt(
             prompt=prompt,
             prompt_embeds=prompt_embeds,
@@ -876,6 +737,19 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             max_sequence_length=max_sequence_length,
             text_encoder_out_layers=text_encoder_out_layers,
         )
+
+        if self.do_classifier_free_guidance:
+            negative_prompt = ""
+            if prompt is not None and isinstance(prompt, list):
+                negative_prompt = [negative_prompt] * len(prompt)
+            negative_prompt_embeds, negative_text_ids = self.encode_prompt(
+                prompt=negative_prompt,
+                prompt_embeds=negative_prompt_embeds,
+                device=device,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+                text_encoder_out_layers=text_encoder_out_layers,
+            )
 
         # 4. process images
         if image is not None and not isinstance(image, list):
@@ -944,10 +818,6 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        # handle guidance
-        guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
-        guidance = guidance.expand(latents.shape[0])
-
         # 7. Denoising loop
         # We set the index here to remove DtoH sync, helpful especially during compilation.
         # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
@@ -968,18 +838,34 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                     latent_model_input = torch.cat([latents, image_latents], dim=1).to(self.transformer.dtype)
                     latent_image_ids = torch.cat([latent_ids, image_latent_ids], dim=1)
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,  # (B, image_seq_len, C)
-                    timestep=timestep / 1000,
-                    guidance=guidance,
-                    encoder_hidden_states=prompt_embeds,
-                    txt_ids=text_ids,  # B, text_seq_len, 4
-                    img_ids=latent_image_ids,  # B, image_seq_len, 4
-                    joint_attention_kwargs=self.attention_kwargs,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,  # (B, image_seq_len, C)
+                        timestep=timestep / 1000,
+                        guidance=None,
+                        encoder_hidden_states=prompt_embeds,
+                        txt_ids=text_ids,  # B, text_seq_len, 4
+                        img_ids=latent_image_ids,  # B, image_seq_len, 4
+                        joint_attention_kwargs=self.attention_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 noise_pred = noise_pred[:, : latents.size(1) :]
+
+                if self.do_classifier_free_guidance:
+                    with self.transformer.cache_context("uncond"):
+                        neg_noise_pred = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=timestep / 1000,
+                            guidance=None,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            txt_ids=negative_text_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=self._attention_kwargs,
+                            return_dict=False,
+                        )[0]
+                    neg_noise_pred = neg_noise_pred[:, : latents.size(1) :]
+                    noise_pred = neg_noise_pred + guidance_scale * (noise_pred - neg_noise_pred)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
@@ -1008,18 +894,17 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         self._current_timestep = None
 
+        latents = self._unpack_latents_with_ids(latents, latent_ids)
+
+        latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)
+        latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(
+            latents.device, latents.dtype
+        )
+        latents = latents * latents_bn_std + latents_bn_mean
+        latents = self._unpatchify_latents(latents)
         if output_type == "latent":
             image = latents
         else:
-            latents = self._unpack_latents_with_ids(latents, latent_ids)
-
-            latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)
-            latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(
-                latents.device, latents.dtype
-            )
-            latents = latents * latents_bn_std + latents_bn_mean
-            latents = self._unpatchify_latents(latents)
-
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
