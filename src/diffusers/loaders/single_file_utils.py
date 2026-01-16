@@ -802,7 +802,7 @@ def infer_diffusers_model_type(checkpoint):
     elif CHECKPOINT_KEY_NAMES["z-image-turbo-controlnet"] in checkpoint:
         model_type = "z-image-turbo-controlnet"
 
-    elif all(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ltx2"]):
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ltx2"]):
         model_type = "ltx2-dev"
 
     else:
@@ -4006,6 +4006,8 @@ def convert_ltx2_transformer_to_diffusers(checkpoint, **kwargs):
 
 def convert_ltx2_vae_to_diffusers(checkpoint, **kwargs):
     LTX_2_0_VIDEO_VAE_RENAME_DICT = {
+        # Video VAE prefix
+        "vae.": "",
         # Encoder
         "down_blocks.0": "down_blocks.0",
         "down_blocks.1": "down_blocks.0.downsamplers.0",
@@ -4059,5 +4061,29 @@ def convert_ltx2_vae_to_diffusers(checkpoint, **kwargs):
             if special_key not in key:
                 continue
             handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def convert_ltx2_audio_vae_to_diffusers(checkpoint, **kwargs):
+    LTX_2_0_AUDIO_VAE_RENAME_DICT = {
+        # Audio VAE prefix
+        "audio_vae.": "",
+        "per_channel_statistics.mean-of-means": "latents_mean",
+        "per_channel_statistics.std-of-means": "latents_std",
+    }
+
+    def update_state_dict_inplace(state_dict, old_key: str, new_key: str) -> None:
+        state_dict[new_key] = state_dict.pop(old_key)
+
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    # Handle official code --> diffusers key remapping via the remap dict
+    for key in list(converted_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in LTX_2_0_AUDIO_VAE_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+
+        update_state_dict_inplace(converted_state_dict, key, new_key)
 
     return converted_state_dict
