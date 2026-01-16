@@ -112,7 +112,8 @@ CHECKPOINT_KEY_NAMES = {
         "model.diffusion_model.transformer_blocks.27.scale_shift_table",
         "patchify_proj.weight",
         "transformer_blocks.27.scale_shift_table",
-        "vae.per_channel_statistics.mean-of-means",
+        "vae.decoder.last_scale_shift_table",  # 0.9.1, 0.9.5, 0.9.7, 0.9.8
+        "vae.decoder.up_blocks.9.res_blocks.0.conv1.conv.weight",  # 0.9.0
     ],
     "autoencoder-dc": "decoder.stages.1.op_list.0.main.conv.conv.bias",
     "autoencoder-dc-sana": "encoder.project_in.conv.bias",
