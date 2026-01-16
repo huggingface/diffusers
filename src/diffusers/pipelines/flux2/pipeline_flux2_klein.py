@@ -154,9 +154,10 @@ def retrieve_latents(
 
 class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     r"""
-    The Flux2 klein pipeline for text-to-image generation.
+    The Flux2 Klein pipeline for text-to-image generation.
 
-    Reference: [https://bfl.ai/blog/flux-2](https://bfl.ai/blog/flux-2)
+    Reference:
+    [https://bfl.ai/blog/flux2-klein-towards-interactive-visual-intelligence](https://bfl.ai/blog/flux2-klein-towards-interactive-visual-intelligence)
 
     Args:
         transformer ([`Flux2Transformer2DModel`]):
