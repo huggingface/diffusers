@@ -147,7 +147,11 @@ CHECKPOINT_KEY_NAMES = {
         "net.pos_embedder.dim_spatial_range",
     ],
     "flux2": ["model.diffusion_model.single_stream_modulation.lin.weight", "single_stream_modulation.lin.weight"],
-    "ltx2": ["model.diffusion_model.av_ca_a2v_gate_adaln_single.emb.timestep_embedder.linear_1.weight"],
+    "ltx2": [
+        "model.diffusion_model.av_ca_a2v_gate_adaln_single.emb.timestep_embedder.linear_1.weight",
+        "vae.per_channel_statistics.mean-of-means",
+        "audio_vae.per_channel_statistics.mean-of-means",
+    ],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -798,7 +802,7 @@ def infer_diffusers_model_type(checkpoint):
     elif CHECKPOINT_KEY_NAMES["z-image-turbo-controlnet"] in checkpoint:
         model_type = "z-image-turbo-controlnet"
 
-    elif CHECKPOINT_KEY_NAMES["ltx2"] in checkpoint:
+    elif all(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ltx2"]):
         model_type = "ltx2-dev"
 
     else:
@@ -3993,6 +3997,65 @@ def convert_ltx2_transformer_to_diffusers(checkpoint, **kwargs):
     # special_keys_remap
     for key in list(converted_state_dict.keys()):
         for special_key, handler_fn_inplace in LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def convert_ltx2_vae_to_diffusers(checkpoint, **kwargs):
+    LTX_2_0_VIDEO_VAE_RENAME_DICT = {
+        # Encoder
+        "down_blocks.0": "down_blocks.0",
+        "down_blocks.1": "down_blocks.0.downsamplers.0",
+        "down_blocks.2": "down_blocks.1",
+        "down_blocks.3": "down_blocks.1.downsamplers.0",
+        "down_blocks.4": "down_blocks.2",
+        "down_blocks.5": "down_blocks.2.downsamplers.0",
+        "down_blocks.6": "down_blocks.3",
+        "down_blocks.7": "down_blocks.3.downsamplers.0",
+        "down_blocks.8": "mid_block",
+        # Decoder
+        "up_blocks.0": "mid_block",
+        "up_blocks.1": "up_blocks.0.upsamplers.0",
+        "up_blocks.2": "up_blocks.0",
+        "up_blocks.3": "up_blocks.1.upsamplers.0",
+        "up_blocks.4": "up_blocks.1",
+        "up_blocks.5": "up_blocks.2.upsamplers.0",
+        "up_blocks.6": "up_blocks.2",
+        # Common
+        # For all 3D ResNets
+        "res_blocks": "resnets",
+        "per_channel_statistics.mean-of-means": "latents_mean",
+        "per_channel_statistics.std-of-means": "latents_std",
+    }
+
+    def update_state_dict_inplace(state_dict, old_key: str, new_key: str) -> None:
+        state_dict[new_key] = state_dict.pop(old_key)
+
+    def remove_keys_inplace(key: str, state_dict) -> None:
+        state_dict.pop(key)
+
+    LTX_2_0_VAE_SPECIAL_KEYS_REMAP = {
+        "per_channel_statistics.channel": remove_keys_inplace,
+        "per_channel_statistics.mean-of-stds": remove_keys_inplace,
+    }
+
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    # Handle official code --> diffusers key remapping via the remap dict
+    for key in list(converted_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in LTX_2_0_VIDEO_VAE_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+
+        update_state_dict_inplace(converted_state_dict, key, new_key)
+
+    # Handle any special logic which can't be expressed by a simple 1:1 remapping with the handlers in
+    # special_keys_remap
+    for key in list(converted_state_dict.keys()):
+        for special_key, handler_fn_inplace in LTX_2_0_VAE_SPECIAL_KEYS_REMAP.items():
             if special_key not in key:
                 continue
             handler_fn_inplace(key, converted_state_dict)

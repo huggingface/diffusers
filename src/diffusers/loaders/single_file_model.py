@@ -41,6 +41,7 @@ from .single_file_utils import (
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
     convert_ltx2_transformer_to_diffusers,
+    convert_ltx2_vae_to_diffusers,
     convert_ltx_transformer_checkpoint_to_diffusers,
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
@@ -180,6 +181,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "LTX2VideoTransformer3DModel": {
         "checkpoint_mapping_fn": convert_ltx2_transformer_to_diffusers,
         "default_subfolder": "transformer",
+    },
+    "AutoencoderKLLTX2Video": {
+        "checkpoint_mapping_fn": convert_ltx2_vae_to_diffusers,
+        "default_subfolder": "vae",
     },
 }
 
