@@ -740,9 +740,8 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             encoder_hidden_states = self.crossattn_proj(encoder_hidden_states)
 
         controlnet_block_index_map = {}
-        if block_controlnet_hidden_states:
+        if block_controlnet_hidden_states is not None:
             n_blocks = len(self.transformer_blocks)
-            # TODO: don't use a dict?
             controlnet_block_index_map = {
                 block_idx: block_controlnet_hidden_states[idx]
                 for idx, block_idx in list(enumerate(range(0, n_blocks, self.config.controlnet_block_every_n)))[0:self.config.n_controlnet_blocks]

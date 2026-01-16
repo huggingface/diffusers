@@ -8,16 +8,13 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
 from ..modeling_utils import ModelMixin
-from ..transformers.transformer_cosmos import CosmosPatchEmbed
+from ..transformers.transformer_cosmos import (
+    CosmosPatchEmbed,
+)
 from .controlnet import zero_module
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-@dataclass
-class CosmosControlNetOutput(BaseOutput):
-    block_controlnet_hidden_states: Tuple[torch.Tensor]
 
 
 class CosmosControlNetBlock(nn.Module):
@@ -82,7 +79,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         conditioning_scale: Union[float, List[float]] = 1.0,
         return_dict: bool = True,
-    ) -> Union[Tuple[Tuple[torch.Tensor, ...]], CosmosControlNetOutput]:
+    ) -> List[torch.Tensor]:
         del hidden_states, timestep, encoder_hidden_states  # not used in this minimal control path
 
         control_hidden_states = self.patch_embed(controlnet_cond)
@@ -90,8 +87,4 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         scales = self._expand_conditioning_scale(conditioning_scale)
         control_residuals = tuple(block(control_hidden_states) * scale for block, scale in zip(self.control_blocks, scales))
-
-        if not return_dict:
-            return (control_residuals,)
-
-        return CosmosControlNetOutput(block_controlnet_hidden_states=control_residuals)
+        return control_residuals
