@@ -1,0 +1,961 @@
+checkpoint:
+  broadcast_via_filesystem: 'False'
+  dcp_allow_mismatched_size: 'False'
+  dcp_async_mode_enabled: 'False'
+  enable_gcs_patch_in_boto3: 'False'
+  jit:
+    device: cuda
+    dtype: bfloat16
+    enabled: 'False'
+    input_shape: null
+    strict: 'True'
+  keys_not_to_resume: []
+  load_ema_to_reg: 'False'
+  load_from_object_store:
+    bucket: checkpoints-us-east-1
+    credentials: credentials/s3_checkpoint.secret
+    enabled: 'True'
+  load_path: ''
+  load_training_state: 'False'
+  only_load_scheduler_state: 'False'
+  save_iter: '1000'
+  save_to_object_store:
+    bucket: checkpoints-us-east-1
+    credentials: credentials/s3_checkpoint.secret
+    enabled: 'True'
+  strict_resume: 'False'
+  type:
+    _target_: <class 'projects.cosmos.predict2.checkpointer.dcp.DistributedCheckpointer'>
+    callbacks: null
+    disable_async: 'False'
+  verbose: 'True'
+dataloader_train:
+  _target_: <class 'projects.cosmos.predict2.datasets.joint_dataloader.IterativeJointDataLoader'>
+  dataloaders:
+    image_data:
+      dataloader:
+        _target_: <function get_cached_replay_dataloader at 0x7bca94fdd5a0>
+        batch_size: '2'
+        cache_augment_fn: null
+        cache_replay_name: image_dataloader
+        cache_size: '32'
+        concat_size: '1'
+        dataset:
+          _target_: <function get_image_dataset at 0x7bca94578d30>
+          augmentor_name: image_basic_augmentor
+          caption_type: ai_v3p1
+          dataset_name: cosmos_pretrain_20241108_image_whole
+          dataset_resolution_type: all
+          detshuffle: 'False'
+          embedding_type: t5_xxl
+          is_train: 'True'
+          object_store: s3
+          resolution: '720'
+        num_workers: '8'
+        persistent_workers: 'False'
+        pin_memory: 'True'
+        prefetch_factor: '4'
+        sampler: null
+        use_cache: 'False'
+        webdataset: 'True'
+      ratio: '0'
+    video_data:
+      dataloader:
+        _target_: <function get_cached_replay_dataloader at 0x7bca94fdd5a0>
+        batch_size: '1'
+        cache_augment_fn: functools.partial(<function duplicate_batches_random at
+          0x7bca94fdd000>, n=1.8)
+        cache_replay_name: video_dataloader
+        cache_size: '32'
+        concat_size: '1'
+        dataset:
+          _target_: <function get_video_dataset at 0x7bca94edacb0>
+          augmentor_name: video_basic_augmentor_v2_with_control_and_image_context
+          caption_type: t2w_qwen2p5_7b
+          chunk_size: '256'
+          control_input_type: edge
+          dataset_loading_keys: []
+          dataset_name: cosmos_transfer2_high_quality_v3p1_20250714_video_whole
+          dataset_resolution_type: gt720p
+          detshuffle: 'False'
+          edge_t_lower: null
+          edge_t_upper: null
+          embedding_type: null
+          is_train: 'True'
+          long_caption_ratio: '7'
+          max_fps_thres: '60'
+          medium_caption_ratio: '2'
+          min_fps_thres: '10'
+          num_control_inputs_prob:
+          - '1.0'
+          - '0.0'
+          - '0.0'
+          - '0.0'
+          num_video_frames: '93'
+          object_store: s3
+          resolution: '720'
+          short_caption_ratio: '1'
+          use_control_mask_prob: '0.0'
+          use_native_fps: 'True'
+          user_caption_ratio: '90'
+          video_decoder_name: video_naive_bytes
+        num_workers: '4'
+        persistent_workers: 'False'
+        pin_memory: 'True'
+        prefetch_factor: '2'
+        sampler: null
+        use_cache: 'False'
+        webdataset: 'True'
+      ratio: '1'
+    video_data_1:
+      dataloader:
+        _target_: <function get_cached_replay_dataloader at 0x7bca94fdd5a0>
+        batch_size: '6'
+        cache_augment_fn: functools.partial(<function duplicate_batches_random at
+          0x7bca94fdd000>, n=1.8)
+        cache_replay_name: video_dataloader
+        cache_size: '32'
+        concat_size: '1'
+        dataset:
+          _target_: <function get_video_dataset at 0x7bca94edacb0>
+          augmentor_name: video_basic_augmentor_v2_with_control_and_image_context
+          caption_type: t2w_qwen2p5_7b
+          chunk_size: '256'
+          control_input_type: edge
+          dataset_loading_keys: []
+          dataset_name: cosmos_transfer2_high_quality_v3p1_20250714_video_whole
+          dataset_resolution_type: gt720p
+          detshuffle: 'False'
+          edge_t_lower: null
+          edge_t_upper: null
+          embedding_type: null
+          is_train: 'True'
+          long_caption_ratio: '7'
+          max_fps_thres: '60'
+          medium_caption_ratio: '2'
+          min_fps_thres: '10'
+          num_control_inputs_prob:
+          - '1.0'
+          - '0.0'
+          - '0.0'
+          - '0.0'
+          num_video_frames: '1'
+          object_store: s3
+          resolution: '720'
+          short_caption_ratio: '1'
+          use_control_mask_prob: '0.0'
+          use_native_fps: 'True'
+          user_caption_ratio: '90'
+          video_decoder_name: video_naive_bytes
+        num_workers: '4'
+        persistent_workers: 'False'
+        pin_memory: 'True'
+        prefetch_factor: '2'
+        sampler: null
+        use_cache: 'False'
+        webdataset: 'True'
+      ratio: '1'
+  dataset:
+    augmentor_name: video_basic_augmentor_v2_with_control
+    caption_type: t2w_qwen2p5_7b
+    control_input_type: edge
+    dataset_resolution_type: gt720p
+    embedding_type: null
+    max_fps_thres: '60'
+    min_fps_thres: '10'
+    num_video_frames: '93'
+    resolution: '720'
+    use_native_fps: 'True'
+    video_decoder_name: video_naive_bytes
+  num_workers: '4'
+dataloader_val:
+  _target_: <class 'projects.cosmos.predict2.datasets.joint_dataloader.IterativeJointDataLoader'>
+  dataloaders:
+    image_data:
+      dataloader:
+        _target_: <function get_cached_replay_dataloader at 0x7bca94fdd5a0>
+        batch_size: '2'
+        cache_augment_fn: null
+        cache_replay_name: image_dataloader
+        cache_size: '32'
+        concat_size: '1'
+        dataset:
+          _target_: <function get_image_dataset at 0x7bca94fdd750>
+          len_t5: '512'
+          resolution: '512'
+          t5_dim: '1024'
+        num_workers: '8'
+        pin_memory: 'True'
+        shuffle: 'False'
+        use_cache: 'False'
+        webdataset: 'False'
+      ratio: '1'
+    video_data:
+      dataloader:
+        _target_: <function get_cached_replay_dataloader at 0x7bca94fdd5a0>
+        batch_size: '1'
+        cache_augment_fn: null
+        cache_replay_name: video_dataloader
+        cache_size: '32'
+        concat_size: '1'
+        dataset:
+          _target_: <function get_video_dataset at 0x7bca94fdd900>
+          len_t5: '512'
+          num_video_frames: '136'
+          resolution: '512'
+          t5_dim: '1024'
+        num_workers: '8'
+        pin_memory: 'True'
+        shuffle: 'False'
+        use_cache: 'False'
+        webdataset: 'False'
+      ratio: '1'
+defaults:
+- _self_
+- data_train: mock
+- data_val: mock
+- optimizer: fusedadamw
+- scheduler: lambdalinear
+- model: ddp
+- callbacks: basic
+- net: null
+- conditioner: video_prediction_control_conditioner
+- ema: power
+- tokenizer: wan2pt1_tokenizer
+- checkpoint: s3
+- ckpt_type: dummy
+- experiment: null
+job:
+  cluster: null
+  group: vid2vid_2B_control
+  name: vid2vid_2B_control_720p_t24_control_layer4_cr1pt1_embedding_rectified_flow_with_image_context_with_image_data
+  project: cosmos_transfer2
+  wandb_mode: online
+model:
+  _recursive_: 'False'
+  _target_: <class 'projects.cosmos.transfer2.models.vid2vid_model_control_vace_rectified_flow.ControlVideo2WorldModelRectifiedFlow'>
+  config:
+    base_load_from:
+      credentials: credentials/s3_checkpoint.secret
+      load_path: checkpoints-us-east-1/cosmos_diffusion_v2/official_runs_text2world/Stage-c_pt_4-reason_embeddings-v1p1-Index-26-Size-2B-Res-720-Fps-16-Note-T2V_high_sigma_loss_reweighted_1_1_rectified_flow_only/checkpoints/iter_000037000
+    conditional_frame_timestep: -1.0
+    conditional_frames_probs:
+      0: 0.4
+      1: 0.4
+      2: 0.2
+    conditioner:
+      _target_: <class 'projects.cosmos.transfer2.configs.vid2vid_transfer.defaults.conditioner.ControlVideo2WorldConditionerImageContext'>
+      control_input_depth:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: control_input_depth
+        output_key: control_input_depth
+      control_input_depth_mask:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: control_input_depth_mask
+        output_key: control_input_depth_mask
+      control_input_edge:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: control_input_edge
+        output_key: control_input_edge
+      control_input_edge_mask:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: control_input_edge_mask
+        output_key: control_input_edge_mask
+      control_input_inpaint:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: control_input_inpaint
+        output_key: control_input_inpaint
+      control_input_inpaint_mask:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: control_input_inpaint_mask
+        output_key: control_input_inpaint_mask
+      control_input_seg:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: control_input_seg
+        output_key: control_input_seg
+      control_input_seg_mask:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: control_input_seg_mask
+        output_key: control_input_seg_mask
+      control_input_vis:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: control_input_vis
+        output_key: control_input_vis
+      control_input_vis_mask:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: control_input_vis_mask
+        output_key: control_input_vis_mask
+      fps:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: fps
+        output_key: fps
+      padding_mask:
+        _target_: <class 'projects.cosmos.predict2.conditioner.ReMapkey'>
+        dropout_rate: '0.0'
+        dtype: null
+        input_key: padding_mask
+        output_key: padding_mask
+      reference_image_context:
+        _target_: <class 'projects.cosmos.transfer2.networks.siglip2_image_context.SigLip2EmbImgContext'>
+        dropout_rate: '0.0'
+        input_key:
+        - images
+        - video
+        - image_context
+        num_token: '256'
+        output_key: null
+      text:
+        _target_: <class 'projects.cosmos.predict2.conditioner.TextAttr'>
+        credential_path: credentials/s3_training.secret
+        dropout_rate: '0.2'
+        empty_string_embeddings_path: s3://nv-cosmos-zu-videos/predict2_assets/reason1_empty_string_embeddings.pt
+        input_key:
+        - t5_text_embeddings
+        use_empty_string: 'False'
+      use_video_condition:
+        _target_: <class 'projects.cosmos.predict2.conditioner.BooleanFlag'>
+        dropout_rate: '0.0'
+        input_key: fps
+        output_key: use_video_condition
+    conditioning_strategy: frame_replace
+    copy_weight_strategy: first_n
+    denoise_replace_gt_frames: true
+    ema:
+      enabled: true
+      iteration_shift: 0
+      rate: 0.1
+    fsdp_shard_size: 8
+    high_sigma_ratio: 0.05
+    high_sigma_timesteps_max: 1000
+    high_sigma_timesteps_min: 980
+    hint_keys: edge
+    init_lora_weights: true
+    input_caption_key: ai_caption
+    input_data_key: video
+    input_image_key: images
+    lora_alpha: 32
+    lora_rank: 32
+    lora_target_modules: q_proj,k_proj,v_proj,output_proj,mlp.layer1,mlp.layer2
+    max_num_conditional_frames: 2
+    min_num_conditional_frames: 0
+    net:
+      _target_: <class 'projects.cosmos.transfer2.networks.minimal_v4_lvg_dit_control_vace.MinimalV4LVGControlVaceDiT'>
+      adaln_lora_dim: '256'
+      atten_backend: minimal_a2a
+      concat_padding_mask: 'True'
+      condition_strategy: spaced
+      crossattn_emb_channels: '1024'
+      crossattn_proj_in_channels: '100352'
+      extra_image_context_dim: '1152'
+      extra_per_block_abs_pos_emb: 'False'
+      img_context_deep_proj: 'False'
+      in_channels: '16'
+      max_frames: '128'
+      max_img_h: '240'
+      max_img_w: '240'
+      mlp_ratio: '4.0'
+      model_channels: '2048'
+      num_blocks: '28'
+      num_control_branches: '1'
+      num_heads: '16'
+      num_max_modalities: '8'
+      out_channels: '16'
+      patch_spatial: '2'
+      patch_temporal: '1'
+      pos_emb_cls: rope3d
+      pos_emb_interpolation: crop
+      pos_emb_learnable: 'True'
+      rope_enable_fps_modulation: 'False'
+      rope_h_extrapolation_ratio: '3.0'
+      rope_t_extrapolation_ratio: '1.0'
+      rope_w_extrapolation_ratio: '3.0'
+      sac_config:
+        every_n_blocks: 1
+        mode: predict2_2b_720_aggressive
+      separate_embedders: 'False'
+      share_q_in_i2v_cross_attn: 'False'
+      spatial_compression_factor: '8'
+      timestep_scale: '0.001'
+      use_adaln_lora: 'True'
+      use_after_proj_for_multi_branch: 'True'
+      use_crossattn_projection: 'True'
+      use_cuda_graphs: 'False'
+      use_input_hint_block: 'False'
+      use_wan_fp32_strategy: 'True'
+      vace_block_every_n: '7'
+      vace_has_mask: 'False'
+    precision: bfloat16
+    resolution: '720'
+    shift: 5
+    state_ch: 16
+    state_t: 24
+    text_encoder_class: reason1p1_7B
+    text_encoder_config:
+      ckpt_path: s3://checkpoints-us-east-1/cosmos_reasoning1/sft_exp700/sft_exp721-1_qwen7b_tl_721_5vs5_s3_balanced_n32_resume_16k/checkpoints/iter_000016000/model/
+      compute_online: true
+      embedding_concat_strategy: full_concat
+      model_config:
+        _target_: <class 'projects.cosmos.predict2.text_encoders.reason1.QwenVLBaseModel'>
+        model_config:
+          _target_: projects.cosmos.reason1.configs.default.model_config_qwen.QwenModelConfig
+          activation_checkpoint:
+            mode: selective
+            models: vlm
+            selective_ac_option: op
+          add_answer_tag: 'True'
+          add_cross_attention: 'False'
+          add_image_start_end_tag: 'False'
+          add_tile_tag: 'False'
+          architectures:
+          - Qwen2_5_VLForConditionalGeneration
+          attention_dropout: '0.0'
+          attn_implementation: flash_attention_2
+          attn_implementation_autoset: 'True'
+          aux_loss_coeff: '0.0'
+          bad_words_ids: null
+          begin_suppress_tokens: null
+          bos_token_id: '151643'
+          cache_dir: null
+          checkpoint:
+            async_mode: disabled
+            create_seed_checkpoint: false
+            enable_checkpoint: false
+            export_dtype: float32
+            folder: checkpoint
+            interval: 500
+            interval_type: steps
+            model_weights_only: false
+          chunk_size_feed_forward: '0'
+          ckpt_dir: null
+          ckpt_path: null
+          comm:
+            init_timeout_seconds: 300
+            trace_buf_size: 20000
+            train_timeout_seconds: 100
+          cp_size: null
+          cross_attention_hidden_size: null
+          decoder_start_token_id: null
+          deterministic: 'False'
+          diversity_penalty: '0.0'
+          do_sample: 'False'
+          early_stopping: 'False'
+          encoder_no_repeat_ngram_size: '0'
+          eos_token_id: '151645'
+          ep_size: null
+          experimental:
+            enable_async_tensor_parallel: false
+            enable_compiled_autograd: false
+            pipeline_parallel_degree: 1
+          exponential_decay_length_penalty: null
+          finetuning_task: null
+          float8:
+            enable_float8_linear: false
+          forced_bos_token_id: null
+          forced_eos_token_id: null
+          freeze_llm: 'False'
+          freeze_mm_projector: 'False'
+          freeze_vision_encoder: 'False'
+          fsdp_enabled: 'False'
+          hidden_act: silu
+          hidden_size: '3584'
+          id2label:
+            0: LABEL_0
+            1: LABEL_1
+          image_token_id: '151655'
+          initializer_range: '0.02'
+          intermediate_size: '18944'
+          is_decoder: 'False'
+          is_encoder_decoder: 'False'
+          label2id:
+            LABEL_0: '0'
+            LABEL_1: '1'
+          length_penalty: '1.0'
+          loss_per_token: 'True'
+          max_batch_size: '1'
+          max_length: '20'
+          max_position_embeddings: '128000'
+          max_seq_len: '128000'
+          max_window_layers: '28'
+          min_length: '0'
+          mm_projector: null
+          model_type: qwen2_5_vl
+          name_or_path: Qwen/Qwen2.5-VL-7B-Instruct
+          no_repeat_ngram_size: '0'
+          num_attention_heads: '28'
+          num_beam_groups: '1'
+          num_beams: '1'
+          num_hidden_layers: '28'
+          num_key_value_heads: '4'
+          num_return_sequences: '1'
+          num_tiles: '1'
+          optimizer:
+            early_step_in_backward: false
+            end_lr: 2.5e-05
+            fused: false
+            init_lr: 1.0e-05
+            lr: 0.0003
+            lr_multiplier_llm: 1.0
+            lr_multiplier_mm_projector: 1.0
+            lr_multiplier_vision_encoder: 0.1
+            name: AdamW
+          output_attentions: 'False'
+          output_hidden_states: 'True'
+          output_scores: 'False'
+          pad_token_id: null
+          precision: bfloat16
+          prefix: null
+          prepend_padding: 'False'
+          problem_type: null
+          pruned_heads: _Nothing.NOTHING
+          remove_invalid_values: 'False'
+          repetition_penalty: '1.0'
+          return_dict: 'True'
+          return_dict_in_generate: 'False'
+          rms_norm_eps: 1e-06
+          rope_scaling:
+            mrope_section:
+            - '16'
+            - '24'
+            - '24'
+            rope_type: default
+            type: default
+          rope_theta: '1000000.0'
+          s3_credential_path: credentials/pbss_dir.secret
+          seed: '0'
+          sep_token_id: null
+          sliding_window: '32768'
+          suppress_tokens: null
+          task_specific_params: null
+          temperature: '1.0'
+          tf_legacy_loss: 'False'
+          tie_encoder_decoder: 'False'
+          tie_word_embeddings: 'False'
+          tile_tag_type: space_separated
+          tokenizer_class: null
+          tokenizer_type: Qwen/Qwen2.5-VL-7B-Instruct
+          top_k: '50'
+          top_p: '1.0'
+          torch_dtype: bfloat16
+          torchscript: 'False'
+          training:
+            compile: false
+            context_parallel_degree: 1
+            data_parallel_replicate_degree: 1
+            data_parallel_shard_degree: -1
+            disable_loss_parallel: false
+            enable_cpu_offload: false
+            fsdp_reshard_after_forward: default
+            mixed_precision_param: bfloat16
+            mixed_precision_reduce: float32
+            steps: 400000
+            tensor_parallel_degree: 1
+            use_cosine_decay: false
+            use_linear_decay: true
+            warmup_steps: 1000
+          training_seq_len: '4096'
+          transformers_version: 4.51.0.dev0
+          typical_p: '1.0'
+          use_bfloat16: 'False'
+          use_cache: 'False'
+          use_fsdp2: 'True'
+          use_return_dict: 'True'
+          use_rope_from_torchtitan: 'False'
+          use_sliding_window: 'False'
+          video_token_id: '151656'
+          vision_config:
+            _target_: projects.cosmos.reason1.configs.default.model_config_qwen.QwenVisionConfig
+            add_cross_attention: 'False'
+            architectures: null
+            attn_implementation: flash_attention_2
+            attn_implementation_autoset: 'True'
+            bad_words_ids: null
+            begin_suppress_tokens: null
+            bos_token_id: null
+            chunk_size_feed_forward: '0'
+            cross_attention_hidden_size: null
+            decoder_start_token_id: null
+            depth: '32'
+            diversity_penalty: '0.0'
+            do_sample: 'False'
+            early_stopping: 'False'
+            embed_dim: null
+            encoder_no_repeat_ngram_size: '0'
+            eos_token_id: null
+            exponential_decay_length_penalty: null
+            finetuning_task: null
+            forced_bos_token_id: null
+            forced_eos_token_id: null
+            fullatt_block_indexes:
+            - '7'
+            - '15'
+            - '23'
+            - '31'
+            hidden_act: silu
+            hidden_size: '1280'
+            id2label:
+              0: LABEL_0
+              1: LABEL_1
+            in_channels: '3'
+            in_chans: '3'
+            intermediate_size: '3420'
+            is_decoder: 'False'
+            is_encoder_decoder: 'False'
+            label2id:
+              LABEL_0: '0'
+              LABEL_1: '1'
+            length_penalty: '1.0'
+            max_length: '20'
+            min_length: '0'
+            mlp_ratio: null
+            model_type: qwen2_5_vl
+            name_or_path: ''
+            no_repeat_ngram_size: '0'
+            num_beam_groups: '1'
+            num_beams: '1'
+            num_heads: '16'
+            num_return_sequences: '1'
+            out_hidden_size: '3584'
+            output_attentions: 'False'
+            output_hidden_states: 'False'
+            output_scores: 'False'
+            pad_token_id: null
+            patch_size: '14'
+            prefix: null
+            problem_type: null
+            pruned_heads: _Nothing.NOTHING
+            remove_invalid_values: 'False'
+            repetition_penalty: '1.0'
+            return_dict: 'True'
+            return_dict_in_generate: 'False'
+            sep_token_id: null
+            spatial_merge_size: '2'
+            spatial_patch_size: '14'
+            suppress_tokens: null
+            task_specific_params: null
+            temperature: '1.0'
+            temporal_patch_size: '2'
+            tf_legacy_loss: 'False'
+            tie_encoder_decoder: 'False'
+            tie_word_embeddings: 'True'
+            tokenizer_class: null
+            tokens_per_second: '2'
+            top_k: '50'
+            top_p: '1.0'
+            torch_dtype: bfloat16
+            torchscript: 'False'
+            typical_p: '1.0'
+            use_bfloat16: 'False'
+            window_size: '112'
+          vision_encoder: openai/clip-vit-base-patch32
+          vision_encoder_config:
+            depth_init: true
+            dim: 1024
+            ffn_dim_multiplier: null
+            head_dim: null
+            hidden_act: null
+            hidden_dim: 4096
+            image_size: 1024
+            image_token_id: null
+            multiple_of: null
+            n_heads: 16
+            n_kv_heads: null
+            n_layers: 24
+            norm_eps: 1.0e-05
+            norm_type: rmsnorm
+            num_channels: 3
+            patch_size: 16
+            proj_bias: null
+            qkv_bias: null
+            rope_theta: 10000.0
+            use_cache: false
+            use_rope_from_torchtitan: false
+          vision_encoder_in_channels: '3'
+          vision_end_token_id: '151653'
+          vision_start_token_id: '151652'
+          vision_token_id: '151654'
+          vocab_size: '152064'
+          z_loss_coeff: '0.0'
+        tokenizer:
+          _target_: <function build_tokenizer at 0x7bcad5032830>
+          cache_dir: null
+          tokenizer_type: Qwen/Qwen2.5-VL-7B-Instruct
+      n_layers_per_group: 5
+      s3_credential_path: credentials/s3_checkpoint.secret
+    tokenizer:
+      _target_: <class 'projects.cosmos.predict2.tokenizers.wan2pt1.Wan2pt1VAEInterface'>
+      chunk_duration: '81'
+      load_mean_std: 'False'
+      name: wan2pt1_tokenizer
+      temporal_window: '16'
+    train_time_distribution: logitnormal
+    train_time_weight: reweighting
+    use_dora: false
+    use_dynamic_shift: false
+    use_high_sigma_strategy: false
+    use_kerras_sigma_at_inference: false
+    use_lora: false
+    use_reference_image: true
+    use_torch_compile: false
+model_parallel:
+  _cpu_offloading_context: null
+  async_tensor_model_parallel_allreduce: false
+  autocast_dtype: torch.float32
+  barrier_with_L1_time: true
+  batch_p2p_comm: true
+  batch_p2p_sync: true
+  bf16: false
+  context_parallel_size: 8
+  cpu_offloading: false
+  cpu_offloading_activations: true
+  cpu_offloading_double_buffering: false
+  cpu_offloading_num_layers: 0
+  cpu_offloading_weights: true
+  cross_entropy_fusion_impl: native
+  cross_entropy_loss_fusion: false
+  deallocate_pipeline_outputs: false
+  defer_embedding_wgrad_compute: false
+  delay_wgrad_compute: false
+  deterministic_mode: false
+  enable_autocast: false
+  expert_model_parallel_size: 1
+  expert_tensor_parallel_size: 1
+  finalize_model_grads_func: null
+  fp16: false
+  grad_scale_func: null
+  grad_sync_func: null
+  gradient_accumulation_fusion: false
+  hierarchical_context_parallel_sizes: null
+  microbatch_group_size_per_vp_stage: 1
+  moe_extended_tp: false
+  no_sync_func: null
+  num_microbatches_with_partial_activation_checkpoints: null
+  overlap_moe_expert_parallel_comm: false
+  overlap_p2p_comm: false
+  overlap_p2p_comm_warmup_flush: false
+  param_sync_func: null
+  params_dtype: torch.float32
+  perform_initialization: true
+  pipeline_dtype: null
+  pipeline_model_parallel_comm_backend: null
+  pipeline_model_parallel_size: 1
+  sequence_parallel: false
+  tensor_model_parallel_size: 1
+  timers: null
+  tp_comm_atomic_ag: false
+  tp_comm_atomic_rs: false
+  tp_comm_bootstrap_backend: nccl
+  tp_comm_bulk_dgrad: true
+  tp_comm_bulk_wgrad: true
+  tp_comm_overlap: false
+  tp_comm_overlap_ag: true
+  tp_comm_overlap_disable_fc1: false
+  tp_comm_overlap_disable_qkv: false
+  tp_comm_overlap_rs: true
+  tp_comm_overlap_rs_dgrad: false
+  tp_comm_split_ag: true
+  tp_comm_split_rs: true
+  use_cpu_initialization: false
+  use_ring_exchange_p2p: false
+  use_te_rng_tracker: false
+  variable_seq_lengths: false
+  virtual_pipeline_model_parallel_size: null
+  wgrad_deferral_limit: 0
+optimizer:
+  _target_: <function get_base_optimizer at 0x7bcad4d2d000>
+  betas:
+  - '0.9'
+  - '0.999'
+  eps: 1e-08
+  fused: 'True'
+  lr: '8.63e-05'
+  model: null
+  optim_type: adamw
+  weight_decay: '0.001'
+scheduler:
+  _target_: <class 'imaginaire.functional.lr_scheduler.LambdaLinearScheduler'>
+  cycle_lengths:
+  - '100000'
+  f_max:
+  - '0.5'
+  f_min:
+  - '0.2'
+  f_start:
+  - 1e-06
+  verbosity_interval: '0'
+  warm_up_steps:
+  - '100'
+trainer:
+  callbacks:
+    compile_tokenizer:
+      _target_: <class 'projects.cosmos.predict2.callbacks.compile_tokenizer.CompileTokenizer'>
+      compile_after_iterations: '4'
+      dynamic: 'False'
+      enabled: 'True'
+    dataloader_speed:
+      _target_: <class 'projects.cosmos.predict2.callbacks.dataloading_monitor.DetailedDataLoadingSpeedMonitor'>
+      every_n: '200'
+      save_s3: 'True'
+      step_size: '1'
+    device_monitor:
+      _target_: <class 'projects.cosmos.predict2.callbacks.device_monitor.DeviceMonitor'>
+      every_n: '200'
+      log_memory_detail: 'True'
+      save_s3: 'True'
+      step_size: '1'
+      upload_every_n_mul: '10'
+    every_n_sample_ema:
+      _target_: <class 'projects.cosmos.transfer2.callbacks.every_n_draw_sample.EveryNDrawSample'>
+      every_n: '5000'
+      fix_batch_fp: null
+      fps: '16'
+      guidance:
+      - '0'
+      - '3'
+      - '7'
+      is_ema: 'True'
+      is_sample: 'True'
+      is_x0: 'False'
+      n_sample_to_save: '128'
+      n_viz_sample: '3'
+      n_x0_level: '4'
+      num_sampling_step: '35'
+      save_s3: 'True'
+      show_all_frames: 'False'
+      step_size: '1'
+      use_negative_prompt: 'False'
+    every_n_sample_reg:
+      _target_: <class 'projects.cosmos.transfer2.callbacks.every_n_draw_sample.EveryNDrawSample'>
+      every_n: '5000'
+      fix_batch_fp: null
+      fps: '16'
+      guidance:
+      - '0'
+      - '3'
+      - '7'
+      is_ema: 'False'
+      is_sample: 'True'
+      is_x0: 'False'
+      n_sample_to_save: '128'
+      n_viz_sample: '3'
+      n_x0_level: '4'
+      num_sampling_step: '35'
+      save_s3: 'True'
+      show_all_frames: 'False'
+      step_size: '1'
+      use_negative_prompt: 'False'
+    frame_loss_log:
+      _target_: <class 'projects.cosmos.transfer2.callbacks.frame_loss_log.FrameLossLog'>
+      logging_iter_multipler: '1'
+      save_logging_iter_multipler: '10'
+      save_s3: 'True'
+    grad_clip:
+      _target_: <class 'projects.cosmos.predict2.callbacks.grad_clip.GradClip'>
+      clip_norm: '0.1'
+      force_finite: 'True'
+    heart_beat:
+      _target_: <class 'projects.cosmos.predict2.callbacks.heart_beat.HeartBeat'>
+      every_n: '10'
+      save_s3: 'True'
+      step_size: '1'
+      update_interval_in_minute: '20'
+    iter_speed:
+      _target_: <class 'projects.cosmos.predict2.callbacks.iter_speed.IterSpeed'>
+      every_n: '100'
+      hit_thres: '300'
+      save_s3: 'True'
+      save_s3_every_log_n: '10'
+    load_base_model:
+      _target_: <class 'projects.cosmos.transfer2.configs.vid2vid_transfer.defaults.callbacks.LoadBaseModel'>
+      config: null
+      trainer: null
+    low_prec:
+      _target_: <class 'imaginaire.utils.callback.LowPrecisionCallback'>
+      config: null
+      trainer: null
+      update_iter: '1'
+    manual_gc:
+      _target_: <class 'imaginaire.callbacks.manual_gc.ManualGarbageCollection'>
+      every_n: '200'
+      warm_up: '5'
+    wandb:
+      _target_: <class 'projects.cosmos.predict2.callbacks.wandb_log.WandbCallback'>
+      logging_iter_multipler: '1'
+      save_logging_iter_multipler: '10'
+      save_s3: 'True'
+    wandb_10x:
+      _target_: <class 'projects.cosmos.predict2.callbacks.wandb_log.WandbCallback'>
+      logging_iter_multipler: '10'
+      save_logging_iter_multipler: '1'
+      save_s3: 'True'
+  cudnn:
+    benchmark: 'True'
+    deterministic: 'False'
+  ddp:
+    broadcast_buffers: 'True'
+    find_unused_parameters: 'False'
+    static_graph: 'True'
+  distributed_parallelism: fsdp
+  grad_accum_iter: '1'
+  grad_scaler_args:
+    enabled: 'False'
+  logging_iter: '200'
+  max_iter: '100000'
+  max_val_iter: null
+  memory_format: torch.preserve_format
+  profiling:
+    enable_memory_snapshot: 'False'
+    enable_profiling: 'False'
+    profile_freq: '1'
+    profile_memory: 'False'
+    record_shape: 'False'
+    save_s3: 'False'
+    target_ranks:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    with_modules: 'True'
+    with_stack: 'True'
+  run_validation: 'False'
+  run_validation_on_start: 'False'
+  seed: '0'
+  straggler_detection:
+    analyze_backward: 'True'
+    analyze_dataloading: 'True'
+    analyze_forward: 'True'
+    analyze_optimizer: 'True'
+    enabled: 'True'
+    max_diff: '1.5'
+    profile_freq: '1'
+    raise_error: 'True'
+    report_freq: '100'
+  timeout_period: '999999999'
+  type: <class 'imaginaire.trainer.ImaginaireTrainer'>
+  validation_iter: '100'
+upload_reproducible_setup: 'True'

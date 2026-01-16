@@ -594,13 +594,19 @@ def convert_controlnet(transformer_type: str, state_dict: Dict[str, Any], weight
         raise AssertionError(f"{transformer_type} does not define a ControlNet config")
 
     PREFIX_KEY = "net."
+    old2new = {}
+    new2old = {}
     for key in list(state_dict.keys()):
         new_key = key[:]
         if new_key.startswith(PREFIX_KEY):
             new_key = new_key.removeprefix(PREFIX_KEY)
         for replace_key, rename_key in CONTROLNET_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
+        old2new[key] = new_key
+        new2old[new_key] = key
         update_state_dict_(state_dict, key, new_key)
+
+    breakpoint()
 
     for key in list(state_dict.keys()):
         for special_key, handler_fn_inplace in CONTROLNET_SPECIAL_KEYS_REMAP.items():
