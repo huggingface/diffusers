@@ -314,7 +314,6 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
         prompt_embeds, prompt_embeds_mask = slice_prompt_embeds_and_mask(
             prompt_embeds, prompt_embeds_mask, max_sequence_length
         )
-
         prompt_embeds, prompt_embeds_mask = repeat_prompt_embeds_and_mask(
             prompt_embeds, prompt_embeds_mask, num_images_per_prompt
         )
