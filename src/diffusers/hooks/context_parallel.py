@@ -258,9 +258,6 @@ class EquipartitionSharder:
     def shard(cls, tensor: torch.Tensor, dim: int, mesh: torch.distributed.device_mesh.DeviceMesh) -> torch.Tensor:
         # NOTE: the following assertion does not have to be true in general. We simply enforce it for now
         # because the alternate case has not yet been tested/required for any model.
-        assert tensor.size()[dim] % mesh.size() == 0, (
-            "Tensor size along dimension to be sharded must be divisible by mesh size"
-        )
 
         # The following is not fullgraph compatible with Dynamo (fails in DeviceMesh.get_rank)
         # return tensor.chunk(mesh.size(), dim=dim)[mesh.get_rank()]
