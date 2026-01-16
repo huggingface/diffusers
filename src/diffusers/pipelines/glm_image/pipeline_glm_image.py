@@ -36,7 +36,7 @@ from .pipeline_output import GlmImagePipelineOutput
 # Because it's not released in stable as of 13/01/2026. So this is just a proxy.
 GlmImageProcessor = ProcessorMixin
 GlmImageForConditionalGeneration = PreTrainedModel
-if is_transformers_version(">=", "4.57.4"):
+if is_transformers_version(">=", "5.0.0.dev0"):
     from transformers import GlmImageForConditionalGeneration, GlmImageProcessor
 
 
