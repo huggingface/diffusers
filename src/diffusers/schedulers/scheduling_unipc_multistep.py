@@ -430,7 +430,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
         elif self.config.use_flow_sigmas:
             if sigmas is None:
-                sigmas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps)
+                sigmas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)[:-1]
             if self.config.use_dynamic_shifting:
                 sigmas = self.time_shift(mu, 1.0, sigmas)
             else:
