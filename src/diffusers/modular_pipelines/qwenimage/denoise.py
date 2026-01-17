@@ -217,7 +217,7 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("attention_kwargs"),
+            InputParam.attention_kwargs(),
             InputParam(
                 "latents",
                 required=True,
@@ -230,10 +230,7 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
                 type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
-            InputParam(
-                kwargs_type="denoiser_input_fields",
-                description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
-            ),
+            InputParam.denoiser_input_fields(),
             InputParam(
                 "img_shapes",
                 required=True,
@@ -317,7 +314,7 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("attention_kwargs"),
+            InputParam.attention_kwargs(),
             InputParam(
                 "latents",
                 required=True,
@@ -330,10 +327,7 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
                 type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
-            InputParam(
-                kwargs_type="denoiser_input_fields",
-                description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
-            ),
+            InputParam.denoiser_input_fields(),
             InputParam(
                 "img_shapes",
                 required=True,
@@ -415,7 +409,7 @@ class QwenImageLoopAfterDenoiser(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents."),
+            OutputParam.latents(),
         ]
 
     @torch.no_grad()
