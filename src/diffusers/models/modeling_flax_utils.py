@@ -113,14 +113,14 @@ class FlaxModelMixin(PushToHubMixin):
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # load model
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> # By default, the model parameters will be in fp32 precision, to cast these to bfloat16 precision
         >>> params = model.to_bf16(params)
         >>> # If you don't want to cast certain parameters (for example layer norm bias and scale)
         >>> # then pass the mask as follows
         >>> from flax import traverse_util
 
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> flat_params = traverse_util.flatten_dict(params)
         >>> mask = {
         ...     path: (path[-2] != ("LayerNorm", "bias") and path[-2:] != ("LayerNorm", "scale"))
@@ -149,7 +149,7 @@ class FlaxModelMixin(PushToHubMixin):
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # Download model and configuration from huggingface.co
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> # By default, the model params will be in fp32, to illustrate the use of this method,
         >>> # we'll first cast to fp16 and back to fp32
         >>> params = model.to_f16(params)
@@ -179,14 +179,14 @@ class FlaxModelMixin(PushToHubMixin):
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # load model
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> # By default, the model params will be in fp32, to cast these to float16
         >>> params = model.to_fp16(params)
         >>> # If you want don't want to cast certain parameters (for example layer norm bias and scale)
         >>> # then pass the mask as follows
         >>> from flax import traverse_util
 
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> flat_params = traverse_util.flatten_dict(params)
         >>> mask = {
         ...     path: (path[-2] != ("LayerNorm", "bias") and path[-2:] != ("LayerNorm", "scale"))
@@ -216,8 +216,8 @@ class FlaxModelMixin(PushToHubMixin):
             pretrained_model_name_or_path (`str` or `os.PathLike`):
                 Can be either:
 
-                    - A string, the *model id* (for example `runwayml/stable-diffusion-v1-5`) of a pretrained model
-                      hosted on the Hub.
+                    - A string, the *model id* (for example `stable-diffusion-v1-5/stable-diffusion-v1-5`) of a
+                      pretrained model hosted on the Hub.
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       using [`~FlaxModelMixin.save_pretrained`].
             dtype (`jax.numpy.dtype`, *optional*, defaults to `jax.numpy.float32`):
@@ -271,7 +271,7 @@ class FlaxModelMixin(PushToHubMixin):
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # Download model and configuration from huggingface.co and cache.
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5")
         >>> # Model was saved using *save_pretrained('./test/saved_model/')* (for example purposes, not runnable).
         >>> model, params = FlaxUNet2DConditionModel.from_pretrained("./test/saved_model/")
         ```
@@ -279,7 +279,7 @@ class FlaxModelMixin(PushToHubMixin):
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```bash
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```

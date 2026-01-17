@@ -32,7 +32,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Attend-and-Excite](attend_and_excite) | text2image |
 | [AudioLDM](audioldm) | text2audio |
 | [AudioLDM2](audioldm2) | text2audio |
-| [AuraFlow](auraflow) | text2image |
+| [AuraFlow](aura_flow) | text2image |
 | [BLIP Diffusion](blip_diffusion) | text2image |
 | [Bria 3.2](bria_3_2) | text2image |
 | [CogVideoX](cogvideox) | text2video |

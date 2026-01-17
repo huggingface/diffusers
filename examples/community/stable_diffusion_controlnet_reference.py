@@ -37,7 +37,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
         >>> pipe = StableDiffusionControlNetReferencePipeline.from_pretrained(
-                "runwayml/stable-diffusion-v1-5",
+                "stable-diffusion-v1-5/stable-diffusion-v1-5",
                 controlnet=controlnet,
                 safety_checker=None,
                 torch_dtype=torch.float16

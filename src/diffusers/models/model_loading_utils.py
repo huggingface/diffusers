@@ -47,6 +47,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
+from ..utils.distributed_utils import is_torch_dist_rank_zero
 
 
 logger = logging.get_logger(__name__)
@@ -354,8 +355,9 @@ def _load_shard_file(
     state_dict_folder=None,
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
+    disable_mmap=False,
 ):
-    state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
+    state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries, disable_mmap=disable_mmap)
     mismatched_keys = _find_mismatched_keys(
         state_dict,
         model_state_dict,
@@ -401,6 +403,7 @@ def _load_shard_files_with_threadpool(
     state_dict_folder=None,
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
+    disable_mmap=False,
 ):
     # Do not spawn anymore workers than you need
     num_workers = min(len(shard_files), DEFAULT_HF_PARALLEL_LOADING_WORKERS)
@@ -427,10 +430,15 @@ def _load_shard_files_with_threadpool(
         state_dict_folder=state_dict_folder,
         ignore_mismatched_sizes=ignore_mismatched_sizes,
         low_cpu_mem_usage=low_cpu_mem_usage,
+        disable_mmap=disable_mmap,
     )
 
+    tqdm_kwargs = {"total": len(shard_files), "desc": "Loading checkpoint shards"}
+    if not is_torch_dist_rank_zero():
+        tqdm_kwargs["disable"] = True
+
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        with logging.tqdm(total=len(shard_files), desc="Loading checkpoint shards") as pbar:
+        with logging.tqdm(**tqdm_kwargs) as pbar:
             futures = [executor.submit(load_one, shard_file) for shard_file in shard_files]
             for future in as_completed(futures):
                 result = future.result()
