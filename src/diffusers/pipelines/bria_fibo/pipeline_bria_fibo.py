@@ -107,6 +107,11 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             scheduler=scheduler,
         )
 
+        self._guidance_scale = 5.0
+        self._joint_attention_kwargs = None
+        self._interrupt = False
+        self._num_timesteps = 0
+
         self.vae_scale_factor = 16
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.default_sample_size = 64

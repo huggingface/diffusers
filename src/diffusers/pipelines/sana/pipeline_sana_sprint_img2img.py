@@ -167,6 +167,10 @@ class SanaSprintImg2ImgPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     ):
         super().__init__()
 
+        self._guidance_scale = 4.5
+        self._attention_kwargs = None
+        self._interrupt = False
+        self._num_timesteps = 0
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )

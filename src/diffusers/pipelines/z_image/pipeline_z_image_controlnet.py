@@ -200,6 +200,10 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         controlnet: ZImageControlNetModel,
     ):
         super().__init__()
+        self._guidance_scale = 5.0
+        self._joint_attention_kwargs = None
+        self._interrupt = False
+        self._num_timesteps = 0
         controlnet = ZImageControlNetModel.from_transformer(controlnet, transformer)
 
         self.register_modules(
