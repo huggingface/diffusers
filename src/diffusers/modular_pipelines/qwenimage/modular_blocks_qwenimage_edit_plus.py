@@ -67,11 +67,10 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
-    <|im_start|>user
-    {}<|im_end|>
-    <|im_start|>assistant
-    )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
+    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
+    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
+    {}<|im_end|> <|im_start|>assistant )
 
           img_template_encode (default: Picture {}: <|vision_start|><|image_pad|><|vision_end|>)
 
@@ -139,6 +138,7 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
           resized_image (`List`):
               The resized images
           processed_image (`None`):
+              TODO: Add description.
           image_latents (`Tensor`):
               The latents representing the reference image(s). Single tensor or list depending on input.
     """
@@ -182,14 +182,19 @@ class QwenImageEditPlusInputStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
           image_latents (`None`, *optional*):
+              TODO: Add description.
 
       Outputs:
           batch_size (`int`):
@@ -240,14 +245,19 @@ class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
           image_latents (`None`, *optional*):
+              TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
@@ -376,11 +386,10 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
-    <|im_start|>user
-    {}<|im_end|>
-    <|im_start|>assistant
-    )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
+    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
+    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
+    {}<|im_end|> <|im_start|>assistant )
 
           img_template_encode (default: Picture {}: <|vision_start|><|image_pad|><|vision_end|>)
 

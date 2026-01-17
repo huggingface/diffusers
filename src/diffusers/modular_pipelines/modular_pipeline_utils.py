@@ -708,6 +708,8 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
             desc = re.sub(r"\[(.*?)\]\((https?://[^\s\)]+)\)", r"[\1](\2)", param.description)
             wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
             param_str += f"\n{desc_indent}{wrapped_desc}"
+        else:
+            param_str += f"\n{desc_indent}TODO: Add description."
 
         formatted_params.append(param_str)
 

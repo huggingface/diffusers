@@ -75,11 +75,8 @@ class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>
-    <|im_start|>user
-    {}<|im_end|>
-    <|im_start|>assistant
-    )
+    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the
+    objects and background:<|im_end|> <|im_start|>user {}<|im_end|> <|im_start|>assistant )
 
           prompt_template_encode_start_idx (default: 34)
 
@@ -151,7 +148,9 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
 
       Outputs:
           processed_image (`None`):
+              TODO: Add description.
           processed_mask_image (`None`):
+              TODO: Add description.
           mask_overlay_kwargs (`Dict`):
               The kwargs for the postprocess step to apply the mask overlay
           image_latents (`Tensor`):
@@ -195,6 +194,7 @@ class QwenImageImg2ImgVaeEncoderStep(SequentialPipelineBlocks):
 
       Outputs:
           processed_image (`None`):
+              TODO: Add description.
           image_latents (`Tensor`):
               The latents representing the reference image(s). Single tensor or list depending on input.
     """
@@ -290,14 +290,19 @@ class QwenImageImg2ImgInputStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
           image_latents (`None`, *optional*):
+              TODO: Add description.
 
       Outputs:
           batch_size (`int`):
@@ -334,15 +339,21 @@ class QwenImageInpaintInputStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
           image_latents (`None`, *optional*):
+              TODO: Add description.
           processed_mask_image (`None`, *optional*):
+              TODO: Add description.
 
       Outputs:
           batch_size (`int`):
@@ -389,14 +400,18 @@ class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
           latents (`Tensor`):
               The initial random noised, can be generated in prepare latent step.
           image_latents (`Tensor`):
-              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input step.
+              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input
+              step.
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
           processed_mask_image (`Tensor`):
               The processed mask to use for the inpainting process.
           height (`None`):
+              TODO: Add description.
           width (`None`):
+              TODO: Add description.
           dtype (`None`):
+              TODO: Add description.
 
       Outputs:
           initial_noise (`Tensor`):
@@ -425,7 +440,8 @@ class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs (timesteps, latents, rope inputs etc.).
+    step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs
+    (timesteps, latents, rope inputs etc.).
 
       Components:
 
@@ -441,9 +457,13 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           height (`int`, *optional*):
@@ -499,7 +519,8 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint task.
+    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint
+    task.
 
       Components:
 
@@ -515,15 +536,21 @@ class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
           image_latents (`None`, *optional*):
+              TODO: Add description.
           processed_mask_image (`None`, *optional*):
+              TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
@@ -579,7 +606,8 @@ class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img task.
+    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img
+    task.
 
       Components:
 
@@ -595,14 +623,19 @@ class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
           image_latents (`None`, *optional*):
+              TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
@@ -658,7 +691,8 @@ class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs (timesteps, latents, rope inputs etc.).
+    step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs
+    (timesteps, latents, rope inputs etc.).
 
       Components:
 
@@ -676,10 +710,15 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           control_image_latents (`None`):
+              TODO: Add description.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
@@ -746,7 +785,8 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint task.
+    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint
+    task.
 
       Components:
 
@@ -764,16 +804,23 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
           image_latents (`None`, *optional*):
+              TODO: Add description.
           processed_mask_image (`None`, *optional*):
+              TODO: Add description.
           control_image_latents (`None`):
+              TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
@@ -840,7 +887,8 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img task.
+    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img
+    task.
 
       Components:
 
@@ -858,15 +906,21 @@ class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
           image_latents (`None`, *optional*):
+              TODO: Add description.
           control_image_latents (`None`):
+              TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
@@ -1031,7 +1085,8 @@ class QwenImageDecodeStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageInpaintDecodeStep(SequentialPipelineBlocks):
     """
-    Decode step that decodes the latents to images and postprocess the generated image, optional apply the mask overally to the original image.
+    Decode step that decodes the latents to images and postprocess the generated image, optional apply the mask
+    overally to the original image.
 
       Components:
 
@@ -1045,6 +1100,7 @@ class QwenImageInpaintDecodeStep(SequentialPipelineBlocks):
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt''.
           mask_overlay_kwargs (`None`, *optional*):
+              TODO: Add description.
 
       Outputs:
           images (`List`):
@@ -1126,11 +1182,8 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>
-    <|im_start|>user
-    {}<|im_end|>
-    <|im_start|>assistant
-    )
+    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the
+    objects and background:<|im_end|> <|im_start|>user {}<|im_end|> <|im_start|>assistant )
 
           prompt_template_encode_start_idx (default: 34)
 
@@ -1160,9 +1213,13 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
           num_inference_steps (`int`):
@@ -1174,10 +1231,13 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
           **denoiser_input_fields (`Tensor`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           image_latents (`None`, *optional*):
+              TODO: Add description.
           processed_mask_image (`None`, *optional*):
+              TODO: Add description.
           strength (`float`, *optional*, defaults to 0.9):
               Strength for img2img/inpainting.
           control_image_latents (`None`, *optional*):
+              TODO: Add description.
           control_guidance_start (`float`, *optional*, defaults to 0.0):
               When to start applying ControlNet.
           control_guidance_end (`float`, *optional*, defaults to 1.0):
@@ -1187,6 +1247,7 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt''.
           mask_overlay_kwargs (`None`, *optional*):
+              TODO: Add description.
 
       Outputs:
           images (`List`):

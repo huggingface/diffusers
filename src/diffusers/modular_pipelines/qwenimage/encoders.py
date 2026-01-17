@@ -1324,7 +1324,8 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam.template(self._image_input_name) or InputParam(name=self._image_input_name, required=True),
+            InputParam.template(self._image_input_name)
+            or InputParam(name=self._image_input_name, required=True, description="The image tensor to encode"),
             InputParam.generator(),
         ]
 

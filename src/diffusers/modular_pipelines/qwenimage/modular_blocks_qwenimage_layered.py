@@ -53,7 +53,8 @@ logger = logging.get_logger(__name__)
 # auto_docstring
 class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
     """
-    QwenImage-Layered Text encoder step that encode the text prompt, will generate a prompt based on image if not provided.
+    QwenImage-Layered Text encoder step that encode the text prompt, will generate a prompt based on image if not
+    provided.
 
       Components:
 
@@ -70,28 +71,23 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
       Configs:
 
           image_caption_prompt_en (default: <|im_start|>system
-    You are a helpful assistant.<|im_end|>
-    <|im_start|>user
-    # Image Annotator
-    You are a professional image annotator. Please write an image caption based on the input image:
+    You are a helpful assistant.<|im_end|> <|im_start|>user # Image Annotator You are a professional image annotator.
+    Please write an image caption based on the input image:
     1. Write the caption using natural, descriptive language without structured formats or rich text.
     2. Enrich caption details by including:
      - Object attributes, such as quantity, color, shape, size, material, state, position, actions, and so on
-     - Vision Relations between objects, such as spatial relations, functional relations, possessive relations, attachment relations, action relations, comparative relations, causal relations, and so on
+     - Vision Relations between objects, such as spatial relations, functional relations, possessive relations,
+       attachment relations, action relations, comparative relations, causal relations, and so on
      - Environmental details, such as weather, lighting, colors, textures, atmosphere, and so on
-     - Identify the text clearly visible in the image, without translation or explanation, and highlight it in the caption with quotation marks
+     - Identify the text clearly visible in the image, without translation or explanation, and highlight it in the
+       caption with quotation marks
     3. Maintain authenticity and accuracy:
      - Avoid generalizations
      - Describe all visible information in the image, while do not add information not explicitly shown in the image
-    <|vision_start|><|image_pad|><|vision_end|><|im_end|>
-    <|im_start|>assistant
-    )
+    <|vision_start|><|image_pad|><|vision_end|><|im_end|> <|im_start|>assistant )
 
           image_caption_prompt_cn (default: <|im_start|>system
-    You are a helpful assistant.<|im_end|>
-    <|im_start|>user
-    # 图像标注器
-    你是一个专业的图像标注器。请基于输入图像，撰写图注:
+    You are a helpful assistant.<|im_end|> <|im_start|>user # 图像标注器 你是一个专业的图像标注器。请基于输入图像，撰写图注:
     1. 使用自然、描述性的语言撰写图注，不要使用结构化形式或富文本形式。
     2. 通过加入以下内容，丰富图注细节：
      - 对象的属性：如数量、颜色、形状、大小、位置、材质、状态、动作等
@@ -101,16 +97,11 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
     3. 保持真实性与准确性：
      - 不要使用笼统的描述
      - 描述图像中所有可见的信息，但不要加入没有在图像中出现的内容
-    <|vision_start|><|image_pad|><|vision_end|><|im_end|>
-    <|im_start|>assistant
-    )
+    <|vision_start|><|image_pad|><|vision_end|><|im_end|> <|im_start|>assistant )
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>
-    <|im_start|>user
-    {}<|im_end|>
-    <|im_start|>assistant
-    )
+    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the
+    objects and background:<|im_end|> <|im_start|>user {}<|im_end|> <|im_start|>assistant )
 
           prompt_template_encode_start_idx (default: 34)
 
@@ -187,6 +178,7 @@ class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
           resized_image (`List`):
               The resized images
           processed_image (`None`):
+              TODO: Add description.
           image_latents (`Tensor`):
               The latents representing the reference image(s). Single tensor or list depending on input.
     """
@@ -226,10 +218,15 @@ class QwenImageLayeredInputStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           image_latents (`None`, *optional*):
+              TODO: Add description.
 
       Outputs:
           batch_size (`int`):
@@ -282,10 +279,15 @@ class QwenImageLayeredCoreDenoiseStep(SequentialPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           prompt_embeds (`None`):
+              TODO: Add description.
           prompt_embeds_mask (`None`):
+              TODO: Add description.
           negative_prompt_embeds (`None`, *optional*):
+              TODO: Add description.
           negative_prompt_embeds_mask (`None`, *optional*):
+              TODO: Add description.
           image_latents (`None`, *optional*):
+              TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           layers (`int`, *optional*, defaults to 4):
@@ -379,28 +381,23 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
       Configs:
 
           image_caption_prompt_en (default: <|im_start|>system
-    You are a helpful assistant.<|im_end|>
-    <|im_start|>user
-    # Image Annotator
-    You are a professional image annotator. Please write an image caption based on the input image:
+    You are a helpful assistant.<|im_end|> <|im_start|>user # Image Annotator You are a professional image annotator.
+    Please write an image caption based on the input image:
     1. Write the caption using natural, descriptive language without structured formats or rich text.
     2. Enrich caption details by including:
      - Object attributes, such as quantity, color, shape, size, material, state, position, actions, and so on
-     - Vision Relations between objects, such as spatial relations, functional relations, possessive relations, attachment relations, action relations, comparative relations, causal relations, and so on
+     - Vision Relations between objects, such as spatial relations, functional relations, possessive relations,
+       attachment relations, action relations, comparative relations, causal relations, and so on
      - Environmental details, such as weather, lighting, colors, textures, atmosphere, and so on
-     - Identify the text clearly visible in the image, without translation or explanation, and highlight it in the caption with quotation marks
+     - Identify the text clearly visible in the image, without translation or explanation, and highlight it in the
+       caption with quotation marks
     3. Maintain authenticity and accuracy:
      - Avoid generalizations
      - Describe all visible information in the image, while do not add information not explicitly shown in the image
-    <|vision_start|><|image_pad|><|vision_end|><|im_end|>
-    <|im_start|>assistant
-    )
+    <|vision_start|><|image_pad|><|vision_end|><|im_end|> <|im_start|>assistant )
 
           image_caption_prompt_cn (default: <|im_start|>system
-    You are a helpful assistant.<|im_end|>
-    <|im_start|>user
-    # 图像标注器
-    你是一个专业的图像标注器。请基于输入图像，撰写图注:
+    You are a helpful assistant.<|im_end|> <|im_start|>user # 图像标注器 你是一个专业的图像标注器。请基于输入图像，撰写图注:
     1. 使用自然、描述性的语言撰写图注，不要使用结构化形式或富文本形式。
     2. 通过加入以下内容，丰富图注细节：
      - 对象的属性：如数量、颜色、形状、大小、位置、材质、状态、动作等
@@ -410,16 +407,11 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
     3. 保持真实性与准确性：
      - 不要使用笼统的描述
      - 描述图像中所有可见的信息，但不要加入没有在图像中出现的内容
-    <|vision_start|><|image_pad|><|vision_end|><|im_end|>
-    <|im_start|>assistant
-    )
+    <|vision_start|><|image_pad|><|vision_end|><|im_end|> <|im_start|>assistant )
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>
-    <|im_start|>user
-    {}<|im_end|>
-    <|im_start|>assistant
-    )
+    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the
+    objects and background:<|im_end|> <|im_start|>user {}<|im_end|> <|im_start|>assistant )
 
           prompt_template_encode_start_idx (default: 34)
 
