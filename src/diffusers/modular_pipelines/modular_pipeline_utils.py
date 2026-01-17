@@ -711,7 +711,7 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
 
         formatted_params.append(param_str)
 
-    return "\n\n".join(formatted_params)
+    return "\n".join(formatted_params)
 
 
 def format_input_params(input_params, indent_level=4, max_line_length=115):
@@ -781,7 +781,7 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
         loading_field_values = []
         for field_name in component.loading_fields():
             field_value = getattr(component, field_name)
-            if field_value is not None:
+            if field_value:
                 loading_field_values.append(f"{field_name}={field_value}")
 
         # Add loading field information if available

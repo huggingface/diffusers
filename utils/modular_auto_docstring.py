@@ -169,6 +169,17 @@ def find_auto_docstring_classes(filepath: str) -> list:
     return classes_to_update
 
 
+def strip_class_name_line(doc: str, class_name: str) -> str:
+    """Remove the 'class ClassName' line from the doc if present."""
+    lines = doc.strip().split("\n")
+    if lines and lines[0].strip() == f"class {class_name}":
+        # Remove the class line and any blank line following it
+        lines = lines[1:]
+        while lines and not lines[0].strip():
+            lines = lines[1:]
+    return "\n".join(lines)
+
+
 def format_docstring(doc: str, indent: str = "    ") -> str:
     """Format a doc string as a properly indented docstring."""
     lines = doc.strip().split("\n")
@@ -215,6 +226,9 @@ def process_file(filepath: str, overwrite: bool = False) -> list:
         if doc is None:
             print(f"Warning: Could not get doc for {class_name} in {filepath}")
             continue
+
+        # Remove the "class ClassName" line since it's redundant in a docstring
+        doc = strip_class_name_line(doc, class_name)
 
         # Format the new docstring with 4-space indent
         new_docstring = format_docstring(doc, "    ")
