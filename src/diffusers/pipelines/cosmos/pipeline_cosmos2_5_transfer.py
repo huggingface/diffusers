@@ -52,6 +52,13 @@ else:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+# TODO: output list of padded frames to handle the case when video.shape[2] > num_frames [t1 = num_frames, t2 = num_frames..2*num_frames, etc.]
+def _maybe_pad_video(video: torch.Tensor, num_frames: int):
+    n_pad_frames = num_frames - video.shape[2]
+    if n_pad_frames > 0:
+        last_frame = video[:, :, -1:, :, :]
+        video = torch.cat((video, last_frame.repeat(1, 1, n_pad_frames, 1, 1)), dim=2)
+    return video
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
@@ -435,9 +442,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         else:
             if video is None:
                 raise ValueError("`video` must be provided when `num_frames_in` is greater than 0.")
-            needs_preprocessing = not (isinstance(video, torch.Tensor) and video.ndim == 5 and video.shape[1] == 3)
-            if needs_preprocessing:
-                video = self.video_processor.preprocess_video(video, height, width)
             video = video.to(device=device, dtype=self.vae.dtype)
             if isinstance(generator, list):
                 cond_latents = [
@@ -488,11 +492,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
         # TODO: handle image differently?
         control_video = self.video_processor.preprocess_video(controls, height, width)
-        # TODO: is this needed?
-        # if control_video.shape[2] < num_frames:
-        #     n_pad_frames = num_frames - control_video.shape[2]
-        #     last_frame = control_video[:, :, -1:, :, :]
-        #     control_video = torch.cat((control_video, last_frame.repeat(1, 1, n_pad_frames, 1, 1)), dim=2)
+        control_video = _maybe_pad_video(control_video, num_frames)
 
         control_video = control_video.to(device=device, dtype=self.vae.dtype)
         control_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0))) for vid in control_video]
@@ -739,12 +739,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
         # pad with last frame (for video2world)
         num_frames_out = num_frames
-        if video.shape[2] < num_frames_out:
-            n_pad_frames = num_frames_out - num_frames_in
-            last_frame = video[0, :, -1:, :, :]  # [C, T==1, H, W]
-            pad_frames = last_frame.repeat(1, 1, n_pad_frames, 1, 1)  # [B, C, T, H, W]
-            video = torch.cat((video, pad_frames), dim=2)
-
+        video = _maybe_pad_video(video, num_frames_out)
         assert num_frames_in <= num_frames_out, f"expected ({num_frames_in=}) <= ({num_frames_out=})"
 
         video = video.to(device=device, dtype=vae_dtype)
@@ -777,10 +772,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 dtype=torch.float32,
                 device=device,
             )
-            # TODO: checkme?
-            # if controls_latents.shape[0] != latents.shape[0]:
-            #     repeat_count = latents.shape[0] // controls_latents.shape[0]
-            #     controls_latents = controls_latents.repeat_interleave(repeat_count, dim=0)
 
         padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
 
@@ -871,8 +862,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             latents_std = self.latents_std.to(latents.device, latents.dtype)
             latents = latents * latents_std + latents_mean
             video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
-            # TODO: checkme
-            # video = self._match_num_frames(video, num_frames)
 
             assert self.safety_checker is not None
             self.safety_checker.to(device)
@@ -895,20 +884,3 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             return (video,)
 
         return CosmosPipelineOutput(frames=video)
-
-    # TODO: checkme - this seems like a hack
-    def _match_num_frames(self, video: torch.Tensor, target_num_frames: int) -> torch.Tensor:
-        if target_num_frames <= 0 or video.shape[2] == target_num_frames:
-            return video
-
-        frames_per_latent = max(self.vae_scale_factor_temporal, 1)
-        video = torch.repeat_interleave(video, repeats=frames_per_latent, dim=2)
-
-        current_frames = video.shape[2]
-        if current_frames < target_num_frames:
-            pad = video[:, :, -1:, :, :].repeat(1, 1, target_num_frames - current_frames, 1, 1)
-            video = torch.cat([video, pad], dim=2)
-        elif current_frames > target_num_frames:
-            video = video[:, :, :target_num_frames]
-
-        return video
