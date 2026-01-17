@@ -86,4 +86,7 @@ def concat_prompt_embeds_for_cfg(
             )
         prompt_embeds_mask = torch.cat([negative_prompt_embeds_mask, prompt_embeds_mask], dim=0)
 
+    if prompt_embeds_mask is not None and prompt_embeds_mask.all():
+        prompt_embeds_mask = None
+
     return prompt_embeds, prompt_embeds_mask

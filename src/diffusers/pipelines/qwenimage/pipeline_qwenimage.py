@@ -252,6 +252,9 @@ class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             prompt_embeds, prompt_embeds_mask, num_images_per_prompt
         )
 
+        if prompt_embeds_mask is not None and prompt_embeds_mask.all():
+            prompt_embeds_mask = None
+
         return prompt_embeds, prompt_embeds_mask
 
     def check_inputs(

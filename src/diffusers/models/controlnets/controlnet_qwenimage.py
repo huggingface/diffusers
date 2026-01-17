@@ -213,10 +213,8 @@ class QwenImageControlNetModel(
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
-        # Construct joint attention mask once to avoid reconstructing in every block
         block_attention_kwargs = joint_attention_kwargs.copy() if joint_attention_kwargs is not None else {}
         if encoder_hidden_states_mask is not None:
-            # Build joint mask: [text_mask, all_ones_for_image]
             batch_size, image_seq_len = hidden_states.shape[:2]
             image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
             joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
