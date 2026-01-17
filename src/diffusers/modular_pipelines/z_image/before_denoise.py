@@ -112,7 +112,7 @@ def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor_spa
     return height, width
 
 
-# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
+# Copied from diffusers.pipelines.flux.pipeline_flux_utils.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -126,7 +126,7 @@ def calculate_shift(
     return mu
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,

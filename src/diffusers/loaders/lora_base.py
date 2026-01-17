@@ -35,8 +35,11 @@ from ..utils import (
     deprecate,
     get_adapter_name,
     is_accelerate_available,
+    is_bitsandbytes_available,
+    is_gguf_available,
     is_peft_available,
     is_peft_version,
+    is_torch_version,
     is_transformers_available,
     is_transformers_version,
     logging,
@@ -63,6 +66,21 @@ logger = logging.get_logger(__name__)
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 LORA_ADAPTER_METADATA_KEY = "lora_adapter_metadata"
+
+TEXT_ENCODER_NAME = "text_encoder"
+UNET_NAME = "unet"
+TRANSFORMER_NAME = "transformer"
+LTX2_CONNECTOR_NAME = "connectors"
+
+_LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
+if is_torch_version(">=", "1.9.0"):
+    if (
+        is_peft_available()
+        and is_peft_version(">=", "0.13.1")
+        and is_transformers_available()
+        and is_transformers_version(">", "4.45.2")
+    ):
+        _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
 
 
 def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
@@ -473,6 +491,55 @@ def _func_optionally_disable_offloading(_pipeline):
                 remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
     return (is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)
+
+
+def _maybe_dequantize_weight_for_expanded_lora(model, module):
+    if is_bitsandbytes_available():
+        from ..quantizers.bitsandbytes import dequantize_bnb_weight
+
+    if is_gguf_available():
+        from ..quantizers.gguf.utils import dequantize_gguf_tensor
+
+    is_bnb_4bit_quantized = module.weight.__class__.__name__ == "Params4bit"
+    is_bnb_8bit_quantized = module.weight.__class__.__name__ == "Int8Params"
+    is_gguf_quantized = module.weight.__class__.__name__ == "GGUFParameter"
+
+    if is_bnb_4bit_quantized and not is_bitsandbytes_available():
+        raise ValueError(
+            "The checkpoint seems to have been quantized with `bitsandbytes` (4bits). Install `bitsandbytes` to load quantized checkpoints."
+        )
+    if is_bnb_8bit_quantized and not is_bitsandbytes_available():
+        raise ValueError(
+            "The checkpoint seems to have been quantized with `bitsandbytes` (8bits). Install `bitsandbytes` to load quantized checkpoints."
+        )
+    if is_gguf_quantized and not is_gguf_available():
+        raise ValueError(
+            "The checkpoint seems to have been quantized with `gguf`. Install `gguf` to load quantized checkpoints."
+        )
+
+    weight_on_cpu = False
+    if module.weight.device.type == "cpu":
+        weight_on_cpu = True
+
+    device = torch.accelerator.current_accelerator().type if hasattr(torch, "accelerator") else "cuda"
+    if is_bnb_4bit_quantized or is_bnb_8bit_quantized:
+        module_weight = dequantize_bnb_weight(
+            module.weight.to(device) if weight_on_cpu else module.weight,
+            state=module.weight.quant_state if is_bnb_4bit_quantized else module.state,
+            dtype=model.dtype,
+        ).data
+    elif is_gguf_quantized:
+        module_weight = dequantize_gguf_tensor(
+            module.weight.to(device) if weight_on_cpu else module.weight,
+        )
+        module_weight = module_weight.to(model.dtype)
+    else:
+        module_weight = module.weight.data
+
+    if weight_on_cpu:
+        module_weight = module_weight.cpu()
+
+    return module_weight
 
 
 class LoraBaseMixin:
