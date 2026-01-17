@@ -19,7 +19,13 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
 from ..models.modeling_utils import load_state_dict
-from ..utils import _get_model_file, is_accelerate_available, is_transformers_available, logging
+from ..utils import (
+    _get_model_file,
+    is_accelerate_available,
+    is_transformers_available,
+    is_transformers_version,
+    logging,
+)
 
 
 if is_transformers_available():
@@ -549,17 +555,29 @@ class TextualInversionLoaderMixin:
 
         # Delete from tokenizer
         for token_id, token_to_remove in zip(token_ids, tokens):
-            del tokenizer._added_tokens_decoder[token_id]
-            del tokenizer._added_tokens_encoder[token_to_remove]
+            if is_transformers_version("<=", "4.58.0"):
+                del tokenizer._added_tokens_decoder[token_id]
+                del tokenizer._added_tokens_encoder[token_to_remove]
+            elif is_transformers_version(">", "4.58.0"):
+                del tokenizer.added_tokens_decoder[token_id]
+                del tokenizer.added_tokens_encoder[token_to_remove]
 
         # Make all token ids sequential in tokenizer
         key_id = 1
         for token_id in tokenizer.added_tokens_decoder:
             if token_id > last_special_token_id and token_id > last_special_token_id + key_id:
-                token = tokenizer._added_tokens_decoder[token_id]
-                tokenizer._added_tokens_decoder[last_special_token_id + key_id] = token
-                del tokenizer._added_tokens_decoder[token_id]
-                tokenizer._added_tokens_encoder[token.content] = last_special_token_id + key_id
+                if is_transformers_version("<=", "4.58.0"):
+                    token = tokenizer._added_tokens_decoder[token_id]
+                    tokenizer._added_tokens_decoder[last_special_token_id + key_id] = token
+                    del tokenizer._added_tokens_decoder[token_id]
+                elif is_transformers_version(">", "4.58.0"):
+                    token = tokenizer.added_tokens_decoder[token_id]
+                    tokenizer.added_tokens_decoder[last_special_token_id + key_id] = token
+                    del tokenizer.added_tokens_decoder[token_id]
+                if is_transformers_version("<=", "4.58.0"):
+                    tokenizer._added_tokens_encoder[token.content] = last_special_token_id + key_id
+                elif is_transformers_version(">", "4.58.0"):
+                    tokenizer.added_tokens_encoder[token.content] = last_special_token_id + key_id
                 key_id += 1
         tokenizer._update_trie()
         # set correct total vocab size after removing tokens
