@@ -130,6 +130,7 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline"]
+    _import_structure["flex2"] = ["Flex2Pipeline"]
     _import_structure["flux2"] = ["Flux2Pipeline", "Flux2KleinPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
@@ -662,6 +663,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
         )
+        from .flex2 import Flex2Pipeline
         from .flux import (
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,

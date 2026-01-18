@@ -1,0 +1,296 @@
+import gc
+import unittest
+
+
+import numpy as np
+import pytest
+import torch
+from huggingface_hub import hf_hub_download
+from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
+
+
+from diffusers import (
+    AutoencoderKL,
+    FasterCacheConfig,
+    Flex2Pipeline,
+    FlowMatchEulerDiscreteScheduler,
+    FluxTransformer2DModel,
+)
+from diffusers.utils.testing_utils import (
+    backend_empty_cache,
+    nightly,
+    numpy_cosine_similarity_distance,
+    require_big_accelerator,
+    slow,
+    torch_device,
+)
+
+
+from ..test_pipelines_common import (
+    FasterCacheTesterMixin,
+    PipelineTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    check_qkv_fusion_matches_attn_procs_length,
+    check_qkv_fusion_processors_exist,
+)
+
+
+
+
+class Flex2PipelineFastTests(
+    unittest.TestCase,
+    PipelineTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    FasterCacheTesterMixin,
+):
+    pipeline_class = Flex2Pipeline
+    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds", "pooled_prompt_embeds"])
+    batch_params = frozenset(["prompt"])
+
+
+    # there is no xformers processor for Flex2
+    test_xformers_attention = False
+    test_layerwise_casting = True
+    test_group_offloading = True
+
+
+    faster_cache_config = FasterCacheConfig(
+        spatial_attention_block_skip_range=2,
+        spatial_attention_timestep_skip_range=(-1, 901),
+        unconditional_batch_skip_range=2,
+        attention_weight_callback=lambda _: 0.5,
+        is_guidance_distilled=True,
+    )
+
+
+    def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
+        torch.manual_seed(0)
+        transformer = FluxTransformer2DModel(
+            patch_size=1,
+            in_channels=196,
+            out_channels=64,
+            num_layers=num_layers,
+            num_single_layers=num_single_layers,
+            attention_head_dim=16,
+            num_attention_heads=2,
+            joint_attention_dim=32,
+            pooled_projection_dim=32,
+            axes_dims_rope=[4, 4, 8],
+        )
+        clip_text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+
+
+        torch.manual_seed(0)
+        text_encoder = CLIPTextModel(clip_text_encoder_config)
+
+
+        torch.manual_seed(0)
+        text_encoder_2 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            sample_size=32,
+            in_channels=3,
+            out_channels=3,
+            block_out_channels=(4,),
+            layers_per_block=1,
+            latent_channels=16,
+            norm_num_groups=1,
+            use_quant_conv=False,
+            use_post_quant_conv=False,
+            shift_factor=0.0609,
+            scaling_factor=1.5035,
+        )
+
+
+        scheduler = FlowMatchEulerDiscreteScheduler()
+
+
+        return {
+            "scheduler": scheduler,
+            "text_encoder": text_encoder,
+            "text_encoder_2": text_encoder_2,
+            "tokenizer": tokenizer,
+            "tokenizer_2": tokenizer_2,
+            "transformer": transformer,
+            "vae": vae,
+        }
+
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 5.0,
+            "height": 8,
+            "width": 8,
+            "max_sequence_length": 48,
+            "output_type": "np",
+        }
+        return inputs
+
+
+    def test_flex2_different_prompts(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_same_prompt = pipe(**inputs).images[0]
+
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["prompt_2"] = "a different prompt"
+        output_different_prompts = pipe(**inputs).images[0]
+
+
+        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+
+
+        # Outputs should be different here
+        # For some reasons, they don't show large differences
+        assert max_diff > 1e-6
+
+
+
+    def test_flex2_image_output_shape(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+
+
+        height_width_pairs = [(32, 32), (72, 57)]
+        for height, width in height_width_pairs:
+            expected_height = height - height % (pipe.vae_scale_factor * 2)
+            expected_width = width - width % (pipe.vae_scale_factor * 2)
+
+
+            inputs.update({"height": height, "width": width})
+            image = pipe(**inputs).images[0]
+            output_height, output_width, _ = image.shape
+            assert (output_height, output_width) == (expected_height, expected_width)
+
+
+
+
+
+
+@nightly
+@require_big_accelerator
+@pytest.mark.big_gpu_with_torch_cuda
+class Flex2PipelineSlowTests(unittest.TestCase):
+    pipeline_class = Flex2Pipeline
+    repo_id = "ostris/Flex.2-preview"
+
+
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+
+    def get_inputs(self, device, seed=0):
+        generator = torch.Generator(device="cpu").manual_seed(seed)
+
+
+        prompt_embeds = torch.load(
+            hf_hub_download(repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/prompt_embeds.pt")
+        ).to(torch_device)
+        pooled_prompt_embeds = torch.load(
+            hf_hub_download(
+                repo_id="diffusers/test-slices", repo_type="dataset", filename="flux/pooled_prompt_embeds.pt"
+            )
+        ).to(torch_device)
+        return {
+            "prompt_embeds": prompt_embeds,
+            "pooled_prompt_embeds": pooled_prompt_embeds,
+            "num_inference_steps": 2,
+            "guidance_scale": 0.0,
+            "max_sequence_length": 256,
+            "output_type": "np",
+            "generator": generator,
+        }
+
+
+    def test_flex2_inference(self):
+        pipe = self.pipeline_class.from_pretrained(
+            self.repo_id, torch_dtype=torch.bfloat16, text_encoder=None, text_encoder_2=None
+        ).to(torch_device)
+
+
+        inputs = self.get_inputs(torch_device)
+
+
+        image = pipe(**inputs).images[0]
+        image_slice = image[0, :10, :10]
+        expected_slice = np.array(
+            [
+                0.3242,
+                0.3203,
+                0.3164,
+                0.3164,
+                0.3125,
+                0.3125,
+                0.3281,
+                0.3242,
+                0.3203,
+                0.3301,
+                0.3262,
+                0.3242,
+                0.3281,
+                0.3242,
+                0.3203,
+                0.3262,
+                0.3262,
+                0.3164,
+                0.3262,
+                0.3281,
+                0.3184,
+                0.3281,
+                0.3281,
+                0.3203,
+                0.3281,
+                0.3281,
+                0.3164,
+                0.3320,
+                0.3320,
+                0.3203,
+            ],
+            dtype=np.float32,
+        )
+
+
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
+
+
+
+        assert max_diff < 1e-4
