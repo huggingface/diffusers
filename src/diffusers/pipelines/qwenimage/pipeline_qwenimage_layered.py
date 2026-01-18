@@ -318,6 +318,9 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
             prompt_embeds, prompt_embeds_mask, num_images_per_prompt
         )
 
+        if prompt_embeds_mask is not None and prompt_embeds_mask.all():
+            prompt_embeds_mask = None
+
         return prompt_embeds, prompt_embeds_mask
 
     def get_image_caption(self, prompt_image, use_en_prompt=True, device=None):
