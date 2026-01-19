@@ -21,7 +21,6 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLCogVideoX,
-    CogVideoXDDIMScheduler,
     CogVideoXDPMScheduler,
     CogVideoXPipeline,
     CogVideoXTransformer3DModel,
@@ -44,7 +43,6 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = CogVideoXPipeline
     scheduler_cls = CogVideoXDPMScheduler
     scheduler_kwargs = {"timestep_spacing": "trailing"}
-    scheduler_classes = [CogVideoXDDIMScheduler, CogVideoXDPMScheduler]
 
     transformer_kwargs = {
         "num_attention_heads": 4,
@@ -88,6 +86,8 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     text_encoder_cls, text_encoder_id = T5EncoderModel, "hf-internal-testing/tiny-random-t5"
 
     text_encoder_target_modules = ["q", "k", "v", "o"]
+
+    supports_text_encoder_loras = False
 
     @property
     def output_shape(self):
@@ -147,26 +147,6 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @unittest.skip("Not supported in CogVideoX.")
     def test_modify_padding_mode(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
-    def test_simple_inference_with_partial_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
-    def test_simple_inference_with_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
-    def test_simple_inference_with_text_lora_and_scale(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
-    def test_simple_inference_with_text_lora_fused(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in CogVideoX.")
-    def test_simple_inference_with_text_lora_save_load(self):
         pass
 
     @unittest.skip("Not supported in CogVideoX.")

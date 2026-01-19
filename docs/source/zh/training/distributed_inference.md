@@ -43,11 +43,8 @@ with distributed_state.split_between_processes(["a dog", "a cat"]) as prompt:
 accelerate launch run_distributed.py --num_processes=2
 ```
 
-<Tip>
-
-参考这个最小示例 [脚本](https://gist.github.com/sayakpaul/cfaebd221820d7b43fae638b4dfa01ba) 以在多个 GPU 上运行推理。要了解更多信息，请查看 [使用 🤗 Accelerate 进行分布式推理](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) 指南。
-
-</Tip>
+> [!TIP]
+> 参考这个最小示例 [脚本](https://gist.github.com/sayakpaul/cfaebd221820d7b43fae638b4dfa01ba) 以在多个 GPU 上运行推理。要了解更多信息，请查看 [使用 🤗 Accelerate 进行分布式推理](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) 指南。
 
 ## PyTorch Distributed
 
@@ -223,7 +220,7 @@ from diffusers.image_processor import VaeImageProcessor
 import torch 
 
 vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", torch_dtype=torch.bfloat16).to("cuda")
-vae_scale_factor = 2 ** (len(vae.config.block_out_channels))
+vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
 image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
 
 with torch.no_grad():

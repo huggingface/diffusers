@@ -39,7 +39,7 @@ mask_url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images
 original_image = load_image(img_url).resize((512, 512))
 mask_image = load_image(mask_url).resize((512, 512))
 
-pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
+pipe = StableDiffusionInpaintPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-inpainting")
 pipe.vae = AsymmetricAutoencoderKL.from_pretrained("cross-attention/asymmetric-autoencoder-kl-x-1-5")
 pipe.to("cuda")
 

@@ -544,11 +544,7 @@ class LoraBaseMixin:
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
+        > [!WARNING] > This is an experimental API.
 
         Args:
             components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
@@ -628,11 +624,7 @@ class LoraBaseMixin:
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
 
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
+        > [!WARNING] > This is an experimental API.
 
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
@@ -1063,6 +1055,41 @@ class LoraBaseMixin:
         save_path = Path(save_directory, weight_name).as_posix()
         save_function(state_dict, save_path)
         logger.info(f"Model weights saved in {save_path}")
+
+    @classmethod
+    def _save_lora_weights(
+        cls,
+        save_directory: Union[str, os.PathLike],
+        lora_layers: Dict[str, Dict[str, Union[torch.nn.Module, torch.Tensor]]],
+        lora_metadata: Dict[str, Optional[dict]],
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+    ):
+        """
+        Helper method to pack and save LoRA weights and metadata. This method centralizes the saving logic for all
+        pipeline types.
+        """
+        state_dict = {}
+        final_lora_adapter_metadata = {}
+
+        for prefix, layers in lora_layers.items():
+            state_dict.update(cls.pack_weights(layers, prefix))
+
+        for prefix, metadata in lora_metadata.items():
+            if metadata:
+                final_lora_adapter_metadata.update(_pack_dict_with_prefix(metadata, prefix))
+
+        cls.write_lora_layers(
+            state_dict=state_dict,
+            save_directory=save_directory,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+            lora_adapter_metadata=final_lora_adapter_metadata if final_lora_adapter_metadata else None,
+        )
 
     @classmethod
     def _optionally_disable_offloading(cls, _pipeline):

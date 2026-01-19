@@ -45,8 +45,31 @@ else:
         "InsertableDict",
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
-    _import_structure["wan"] = ["WanAutoBlocks", "WanModularPipeline"]
-    _import_structure["flux"] = ["FluxAutoBlocks", "FluxModularPipeline"]
+    _import_structure["wan"] = ["WanAutoBlocks", "Wan22AutoBlocks", "WanModularPipeline"]
+    _import_structure["flux"] = [
+        "FluxAutoBlocks",
+        "FluxModularPipeline",
+        "FluxKontextAutoBlocks",
+        "FluxKontextModularPipeline",
+    ]
+    _import_structure["flux2"] = [
+        "Flux2AutoBlocks",
+        "Flux2ModularPipeline",
+    ]
+    _import_structure["qwenimage"] = [
+        "QwenImageAutoBlocks",
+        "QwenImageModularPipeline",
+        "QwenImageEditModularPipeline",
+        "QwenImageEditAutoBlocks",
+        "QwenImageEditPlusModularPipeline",
+        "QwenImageEditPlusAutoBlocks",
+        "QwenImageLayeredModularPipeline",
+        "QwenImageLayeredAutoBlocks",
+    ]
+    _import_structure["z_image"] = [
+        "ZImageAutoBlocks",
+        "ZImageModularPipeline",
+    ]
     _import_structure["components_manager"] = ["ComponentsManager"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -57,7 +80,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
         from .components_manager import ComponentsManager
-        from .flux import FluxAutoBlocks, FluxModularPipeline
+        from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
+        from .flux2 import Flux2AutoBlocks, Flux2ModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
@@ -68,8 +92,19 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SequentialPipelineBlocks,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
+        from .qwenimage import (
+            QwenImageAutoBlocks,
+            QwenImageEditAutoBlocks,
+            QwenImageEditModularPipeline,
+            QwenImageEditPlusAutoBlocks,
+            QwenImageEditPlusModularPipeline,
+            QwenImageLayeredAutoBlocks,
+            QwenImageLayeredModularPipeline,
+            QwenImageModularPipeline,
+        )
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
-        from .wan import WanAutoBlocks, WanModularPipeline
+        from .wan import Wan22AutoBlocks, WanAutoBlocks, WanModularPipeline
+        from .z_image import ZImageAutoBlocks, ZImageModularPipeline
 else:
     import sys
 

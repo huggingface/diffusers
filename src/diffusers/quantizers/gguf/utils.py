@@ -429,8 +429,64 @@ def dequantize_blocks_BF16(blocks, block_size, type_size, dtype=None):
     return (blocks.view(torch.int16).to(torch.int32) << 16).view(torch.float32)
 
 
+# this part from calcuis (gguf.org)
+# more info: https://github.com/calcuis/gguf-connector/blob/main/src/gguf_connector/quant2c.py
+
+
+def dequantize_blocks_IQ4_NL(blocks, block_size, type_size, dtype=None):
+    kvalues = torch.tensor(
+        [-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113],
+        dtype=torch.float32,
+        device=blocks.device,
+    )
+    n_blocks = blocks.shape[0]
+    d, qs = split_block_dims(blocks, 2)
+    d = d.view(torch.float16).to(dtype)
+    qs = qs.reshape((n_blocks, -1, 1, block_size // 2)) >> torch.tensor(
+        [0, 4], device=blocks.device, dtype=torch.uint8
+    ).reshape((1, 1, 2, 1))
+    qs = (qs & 15).reshape((n_blocks, -1)).to(torch.int64)
+    kvalues = kvalues.view(1, 1, 16)
+    qs = qs.unsqueeze(-1)
+    qs = torch.gather(kvalues.expand(qs.shape[0], qs.shape[1], 16), 2, qs)
+    qs = qs.squeeze(-1).to(dtype)
+    return d * qs
+
+
+def dequantize_blocks_IQ4_XS(blocks, block_size, type_size, dtype=None):
+    kvalues = torch.tensor(
+        [-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113],
+        dtype=torch.float32,
+        device=blocks.device,
+    )
+    n_blocks = blocks.shape[0]
+    d, scales_h, scales_l, qs = split_block_dims(blocks, 2, 2, QK_K // 64)
+    d = d.view(torch.float16).to(dtype)
+    scales_h = scales_h.view(torch.int16)
+    scales_l = scales_l.reshape((n_blocks, -1, 1)) >> torch.tensor(
+        [0, 4], device=blocks.device, dtype=torch.uint8
+    ).reshape((1, 1, 2))
+    scales_h = scales_h.reshape((n_blocks, 1, -1)) >> torch.tensor(
+        [2 * i for i in range(QK_K // 32)], device=blocks.device, dtype=torch.uint8
+    ).reshape((1, -1, 1))
+    scales_l = scales_l.reshape((n_blocks, -1)) & 0x0F
+    scales_h = scales_h.reshape((n_blocks, -1)) & 0x03
+    scales = (scales_l | (scales_h << 4)) - 32
+    dl = (d * scales.to(dtype)).reshape((n_blocks, -1, 1))
+    shifts_q = torch.tensor([0, 4], device=blocks.device, dtype=torch.uint8).reshape(1, 1, 2, 1)
+    qs = qs.reshape((n_blocks, -1, 1, 16)) >> shifts_q
+    qs = (qs & 15).reshape((n_blocks, -1, 32)).to(torch.int64)
+    kvalues = kvalues.view(1, 1, 1, 16)
+    qs = qs.unsqueeze(-1)
+    qs = torch.gather(kvalues.expand(qs.shape[0], qs.shape[1], qs.shape[2], 16), 3, qs)
+    qs = qs.squeeze(-1).to(dtype)
+    return (dl * qs).reshape(n_blocks, -1)
+
+
 GGML_QUANT_SIZES = gguf.GGML_QUANT_SIZES
 dequantize_functions = {
+    gguf.GGMLQuantizationType.IQ4_NL: dequantize_blocks_IQ4_NL,
+    gguf.GGMLQuantizationType.IQ4_XS: dequantize_blocks_IQ4_XS,
     gguf.GGMLQuantizationType.BF16: dequantize_blocks_BF16,
     gguf.GGMLQuantizationType.Q8_0: dequantize_blocks_Q8_0,
     gguf.GGMLQuantizationType.Q5_1: dequantize_blocks_Q5_1,
