@@ -28,7 +28,9 @@ from ..models._modeling_parallel import (
     ContextParallelModelPlan,
     ContextParallelOutput,
 )
+from ..models._ulysses_anything import PartitionAnythingSharder
 from ..utils import get_logger
+from ..utils.constants import DIFFUSERS_ULYSSES_ANYTHING
 from ..utils.torch_utils import unwrap_module
 from .hooks import HookRegistry, ModelHook
 
@@ -256,6 +258,9 @@ class AllGatherFunction(torch.autograd.Function):
 class EquipartitionSharder:
     @classmethod
     def shard(cls, tensor: torch.Tensor, dim: int, mesh: torch.distributed.device_mesh.DeviceMesh) -> torch.Tensor:
+        if DIFFUSERS_ULYSSES_ANYTHING:
+            return PartitionAnythingSharder.shard_anything(tensor, dim, mesh)
+
         # NOTE: the following assertion does not have to be true in general. We simply enforce it for now
         # because the alternate case has not yet been tested/required for any model.
         assert tensor.size()[dim] % mesh.size() == 0, (
@@ -269,6 +274,9 @@ class EquipartitionSharder:
 
     @classmethod
     def unshard(cls, tensor: torch.Tensor, dim: int, mesh: torch.distributed.device_mesh.DeviceMesh) -> torch.Tensor:
+        if DIFFUSERS_ULYSSES_ANYTHING:
+            return PartitionAnythingSharder.unshard_anything(tensor, dim, mesh)
+
         tensor = tensor.contiguous()
         tensor = AllGatherFunction.apply(tensor, dim, mesh.get_group())
         return tensor

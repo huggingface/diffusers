@@ -43,7 +43,8 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_ULYSSES_ANYTHING
+from ._ulysses_anything import TemplatedUlyssesAnythingAttention
 
 
 if TYPE_CHECKING:
@@ -1618,20 +1619,37 @@ def _templated_context_parallel_attention(
             _parallel_config,
         )
     elif _parallel_config.context_parallel_config.ulysses_degree > 1:
-        return TemplatedUlyssesAttention.apply(
-            query,
-            key,
-            value,
-            attn_mask,
-            dropout_p,
-            is_causal,
-            scale,
-            enable_gqa,
-            return_lse,
-            forward_op,
-            backward_op,
-            _parallel_config,
-        )
+        if DIFFUSERS_ULYSSES_ANYTHING:
+            # For Any sequence lengths and Any head num support
+            return TemplatedUlyssesAnythingAttention.apply(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_causal,
+                scale,
+                enable_gqa,
+                return_lse,
+                forward_op,
+                backward_op,
+                _parallel_config,
+            )
+        else:
+            return TemplatedUlyssesAttention.apply(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_causal,
+                scale,
+                enable_gqa,
+                return_lse,
+                forward_op,
+                backward_op,
+                _parallel_config,
+            )
     else:
         raise ValueError("Reaching this branch of code is unexpected. Please report a bug.")
 
