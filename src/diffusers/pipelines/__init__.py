@@ -15,6 +15,7 @@ from ..utils import (
     is_torch_available,
     is_torch_npu_available,
     is_transformers_available,
+    is_transformers_version,
 )
 
 
@@ -129,7 +130,7 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
-    _import_structure["flux2"] = ["Flux2Pipeline"]
+    _import_structure["flux2"] = ["Flux2Pipeline", "Flux2KleinPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -154,7 +155,7 @@ else:
         "AudioLDM2UNet2DConditionModel",
     ]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
-    _import_structure["chroma"] = ["ChromaPipeline", "ChromaImg2ImgPipeline"]
+    _import_structure["chroma"] = ["ChromaPipeline", "ChromaImg2ImgPipeline", "ChromaInpaintPipeline"]
     _import_structure["cogvideo"] = [
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
@@ -434,6 +435,8 @@ else:
         "QwenImageLayeredPipeline",
     ]
     _import_structure["chronoedit"] = ["ChronoEditPipeline"]
+    _import_structure["glm_image"] = ["GlmImagePipeline"]
+
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -595,7 +598,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .blip_diffusion import BlipDiffusionPipeline
         from .bria import BriaPipeline
         from .bria_fibo import BriaFiboEditPipeline, BriaFiboPipeline
-        from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
+        from .chroma import ChromaImg2ImgPipeline, ChromaInpaintPipeline, ChromaPipeline
         from .chronoedit import ChronoEditPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
@@ -675,7 +678,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
-        from .flux2 import Flux2Pipeline
+        from .flux2 import Flux2KleinPipeline, Flux2Pipeline
+        from .glm_image import GlmImagePipeline
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
