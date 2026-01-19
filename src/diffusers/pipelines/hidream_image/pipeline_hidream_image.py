@@ -53,6 +53,7 @@ EXAMPLE_DOC_STRING = """
         >>> from transformers import AutoTokenizer, LlamaForCausalLM
         >>> from diffusers import HiDreamImagePipeline
 
+
         >>> tokenizer_4 = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
         >>> text_encoder_4 = LlamaForCausalLM.from_pretrained(
         ...     "meta-llama/Meta-Llama-3.1-8B-Instruct",
