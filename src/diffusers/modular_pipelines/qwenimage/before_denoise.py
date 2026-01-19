@@ -649,8 +649,7 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
           sigmas (`List`, *optional*):
               Custom sigmas for the denoising process.
           image_latents (`Tensor`):
-              image latents used to guide the image generation. Can be generated from vae_encoder step. (Can be
-              generated from vae encoder and packed in input step.)
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
 
       Outputs:
           timesteps (`Tensor`):

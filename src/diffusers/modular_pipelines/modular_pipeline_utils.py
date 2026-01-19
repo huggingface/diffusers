@@ -549,7 +549,7 @@ class InputParam:
 class OutputParam:
     """Specification for an output parameter."""
 
-    name: str 
+    name: str
     type_hint: Any = None
     description: str = ""
     kwargs_type: str = None
