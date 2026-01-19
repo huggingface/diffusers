@@ -19,7 +19,7 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoPipelineForImage2Image,
@@ -108,7 +108,8 @@ class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         movq = self.dummy_movq
         torch.manual_seed(0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
 
         torch.manual_seed(0)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")

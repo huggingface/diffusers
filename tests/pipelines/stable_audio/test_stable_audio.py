@@ -19,10 +19,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import (
-    T5EncoderModel,
-    T5Tokenizer,
-)
+from transformers import AutoConfig, T5EncoderModel, T5Tokenizer
 
 from diffusers import (
     AutoencoderOobleck,
@@ -111,7 +108,8 @@ class StableAudioPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         torch.manual_seed(0)
         t5_repo_id = "hf-internal-testing/tiny-random-T5ForConditionalGeneration"
-        text_encoder = T5EncoderModel.from_pretrained(t5_repo_id)
+        config = AutoConfig.from_pretrained(t5_repo_id)
+        text_encoder = T5EncoderModel(config)
         tokenizer = T5Tokenizer.from_pretrained(t5_repo_id, truncation=True, model_max_length=25)
 
         torch.manual_seed(0)

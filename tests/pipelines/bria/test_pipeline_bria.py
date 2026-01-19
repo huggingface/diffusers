@@ -19,7 +19,7 @@ import unittest
 import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
-from transformers import T5EncoderModel, T5TokenizerFast
+from transformers import AutoConfig, T5EncoderModel, T5TokenizerFast
 
 from diffusers import (
     AutoencoderKL,
@@ -89,7 +89,8 @@ class BriaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         scheduler = FlowMatchEulerDiscreteScheduler()
 
         torch.manual_seed(0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
         tokenizer = T5TokenizerFast.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         components = {
