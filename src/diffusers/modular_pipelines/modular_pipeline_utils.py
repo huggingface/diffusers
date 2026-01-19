@@ -898,12 +898,12 @@ def make_doc_string(
 
     # Add components section if provided
     if expected_components and len(expected_components) > 0:
-        components_str = format_components(expected_components, indent_level=2)
+        components_str = format_components(expected_components, indent_level=2, add_empty_lines=False)
         output += components_str + "\n\n"
 
     # Add configs section if provided
     if expected_configs and len(expected_configs) > 0:
-        configs_str = format_configs(expected_configs, indent_level=2)
+        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
         output += configs_str + "\n\n"
 
     # Add inputs section

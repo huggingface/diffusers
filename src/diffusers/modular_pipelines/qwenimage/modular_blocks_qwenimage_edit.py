@@ -63,29 +63,14 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
     QwenImage-Edit VL encoder step that encode the image and text prompts together.
 
       Components:
-
           image_resize_processor (`VaeImageProcessor`)
-
           text_encoder (`Qwen2_5_VLForConditionalGeneration`)
-
           processor (`Qwen2VLProcessor`)
-
           guider (`ClassifierFreeGuidance`)
 
-      Configs:
-
-          prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
-    <|im_start|>user
-    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>
-    <|im_start|>assistant
-    )
-
-          prompt_template_encode_start_idx (default: 64)
-
       Inputs:
-          image (`Image`):
-              Input image for img2img, editing, or conditioning.
+          image (`Union[Image, List]`):
+              Reference image(s) for denoising. Can be a single image or list of images.
           prompt (`str`):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
@@ -95,13 +80,13 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
           resized_image (`List`):
               The resized images
           prompt_embeds (`Tensor`):
-              The prompt embeddings
+              The prompt embeddings.
           prompt_embeds_mask (`Tensor`):
-              The encoder attention mask
+              The encoder attention mask.
           negative_prompt_embeds (`Tensor`):
-              The negative prompt embeddings
+              The negative prompt embeddings.
           negative_prompt_embeds_mask (`Tensor`):
-              The negative prompt embeddings mask
+              The negative prompt embeddings mask.
     """
 
     model_name = "qwenimage-edit"
@@ -128,26 +113,23 @@ class QwenImageEditVaeEncoderStep(SequentialPipelineBlocks):
     Vae encoder step that encode the image inputs into their latent representations.
 
       Components:
-
           image_resize_processor (`VaeImageProcessor`)
-
           image_processor (`VaeImageProcessor`)
-
           vae (`AutoencoderKLQwenImage`)
 
       Inputs:
-          image (`Image`):
-              Input image for img2img, editing, or conditioning.
+          image (`Union[Image, List]`):
+              Reference image(s) for denoising. Can be a single image or list of images.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
       Outputs:
           resized_image (`List`):
               The resized images
-          processed_image (`None`):
-              TODO: Add description.
+          processed_image (`Tensor`):
+              The processed image
           image_latents (`Tensor`):
-              The latents representing the reference image(s). Single tensor or list depending on input.
+              The latent representation of the input image.
     """
 
     model_name = "qwenimage-edit"
@@ -173,16 +155,13 @@ class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
        - create image latents.
 
       Components:
-
           image_resize_processor (`VaeImageProcessor`)
-
           image_mask_processor (`InpaintProcessor`)
-
           vae (`AutoencoderKLQwenImage`)
 
       Inputs:
-          image (`Image`):
-              Input image for img2img, editing, or conditioning.
+          image (`Union[Image, List]`):
+              Reference image(s) for denoising. Can be a single image or list of images.
           mask_image (`Image`):
               Mask image for inpainting.
           padding_mask_crop (`int`, *optional*):
@@ -193,14 +172,14 @@ class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
       Outputs:
           resized_image (`List`):
               The resized images
-          processed_image (`None`):
-              TODO: Add description.
-          processed_mask_image (`None`):
-              TODO: Add description.
+          processed_image (`Tensor`):
+              The processed image
+          processed_mask_image (`Tensor`):
+              The processed mask image
           mask_overlay_kwargs (`Dict`):
               The kwargs for the postprocess step to apply the mask overlay
           image_latents (`Tensor`):
-              The latents representing the reference image(s). Single tensor or list depending on input.
+              The latent representation of the input image.
     """
 
     model_name = "qwenimage-edit"
@@ -252,36 +231,50 @@ class QwenImageEditInputStep(SequentialPipelineBlocks):
        - update height/width based `image_latents`, patchify `image_latents`.
 
       Components:
-
           pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          prompt_embeds (`None`):
-              TODO: Add description.
-          prompt_embeds_mask (`None`):
-              TODO: Add description.
-          negative_prompt_embeds (`None`, *optional*):
-              TODO: Add description.
-          negative_prompt_embeds_mask (`None`, *optional*):
-              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`None`, *optional*):
-              TODO: Add description.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
 
       Outputs:
           batch_size (`int`):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt
+              The batch size of the prompt embeddings
           dtype (`dtype`):
-              Data type of model tensor inputs (determined by `prompt_embeds`)
+              The data type of the prompt embeddings
+          prompt_embeds (`Tensor`):
+              The prompt embeddings. (batch-expanded)
+          prompt_embeds_mask (`Tensor`):
+              The encoder attention mask. (batch-expanded)
+          negative_prompt_embeds (`Tensor`):
+              The negative prompt embeddings. (batch-expanded)
+          negative_prompt_embeds_mask (`Tensor`):
+              The negative prompt embeddings mask. (batch-expanded)
           image_height (`int`):
               The image height calculated from the image latents dimension
           image_width (`int`):
               The image width calculated from the image latents dimension
+          height (`int`):
+              if not provided, updated to image height
+          width (`int`):
+              if not provided, updated to image width
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step. (patchified and
+              batch-expanded)
     """
 
     model_name = "qwenimage-edit"
@@ -308,38 +301,54 @@ class QwenImageEditInpaintInputStep(SequentialPipelineBlocks):
        - update height/width based `image_latents`, patchify `image_latents`.
 
       Components:
-
           pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          prompt_embeds (`None`):
-              TODO: Add description.
-          prompt_embeds_mask (`None`):
-              TODO: Add description.
-          negative_prompt_embeds (`None`, *optional*):
-              TODO: Add description.
-          negative_prompt_embeds_mask (`None`, *optional*):
-              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`None`, *optional*):
-              TODO: Add description.
-          processed_mask_image (`None`, *optional*):
-              TODO: Add description.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          processed_mask_image (`Tensor`, *optional*):
+              The processed mask image
 
       Outputs:
           batch_size (`int`):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt
+              The batch size of the prompt embeddings
           dtype (`dtype`):
-              Data type of model tensor inputs (determined by `prompt_embeds`)
+              The data type of the prompt embeddings
+          prompt_embeds (`Tensor`):
+              The prompt embeddings. (batch-expanded)
+          prompt_embeds_mask (`Tensor`):
+              The encoder attention mask. (batch-expanded)
+          negative_prompt_embeds (`Tensor`):
+              The negative prompt embeddings. (batch-expanded)
+          negative_prompt_embeds_mask (`Tensor`):
+              The negative prompt embeddings mask. (batch-expanded)
           image_height (`int`):
               The image height calculated from the image latents dimension
           image_width (`int`):
               The image width calculated from the image latents dimension
+          height (`int`):
+              if not provided, updated to image height
+          width (`int`):
+              if not provided, updated to image width
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step. (patchified and
+              batch-expanded)
+          processed_mask_image (`Tensor`):
+              The processed mask image (batch-expanded)
     """
 
     model_name = "qwenimage-edit"
@@ -368,30 +377,31 @@ class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
        - Create the patchified latents `mask` based on the processed mask image.
 
       Components:
-
           scheduler (`FlowMatchEulerDiscreteScheduler`)
-
           pachifier (`QwenImagePachifier`)
 
       Inputs:
           latents (`Tensor`):
               The initial random noised, can be generated in prepare latent step.
           image_latents (`Tensor`):
-              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input step.
+              image latents used to guide the image generation. Can be generated from vae_encoder step. (Can be generated from
+              vae encoder and updated in input step.)
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
           processed_mask_image (`Tensor`):
               The processed mask to use for the inpainting process.
-          height (`None`):
-              TODO: Add description.
-          width (`None`):
-              TODO: Add description.
-          dtype (`None`):
-              TODO: Add description.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          dtype (`dtype`, *optional*, defaults to torch.float32):
+              The dtype of the model inputs, can be generated in input step.
 
       Outputs:
           initial_noise (`Tensor`):
               The initial random noised used for inpainting denoising.
+          latents (`Tensor`):
+              The scaled noisy latents to use for inpainting/image-to-image denoising.
           mask (`Tensor`):
               The mask to use for the inpainting process.
     """
@@ -416,32 +426,28 @@ class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoising workflow for QwenImage-Edit edit (img2img) task.
 
       Components:
-
           pachifier (`QwenImagePachifier`)
-
           scheduler (`FlowMatchEulerDiscreteScheduler`)
-
           guider (`ClassifierFreeGuidance`)
-
           transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          prompt_embeds (`None`):
-              TODO: Add description.
-          prompt_embeds_mask (`None`):
-              TODO: Add description.
-          negative_prompt_embeds (`None`, *optional*):
-              TODO: Add description.
-          negative_prompt_embeds_mask (`None`, *optional*):
-              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`None`, *optional*):
-              TODO: Add description.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
@@ -452,7 +458,7 @@ class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
               Custom sigmas for the denoising process.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          denoiser_input_fields (`Tensor`, *optional*):
+          **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
@@ -496,34 +502,30 @@ class QwenImageEditInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoising workflow for QwenImage-Edit edit inpaint task.
 
       Components:
-
           pachifier (`QwenImagePachifier`)
-
           scheduler (`FlowMatchEulerDiscreteScheduler`)
-
           guider (`ClassifierFreeGuidance`)
-
           transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          prompt_embeds (`None`):
-              TODO: Add description.
-          prompt_embeds_mask (`None`):
-              TODO: Add description.
-          negative_prompt_embeds (`None`, *optional*):
-              TODO: Add description.
-          negative_prompt_embeds_mask (`None`, *optional*):
-              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`None`, *optional*):
-              TODO: Add description.
-          processed_mask_image (`None`, *optional*):
-              TODO: Add description.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          processed_mask_image (`Tensor`, *optional*):
+              The processed mask image
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
@@ -536,7 +538,7 @@ class QwenImageEditInpaintCoreDenoiseStep(SequentialPipelineBlocks):
               Strength for img2img/inpainting.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          denoiser_input_fields (`Tensor`, *optional*):
+          **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
@@ -621,20 +623,18 @@ class QwenImageEditDecodeStep(SequentialPipelineBlocks):
     Decode step that decodes the latents to images and postprocess the generated image.
 
       Components:
-
           vae (`AutoencoderKLQwenImage`)
-
           image_processor (`VaeImageProcessor`)
 
       Inputs:
           latents (`Tensor`):
-              The latents to decode, can be generated in the denoise step
+              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise step.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
 
       Outputs:
           images (`List`):
-              Generated images.
+              Generated images. (tensor output of the vae decoder.)
     """
 
     model_name = "qwenimage-edit"
@@ -653,22 +653,20 @@ class QwenImageEditInpaintDecodeStep(SequentialPipelineBlocks):
     Decode step that decodes the latents to images and postprocess the generated image, optionally apply the mask overlay to the original image.
 
       Components:
-
           vae (`AutoencoderKLQwenImage`)
-
           image_mask_processor (`InpaintProcessor`)
 
       Inputs:
           latents (`Tensor`):
-              The latents to decode, can be generated in the denoise step
+              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise step.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          mask_overlay_kwargs (`None`, *optional*):
-              TODO: Add description.
+          mask_overlay_kwargs (`Dict`, *optional*):
+              The kwargs for the postprocess step to apply the mask overlay. generated in InpaintProcessImagesInputStep.
 
       Outputs:
           images (`List`):
-              Generated images.
+              Generated images. (tensor output of the vae decoder.)
     """
 
     model_name = "qwenimage-edit"
@@ -724,41 +722,20 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
       - for edit inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop`
 
       Components:
-
           image_resize_processor (`VaeImageProcessor`)
-
           text_encoder (`Qwen2_5_VLForConditionalGeneration`)
-
           processor (`Qwen2VLProcessor`)
-
           guider (`ClassifierFreeGuidance`)
-
           image_mask_processor (`InpaintProcessor`)
-
           vae (`AutoencoderKLQwenImage`)
-
           image_processor (`VaeImageProcessor`)
-
           pachifier (`QwenImagePachifier`)
-
           scheduler (`FlowMatchEulerDiscreteScheduler`)
-
           transformer (`QwenImageTransformer2DModel`)
 
-      Configs:
-
-          prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
-    <|im_start|>user
-    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>
-    <|im_start|>assistant
-    )
-
-          prompt_template_encode_start_idx (default: 64)
-
       Inputs:
-          image (`Image`):
-              Input image for img2img, editing, or conditioning.
+          image (`Union[Image, List]`):
+              Reference image(s) for denoising. Can be a single image or list of images.
           prompt (`str`):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
@@ -775,10 +752,10 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`):
               The width in pixels of the generated image.
-          image_latents (`None`):
-              TODO: Add description.
-          processed_mask_image (`None`, *optional*):
-              TODO: Add description.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          processed_mask_image (`Tensor`, *optional*):
+              The processed mask image
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
           num_inference_steps (`int`):
@@ -789,12 +766,12 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
               Strength for img2img/inpainting.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          denoiser_input_fields (`Tensor`, *optional*):
+          **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          mask_overlay_kwargs (`None`, *optional*):
-              TODO: Add description.
+          mask_overlay_kwargs (`Dict`, *optional*):
+              The kwargs for the postprocess step to apply the mask overlay. generated in InpaintProcessImagesInputStep.
 
       Outputs:
           images (`List`):

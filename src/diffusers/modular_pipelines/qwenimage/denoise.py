@@ -85,7 +85,7 @@ class QwenImageEditLoopBeforeDenoiser(ModularPipelineBlocks):
                 type_hint=torch.Tensor, 
                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
             ),
-            InputParam.template("image_latents", note="generated in vae encoder step and updated in input step."),
+            InputParam.template("image_latents"),
         ]
 
     @torch.no_grad()
@@ -197,13 +197,6 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam.template("attention_kwargs"),
-            InputParam(
-                name="latents", 
-                required=True, 
-                type_hint=torch.Tensor, 
-                description="The latents to use for the denoising process. Can be generated in prepare_latents step."
-            ),
-            InputParam.template("num_inference_steps"),
             InputParam.template("denoiser_input_fields"),
             InputParam(
                 "img_shapes",
@@ -293,13 +286,6 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam.template("attention_kwargs"),
-            InputParam(
-                name="latents", 
-                required=True, 
-                type_hint=torch.Tensor, 
-                description="The latents to use for the denoising process. Can be generated in prepare_latents step."
-            ),
-            InputParam.template("num_inference_steps"),
             InputParam.template("denoiser_input_fields"),
             InputParam(
                 "img_shapes",
@@ -427,19 +413,19 @@ class QwenImageLoopAfterDenoiserInpaint(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.",
             ),
-            InputParam.template("image_latents", note="Can be generated from vae encoder step and updated in input step."),
+            InputParam.template("image_latents"),
             InputParam(
                 "initial_noise",
                 required=True,
                 type_hint=torch.Tensor,
                 description="The initial noise to use for the inpainting process. Can be generated in inpaint prepare latents step.",
             ),
-            InputParam(
-                "timesteps", 
-                required=True, 
-                type_hint=torch.Tensor, 
-                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
-            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam.template("latents"),
         ]
 
     @torch.no_grad()
@@ -521,6 +507,38 @@ class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
 # auto_docstring
 class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
+    """
+    Denoise step that iteratively denoise the latents. 
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
+      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+       - `QwenImageLoopBeforeDenoiser`
+       - `QwenImageLoopDenoiser`
+       - `QwenImageLoopAfterDenoiser`
+      This block supports text2image and image2image tasks for QwenImage.
+
+      Components:
+          guider (`ClassifierFreeGuidance`)
+          transformer (`QwenImageTransformer2DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          latents (`Tensor`):
+              The initial latents to use for the denoising process. Can be generated in prepare_latent step.
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          img_shapes (`List`):
+              The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
     model_name = "qwenimage"
 
     block_classes = [
@@ -546,6 +564,45 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
 # Qwen Image (inpainting)
 # auto_docstring
 class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
+    """
+    Denoise step that iteratively denoise the latents. 
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
+      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+       - `QwenImageLoopBeforeDenoiser`
+       - `QwenImageLoopDenoiser`
+       - `QwenImageLoopAfterDenoiser`
+       - `QwenImageLoopAfterDenoiserInpaint`
+      This block supports inpainting tasks for QwenImage.
+
+      Components:
+          guider (`ClassifierFreeGuidance`)
+          transformer (`QwenImageTransformer2DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          latents (`Tensor`):
+              The initial latents to use for the denoising process. Can be generated in prepare_latent step.
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          img_shapes (`List`):
+              The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
+          mask (`Tensor`):
+              The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          initial_noise (`Tensor`):
+              The initial noise to use for the inpainting process. Can be generated in inpaint prepare latents step.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
     model_name = "qwenimage"
     block_classes = [
         QwenImageLoopBeforeDenoiser,
@@ -572,6 +629,46 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
 # Qwen Image (text2image, image2image) with controlnet
 # auto_docstring
 class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
+    """
+    Denoise step that iteratively denoise the latents. 
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
+      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+       - `QwenImageLoopBeforeDenoiser`
+       - `QwenImageLoopBeforeDenoiserControlNet`
+       - `QwenImageLoopDenoiser`
+       - `QwenImageLoopAfterDenoiser`
+      This block supports text2img/img2img tasks with controlnet for QwenImage.
+
+      Components:
+          guider (`ClassifierFreeGuidance`)
+          controlnet (`QwenImageControlNetModel`)
+          transformer (`QwenImageTransformer2DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          latents (`Tensor`):
+              The initial latents to use for the denoising process. Can be generated in prepare_latent step.
+          control_image_latents (`Tensor`):
+              The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.
+          controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
+              Scale for ControlNet conditioning. (updated in prepare_controlnet_inputs step.)
+          controlnet_keep (`List`):
+              The controlnet keep values. Can be generated in prepare_controlnet_inputs step.
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          img_shapes (`List`):
+              The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
     model_name = "qwenimage"
     block_classes = [
         QwenImageLoopBeforeDenoiser,
@@ -598,6 +695,53 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
 # Qwen Image (inpainting) with controlnet
 # auto_docstring
 class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
+    """
+    Denoise step that iteratively denoise the latents. 
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
+      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+       - `QwenImageLoopBeforeDenoiser`
+       - `QwenImageLoopBeforeDenoiserControlNet`
+       - `QwenImageLoopDenoiser`
+       - `QwenImageLoopAfterDenoiser`
+       - `QwenImageLoopAfterDenoiserInpaint`
+      This block supports inpainting tasks with controlnet for QwenImage.
+
+      Components:
+          guider (`ClassifierFreeGuidance`)
+          controlnet (`QwenImageControlNetModel`)
+          transformer (`QwenImageTransformer2DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          latents (`Tensor`):
+              The initial latents to use for the denoising process. Can be generated in prepare_latent step.
+          control_image_latents (`Tensor`):
+              The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.
+          controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
+              Scale for ControlNet conditioning. (updated in prepare_controlnet_inputs step.)
+          controlnet_keep (`List`):
+              The controlnet keep values. Can be generated in prepare_controlnet_inputs step.
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          img_shapes (`List`):
+              The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
+          mask (`Tensor`):
+              The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          initial_noise (`Tensor`):
+              The initial noise to use for the inpainting process. Can be generated in inpaint prepare latents step.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
     model_name = "qwenimage"
     block_classes = [
         QwenImageLoopBeforeDenoiser,
@@ -632,6 +776,40 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
 # Qwen Image Edit (image2image)
 # auto_docstring
 class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
+    """
+    Denoise step that iteratively denoise the latents. 
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
+      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+       - `QwenImageEditLoopBeforeDenoiser`
+       - `QwenImageEditLoopDenoiser`
+       - `QwenImageLoopAfterDenoiser`
+      This block supports QwenImage Edit.
+
+      Components:
+          guider (`ClassifierFreeGuidance`)
+          transformer (`QwenImageTransformer2DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          latents (`Tensor`):
+              The initial latents to use for the denoising process. Can be generated in prepare_latent step.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          img_shapes (`List`):
+              The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditLoopBeforeDenoiser,
@@ -656,6 +834,45 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
 # Qwen Image Edit (inpainting)
 # auto_docstring
 class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
+    """
+    Denoise step that iteratively denoise the latents. 
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
+      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+       - `QwenImageEditLoopBeforeDenoiser`
+       - `QwenImageEditLoopDenoiser`
+       - `QwenImageLoopAfterDenoiser`
+       - `QwenImageLoopAfterDenoiserInpaint`
+      This block supports inpainting tasks for QwenImage Edit.
+
+      Components:
+          guider (`ClassifierFreeGuidance`)
+          transformer (`QwenImageTransformer2DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          latents (`Tensor`):
+              The initial latents to use for the denoising process. Can be generated in prepare_latent step.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          img_shapes (`List`):
+              The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.
+          mask (`Tensor`):
+              The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.
+          initial_noise (`Tensor`):
+              The initial noise to use for the inpainting process. Can be generated in inpaint prepare latents step.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditLoopBeforeDenoiser,
@@ -682,6 +899,40 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
 # Qwen Image Layered (image2image)
 # auto_docstring
 class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
+    """
+    Denoise step that iteratively denoise the latents. 
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
+      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+       - `QwenImageEditLoopBeforeDenoiser`
+       - `QwenImageEditLoopDenoiser`
+       - `QwenImageLoopAfterDenoiser`
+      This block supports QwenImage Layered.
+
+      Components:
+          guider (`ClassifierFreeGuidance`)
+          transformer (`QwenImageTransformer2DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          latents (`Tensor`):
+              The initial latents to use for the denoising process. Can be generated in prepare_latent step.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+          attention_kwargs (`Dict`, *optional*):
+              Additional kwargs for attention processors.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          img_shapes (`List`):
+              The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
     model_name = "qwenimage-layered"
     block_classes = [
         QwenImageEditLoopBeforeDenoiser,

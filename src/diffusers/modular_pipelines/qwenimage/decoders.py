@@ -29,7 +29,27 @@ logger = logging.get_logger(__name__)
 
 
 # after denoising loop (unpack latents)
+
+#auto_docstring
 class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
+    """
+    Step that unpack the latents from 3D tensor (batch_size, sequence_length, channels) into 5D tensor (batch_size, channels, 1, height, width)
+
+      Components:
+          pachifier (`QwenImagePachifier`)
+
+      Inputs:
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          latents (`Tensor`):
+              The latents to decode, can be generated in the denoise step.
+
+      Outputs:
+          latents (`Tensor`):
+              The denoisedlatents unpacked to B, C, 1, H, W
+    """
     model_name = "qwenimage"
 
     @property
@@ -80,7 +100,28 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
         return components, state
 
 
+#auto_docstring
 class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
+    """
+    Unpack latents from (B, seq, C*4) to (B, C, layers+1, H, W) after denoising.
+
+      Components:
+          pachifier (`QwenImageLayeredPachifier`)
+
+      Inputs:
+          latents (`Tensor`):
+              The denoised latents to decode, can be generated in the denoise step.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          layers (`int`, *optional*, defaults to 4):
+              Number of layers to extract from the image
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents. (unpacked to B, C, layers+1, H, W)
+    """
     model_name = "qwenimage-layered"
 
     @property
@@ -131,7 +172,23 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
 
 
 # decode step
+
+#auto_docstring
 class QwenImageDecoderStep(ModularPipelineBlocks):
+    """
+    Step that decodes the latents to images
+
+      Components:
+          vae (`AutoencoderKLQwenImage`)
+
+      Inputs:
+          latents (`Tensor`):
+              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise step.
+
+      Outputs:
+          images (`List`):
+              Generated images. (tensor output of the vae decoder.)
+    """
     model_name = "qwenimage"
 
     @property
@@ -189,7 +246,25 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         return components, state
 
 
+#auto_docstring
 class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
+    """
+    Decode unpacked latents (B, C, layers+1, H, W) into layer images.
+
+      Components:
+          vae (`AutoencoderKLQwenImage`)
+          image_processor (`VaeImageProcessor`)
+
+      Inputs:
+          latents (`Tensor`):
+              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise step.
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+
+      Outputs:
+          images (`List`):
+              Generated images.
+    """
     model_name = "qwenimage-layered"
 
     @property
@@ -269,7 +344,25 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
 
 
 # postprocess the decoded images
+
+#auto_docstring
 class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
+    """
+    postprocess the generated image
+
+      Components:
+          image_processor (`VaeImageProcessor`)
+
+      Inputs:
+          images (`Tensor`):
+              the generated image tensor from decoders step
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+
+      Outputs:
+          images (`List`):
+              Generated images.
+    """
     model_name = "qwenimage"
 
     @property
@@ -323,7 +416,26 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
         return components, state
 
 
+#auto_docstring
 class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
+    """
+    postprocess the generated image, optional apply the mask overally to the original image..
+
+      Components:
+          image_mask_processor (`InpaintProcessor`)
+
+      Inputs:
+          images (`Tensor`):
+              the generated image tensor from decoders step
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+          mask_overlay_kwargs (`Dict`, *optional*):
+              The kwargs for the postprocess step to apply the mask overlay. generated in InpaintProcessImagesInputStep.
+
+      Outputs:
+          images (`List`):
+              Generated images.
+    """
     model_name = "qwenimage"
 
     @property

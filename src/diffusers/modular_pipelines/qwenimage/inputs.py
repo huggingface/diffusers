@@ -109,7 +109,42 @@ def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: in
     return height, width
 
 
+# auto_docstring
 class QwenImageTextInputsStep(ModularPipelineBlocks):
+    """
+    Text input processing step that standardizes text embeddings for the pipeline.
+      This step:
+        1. Determines `batch_size` and `dtype` based on `prompt_embeds`
+        2. Ensures all text embeddings have consistent batch sizes (batch_size * num_images_per_prompt)
+
+      This block should be placed after all encoder steps to process the text embeddings before they are used in subsequent pipeline steps.
+
+      Inputs:
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+
+      Outputs:
+          batch_size (`int`):
+              The batch size of the prompt embeddings
+          dtype (`dtype`):
+              The data type of the prompt embeddings
+          prompt_embeds (`Tensor`):
+              The prompt embeddings. (batch-expanded)
+          prompt_embeds_mask (`Tensor`):
+              The encoder attention mask. (batch-expanded)
+          negative_prompt_embeds (`Tensor`):
+              The negative prompt embeddings. (batch-expanded)
+          negative_prompt_embeds_mask (`Tensor`):
+              The negative prompt embeddings mask. (batch-expanded)
+    """
     model_name = "qwenimage"
 
     @property
@@ -217,8 +252,47 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
-    """Input step for QwenImage: update height/width, expand batch, patchify."""
+    """
+    Input processing step that:
+        1. For image latent inputs: Updates height/width if None, patchifies, and expands batch size
+        2. For additional batch inputs: Expands batch dimensions to match final batch size
+
+      Configured inputs:
+        - Image latent inputs: ['image_latents']
+
+      This block should be placed after the encoder steps and the text input step.
+
+      Components:
+          pachifier (`QwenImagePachifier`)
+
+      Inputs:
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
+              generated in input step.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+
+      Outputs:
+          image_height (`int`):
+              The image height calculated from the image latents dimension
+          image_width (`int`):
+              The image width calculated from the image latents dimension
+          height (`int`):
+              if not provided, updated to image height
+          width (`int`):
+              if not provided, updated to image width
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step. (patchified and
+              batch-expanded)
+    """
 
     model_name = "qwenimage"
 
@@ -385,8 +459,48 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
-    """Input step for QwenImage Edit Plus: handles list of latents with different sizes."""
+    """
+    Input processing step for Edit Plus that:
+        1. For image latent inputs (list): Collects heights/widths, patchifies each, concatenates, expands batch
+        2. For additional batch inputs: Expands batch dimensions to match final batch size
+        Height/width defaults to last image in the list.
+
+      Configured inputs:
+        - Image latent inputs: ['image_latents']
+
+      This block should be placed after the encoder steps and the text input step.
+
+      Components:
+          pachifier (`QwenImagePachifier`)
+
+      Inputs:
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
+              generated in input step.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+
+      Outputs:
+          image_height (`List`):
+              The image heights calculated from the image latents dimension
+          image_width (`List`):
+              The image widths calculated from the image latents dimension
+          height (`int`):
+              if not provided, updated to image height
+          width (`int`):
+              if not provided, updated to image width
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step. (patchified,
+              concatenated, and batch-expanded)
+    """
 
     model_name = "qwenimage-edit-plus"
 
@@ -571,8 +685,44 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
 
 
 # same as QwenImageAdditionalInputsStep, but with layered pachifier.
+
+# auto_docstring
 class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
-    """Input step for QwenImage Layered: update height/width, expand batch, patchify with layered pachifier."""
+    """
+    Input processing step for Layered that:
+        1. For image latent inputs: Updates height/width if None, patchifies with layered pachifier, and expands batch size
+        2. For additional batch inputs: Expands batch dimensions to match final batch size
+
+      Configured inputs:
+        - Image latent inputs: ['image_latents']
+
+      This block should be placed after the encoder steps and the text input step.
+
+      Components:
+          pachifier (`QwenImageLayeredPachifier`)
+
+      Inputs:
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
+              generated in input step.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+
+      Outputs:
+          image_height (`int`):
+              The image height calculated from the image latents dimension
+          image_width (`int`):
+              The image width calculated from the image latents dimension
+          height (`int`):
+              if not provided, updated to image height
+          width (`int`):
+              if not provided, updated to image width
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step. (patchified with layered
+              pachifier and batch-expanded)
+    """
 
     model_name = "qwenimage-layered"
 
@@ -738,7 +888,32 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageControlNetInputsStep(ModularPipelineBlocks):
+    """
+    prepare the `control_image_latents` for controlnet. Insert after all the other inputs steps.
+
+      Inputs:
+          control_image_latents (`Tensor`):
+              The control image latents to use for the denoising process. Can be generated in controlnet vae encoder step.
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
+              generated in input step.
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+      Outputs:
+          control_image_latents (`Tensor`):
+              The control image latents (patchified and batch-expanded).
+          height (`int`):
+              if not provided, updated to control image height
+          width (`int`):
+              if not provided, updated to control image width
+    """
     model_name = "qwenimage"
 
     @property
