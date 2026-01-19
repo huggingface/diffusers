@@ -160,7 +160,6 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
             img_shapes=block_state.img_shapes,
             encoder_hidden_states=block_state.prompt_embeds,
             encoder_hidden_states_mask=block_state.prompt_embeds_mask,
-            txt_seq_lens=block_state.txt_seq_lens,
             return_dict=False,
         )
 
@@ -216,10 +215,6 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
             "encoder_hidden_states_mask": (
                 getattr(block_state, "prompt_embeds_mask", None),
                 getattr(block_state, "negative_prompt_embeds_mask", None),
-            ),
-            "txt_seq_lens": (
-                getattr(block_state, "txt_seq_lens", None),
-                getattr(block_state, "negative_txt_seq_lens", None),
             ),
         }
 
@@ -305,10 +300,6 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
             "encoder_hidden_states_mask": (
                 getattr(block_state, "prompt_embeds_mask", None),
                 getattr(block_state, "negative_prompt_embeds_mask", None),
-            ),
-            "txt_seq_lens": (
-                getattr(block_state, "txt_seq_lens", None),
-                getattr(block_state, "negative_txt_seq_lens", None),
             ),
         }
 
