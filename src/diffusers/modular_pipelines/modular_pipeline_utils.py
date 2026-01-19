@@ -336,7 +336,6 @@ INPUT_PARAM_TEMPLATES = {
     },
     "negative_prompt": {
         "type_hint": str,
-        "default": None,
         "description": "The prompt or prompts not to guide the image generation.",
     },
     "max_sequence_length": {
@@ -364,12 +363,10 @@ INPUT_PARAM_TEMPLATES = {
     },
     "generator": {
         "type_hint": torch.Generator,
-        "default": None,
         "description": "Torch generator for deterministic generation.",
     },
     "sigmas": {
         "type_hint": List[float],
-        "default": None,
         "description": "Custom sigmas for the denoising process.",
     },
     "strength": {
@@ -378,33 +375,16 @@ INPUT_PARAM_TEMPLATES = {
         "description": "Strength for img2img/inpainting.",
     },
     "image": {
-        "type_hint": PIL.Image.Image,
+        "type_hint": Union[PIL.Image.Image, List[PIL.Image.Image]],
         "required": True,
-        "description": "Input image for img2img, editing, or conditioning.",
-    },
-    "mask_image": {
-        "type_hint": PIL.Image.Image,
-        "required": True,
-        "description": "Mask image for inpainting.",
-    },
-    "control_image": {
-        "type_hint": PIL.Image.Image,
-        "required": True,
-        "description": "Control image for ControlNet conditioning.",
-    },
-    "padding_mask_crop": {
-        "type_hint": int,
-        "default": None,
-        "description": "Padding for mask cropping in inpainting.",
+        "description": "Reference image(s) for denoising. Can be a single image or list of images.",
     },
     "latents": {
         "type_hint": torch.Tensor,
-        "default": None,
         "description": "Pre-generated noisy latents for image generation.",
     },
     "timesteps": {
         "type_hint": torch.Tensor,
-        "default": None,
         "description": "Timesteps for the denoising process.",
     },
     "output_type": {
@@ -414,13 +394,27 @@ INPUT_PARAM_TEMPLATES = {
     },
     "attention_kwargs": {
         "type_hint": Dict[str, Any],
-        "default": None,
         "description": "Additional kwargs for attention processors.",
     },
     "denoiser_input_fields": {
         "kwargs_type": "denoiser_input_fields",
-        "type_hint": torch.Tensor,
         "description": "conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
+    },
+    # inpainting
+    "mask_image": {
+        "type_hint": PIL.Image.Image,
+        "required": True,
+        "description": "Mask image for inpainting.",
+    },
+    "padding_mask_crop": {
+        "type_hint": int,
+        "description": "Padding for mask cropping in inpainting.",
+    },
+    # controlnet
+    "control_image": {
+        "type_hint": PIL.Image.Image,
+        "required": True,
+        "description": "Control image for ControlNet conditioning.",
     },
     "control_guidance_start": {
         "type_hint": float,
@@ -437,6 +431,45 @@ INPUT_PARAM_TEMPLATES = {
         "default": 1.0,
         "description": "Scale for ControlNet conditioning.",
     },
+    "layers": {
+        "type_hint": int,
+        "default": 4,
+        "description": "Number of layers to extract from the image",
+    },
+    # common intermediate inputs
+    "prompt_embeds":{
+        "type_hint": torch.Tensor,
+        "required": True,
+        "description": "text embeddings used to guide the image generation. Can be generated from text_encoder step.",
+    },
+    "prompt_embeds_mask": {
+        "type_hint": torch.Tensor,
+        "required": True,
+        "description": "mask for the text embeddings. Can be generated from text_encoder step.",
+    },
+    "negative_prompt_embeds": {
+        "type_hint": torch.Tensor,
+        "description": "negative text embeddings used to guide the image generation. Can be generated from text_encoder step.",
+    },
+    "negative_prompt_embeds_mask": {
+        "type_hint": torch.Tensor,
+        "description": "mask for the negative text embeddings. Can be generated from text_encoder step.",
+    },
+    "image_latents": {
+        "type_hint": torch.Tensor,
+        "required": True,
+        "description": "image latents used to guide the image generation. Can be generated from vae_encoder step.",
+    },
+    "batch_size": {
+        "type_hint": int,
+        "default": 1,
+        "description": "Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
+    },
+    "dtype": {
+        "type_hint": torch.dtype,
+        "default": torch.float32,
+        "description": "The dtype of the model inputs, can be generated in input step.",
+    },
 }
 
 OUTPUT_PARAM_TEMPLATES = {
@@ -448,15 +481,34 @@ OUTPUT_PARAM_TEMPLATES = {
         "type_hint": torch.Tensor,
         "description": "Denoised latents.",
     },
+    # intermediate outputs
+    "prompt_embeds": {
+        "type_hint": torch.Tensor,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "The prompt embeddings.",
+    },
+    "prompt_embeds_mask": {
+        "type_hint": torch.Tensor,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "The encoder attention mask.",
+    },
+    "negative_prompt_embeds": {
+        "type_hint": torch.Tensor,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "The negative prompt embeddings.",
+    },
+    "negative_prompt_embeds_mask": {
+        "type_hint": torch.Tensor,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "The negative prompt embeddings mask.",
+    },
+    "image_latents": {
+        "type_hint": torch.Tensor,
+        "description": "The latent representation of the input image.",
+    },
 }
 
 
-# YiYi Notes: both inputs and intermediate_inputs are InputParam objects
-# however some fields are not relevant for intermediate_inputs
-# e.g. unlike inputs, required only used in docstring for intermediate_inputs, we do not check if a required intermediate inputs is passed
-# default is not used for intermediate_inputs, we only use default from inputs, so it is ignored if it is set for intermediate_inputs
-# -> should we use different class for inputs and intermediate_inputs?
-@dataclass
 class InputParam:
     """Specification for an input parameter."""
 
@@ -465,31 +517,37 @@ class InputParam:
     default: Any = None
     required: bool = False
     description: str = ""
-    kwargs_type: str = None  # YiYi Notes: remove this feature (maybe)
+    kwargs_type: str = None
+
+    def __post_init__(self):
+        if self.required and self.default is not None:
+            raise ValueError(f"InputParam '{self.name}' cannot be both required and have a default value")
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
 
     @classmethod
-    def template(cls, name: str,  **overrides) -> "InputParam":
-        """Get template for name if exists, otherwise return basic InputParam with just the name."""
-        if name in INPUT_PARAM_TEMPLATES:
-            kwargs = {"name": name, **INPUT_PARAM_TEMPLATES[name]}
-            # Override with user-provided values
-            for key, value in overrides.items():
-                kwargs[key] = value
-            return cls(**kwargs)
-        return cls(name=name, **overrides)
+    def template(cls, name: str, note: str = None, **overrides) -> "InputParam":
+        """Get template for name if exists, otherwise raise ValueError."""
+        if name not in INPUT_PARAM_TEMPLATES:
+            raise ValueError(f"InputParam template for {name} not found")
+
+        template_kwargs = INPUT_PARAM_TEMPLATES[name].copy()
+        
+        if note and "description" in template_kwargs:
+            template_kwargs["description"] = f"{template_kwargs['description']} ({note})"
+        
+        template_kwargs.update(overrides)
+        return cls(name=name, **template_kwargs)
 
 
-@dataclass
 class OutputParam:
     """Specification for an output parameter."""
 
     name: str = None
     type_hint: Any = None
     description: str = ""
-    kwargs_type: str = None  # YiYi notes: remove this feature (maybe)
+    kwargs_type: str = None
 
     def __repr__(self):
         return (
@@ -497,15 +555,18 @@ class OutputParam:
         )
 
     @classmethod
-    def template(cls, name: str, **overrides) -> "OutputParam":
-        """Get template for name if exists, otherwise return basic OutputParam with just the name."""
-        if name in OUTPUT_PARAM_TEMPLATES:
-            kwargs = {"name": name, **OUTPUT_PARAM_TEMPLATES[name]}
-            # Override with user-provided values
-            for key, value in overrides.items():
-                kwargs[key] = value
-            return cls(**kwargs)
-        return cls(name=name, **overrides)
+    def template(cls, name: str, note: str = None, **overrides) -> "OutputParam":
+        """Get template for name if exists, otherwise raise ValueError."""
+        if name not in OUTPUT_PARAM_TEMPLATES:
+            raise ValueError(f"OutputParam template for {name} not found")
+        
+        template_kwargs = OUTPUT_PARAM_TEMPLATES[name].copy()
+        
+        if note and "description" in template_kwargs:
+            template_kwargs["description"] = f"{template_kwargs['description']} ({note})"
+        
+        template_kwargs.update(overrides)
+        return cls(name=name, **template_kwargs)
 
 
 def format_inputs_short(inputs):
