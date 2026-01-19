@@ -587,7 +587,7 @@ class AuraFlowPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class BriaFiboPipeline(metaclass=DummyObject):
+class BriaFiboEditPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -602,7 +602,7 @@ class BriaFiboPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class BriaFiboEditPipeline(metaclass=DummyObject):
+class BriaFiboPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
