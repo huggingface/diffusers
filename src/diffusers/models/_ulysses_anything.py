@@ -25,6 +25,7 @@ import torch.nn.functional as F
 from ..utils.torch_utils import maybe_allow_in_graph
 from ._modeling_parallel import ParallelConfig
 
+
 def _wait_tensor(tensor) -> torch.Tensor:
     if isinstance(tensor, fc.AsyncCollectiveTensor):
         tensor = tensor.wait()
