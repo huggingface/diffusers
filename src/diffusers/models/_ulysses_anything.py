@@ -22,8 +22,8 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
 import torch.nn.functional as F
 
-from diffusers.models._modeling_parallel import ParallelConfig
-
+from ..utils.torch_utils import maybe_allow_in_graph
+from ._modeling_parallel import ParallelConfig
 
 def _wait_tensor(tensor) -> torch.Tensor:
     if isinstance(tensor, fc.AsyncCollectiveTensor):
@@ -153,7 +153,7 @@ def _comm_metadata(
     return extra_kwargs
 
 
-@torch.compiler.allow_in_graph
+@maybe_allow_in_graph
 def _all_to_all_single_any_qkv_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
@@ -189,7 +189,7 @@ def _all_to_all_single_any_qkv_async(
     return wait
 
 
-@torch.compiler.allow_in_graph
+@maybe_allow_in_graph
 def _all_to_all_single_any_o_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
@@ -315,7 +315,7 @@ def _fill_gather_shapes(shape: Tuple[int], gather_dims: Tuple[int], dim: int, wo
     return gather_shapes
 
 
-@torch.compiler.allow_in_graph
+@maybe_allow_in_graph
 def _all_gather_anything(  # noqa: F811
     tensor: torch.Tensor,
     dim: int,
