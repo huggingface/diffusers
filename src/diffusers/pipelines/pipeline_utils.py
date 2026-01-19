@@ -1576,8 +1576,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether or not to allow for custom pipelines and components defined on the Hub in their own files. This
                 option should only be set to `True` for repositories you trust and in which you have read the code, as
                 it will execute code present on the Hub on your local machine.
-            use_onnx (`bool`, *optional*, defaults to `False`):
-                If set to `True`, FlashPack weights will always be downloaded if present. If set to `False`, ONNX weights
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                If set to `True`, FlashPack weights will always be downloaded if present. If set to `False`, FlashPack weights
                 will never be downloaded.
 
         Returns:
