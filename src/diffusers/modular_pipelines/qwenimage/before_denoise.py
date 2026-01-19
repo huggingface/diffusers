@@ -674,7 +674,7 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
         return [
             InputParam.template("num_inference_steps"),
             InputParam.template("sigmas"),
-            InputParam.template("image_latents", note="Can be generated from vae encoder and packed in input step."),
+            InputParam.template("image_latents"),
         ]
 
     @property
