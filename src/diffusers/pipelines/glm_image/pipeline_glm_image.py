@@ -316,14 +316,19 @@ class GlmImagePipeline(DiffusionPipeline):
         return prior_token_ids, prior_token_image_ids
 
     def get_glyph_texts(self, prompt):
-        prompt = prompt[0] if isinstance(prompt, list) else prompt
-        ocr_texts = (
-            re.findall(r"'([^']*)'", prompt)
-            + re.findall(r"“([^“”]*)”", prompt)
-            + re.findall(r'"([^"]*)"', prompt)
-            + re.findall(r"「([^「」]*)」", prompt)
-        )
-        return ocr_texts
+        """Extract glyph texts from prompt(s). Returns a list of lists for batch processing."""
+        if isinstance(prompt, str):
+            prompt = [prompt]
+        all_ocr_texts = []
+        for p in prompt:
+            ocr_texts = (
+                re.findall(r"'([^']*)'", p)
+                + re.findall(r"\u201c([^\u201c\u201d]*)\u201d", p)
+                + re.findall(r'"([^"]*)"', p)
+                + re.findall(r"「([^「」]*)」", p)
+            )
+            all_ocr_texts.append(ocr_texts)
+        return all_ocr_texts
 
     def _get_glyph_embeds(
         self,
@@ -332,29 +337,50 @@ class GlmImagePipeline(DiffusionPipeline):
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
+        """Get glyph embeddings for each prompt in the batch."""
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
 
-        glyph_texts = self.get_glyph_texts(prompt)
-        input_ids = self.tokenizer(
-            glyph_texts if len(glyph_texts) > 0 else [""],
-            max_length=max_sequence_length,
-            truncation=True,
-        ).input_ids
-        input_ids = [
-            [self.tokenizer.pad_token_id] * ((len(input_ids) + 1) % 2) + input_ids_ for input_ids_ in input_ids
-        ]
-        max_length = max(len(input_ids_) for input_ids_ in input_ids)
-        attention_mask = torch.tensor(
-            [[1] * len(input_ids_) + [0] * (max_length - len(input_ids_)) for input_ids_ in input_ids], device=device
-        )
-        input_ids = torch.tensor(
-            [input_ids_ + [self.tokenizer.pad_token_id] * (max_length - len(input_ids_)) for input_ids_ in input_ids],
-            device=device,
-        )
-        outputs = self.text_encoder(input_ids, attention_mask=attention_mask)
-        glyph_embeds = outputs.last_hidden_state[attention_mask.bool()].unsqueeze(0)
+        # get_glyph_texts now returns a list of lists (one per prompt)
+        all_glyph_texts = self.get_glyph_texts(prompt)
 
+        all_glyph_embeds = []
+        for glyph_texts in all_glyph_texts:
+            if len(glyph_texts) == 0:
+                glyph_texts = [""]
+            input_ids = self.tokenizer(
+                glyph_texts,
+                max_length=max_sequence_length,
+                truncation=True,
+            ).input_ids
+            input_ids = [
+                [self.tokenizer.pad_token_id] * ((len(input_ids) + 1) % 2) + input_ids_ for input_ids_ in input_ids
+            ]
+            max_length = max(len(input_ids_) for input_ids_ in input_ids)
+            attention_mask = torch.tensor(
+                [[1] * len(input_ids_) + [0] * (max_length - len(input_ids_)) for input_ids_ in input_ids],
+                device=device,
+            )
+            input_ids = torch.tensor(
+                [input_ids_ + [self.tokenizer.pad_token_id] * (max_length - len(input_ids_)) for input_ids_ in input_ids],
+                device=device,
+            )
+            outputs = self.text_encoder(input_ids, attention_mask=attention_mask)
+            glyph_embeds = outputs.last_hidden_state[attention_mask.bool()].unsqueeze(0)
+            all_glyph_embeds.append(glyph_embeds)
+
+        # Pad to same sequence length and stack
+        max_seq_len = max(emb.size(1) for emb in all_glyph_embeds)
+        padded_embeds = []
+        for emb in all_glyph_embeds:
+            if emb.size(1) < max_seq_len:
+                pad = torch.zeros(
+                    emb.size(0), max_seq_len - emb.size(1), emb.size(2), device=device, dtype=emb.dtype
+                )
+                emb = torch.cat([emb, pad], dim=1)
+            padded_embeds.append(emb)
+
+        glyph_embeds = torch.cat(padded_embeds, dim=0)
         return glyph_embeds.to(device=device, dtype=dtype)
 
     def encode_prompt(
@@ -611,20 +637,27 @@ class GlmImagePipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        if batch_size != 1:
-            raise ValueError(f"batch_size must be 1 due to AR model limitations, got {batch_size}")
 
         device = self._execution_device
 
         # 2. Preprocess image tokens and prompt tokens
         if prior_token_ids is None:
-            prior_token_ids, prior_token_image_ids = self.generate_prior_tokens(
-                prompt=prompt[0] if isinstance(prompt, list) else prompt,
-                image=image,
-                height=height,
-                width=width,
-                device=device,
-            )
+            prompt_list = [prompt] if isinstance(prompt, str) else prompt
+            all_prior_token_ids = []
+            all_prior_token_image_ids = []
+            for p in prompt_list:
+                p_prior_token_ids, p_prior_token_image_ids = self.generate_prior_tokens(
+                    prompt=p,
+                    image=image,
+                    height=height,
+                    width=width,
+                    device=device,
+                )
+                all_prior_token_ids.append(p_prior_token_ids)
+                if p_prior_token_image_ids is not None:
+                    all_prior_token_image_ids.append(p_prior_token_image_ids)
+            prior_token_ids = torch.cat(all_prior_token_ids, dim=0)
+            prior_token_image_ids = all_prior_token_image_ids if len(all_prior_token_image_ids) > 0 else None
 
         # 3. Preprocess image
         if image is not None:
@@ -667,6 +700,14 @@ class GlmImagePipeline(DiffusionPipeline):
         kv_caches = GlmImageKVCache(num_layers=self.transformer.config.num_layers)
 
         if image is not None:
+            # For image-to-image, batch > 1 is not yet fully supported
+            # because KV cache is shared across the batch
+            if batch_size > 1:
+                logger.warning(
+                    "Image-to-image generation with batch_size > 1 is experimental. "
+                    "All samples in the batch will share the same condition images."
+                )
+
             kv_caches.set_mode("write")
             latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.latent_channels, 1, 1)
             latents_std = torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.latent_channels, 1, 1)
@@ -674,7 +715,9 @@ class GlmImagePipeline(DiffusionPipeline):
             latents_mean = latents_mean.to(device=device, dtype=prompt_embeds.dtype)
             latents_std = latents_std.to(device=device, dtype=prompt_embeds.dtype)
 
-            for condition_image, condition_image_prior_token_id in zip(image, prior_token_image_ids):
+            # Use the first sample's prior_token_image_ids for KV cache (shared across batch)
+            first_prior_token_image_ids = prior_token_image_ids[0] if prior_token_image_ids else []
+            for condition_image, condition_image_prior_token_id in zip(image, first_prior_token_image_ids):
                 condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
                 condition_latent = retrieve_latents(
                     self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
@@ -730,6 +773,9 @@ class GlmImagePipeline(DiffusionPipeline):
         transformer_dtype = self.transformer.dtype
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
+        # Repeat prior_token_ids for num_images_per_prompt
+        if num_images_per_prompt > 1:
+            prior_token_ids = prior_token_ids.repeat_interleave(num_images_per_prompt, dim=0)
         prior_token_drop_cond = torch.full_like(prior_token_ids, False, dtype=torch.bool)
         prior_token_drop_uncond = torch.full_like(prior_token_ids, True, dtype=torch.bool)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
