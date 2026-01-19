@@ -99,3 +99,9 @@ image.save("chroma-single-file.png")
 [[autodoc]] ChromaImg2ImgPipeline
 	- all
 	- __call__
+
+## ChromaInpaintPipeline
+
+[[autodoc]] ChromaInpaintPipeline
+  - all
+  - __call__
