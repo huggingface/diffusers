@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
+from transformers import AutoConfig, AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKL,
@@ -13,9 +13,7 @@ from diffusers import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    torch_device,
-)
+from ...testing_utils import torch_device
 from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
 
 
@@ -70,7 +68,8 @@ class FluxControlNetImg2ImgPipelineFastTests(unittest.TestCase, PipelineTesterMi
         text_encoder = CLIPTextModel(clip_text_encoder_config)
 
         torch.manual_seed(0)
-        text_encoder_2 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder_2 = T5EncoderModel(config)
 
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
