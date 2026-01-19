@@ -893,7 +893,7 @@ def make_doc_string(
     # Add description
     if description:
         desc_lines = description.strip().split("\n")
-        aligned_desc = "\n".join("  " + line for line in desc_lines)
+        aligned_desc = "\n".join("  " + line.rstrip() for line in desc_lines)
         output += aligned_desc + "\n\n"
 
     # Add components section if provided
