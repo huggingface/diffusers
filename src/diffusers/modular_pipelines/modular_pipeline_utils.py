@@ -438,7 +438,7 @@ INPUT_PARAM_TEMPLATES = {
         "description": "Number of layers to extract from the image",
     },
     # common intermediate inputs
-    "prompt_embeds":{
+    "prompt_embeds": {
         "type_hint": torch.Tensor,
         "required": True,
         "description": "text embeddings used to guide the image generation. Can be generated from text_encoder step.",
@@ -531,16 +531,16 @@ class InputParam:
             raise ValueError(f"InputParam template for {template_name} not found")
 
         template_kwargs = INPUT_PARAM_TEMPLATES[template_name].copy()
-        
+
         # Determine the actual param name:
         # 1. From overrides if provided
         # 2. From template if present
         # 3. Fall back to template_name
         name = overrides.pop("name", template_kwargs.pop("name", template_name))
-        
+
         if note and "description" in template_kwargs:
             template_kwargs["description"] = f"{template_kwargs['description']} ({note})"
-        
+
         template_kwargs.update(overrides)
         return cls(name=name, **template_kwargs)
 
@@ -564,18 +564,18 @@ class OutputParam:
         """Get template for name if exists, otherwise raise ValueError."""
         if template_name not in OUTPUT_PARAM_TEMPLATES:
             raise ValueError(f"OutputParam template for {template_name} not found")
-        
+
         template_kwargs = OUTPUT_PARAM_TEMPLATES[template_name].copy()
-        
+
         # Determine the actual param name:
         # 1. From overrides if provided
         # 2. From template if present
         # 3. Fall back to template_name
         name = overrides.pop("name", template_kwargs.pop("name", template_name))
-        
+
         if note and "description" in template_kwargs:
             template_kwargs["description"] = f"{template_kwargs['description']} ({note})"
-        
+
         template_kwargs.update(overrides)
         return cls(name=name, **template_kwargs)
 

@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict, OutputParam, InputParam
+from ..modular_pipeline_utils import InsertableDict, OutputParam
 from .before_denoise import (
     QwenImageEditPlusRoPEInputsStep,
     QwenImagePrepareLatentsStep,
@@ -55,10 +54,8 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
     QwenImage-Edit Plus VL encoder step that encodes the image and text prompts together.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`)
-          processor (`Qwen2VLProcessor`)
-          guider (`ClassifierFreeGuidance`)
+          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
+          (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           image (`Union[Image, List]`):
@@ -107,9 +104,8 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
       Each image is resized independently based on its own aspect ratio to 1024x1024 target area.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
-          image_processor (`VaeImageProcessor`)
-          vae (`AutoencoderKLQwenImage`)
+          image_resize_processor (`VaeImageProcessor`) image_processor (`VaeImageProcessor`) vae
+          (`AutoencoderKLQwenImage`)
 
       Inputs:
           image (`Union[Image, List]`):
@@ -231,10 +227,8 @@ class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoising workflow for QwenImage-Edit Plus edit (img2img) task.
 
       Components:
-          pachifier (`QwenImagePachifier`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          guider (`ClassifierFreeGuidance`)
-          transformer (`QwenImageTransformer2DModel`)
+          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -311,12 +305,12 @@ class QwenImageEditPlusDecodeStep(SequentialPipelineBlocks):
     Decode step that decodes the latents to images and postprocesses the generated image.
 
       Components:
-          vae (`AutoencoderKLQwenImage`)
-          image_processor (`VaeImageProcessor`)
+          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
 
       Inputs:
           latents (`Tensor`):
-              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise step.
+              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise
+              step.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
 
@@ -357,14 +351,9 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
       - VL encoder uses 384x384 target area, VAE encoder uses 1024x1024 target area.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`)
-          processor (`Qwen2VLProcessor`)
-          guider (`ClassifierFreeGuidance`)
-          image_processor (`VaeImageProcessor`)
-          vae (`AutoencoderKLQwenImage`)
-          pachifier (`QwenImagePachifier`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
+          (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`) image_processor (`VaeImageProcessor`) vae
+          (`AutoencoderKLQwenImage`) pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`)
           transformer (`QwenImageTransformer2DModel`)
 
       Inputs:

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 import torch
 
@@ -117,7 +117,8 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         1. Determines `batch_size` and `dtype` based on `prompt_embeds`
         2. Ensures all text embeddings have consistent batch sizes (batch_size * num_images_per_prompt)
 
-      This block should be placed after all encoder steps to process the text embeddings before they are used in subsequent pipeline steps.
+      This block should be placed after all encoder steps to process the text embeddings before they are used in
+      subsequent pipeline steps.
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -145,6 +146,7 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
           negative_prompt_embeds_mask (`Tensor`):
               The negative prompt embeddings mask. (batch-expanded)
     """
+
     model_name = "qwenimage"
 
     @property
@@ -271,8 +273,8 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           batch_size (`int`, *optional*, defaults to 1):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
-              generated in input step.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
@@ -300,7 +302,7 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
         self,
         image_latent_inputs: Optional[List[InputParam]] = None,
         additional_batch_inputs: Optional[List[InputParam]] = None,
-    ):   
+    ):
         # by default, process `image_latents`
         if image_latent_inputs is None:
             image_latent_inputs = [InputParam.template("image_latents")]
@@ -319,7 +321,9 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
         else:
             for input_param in additional_batch_inputs:
                 if not isinstance(input_param, InputParam):
-                    raise ValueError(f"additional_batch_inputs must be a list of InputParam, but got {type(input_param)}")
+                    raise ValueError(
+                        f"additional_batch_inputs must be a list of InputParam, but got {type(input_param)}"
+                    )
 
         self._image_latent_inputs = image_latent_inputs
         self._additional_batch_inputs = additional_batch_inputs
@@ -376,13 +380,17 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
                 name="image_width",
                 type_hint=int,
                 description="The image width calculated from the image latents dimension",
-            )
+            ),
         ]
 
         # `height`/`width` are not new outputs, but they will be updated if any image latent inputs are provided
         if len(self._image_latent_inputs) > 0:
-            outputs.append(OutputParam(name="height", type_hint=int, description="if not provided, updated to image height"))
-            outputs.append(OutputParam(name="width", type_hint=int, description="if not provided, updated to image width"))
+            outputs.append(
+                OutputParam(name="height", type_hint=int, description="if not provided, updated to image height")
+            )
+            outputs.append(
+                OutputParam(name="width", type_hint=int, description="if not provided, updated to image width")
+            )
 
         # image latent inputs are modified in place (patchified and batch-expanded)
         for input_param in self._image_latent_inputs:
@@ -479,8 +487,8 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           batch_size (`int`, *optional*, defaults to 1):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
-              generated in input step.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
@@ -526,7 +534,9 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
         else:
             for input_param in additional_batch_inputs:
                 if not isinstance(input_param, InputParam):
-                    raise ValueError(f"additional_batch_inputs must be a list of InputParam, but got {type(input_param)}")
+                    raise ValueError(
+                        f"additional_batch_inputs must be a list of InputParam, but got {type(input_param)}"
+                    )
 
         self._image_latent_inputs = image_latent_inputs
         self._additional_batch_inputs = additional_batch_inputs
@@ -587,11 +597,15 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
                 description="The image widths calculated from the image latents dimension",
             ),
         ]
-        
+
         # `height`/`width` are updated if any image latent inputs are provided
         if len(self._image_latent_inputs) > 0:
-            outputs.append(OutputParam(name="height", type_hint=int, description="if not provided, updated to image height"))
-            outputs.append(OutputParam(name="width", type_hint=int, description="if not provided, updated to image width"))
+            outputs.append(
+                OutputParam(name="height", type_hint=int, description="if not provided, updated to image height")
+            )
+            outputs.append(
+                OutputParam(name="width", type_hint=int, description="if not provided, updated to image width")
+            )
 
         # image latent inputs are modified in place (patchified, concatenated, and batch-expanded)
         for input_param in self._image_latent_inputs:
@@ -686,11 +700,13 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
 
 # same as QwenImageAdditionalInputsStep, but with layered pachifier.
 
+
 # auto_docstring
 class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
     """
     Input processing step for Layered that:
-        1. For image latent inputs: Updates height/width if None, patchifies with layered pachifier, and expands batch size
+        1. For image latent inputs: Updates height/width if None, patchifies with layered pachifier, and expands batch
+           size
         2. For additional batch inputs: Expands batch dimensions to match final batch size
 
       Configured inputs:
@@ -705,8 +721,8 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           batch_size (`int`, *optional*, defaults to 1):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
-              generated in input step.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
           image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
 
@@ -720,8 +736,8 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
           width (`int`):
               if not provided, updated to image width
           image_latents (`Tensor`):
-              image latents used to guide the image generation. Can be generated from vae_encoder step. (patchified with layered
-              pachifier and batch-expanded)
+              image latents used to guide the image generation. Can be generated from vae_encoder step. (patchified
+              with layered pachifier and batch-expanded)
     """
 
     model_name = "qwenimage-layered"
@@ -748,7 +764,9 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
         else:
             for input_param in additional_batch_inputs:
                 if not isinstance(input_param, InputParam):
-                    raise ValueError(f"additional_batch_inputs must be a list of InputParam, but got {type(input_param)}")
+                    raise ValueError(
+                        f"additional_batch_inputs must be a list of InputParam, but got {type(input_param)}"
+                    )
 
         self._image_latent_inputs = image_latent_inputs
         self._additional_batch_inputs = additional_batch_inputs
@@ -808,8 +826,12 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
         ]
 
         if len(self._image_latent_inputs) > 0:
-            outputs.append(OutputParam(name="height", type_hint=int, description="if not provided, updated to image height"))
-            outputs.append(OutputParam(name="width", type_hint=int, description="if not provided, updated to image width"))
+            outputs.append(
+                OutputParam(name="height", type_hint=int, description="if not provided, updated to image height")
+            )
+            outputs.append(
+                OutputParam(name="width", type_hint=int, description="if not provided, updated to image width")
+            )
 
         # Add outputs for image latent inputs (patchified with layered pachifier and batch-expanded)
         for input_param in self._image_latent_inputs:
@@ -895,10 +917,11 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
 
       Inputs:
           control_image_latents (`Tensor`):
-              The control image latents to use for the denoising process. Can be generated in controlnet vae encoder step.
+              The control image latents to use for the denoising process. Can be generated in controlnet vae encoder
+              step.
           batch_size (`int`, *optional*, defaults to 1):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
-              generated in input step.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           height (`int`, *optional*):
@@ -914,6 +937,7 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
           width (`int`):
               if not provided, updated to control image width
     """
+
     model_name = "qwenimage"
 
     @property
@@ -923,17 +947,26 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="control_image_latents", required=True, type_hint=torch.Tensor, description="The control image latents to use for the denoising process. Can be generated in controlnet vae encoder step."),
+            InputParam(
+                name="control_image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The control image latents to use for the denoising process. Can be generated in controlnet vae encoder step.",
+            ),
             InputParam.template("batch_size"),
             InputParam.template("num_images_per_prompt"),
             InputParam.template("height"),
             InputParam.template("width"),
         ]
-    
+
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="control_image_latents", type_hint=torch.Tensor, description="The control image latents (patchified and batch-expanded)."),
+            OutputParam(
+                name="control_image_latents",
+                type_hint=torch.Tensor,
+                description="The control image latents (patchified and batch-expanded).",
+            ),
             OutputParam(name="height", type_hint=int, description="if not provided, updated to control image height"),
             OutputParam(name="width", type_hint=int, description="if not provided, updated to control image width"),
         ]

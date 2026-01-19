@@ -50,10 +50,10 @@ class QwenImageLoopBeforeDenoiser(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(
-                name="latents", 
-                required=True, 
-                type_hint=torch.Tensor, 
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
         ]
 
@@ -80,10 +80,10 @@ class QwenImageEditLoopBeforeDenoiser(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(
-                name="latents", 
-                required=True, 
-                type_hint=torch.Tensor, 
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
             InputParam.template("image_latents"),
         ]
@@ -131,10 +131,10 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
             ),
             InputParam.template("controlnet_conditioning_scale", note="updated in prepare_controlnet_inputs step."),
             InputParam(
-                name="controlnet_keep", 
-                required=True, 
-                type_hint=List[float], 
-                description="The controlnet keep values. Can be generated in prepare_controlnet_inputs step."
+                name="controlnet_keep",
+                required=True,
+                type_hint=List[float],
+                description="The controlnet keep values. Can be generated in prepare_controlnet_inputs step.",
             ),
         ]
 
@@ -467,10 +467,10 @@ class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     def loop_inputs(self) -> List[InputParam]:
         return [
             InputParam(
-                name="timesteps", 
-                required=True, 
-                type_hint=torch.Tensor, 
-                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
+                name="timesteps",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam.template("num_inference_steps", required=True),
         ]
@@ -505,21 +505,21 @@ class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
 # Qwen Image (text2image, image2image)
 
+
 # auto_docstring
 class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
-    Denoise step that iteratively denoise the latents. 
-      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
-      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+    Denoise step that iteratively denoise the latents.
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
+      defined in `sub_blocks` sequencially:
        - `QwenImageLoopBeforeDenoiser`
        - `QwenImageLoopDenoiser`
        - `QwenImageLoopAfterDenoiser`
       This block supports text2image and image2image tasks for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`)
-          transformer (`QwenImageTransformer2DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -539,6 +539,7 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
           latents (`Tensor`):
               Denoised latents.
     """
+
     model_name = "qwenimage"
 
     block_classes = [
@@ -551,8 +552,8 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
     @property
     def description(self) -> str:
         return (
-            "Denoise step that iteratively denoise the latents. \n"
-            "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
+            "Denoise step that iteratively denoise the latents.\n"
+            "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method\n"
             "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
             " - `QwenImageLoopBeforeDenoiser`\n"
             " - `QwenImageLoopDenoiser`\n"
@@ -565,9 +566,9 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
 # auto_docstring
 class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
-    Denoise step that iteratively denoise the latents. 
-      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
-      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+    Denoise step that iteratively denoise the latents.
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
+      defined in `sub_blocks` sequencially:
        - `QwenImageLoopBeforeDenoiser`
        - `QwenImageLoopDenoiser`
        - `QwenImageLoopAfterDenoiser`
@@ -575,9 +576,8 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports inpainting tasks for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`)
-          transformer (`QwenImageTransformer2DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -603,6 +603,7 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
           latents (`Tensor`):
               Denoised latents.
     """
+
     model_name = "qwenimage"
     block_classes = [
         QwenImageLoopBeforeDenoiser,
@@ -630,9 +631,9 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
 # auto_docstring
 class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
-    Denoise step that iteratively denoise the latents. 
-      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
-      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+    Denoise step that iteratively denoise the latents.
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
+      defined in `sub_blocks` sequencially:
        - `QwenImageLoopBeforeDenoiser`
        - `QwenImageLoopBeforeDenoiserControlNet`
        - `QwenImageLoopDenoiser`
@@ -640,10 +641,8 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports text2img/img2img tasks with controlnet for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`)
-          controlnet (`QwenImageControlNetModel`)
-          transformer (`QwenImageTransformer2DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          guider (`ClassifierFreeGuidance`) controlnet (`QwenImageControlNetModel`) transformer
+          (`QwenImageTransformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -669,6 +668,7 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
           latents (`Tensor`):
               Denoised latents.
     """
+
     model_name = "qwenimage"
     block_classes = [
         QwenImageLoopBeforeDenoiser,
@@ -696,9 +696,9 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
 # auto_docstring
 class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
-    Denoise step that iteratively denoise the latents. 
-      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
-      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+    Denoise step that iteratively denoise the latents.
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
+      defined in `sub_blocks` sequencially:
        - `QwenImageLoopBeforeDenoiser`
        - `QwenImageLoopBeforeDenoiserControlNet`
        - `QwenImageLoopDenoiser`
@@ -707,10 +707,8 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports inpainting tasks with controlnet for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`)
-          controlnet (`QwenImageControlNetModel`)
-          transformer (`QwenImageTransformer2DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          guider (`ClassifierFreeGuidance`) controlnet (`QwenImageControlNetModel`) transformer
+          (`QwenImageTransformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -742,6 +740,7 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
           latents (`Tensor`):
               Denoised latents.
     """
+
     model_name = "qwenimage"
     block_classes = [
         QwenImageLoopBeforeDenoiser,
@@ -777,18 +776,17 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
 # auto_docstring
 class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
-    Denoise step that iteratively denoise the latents. 
-      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
-      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+    Denoise step that iteratively denoise the latents.
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
+      defined in `sub_blocks` sequencially:
        - `QwenImageEditLoopBeforeDenoiser`
        - `QwenImageEditLoopDenoiser`
        - `QwenImageLoopAfterDenoiser`
       This block supports QwenImage Edit.
 
       Components:
-          guider (`ClassifierFreeGuidance`)
-          transformer (`QwenImageTransformer2DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -810,6 +808,7 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
           latents (`Tensor`):
               Denoised latents.
     """
+
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditLoopBeforeDenoiser,
@@ -835,9 +834,9 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
 # auto_docstring
 class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
-    Denoise step that iteratively denoise the latents. 
-      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
-      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+    Denoise step that iteratively denoise the latents.
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
+      defined in `sub_blocks` sequencially:
        - `QwenImageEditLoopBeforeDenoiser`
        - `QwenImageEditLoopDenoiser`
        - `QwenImageLoopAfterDenoiser`
@@ -845,9 +844,8 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports inpainting tasks for QwenImage Edit.
 
       Components:
-          guider (`ClassifierFreeGuidance`)
-          transformer (`QwenImageTransformer2DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -873,6 +871,7 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
           latents (`Tensor`):
               Denoised latents.
     """
+
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditLoopBeforeDenoiser,
@@ -900,18 +899,17 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
 # auto_docstring
 class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
     """
-    Denoise step that iteratively denoise the latents. 
-      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method 
-      At each iteration, it runs blocks defined in `sub_blocks` sequencially:
+    Denoise step that iteratively denoise the latents.
+      Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
+      defined in `sub_blocks` sequencially:
        - `QwenImageEditLoopBeforeDenoiser`
        - `QwenImageEditLoopDenoiser`
        - `QwenImageLoopAfterDenoiser`
       This block supports QwenImage Layered.
 
       Components:
-          guider (`ClassifierFreeGuidance`)
-          transformer (`QwenImageTransformer2DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -933,6 +931,7 @@ class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
           latents (`Tensor`):
               Denoised latents.
     """
+
     model_name = "qwenimage-layered"
     block_classes = [
         QwenImageEditLoopBeforeDenoiser,

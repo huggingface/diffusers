@@ -13,11 +13,12 @@
 # limitations under the License.
 
 from typing import Optional
+
 import torch
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict, OutputParam, InputParam
+from ..modular_pipeline_utils import InputParam, InsertableDict, OutputParam
 from .before_denoise import (
     QwenImageCreateMaskLatentsStep,
     QwenImageEditRoPEInputsStep,
@@ -63,10 +64,8 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
     QwenImage-Edit VL encoder step that encode the image and text prompts together.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`)
-          processor (`Qwen2VLProcessor`)
-          guider (`ClassifierFreeGuidance`)
+          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
+          (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           image (`Union[Image, List]`):
@@ -113,9 +112,8 @@ class QwenImageEditVaeEncoderStep(SequentialPipelineBlocks):
     Vae encoder step that encode the image inputs into their latent representations.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
-          image_processor (`VaeImageProcessor`)
-          vae (`AutoencoderKLQwenImage`)
+          image_resize_processor (`VaeImageProcessor`) image_processor (`VaeImageProcessor`) vae
+          (`AutoencoderKLQwenImage`)
 
       Inputs:
           image (`Union[Image, List]`):
@@ -155,9 +153,8 @@ class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
        - create image latents.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
-          image_mask_processor (`InpaintProcessor`)
-          vae (`AutoencoderKLQwenImage`)
+          image_resize_processor (`VaeImageProcessor`) image_mask_processor (`InpaintProcessor`) vae
+          (`AutoencoderKLQwenImage`)
 
       Inputs:
           image (`Union[Image, List]`):
@@ -354,7 +351,10 @@ class QwenImageEditInpaintInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageTextInputsStep(),
-        QwenImageAdditionalInputsStep(additional_batch_inputs=[InputParam(name="processed_mask_image", type_hint=torch.Tensor, description="The processed mask image")]
+        QwenImageAdditionalInputsStep(
+            additional_batch_inputs=[
+                InputParam(name="processed_mask_image", type_hint=torch.Tensor, description="The processed mask image")
+            ]
         ),
     ]
     block_names = ["text_inputs", "additional_inputs"]
@@ -377,15 +377,14 @@ class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
        - Create the patchified latents `mask` based on the processed mask image.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          pachifier (`QwenImagePachifier`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) pachifier (`QwenImagePachifier`)
 
       Inputs:
           latents (`Tensor`):
               The initial random noised, can be generated in prepare latent step.
           image_latents (`Tensor`):
-              image latents used to guide the image generation. Can be generated from vae_encoder step. (Can be generated from
-              vae encoder and updated in input step.)
+              image latents used to guide the image generation. Can be generated from vae_encoder step. (Can be
+              generated from vae encoder and updated in input step.)
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
           processed_mask_image (`Tensor`):
@@ -426,10 +425,8 @@ class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoising workflow for QwenImage-Edit edit (img2img) task.
 
       Components:
-          pachifier (`QwenImagePachifier`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          guider (`ClassifierFreeGuidance`)
-          transformer (`QwenImageTransformer2DModel`)
+          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -502,10 +499,8 @@ class QwenImageEditInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoising workflow for QwenImage-Edit edit inpaint task.
 
       Components:
-          pachifier (`QwenImagePachifier`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          guider (`ClassifierFreeGuidance`)
-          transformer (`QwenImageTransformer2DModel`)
+          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -623,12 +618,12 @@ class QwenImageEditDecodeStep(SequentialPipelineBlocks):
     Decode step that decodes the latents to images and postprocess the generated image.
 
       Components:
-          vae (`AutoencoderKLQwenImage`)
-          image_processor (`VaeImageProcessor`)
+          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
 
       Inputs:
           latents (`Tensor`):
-              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise step.
+              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise
+              step.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
 
@@ -650,19 +645,21 @@ class QwenImageEditDecodeStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageEditInpaintDecodeStep(SequentialPipelineBlocks):
     """
-    Decode step that decodes the latents to images and postprocess the generated image, optionally apply the mask overlay to the original image.
+    Decode step that decodes the latents to images and postprocess the generated image, optionally apply the mask
+    overlay to the original image.
 
       Components:
-          vae (`AutoencoderKLQwenImage`)
-          image_mask_processor (`InpaintProcessor`)
+          vae (`AutoencoderKLQwenImage`) image_mask_processor (`InpaintProcessor`)
 
       Inputs:
           latents (`Tensor`):
-              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise step.
+              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise
+              step.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
           mask_overlay_kwargs (`Dict`, *optional*):
-              The kwargs for the postprocess step to apply the mask overlay. generated in InpaintProcessImagesInputStep.
+              The kwargs for the postprocess step to apply the mask overlay. generated in
+              InpaintProcessImagesInputStep.
 
       Outputs:
           images (`List`):
@@ -719,19 +716,14 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
     """
     Auto Modular pipeline for edit (img2img) and edit inpaint tasks using QwenImage-Edit.
       - for edit (img2img) generation, you need to provide `image`
-      - for edit inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop`
+      - for edit inpainting, you need to provide `mask_image` and `image`, optionally you can provide
+        `padding_mask_crop`
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`)
-          processor (`Qwen2VLProcessor`)
-          guider (`ClassifierFreeGuidance`)
-          image_mask_processor (`InpaintProcessor`)
-          vae (`AutoencoderKLQwenImage`)
-          image_processor (`VaeImageProcessor`)
-          pachifier (`QwenImagePachifier`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          transformer (`QwenImageTransformer2DModel`)
+          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
+          (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`) image_mask_processor (`InpaintProcessor`) vae
+          (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`) pachifier (`QwenImagePachifier`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           image (`Union[Image, List]`):
@@ -771,7 +763,8 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
           mask_overlay_kwargs (`Dict`, *optional*):
-              The kwargs for the postprocess step to apply the mask overlay. generated in InpaintProcessImagesInputStep.
+              The kwargs for the postprocess step to apply the mask overlay. generated in
+              InpaintProcessImagesInputStep.
 
       Outputs:
           images (`List`):

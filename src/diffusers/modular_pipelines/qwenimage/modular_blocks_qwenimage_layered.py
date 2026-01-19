@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict, OutputParam
@@ -53,14 +52,12 @@ logger = logging.get_logger(__name__)
 # auto_docstring
 class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
     """
-    QwenImage-Layered Text encoder step that encode the text prompt, will generate a prompt based on image if not provided.
+    QwenImage-Layered Text encoder step that encode the text prompt, will generate a prompt based on image if not
+    provided.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`)
-          processor (`Qwen2VLProcessor`)
-          tokenizer (`Qwen2Tokenizer`): The tokenizer to use
-          guider (`ClassifierFreeGuidance`)
+          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
+          (`Qwen2VLProcessor`) tokenizer (`Qwen2Tokenizer`): The tokenizer to use guider (`ClassifierFreeGuidance`)
 
       Inputs:
           image (`Union[Image, List]`):
@@ -116,9 +113,8 @@ class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
     Vae encoder step that encode the image inputs into their latent representations.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
-          image_processor (`VaeImageProcessor`)
-          vae (`AutoencoderKLQwenImage`)
+          image_resize_processor (`VaeImageProcessor`) image_processor (`VaeImageProcessor`) vae
+          (`AutoencoderKLQwenImage`)
 
       Inputs:
           image (`Union[Image, List]`):
@@ -203,8 +199,8 @@ class QwenImageLayeredInputStep(SequentialPipelineBlocks):
           width (`int`):
               if not provided, updated to image width
           image_latents (`Tensor`):
-              image latents used to guide the image generation. Can be generated from vae_encoder step. (patchified with layered
-              pachifier and batch-expanded)
+              image latents used to guide the image generation. Can be generated from vae_encoder step. (patchified
+              with layered pachifier and batch-expanded)
     """
 
     model_name = "qwenimage-layered"
@@ -230,10 +226,8 @@ class QwenImageLayeredCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoising workflow for QwenImage-Layered img2img task.
 
       Components:
-          pachifier (`QwenImageLayeredPachifier`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          guider (`ClassifierFreeGuidance`)
-          transformer (`QwenImageTransformer2DModel`)
+          pachifier (`QwenImageLayeredPachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -317,16 +311,10 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
     Auto Modular pipeline for layered denoising tasks using QwenImage-Layered.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`)
-          processor (`Qwen2VLProcessor`)
-          tokenizer (`Qwen2Tokenizer`): The tokenizer to use
-          guider (`ClassifierFreeGuidance`)
-          image_processor (`VaeImageProcessor`)
-          vae (`AutoencoderKLQwenImage`)
-          pachifier (`QwenImageLayeredPachifier`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          transformer (`QwenImageTransformer2DModel`)
+          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
+          (`Qwen2VLProcessor`) tokenizer (`Qwen2Tokenizer`): The tokenizer to use guider (`ClassifierFreeGuidance`)
+          image_processor (`VaeImageProcessor`) vae (`AutoencoderKLQwenImage`) pachifier (`QwenImageLayeredPachifier`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           image (`Union[Image, List]`):
