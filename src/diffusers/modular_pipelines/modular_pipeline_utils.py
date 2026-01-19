@@ -397,6 +397,7 @@ INPUT_PARAM_TEMPLATES = {
         "description": "Additional kwargs for attention processors.",
     },
     "denoiser_input_fields": {
+        "name": None,
         "kwargs_type": "denoiser_input_fields",
         "description": "conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
     },
@@ -509,6 +510,7 @@ OUTPUT_PARAM_TEMPLATES = {
 }
 
 
+@dataclass
 class InputParam:
     """Specification for an input parameter."""
 
@@ -519,20 +521,22 @@ class InputParam:
     description: str = ""
     kwargs_type: str = None
 
-    def __post_init__(self):
-        if self.required and self.default is not None:
-            raise ValueError(f"InputParam '{self.name}' cannot be both required and have a default value")
-
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
 
     @classmethod
-    def template(cls, name: str, note: str = None, **overrides) -> "InputParam":
+    def template(cls, template_name: str, note: str = None, **overrides) -> "InputParam":
         """Get template for name if exists, otherwise raise ValueError."""
-        if name not in INPUT_PARAM_TEMPLATES:
-            raise ValueError(f"InputParam template for {name} not found")
+        if template_name not in INPUT_PARAM_TEMPLATES:
+            raise ValueError(f"InputParam template for {template_name} not found")
 
-        template_kwargs = INPUT_PARAM_TEMPLATES[name].copy()
+        template_kwargs = INPUT_PARAM_TEMPLATES[template_name].copy()
+        
+        # Determine the actual param name:
+        # 1. From overrides if provided
+        # 2. From template if present
+        # 3. Fall back to template_name
+        name = overrides.pop("name", template_kwargs.pop("name", template_name))
         
         if note and "description" in template_kwargs:
             template_kwargs["description"] = f"{template_kwargs['description']} ({note})"
@@ -541,6 +545,7 @@ class InputParam:
         return cls(name=name, **template_kwargs)
 
 
+@dataclass
 class OutputParam:
     """Specification for an output parameter."""
 
@@ -555,12 +560,18 @@ class OutputParam:
         )
 
     @classmethod
-    def template(cls, name: str, note: str = None, **overrides) -> "OutputParam":
+    def template(cls, template_name: str, note: str = None, **overrides) -> "OutputParam":
         """Get template for name if exists, otherwise raise ValueError."""
-        if name not in OUTPUT_PARAM_TEMPLATES:
-            raise ValueError(f"OutputParam template for {name} not found")
+        if template_name not in OUTPUT_PARAM_TEMPLATES:
+            raise ValueError(f"OutputParam template for {template_name} not found")
         
-        template_kwargs = OUTPUT_PARAM_TEMPLATES[name].copy()
+        template_kwargs = OUTPUT_PARAM_TEMPLATES[template_name].copy()
+        
+        # Determine the actual param name:
+        # 1. From overrides if provided
+        # 2. From template if present
+        # 3. Fall back to template_name
+        name = overrides.pop("name", template_kwargs.pop("name", template_name))
         
         if note and "description" in template_kwargs:
             template_kwargs["description"] = f"{template_kwargs['description']} ({note})"

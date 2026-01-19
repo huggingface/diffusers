@@ -49,7 +49,12 @@ class QwenImageLoopBeforeDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam.template("latents", required=True, description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."),
+            InputParam(
+                name="latents", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+            ),
         ]
 
     @torch.no_grad()
@@ -74,8 +79,13 @@ class QwenImageEditLoopBeforeDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam.template("latents", required=True, description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."),
-            InputParam.template("image_latents", note="Can be encoded in vae_encoder step and packed in prepare_image_latents step."),
+            InputParam(
+                name="latents", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step."
+            ),
+            InputParam.template("image_latents", note="generated in vae encoder step and updated in input step."),
         ]
 
     @torch.no_grad()
@@ -119,10 +129,13 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.",
             ),
-            InputParam.template("controlnet_conditioning_scale", note="Can be generated in prepare_controlnet_inputs step."),
-            InputParam.template("controlnet_keep", note="Can be generated in prepare_controlnet_inputs step."),
-            InputParam.template("num_inference_steps", required=True, note="Can be updated in set_timesteps step."),
-            InputParam.template("denoiser_input_fields")
+            InputParam.template("controlnet_conditioning_scale", note="updated in prepare_controlnet_inputs step."),
+            InputParam(
+                name="controlnet_keep", 
+                required=True, 
+                type_hint=List[float], 
+                description="The controlnet keep values. Can be generated in prepare_controlnet_inputs step."
+            ),
         ]
 
     @torch.no_grad()
@@ -184,8 +197,13 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam.template("attention_kwargs"),
-            InputParam.template("latents", required=True, description="The latents to use for the denoising process. Can be generated in prepare_latents step."),
-            InputParam.template("num_inference_steps", required=True, note="should be updated in set_timesteps step."),
+            InputParam(
+                name="latents", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The latents to use for the denoising process. Can be generated in prepare_latents step."
+            ),
+            InputParam.template("num_inference_steps"),
             InputParam.template("denoiser_input_fields"),
             InputParam(
                 "img_shapes",
@@ -275,8 +293,13 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam.template("attention_kwargs"),
-            InputParam.template("latents", required=True, description="The latents to use for the denoising process. Can be generated in prepare_latents step."),
-            InputParam.template("num_inference_steps", required=True, note="should be updated in set_timesteps step."),
+            InputParam(
+                name="latents", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The latents to use for the denoising process. Can be generated in prepare_latents step."
+            ),
+            InputParam.template("num_inference_steps"),
             InputParam.template("denoiser_input_fields"),
             InputParam(
                 "img_shapes",
@@ -404,14 +427,19 @@ class QwenImageLoopAfterDenoiserInpaint(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.",
             ),
-            InputParam.template("image_latents", note="Can be generated from vae encoder and packed in input step."),
+            InputParam.template("image_latents", note="Can be generated from vae encoder step and updated in input step."),
             InputParam(
                 "initial_noise",
                 required=True,
                 type_hint=torch.Tensor,
                 description="The initial noise to use for the inpainting process. Can be generated in inpaint prepare latents step.",
             ),
-            InputParam.template("timesteps", required=True, note="should be updated in set_timesteps step."),
+            InputParam(
+                "timesteps", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
+            ),
         ]
 
     @torch.no_grad()
@@ -452,8 +480,13 @@ class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     @property
     def loop_inputs(self) -> List[InputParam]:
         return [
-            InputParam.template("timesteps", required=True, note="should be generated in set_timesteps step."),
-            InputParam.template("num_inference_steps", required=True, note="should be updated in set_timesteps step."),
+            InputParam(
+                name="timesteps", 
+                required=True, 
+                type_hint=torch.Tensor, 
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step."
+            ),
+            InputParam.template("num_inference_steps", required=True),
         ]
 
     @torch.no_grad()

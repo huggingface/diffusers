@@ -139,8 +139,8 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam.template("batch_size"),
-            OutputParam.template("dtype"),
+            OutputParam(name="batch_size", type_hint=int, description="The batch size of the prompt embeddings"),
+            OutputParam(name="dtype", type_hint=torch.dtype, description="The data type of the prompt embeddings"),
             OutputParam.template("prompt_embeds", note="batch-expanded"),
             OutputParam.template("prompt_embeds_mask", note="batch-expanded"),
             OutputParam.template("negative_prompt_embeds", note="batch-expanded"),
@@ -307,8 +307,8 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
 
         # `height`/`width` are not new outputs, but they will be updated if any image latent inputs are provided
         if len(self._image_latent_inputs) > 0:
-            outputs.append(OutputParam(name="height", type_hint=int, note="updated based on image size if not provided"))
-            outputs.append(OutputParam(name="width", type_hint=int, note="updated based on image size if not provided"))
+            outputs.append(OutputParam(name="height", type_hint=int, description="if not provided, updated to image height"))
+            outputs.append(OutputParam(name="width", type_hint=int, description="if not provided, updated to image width"))
 
         # image latent inputs are modified in place (patchified and batch-expanded)
         for input_param in self._image_latent_inputs:
@@ -476,8 +476,8 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
         
         # `height`/`width` are updated if any image latent inputs are provided
         if len(self._image_latent_inputs) > 0:
-            outputs.append(OutputParam(name="height", type_hint=int, description="updated based on image size if not provided"))
-            outputs.append(OutputParam(name="width", type_hint=int, description="updated based on image size if not provided"))
+            outputs.append(OutputParam(name="height", type_hint=int, description="if not provided, updated to image height"))
+            outputs.append(OutputParam(name="width", type_hint=int, description="if not provided, updated to image width"))
 
         # image latent inputs are modified in place (patchified, concatenated, and batch-expanded)
         for input_param in self._image_latent_inputs:
@@ -658,8 +658,8 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
         ]
 
         if len(self._image_latent_inputs) > 0:
-            outputs.append(OutputParam(name="height", type_hint=int, description="updated based on image size if not provided"))
-            outputs.append(OutputParam(name="width", type_hint=int, description="updated based on image size if not provided"))
+            outputs.append(OutputParam(name="height", type_hint=int, description="if not provided, updated to image height"))
+            outputs.append(OutputParam(name="width", type_hint=int, description="if not provided, updated to image width"))
 
         # Add outputs for image latent inputs (patchified with layered pachifier and batch-expanded)
         for input_param in self._image_latent_inputs:
@@ -759,8 +759,8 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(name="control_image_latents", type_hint=torch.Tensor, description="The control image latents (patchified and batch-expanded)."),
-            OutputParam(name="height", type_hint=int, description="updated based on control image size if not provided"),
-            OutputParam(name="width", type_hint=int, description="updated based on control image size if not provided"),
+            OutputParam(name="height", type_hint=int, description="if not provided, updated to control image height"),
+            OutputParam(name="width", type_hint=int, description="if not provided, updated to control image width"),
         ]
 
     @torch.no_grad()

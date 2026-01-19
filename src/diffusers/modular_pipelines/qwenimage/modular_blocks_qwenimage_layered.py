@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import torch
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict, OutputParam
@@ -255,7 +255,7 @@ class QwenImageLayeredInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage-layered"
     block_classes = [
         QwenImageTextInputsStep(),
-        QwenImageLayeredAdditionalInputsStep(image_latent_inputs=["image_latents"]),
+        QwenImageLayeredAdditionalInputsStep(),
     ]
     block_names = ["text_inputs", "additional_inputs"]
 
@@ -342,7 +342,7 @@ class QwenImageLayeredCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam.latents(),
+            OutputParam.template("latents"),
         ]
 
 
@@ -484,5 +484,5 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam.images(),
+            OutputParam.template("images"),
         ]

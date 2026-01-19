@@ -1145,7 +1145,7 @@ class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Image Preprocess step. Images can be resized first using QwenImageEditResizeStep."
+        return "Image Preprocess step. Images can be resized first. If a list of images is provided, will return a list of processed images."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:

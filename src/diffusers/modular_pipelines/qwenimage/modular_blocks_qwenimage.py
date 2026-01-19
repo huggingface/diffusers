@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import torch
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, ConditionalPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict, OutputParam
+from ..modular_pipeline_utils import InsertableDict, OutputParam, InputParam
 from .before_denoise import (
     QwenImageControlNetBeforeDenoiserStep,
     QwenImageCreateMaskLatentsStep,
@@ -319,7 +319,7 @@ class QwenImageImg2ImgInputStep(SequentialPipelineBlocks):
     """
 
     model_name = "qwenimage"
-    block_classes = [QwenImageTextInputsStep(), QwenImageAdditionalInputsStep(image_latent_inputs=["image_latents"])]
+    block_classes = [QwenImageTextInputsStep(), QwenImageAdditionalInputsStep()]
     block_names = ["text_inputs", "additional_inputs"]
 
     @property
@@ -373,7 +373,7 @@ class QwenImageInpaintInputStep(SequentialPipelineBlocks):
     block_classes = [
         QwenImageTextInputsStep(),
         QwenImageAdditionalInputsStep(
-            image_latent_inputs=["image_latents"], additional_batch_inputs=["processed_mask_image"]
+            additional_batch_inputs=[InputParam(name="processed_mask_image", type_hint=torch.Tensor, description="The processed mask image")]
         ),
     ]
     block_names = ["text_inputs", "additional_inputs"]
@@ -512,7 +512,7 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam.latents(),
+            OutputParam.template("latents"),
         ]
 
 
@@ -598,7 +598,7 @@ class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam.latents(),
+            OutputParam.template("latents"),
         ]
 
 
@@ -682,7 +682,7 @@ class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam.latents(),
+            OutputParam.template("latents"),
         ]
 
 
@@ -777,7 +777,7 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam.latents(),
+            OutputParam.template("latents"),
         ]
 
 
@@ -880,7 +880,7 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam.latents(),
+            OutputParam.template("latents"),
         ]
 
 
@@ -981,7 +981,7 @@ class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam.latents(),
+            OutputParam.template("latents"),
         ]
 
 
@@ -1042,7 +1042,7 @@ class QwenImageAutoCoreDenoiseStep(ConditionalPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam.latents(),
+            OutputParam.template("latents"),
         ]
 
 
@@ -1279,5 +1279,5 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam.images(),
+            OutputParam.template("images"),
         ]
