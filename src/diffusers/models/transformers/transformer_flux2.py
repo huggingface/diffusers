@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_npu_available, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -585,7 +585,13 @@ class Flux2PosEmbed(nn.Module):
 
 
 class Flux2TimestepGuidanceEmbeddings(nn.Module):
-    def __init__(self, in_channels: int = 256, embedding_dim: int = 6144, bias: bool = False):
+    def __init__(
+        self,
+        in_channels: int = 256,
+        embedding_dim: int = 6144,
+        bias: bool = False,
+        guidance_embeds: bool = True,
+    ):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=in_channels, flip_sin_to_cos=True, downscale_freq_shift=0)
@@ -593,20 +599,24 @@ class Flux2TimestepGuidanceEmbeddings(nn.Module):
             in_channels=in_channels, time_embed_dim=embedding_dim, sample_proj_bias=bias
         )
 
-        self.guidance_embedder = TimestepEmbedding(
-            in_channels=in_channels, time_embed_dim=embedding_dim, sample_proj_bias=bias
-        )
+        if guidance_embeds:
+            self.guidance_embedder = TimestepEmbedding(
+                in_channels=in_channels, time_embed_dim=embedding_dim, sample_proj_bias=bias
+            )
+        else:
+            self.guidance_embedder = None
 
     def forward(self, timestep: torch.Tensor, guidance: torch.Tensor) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(timestep.dtype))  # (N, D)
 
-        guidance_proj = self.time_proj(guidance)
-        guidance_emb = self.guidance_embedder(guidance_proj.to(guidance.dtype))  # (N, D)
-
-        time_guidance_emb = timesteps_emb + guidance_emb
-
-        return time_guidance_emb
+        if guidance is not None and self.guidance_embedder is not None:
+            guidance_proj = self.time_proj(guidance)
+            guidance_emb = self.guidance_embedder(guidance_proj.to(guidance.dtype))  # (N, D)
+            time_guidance_emb = timesteps_emb + guidance_emb
+            return time_guidance_emb
+        else:
+            return timesteps_emb
 
 
 class Flux2Modulation(nn.Module):
@@ -676,8 +686,8 @@ class Flux2Transformer2DModel(
         "": {
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
             "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "img_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
-            "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+            "img_ids": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "txt_ids": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
     }
@@ -698,6 +708,7 @@ class Flux2Transformer2DModel(
         axes_dims_rope: Tuple[int, ...] = (32, 32, 32, 32),
         rope_theta: int = 2000,
         eps: float = 1e-6,
+        guidance_embeds: bool = True,
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -708,7 +719,10 @@ class Flux2Transformer2DModel(
 
         # 2. Combined timestep + guidance embedding
         self.time_guidance_embed = Flux2TimestepGuidanceEmbeddings(
-            in_channels=timestep_guidance_channels, embedding_dim=self.inner_dim, bias=False
+            in_channels=timestep_guidance_channels,
+            embedding_dim=self.inner_dim,
+            bias=False,
+            guidance_embeds=guidance_embeds,
         )
 
         # 3. Modulation (double stream and single stream blocks share modulation parameters, resp.)
@@ -815,7 +829,9 @@ class Flux2Transformer2DModel(
 
         # 1. Calculate timestep embedding and modulation parameters
         timestep = timestep.to(hidden_states.dtype) * 1000
-        guidance = guidance.to(hidden_states.dtype) * 1000
+
+        if guidance is not None:
+            guidance = guidance.to(hidden_states.dtype) * 1000
 
         temb = self.time_guidance_embed(timestep, guidance)
 
@@ -835,14 +851,8 @@ class Flux2Transformer2DModel(
         if txt_ids.ndim == 3:
             txt_ids = txt_ids[0]
 
-        if is_torch_npu_available():
-            freqs_cos_image, freqs_sin_image = self.pos_embed(img_ids.cpu())
-            image_rotary_emb = (freqs_cos_image.npu(), freqs_sin_image.npu())
-            freqs_cos_text, freqs_sin_text = self.pos_embed(txt_ids.cpu())
-            text_rotary_emb = (freqs_cos_text.npu(), freqs_sin_text.npu())
-        else:
-            image_rotary_emb = self.pos_embed(img_ids)
-            text_rotary_emb = self.pos_embed(txt_ids)
+        image_rotary_emb = self.pos_embed(img_ids)
+        text_rotary_emb = self.pos_embed(txt_ids)
         concat_rotary_emb = (
             torch.cat([text_rotary_emb[0], image_rotary_emb[0]], dim=0),
             torch.cat([text_rotary_emb[1], image_rotary_emb[1]], dim=0),

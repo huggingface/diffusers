@@ -231,6 +231,7 @@ _aiter_available, _aiter_version = _is_package_available("aiter")
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
 _flashpack_available, _flashpack_version = _is_package_available("flashpack")
+_av_available, _av_version = _is_package_available("av")
 
 
 def is_torch_available():
@@ -423,6 +424,10 @@ def is_aiter_available():
 
 def is_kornia_available():
     return _kornia_available
+
+
+def is_av_available():
+    return _av_available
 
 
 # docstyle-ignore
