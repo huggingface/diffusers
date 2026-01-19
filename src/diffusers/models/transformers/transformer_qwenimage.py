@@ -136,6 +136,14 @@ def apply_rotary_emb_qwen(
         return out
     else:
         x_rotated = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+        seq_len = x.shape[1]
+        
+        # Handle shape mismatch: slice freqs_cis to match the input sequence length.
+        if freqs_cis.dim() == 3 and freqs_cis.shape[1] > seq_len:
+            freqs_cis = freqs_cis[:, :seq_len]
+        elif freqs_cis.dim() == 2 and freqs_cis.shape[0] > seq_len:
+            freqs_cis = freqs_cis[:seq_len]
+        
         freqs_cis = freqs_cis.unsqueeze(1)
         x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
 
@@ -264,7 +272,8 @@ class QwenEmbedRope(nn.Module):
                 max_txt_seq_len = max(txt_seq_lens) if isinstance(txt_seq_lens, list) else txt_seq_lens
 
         if max_txt_seq_len is None:
-            raise ValueError("Either `max_txt_seq_len` or `txt_seq_lens` (deprecated) must be provided.")
+            # The RoPE computation will clamp this to the available buffer space below.
+            max_txt_seq_len = 4096
 
         # Validate batch inference with variable-sized images
         if isinstance(video_fhw, list) and len(video_fhw) > 1:
