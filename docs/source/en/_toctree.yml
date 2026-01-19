@@ -496,6 +496,8 @@
         title: Bria 3.2
       - local: api/pipelines/bria_fibo
         title: Bria Fibo
+      - local: api/pipelines/bria_fibo_edit
+        title: Bria Fibo Edit
       - local: api/pipelines/chroma
         title: Chroma
       - local: api/pipelines/cogview3
