@@ -136,14 +136,6 @@ def apply_rotary_emb_qwen(
         return out
     else:
         x_rotated = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
-        seq_len = x.shape[1]
-        
-        # Handle shape mismatch: slice freqs_cis to match the input sequence length.
-        if freqs_cis.dim() == 3 and freqs_cis.shape[1] > seq_len:
-            freqs_cis = freqs_cis[:, :seq_len]
-        elif freqs_cis.dim() == 2 and freqs_cis.shape[0] > seq_len:
-            freqs_cis = freqs_cis[:seq_len]
-        
         freqs_cis = freqs_cis.unsqueeze(1)
         x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
 
@@ -243,7 +235,7 @@ class QwenEmbedRope(nn.Module):
         video_fhw: Union[Tuple[int, int, int], List[Tuple[int, int, int]]],
         txt_seq_lens: Optional[List[int]] = None,
         device: torch.device = None,
-        max_txt_seq_len: Optional[int] = None,
+        max_txt_seq_len: Optional[Union[int, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
@@ -253,9 +245,9 @@ class QwenEmbedRope(nn.Module):
                 Deprecated parameter. Use `max_txt_seq_len` instead. If provided, the maximum value will be used.
             device: (`torch.device`, *optional*):
                 The device on which to perform the RoPE computation.
-            max_txt_seq_len (`int`, *optional*):
+            max_txt_seq_len (`int` or `torch.Tensor`, *optional*):
                 The maximum text sequence length for RoPE computation. This should match the encoder hidden states
-                sequence length.
+                sequence length. Can be either an int or a scalar tensor (for torch.compile compatibility).
         """
         # Handle deprecated txt_seq_lens parameter
         if txt_seq_lens is not None:
@@ -272,8 +264,7 @@ class QwenEmbedRope(nn.Module):
                 max_txt_seq_len = max(txt_seq_lens) if isinstance(txt_seq_lens, list) else txt_seq_lens
 
         if max_txt_seq_len is None:
-            # The RoPE computation will clamp this to the available buffer space below.
-            max_txt_seq_len = 4096
+            raise ValueError("Either `max_txt_seq_len` or `txt_seq_lens` (deprecated) must be provided.")
 
         # Validate batch inference with variable-sized images
         if isinstance(video_fhw, list) and len(video_fhw) > 1:
@@ -305,14 +296,9 @@ class QwenEmbedRope(nn.Module):
             else:
                 max_vid_index = max(height, width, max_vid_index)
 
-        pos_freqs = self.pos_freqs.to(device)
-
-        # Clamp text sequence length to avoid buffer overflow
-        buffer_size = pos_freqs.shape[0]
-        available_space = buffer_size - max_vid_index
-        safe_txt_seq_len = min(max_txt_seq_len, available_space)
-
-        txt_freqs = pos_freqs[max_vid_index : max_vid_index + safe_txt_seq_len]
+        max_txt_seq_len_int = int(max_txt_seq_len)
+        # Create device-specific copy for text freqs without modifying self.pos_freqs
+        txt_freqs = self.pos_freqs.to(device)[max_vid_index : max_vid_index + max_txt_seq_len_int, ...]
         vid_freqs = torch.cat(vid_freqs, dim=0)
 
         return vid_freqs, txt_freqs
@@ -381,7 +367,7 @@ class QwenEmbedLayer3DRope(nn.Module):
     def forward(
         self,
         video_fhw: Union[Tuple[int, int, int], List[Tuple[int, int, int]]],
-        max_txt_seq_len: int,
+        max_txt_seq_len: Union[int, torch.Tensor],
         device: torch.device = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -389,9 +375,9 @@ class QwenEmbedLayer3DRope(nn.Module):
             video_fhw (`Tuple[int, int, int]` or `List[Tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video, or a list of layer
                 structures.
-            max_txt_seq_len (`int`):
+            max_txt_seq_len (`int` or `torch.Tensor`):
                 The maximum text sequence length for RoPE computation. This should match the encoder hidden states
-                sequence length.
+                sequence length. Can be either an int or a scalar tensor (for torch.compile compatibility).
             device: (`torch.device`, *optional*):
                 The device on which to perform the RoPE computation.
         """
@@ -431,15 +417,9 @@ class QwenEmbedLayer3DRope(nn.Module):
                 max_vid_index = max(height, width, max_vid_index)
 
         max_vid_index = max(max_vid_index, layer_num)
-
-        pos_freqs = self.pos_freqs.to(device)
-
-        # Clamp text sequence length to avoid buffer overflow
-        buffer_size = pos_freqs.shape[0]
-        available_space = buffer_size - max_vid_index
-        safe_txt_seq_len = min(max_txt_seq_len, available_space)
-
-        txt_freqs = pos_freqs[max_vid_index : max_vid_index + safe_txt_seq_len]
+        max_txt_seq_len_int = int(max_txt_seq_len)
+        # Create device-specific copy for text freqs without modifying self.pos_freqs
+        txt_freqs = self.pos_freqs.to(device)[max_vid_index : max_vid_index + max_txt_seq_len_int, ...]
         vid_freqs = torch.cat(vid_freqs, dim=0)
 
         return vid_freqs, txt_freqs
@@ -940,7 +920,7 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
         # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
-        text_seq_len, per_sample_len, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
+        text_seq_len, _, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
             encoder_hidden_states, encoder_hidden_states_mask
         )
 
@@ -953,12 +933,13 @@ class QwenImageTransformer2DModel(
             else self.time_text_embed(timestep, guidance, hidden_states, additional_t_cond)
         )
 
-        # Pass the static text_seq_len to RoPE (encoder_hidden_states.shape[1])
-        # The RoPE class will clamp it to avoid buffer overflow
         image_rotary_emb = self.pos_embed(img_shapes, max_txt_seq_len=text_seq_len, device=hidden_states.device)
 
+        # Construct joint attention mask once to avoid reconstructing in every block
+        # This eliminates 60 GPU syncs during training while maintaining torch.compile compatibility
         block_attention_kwargs = attention_kwargs.copy() if attention_kwargs is not None else {}
         if encoder_hidden_states_mask is not None:
+            # Build joint mask: [text_mask, all_ones_for_image]
             batch_size, image_seq_len = hidden_states.shape[:2]
             image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
             joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)

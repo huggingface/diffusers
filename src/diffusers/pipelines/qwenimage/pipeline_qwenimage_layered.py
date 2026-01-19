@@ -28,7 +28,6 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import QwenImagePipelineOutput
-from .utils import build_prompt_embeds_and_mask, repeat_prompt_embeds_and_mask, slice_prompt_embeds_and_mask
 
 
 if is_torch_xla_available():
@@ -276,7 +275,14 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
         hidden_states = encoder_hidden_states.hidden_states[-1]
         split_hidden_states = self._extract_masked_hidden(hidden_states, txt_tokens.attention_mask)
         split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
-        prompt_embeds, encoder_attention_mask = build_prompt_embeds_and_mask(split_hidden_states)
+        attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
+        max_seq_len = max([e.size(0) for e in split_hidden_states])
+        prompt_embeds = torch.stack(
+            [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
+        )
+        encoder_attention_mask = torch.stack(
+            [torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list]
+        )
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
@@ -308,15 +314,19 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
         device = device or self._execution_device
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
+        batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
+
         if prompt_embeds is None:
             prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, device)
 
-        prompt_embeds, prompt_embeds_mask = slice_prompt_embeds_and_mask(
-            prompt_embeds, prompt_embeds_mask, max_sequence_length
-        )
-        prompt_embeds, prompt_embeds_mask = repeat_prompt_embeds_and_mask(
-            prompt_embeds, prompt_embeds_mask, num_images_per_prompt
-        )
+        prompt_embeds = prompt_embeds[:, :max_sequence_length]
+        prompt_embeds_mask = prompt_embeds_mask[:, :max_sequence_length]
+
+        _, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
 
         if prompt_embeds_mask is not None and prompt_embeds_mask.all():
             prompt_embeds_mask = None
