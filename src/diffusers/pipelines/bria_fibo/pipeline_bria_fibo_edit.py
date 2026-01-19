@@ -762,7 +762,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        generator = torch.Generator(device=device).manual_seed(seed) if seed is not None else None
+        if generator is None and seed is not None:
+            generator = torch.Generator(device=device).manual_seed(seed)
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
