@@ -74,10 +74,11 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
-    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
-    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
-    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|> <|im_start|>assistant )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
+    <|im_start|>user
+    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>
+    <|im_start|>assistant
+    )
 
           prompt_template_encode_start_idx (default: 64)
 
@@ -376,8 +377,7 @@ class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
           latents (`Tensor`):
               The initial random noised, can be generated in prepare latent step.
           image_latents (`Tensor`):
-              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input
-              step.
+              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input step.
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
           processed_mask_image (`Tensor`):
@@ -452,7 +452,7 @@ class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
               Custom sigmas for the denoising process.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          **denoiser_input_fields (`Tensor`, *optional*):
+          denoiser_input_fields (`Tensor`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
@@ -536,7 +536,7 @@ class QwenImageEditInpaintCoreDenoiseStep(SequentialPipelineBlocks):
               Strength for img2img/inpainting.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          **denoiser_input_fields (`Tensor`, *optional*):
+          denoiser_input_fields (`Tensor`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
@@ -630,7 +630,7 @@ class QwenImageEditDecodeStep(SequentialPipelineBlocks):
           latents (`Tensor`):
               The latents to decode, can be generated in the denoise step
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt''.
+              Output format: 'pil', 'np', 'pt'.
 
       Outputs:
           images (`List`):
@@ -650,8 +650,7 @@ class QwenImageEditDecodeStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageEditInpaintDecodeStep(SequentialPipelineBlocks):
     """
-    Decode step that decodes the latents to images and postprocess the generated image, optionally apply the mask
-    overlay to the original image.
+    Decode step that decodes the latents to images and postprocess the generated image, optionally apply the mask overlay to the original image.
 
       Components:
 
@@ -663,7 +662,7 @@ class QwenImageEditInpaintDecodeStep(SequentialPipelineBlocks):
           latents (`Tensor`):
               The latents to decode, can be generated in the denoise step
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt''.
+              Output format: 'pil', 'np', 'pt'.
           mask_overlay_kwargs (`None`, *optional*):
               TODO: Add description.
 
@@ -722,8 +721,7 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
     """
     Auto Modular pipeline for edit (img2img) and edit inpaint tasks using QwenImage-Edit.
       - for edit (img2img) generation, you need to provide `image`
-      - for edit inpainting, you need to provide `mask_image` and `image`, optionally you can provide
-        `padding_mask_crop`
+      - for edit inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop`
 
       Components:
 
@@ -750,10 +748,11 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
-    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
-    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
-    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|> <|im_start|>assistant )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
+    <|im_start|>user
+    <|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>
+    <|im_start|>assistant
+    )
 
           prompt_template_encode_start_idx (default: 64)
 
@@ -790,10 +789,10 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
               Strength for img2img/inpainting.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          **denoiser_input_fields (`Tensor`, *optional*):
+          denoiser_input_fields (`Tensor`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt''.
+              Output format: 'pil', 'np', 'pt'.
           mask_overlay_kwargs (`None`, *optional*):
               TODO: Add description.
 

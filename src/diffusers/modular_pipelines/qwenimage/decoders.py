@@ -47,14 +47,15 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
-            InputParam(
-                name="latents",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The latents to decode, can be generated in the denoise step",
-            ),
+            InputParam.template("height", required=True, note="should be updated in input and prepare latents step."),
+            InputParam.template("width", required=True, note="should be updated in input and prepare latents step."),
+            InputParam.template("latents", required=True, description="The latents to decode, can be generated in the denoise step."),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam.template("latents", note="unpacked to B, C, 1, H, W"),
         ]
 
     @torch.no_grad()
@@ -86,10 +87,16 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("height", required=True, type_hint=int),
-            InputParam("width", required=True, type_hint=int),
-            InputParam("layers", default=4, description="Number of layers to extract from the image"),
+            InputParam.template("latents", required=True, description="The latents to decode, can be generated in the denoise step."),
+            InputParam.template("height", required=True, note="should be updated in prepare latents step."),
+            InputParam.template("width", required=True, note="should be updated in prepare latents step."),
+            InputParam.template("layers"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam.template("latents", note="unpacked to B, C, layers+1, H, W"),
         ]
 
     @torch.no_grad()
@@ -128,17 +135,12 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(
-                name="latents",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The latents to decode, can be generated in the denoise step",
-            ),
+            InputParam.template("latents", required=True, description="The latents to decode, can be generated in the denoise step and unpacked in the after denoise step."),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
-        return [OutputParam.images()]
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam.template("images", note="tensor output of the vae decoder.")]
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -190,19 +192,14 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(
-                "latents",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The latents to decode, can be generated in the denoise step",
-            ),
-            InputParam.output_type(),
+            InputParam.template("latents", required=True, description="The latents to decode, can be generated in the denoise step and unpacked in the after denoise step."),
+            InputParam.template("output_type"),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam.images(),
+            OutputParam.template("images"),
         ]
 
     @torch.no_grad()
@@ -269,9 +266,13 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("images", required=True, description="the generated image from decoders step"),
-            InputParam.output_type(),
+            InputParam("images", required=True, description="the generated image tensor from decoders step"),
+            InputParam.template("output_type"),
         ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam.template("images")]
 
     @staticmethod
     def check_inputs(output_type):
@@ -314,10 +315,14 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("images", required=True, description="the generated image from decoders step"),
-            InputParam.output_type(),
-            InputParam("mask_overlay_kwargs"),
+            InputParam("images", required=True, description="the generated image tensor from decoders step"),
+            InputParam.template("output_type"),
+            InputParam("mask_overlay_kwargs", description="The kwargs for the postprocess step to apply the mask overlay. generated in InpaintProcessImagesInputStep."),
         ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam.template("images")]
 
     @staticmethod
     def check_inputs(output_type, mask_overlay_kwargs):

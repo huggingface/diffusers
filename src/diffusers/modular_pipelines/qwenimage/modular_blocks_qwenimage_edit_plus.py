@@ -67,10 +67,11 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
-    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
-    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
-    {}<|im_end|> <|im_start|>assistant )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
+    <|im_start|>user
+    {}<|im_end|>
+    <|im_start|>assistant
+    )
 
           img_template_encode (default: Picture {}: <|vision_start|><|image_pad|><|vision_end|>)
 
@@ -99,7 +100,7 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
 
     model_name = "qwenimage-edit-plus"
     block_classes = [
-        QwenImageEditPlusResizeStep(target_area=384 * 384, output_name="resized_cond_image"),
+        QwenImageEditPlusResizeStep(),
         QwenImageEditPlusTextEncoderStep(),
     ]
     block_names = ["resize", "encode"]
@@ -145,7 +146,7 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
 
     model_name = "qwenimage-edit-plus"
     block_classes = [
-        QwenImageEditPlusResizeStep(target_area=1024 * 1024, output_name="resized_image"),
+        QwenImageEditPlusResizeStep(),
         QwenImageEditPlusProcessImagesInputStep(),
         QwenImageVaeEncoderStep(),
     ]
@@ -268,7 +269,7 @@ class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
               Custom sigmas for the denoising process.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          **denoiser_input_fields (`Tensor`, *optional*):
+          denoiser_input_fields (`Tensor`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
@@ -325,7 +326,7 @@ class QwenImageEditPlusDecodeStep(SequentialPipelineBlocks):
           latents (`Tensor`):
               The latents to decode, can be generated in the denoise step
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt''.
+              Output format: 'pil', 'np', 'pt'.
 
       Outputs:
           images (`List`):
@@ -386,10 +387,11 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how
-    the user's text instruction should alter or modify the image. Generate a new image that meets the user's
-    requirements while maintaining consistency with the original input where appropriate.<|im_end|> <|im_start|>user
-    {}<|im_end|> <|im_start|>assistant )
+    Describe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>
+    <|im_start|>user
+    {}<|im_end|>
+    <|im_start|>assistant
+    )
 
           img_template_encode (default: Picture {}: <|vision_start|><|image_pad|><|vision_end|>)
 
@@ -418,10 +420,10 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
               Custom sigmas for the denoising process.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          **denoiser_input_fields (`Tensor`, *optional*):
+          denoiser_input_fields (`Tensor`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt''.
+              Output format: 'pil', 'np', 'pt'.
 
       Outputs:
           images (`List`):

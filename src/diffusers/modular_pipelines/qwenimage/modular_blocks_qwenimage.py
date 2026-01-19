@@ -75,8 +75,11 @@ class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the
-    objects and background:<|im_end|> <|im_start|>user {}<|im_end|> <|im_start|>assistant )
+    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>
+    <|im_start|>user
+    {}<|im_end|>
+    <|im_start|>assistant
+    )
 
           prompt_template_encode_start_idx (default: 34)
 
@@ -400,8 +403,7 @@ class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
           latents (`Tensor`):
               The initial random noised, can be generated in prepare latent step.
           image_latents (`Tensor`):
-              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input
-              step.
+              The image latents to use for the denoising process. Can be generated in vae encoder and packed in input step.
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
           processed_mask_image (`Tensor`):
@@ -440,8 +442,7 @@ class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs
-    (timesteps, latents, rope inputs etc.).
+    step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs (timesteps, latents, rope inputs etc.).
 
       Components:
 
@@ -478,7 +479,7 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
               Custom sigmas for the denoising process.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          **denoiser_input_fields (`Tensor`, *optional*):
+          denoiser_input_fields (`Tensor`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
@@ -519,8 +520,7 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint
-    task.
+    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint task.
 
       Components:
 
@@ -563,7 +563,7 @@ class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
               Strength for img2img/inpainting.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          **denoiser_input_fields (`Tensor`, *optional*):
+          denoiser_input_fields (`Tensor`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
@@ -606,8 +606,7 @@ class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img
-    task.
+    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img task.
 
       Components:
 
@@ -648,7 +647,7 @@ class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
               Strength for img2img/inpainting.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          **denoiser_input_fields (`Tensor`, *optional*):
+          denoiser_input_fields (`Tensor`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
@@ -691,8 +690,7 @@ class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs
-    (timesteps, latents, rope inputs etc.).
+    step that denoise noise into image for text2image task. It includes the denoise loop, as well as prepare the inputs (timesteps, latents, rope inputs etc.).
 
       Components:
 
@@ -742,6 +740,8 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
               txt_seq_lens/negative_txt_seq_lens.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
+          denoiser_input_fields (`Tensor`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
           latents (`Tensor`):
@@ -785,8 +785,7 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint
-    task.
+    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for inpaint task.
 
       Components:
 
@@ -842,6 +841,8 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
               txt_seq_lens/negative_txt_seq_lens.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
+          denoiser_input_fields (`Tensor`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
           latents (`Tensor`):
@@ -887,8 +888,7 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img
-    task.
+    Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img task.
 
       Components:
 
@@ -942,6 +942,8 @@ class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
               txt_seq_lens/negative_txt_seq_lens.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
+          denoiser_input_fields (`Tensor`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
       Outputs:
           latents (`Tensor`):
@@ -1065,7 +1067,7 @@ class QwenImageDecodeStep(SequentialPipelineBlocks):
           latents (`Tensor`):
               The latents to decode, can be generated in the denoise step
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt''.
+              Output format: 'pil', 'np', 'pt'.
 
       Outputs:
           images (`List`):
@@ -1085,8 +1087,7 @@ class QwenImageDecodeStep(SequentialPipelineBlocks):
 # auto_docstring
 class QwenImageInpaintDecodeStep(SequentialPipelineBlocks):
     """
-    Decode step that decodes the latents to images and postprocess the generated image, optional apply the mask
-    overally to the original image.
+    Decode step that decodes the latents to images and postprocess the generated image, optional apply the mask overally to the original image.
 
       Components:
 
@@ -1098,7 +1099,7 @@ class QwenImageInpaintDecodeStep(SequentialPipelineBlocks):
           latents (`Tensor`):
               The latents to decode, can be generated in the denoise step
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt''.
+              Output format: 'pil', 'np', 'pt'.
           mask_overlay_kwargs (`None`, *optional*):
               TODO: Add description.
 
@@ -1182,8 +1183,11 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
       Configs:
 
           prompt_template_encode (default: <|im_start|>system
-    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the
-    objects and background:<|im_end|> <|im_start|>user {}<|im_end|> <|im_start|>assistant )
+    Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>
+    <|im_start|>user
+    {}<|im_end|>
+    <|im_start|>assistant
+    )
 
           prompt_template_encode_start_idx (default: 34)
 
@@ -1228,7 +1232,7 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
               Custom sigmas for the denoising process.
           attention_kwargs (`Dict`, *optional*):
               Additional kwargs for attention processors.
-          **denoiser_input_fields (`Tensor`, *optional*):
+          denoiser_input_fields (`Tensor`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           image_latents (`None`, *optional*):
               TODO: Add description.
@@ -1244,8 +1248,11 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
               When to stop applying ControlNet.
           controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
               Scale for ControlNet conditioning.
+          **denoiser_input_fields (`None`, *optional*):
+              All conditional model inputs for the denoiser. It should contain prompt_embeds/negative_prompt_embeds,
+              txt_seq_lens/negative_txt_seq_lens.
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt''.
+              Output format: 'pil', 'np', 'pt'.
           mask_overlay_kwargs (`None`, *optional*):
               TODO: Add description.
 
