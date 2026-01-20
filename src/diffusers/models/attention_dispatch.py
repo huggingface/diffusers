@@ -43,8 +43,12 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_ULYSSES_ANYTHING
-from ._ulysses_anything import TemplatedUlyssesAnythingAttention
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
+from ._ulysses_anything_utils import (
+    all_to_all_single_any_o_async,
+    all_to_all_single_any_qkv_async,
+    ulysses_anything_metadata,
+)
 
 
 if TYPE_CHECKING:
@@ -1502,6 +1506,82 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None, None
 
 
+class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        is_causal: bool,
+        scale: Optional[float],
+        enable_gqa: bool,
+        return_lse: bool,
+        forward_op,
+        backward_op,
+        _parallel_config: Optional["ParallelConfig"] = None,
+        **kwargs,
+    ):
+        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
+        group = ulysses_mesh.get_group()
+
+        ctx.forward_op = forward_op
+        ctx.backward_op = backward_op
+        ctx._parallel_config = _parallel_config
+
+        metadata = ulysses_anything_metadata(query)
+        query_wait = all_to_all_single_any_qkv_async(query, group, **metadata)
+        key_wait = all_to_all_single_any_qkv_async(key, group, **metadata)
+        value_wait = all_to_all_single_any_qkv_async(value, group, **metadata)
+
+        query = query_wait()  # type: torch.Tensor
+        key = key_wait()  # type: torch.Tensor
+        value = value_wait()  # type: torch.Tensor
+
+        out = forward_op(
+            ctx,
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            _save_ctx=False,  # ulysses anything only support forward pass now.
+            _parallel_config=_parallel_config,
+        )
+        if return_lse:
+            out, lse, *_ = out
+
+        # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
+        out_wait = all_to_all_single_any_o_async(out, group, **metadata)
+
+        if return_lse:
+            # lse: (B, S_Q_GLOBAL, H_LOCAL)
+            lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
+            lse_wait = all_to_all_single_any_o_async(lse, group, **metadata)
+            out = out_wait()  # type: torch.Tensor
+            lse = lse_wait()  # type: torch.Tensor
+            lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
+        else:
+            out = out_wait()  # type: torch.Tensor
+            lse = None
+
+        return (out, lse) if return_lse else out
+
+    @staticmethod
+    def backward(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+    ):
+        raise NotImplementedError("Backward pass for Ulysses Anything Attention in diffusers is not implemented yet.")
+
+
 def _templated_unified_attention(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -1619,7 +1699,7 @@ def _templated_context_parallel_attention(
             _parallel_config,
         )
     elif _parallel_config.context_parallel_config.ulysses_degree > 1:
-        if DIFFUSERS_ULYSSES_ANYTHING:
+        if _parallel_config.context_parallel_config.ulysses_anything:
             # For Any sequence lengths and Any head num support
             return TemplatedUlyssesAnythingAttention.apply(
                 query,

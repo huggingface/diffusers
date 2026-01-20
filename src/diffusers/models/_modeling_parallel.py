@@ -67,6 +67,9 @@ class ContextParallelConfig:
     convert_to_fp32: bool = True
     # TODO: support alltoall
     rotate_method: Literal["allgather", "alltoall"] = "allgather"
+    # Whether to enable ulysses anything attention to support
+    # any sequence lengths and any head numbers.
+    ulysses_anything: bool = False
 
     _rank: int = None
     _world_size: int = None
