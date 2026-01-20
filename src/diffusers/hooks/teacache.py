@@ -177,8 +177,8 @@ class TeaCacheConfig:
     Configuration for [TeaCache](https://huggingface.co/papers/2411.19108).
 
     TeaCache (Timestep Embedding Aware Cache) speeds up diffusion model inference by reusing transformer block
-    computations when consecutive timestep embeddings are similar. It uses polynomial rescaling of L1 distances
-    between modulated inputs to decide when to cache.
+    computations when consecutive timestep embeddings are similar. It uses polynomial rescaling of L1 distances between
+    modulated inputs to decide when to cache.
 
     Currently supports: FLUX, FLUX-Kontext, Mochi, Lumina2, and CogVideoX models. Model type is auto-detected.
 
@@ -326,8 +326,8 @@ class TeaCacheHook(ModelHook):
     r"""
     Hook implementing [TeaCache](https://huggingface.co/papers/2411.19108) for transformer models.
 
-    Intercepts transformer forward pass and implements adaptive caching based on timestep embedding similarity.
-    First and last timesteps are always computed fully (never cached) to ensure maximum quality.
+    Intercepts transformer forward pass and implements adaptive caching based on timestep embedding similarity. First
+    and last timesteps are always computed fully (never cached) to ensure maximum quality.
     """
 
     _is_stateful = True
@@ -629,9 +629,9 @@ def _lumina2_teacache_forward(
 ):
     """TeaCache forward for Lumina2 models.
 
-    Note: Lumina2 uses inline caching logic instead of `_should_compute()` because it requires
-    per-sequence-length caching for variable sequence lengths (CFG batches have different lengths).
-    Each sequence length gets its own cache entry in `state.cache_dict`.
+    Note: Lumina2 uses inline caching logic instead of `_should_compute()` because it requires per-sequence-length
+    caching for variable sequence lengths (CFG batches have different lengths). Each sequence length gets its own cache
+    entry in `state.cache_dict`.
 
     Note: Gradient checkpointing is not supported in this TeaCache implementation for Lumina2.
     """
