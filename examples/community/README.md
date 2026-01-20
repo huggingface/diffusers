@@ -88,7 +88,7 @@ PIXART-α Controlnet pipeline | Implementation of the controlnet model for pixar
 | FaithDiff Stable Diffusion XL Pipeline | Implementation of [(CVPR 2025) FaithDiff: Unleashing Diffusion Priors for Faithful Image Super-resolutionUnleashing Diffusion Priors for Faithful Image Super-resolution](https://huggingface.co/papers/2411.18824) - FaithDiff is a faithful image super-resolution method that leverages latent diffusion models by actively adapting the diffusion prior and jointly fine-tuning its components (encoder and diffusion model) with an alignment module to ensure high fidelity and structural consistency. | [FaithDiff Stable Diffusion XL Pipeline](#faithdiff-stable-diffusion-xl-pipeline) | [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/jychen9811/FaithDiff) | [Junyang Chen, Jinshan Pan, Jiangxin Dong, IMAG Lab, (Adapted by Eliseu Silva)](https://github.com/JyChen9811/FaithDiff) |
 | Stable Diffusion 3 InstructPix2Pix Pipeline | Implementation of Stable Diffusion 3 InstructPix2Pix Pipeline | [Stable Diffusion 3 InstructPix2Pix Pipeline](#stable-diffusion-3-instructpix2pix-pipeline) | [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/BleachNick/SD3_UltraEdit_freeform) [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/CaptainZZZ/sd3-instructpix2pix) | [Jiayu Zhang](https://github.com/xduzhangjiayu) and [Haozhe Zhao](https://github.com/HaozheZhao)|
 | Flux Kontext multiple images | A modified version of the `FluxKontextPipeline` that supports calling Flux Kontext with multiple reference images.| [Flux Kontext multiple input Pipeline](#flux-kontext-multiple-images) | - |  [Net-Mist](https://github.com/Net-Mist) |
-
+| Flux Fill ControlNet Pipeline | A modified version of the `FluxFillPipeline` and `FluxControlNetInpaintPipeline` that supports Controlnet with Flux Fill model.| [Flux Fill ControlNet Pipeline](#Flux-Fill-ControlNet-Pipeline) | - |  [pratim4dasude](https://github.com/pratim4dasude) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -5488,7 +5488,7 @@ Editing at Scale", many thanks to their contribution!
 
 This implementation of Flux Kontext allows users to pass multiple reference images. Each image is encoded separately, and the resulting latent vectors are concatenated.
 
-As explained in Section 3 of [the paper](https://arxiv.org/pdf/2506.15742), the model's sequence concatenation mechanism can extend its capabilities to handle multiple reference images. However, note that the current version of Flux Kontext was not trained for this use case. In practice, stacking along the first axis does not yield correct results, while stacking along the other two axes appears to work.
+As explained in Section 3 of [the paper](https://huggingface.co/papers/2506.15742), the model's sequence concatenation mechanism can extend its capabilities to handle multiple reference images. However, note that the current version of Flux Kontext was not trained for this use case. In practice, stacking along the first axis does not yield correct results, while stacking along the other two axes appears to work.
 
 ## Example Usage
 
@@ -5527,3 +5527,106 @@ images = pipe(
 ).images
 images[0].save("pizzeria.png")
 ```
+
+# Flux Fill ControlNet Pipeline
+
+This implementation of Flux Fill + ControlNet Inpaint combines the fill-style masked editing of FLUX.1-Fill-dev with full ControlNet conditioning. The base image is processed through the Fill model while the ControlNet receives the corresponding conditioning input (depth, canny, pose, etc.), and both outputs are fused during denoising to guide structure and composition.
+
+While FLUX.1-Fill-dev is designed for mask-based edits, it was not originally trained to operate jointly with ControlNet. In practice, this combined setup works well for structured inpainting tasks, though results may vary depending on the conditioning strength and the alignment between the mask and the control input.
+
+## Example Usage
+
+
+```python
+import torch
+from diffusers import (
+    FluxControlNetModel,
+    FluxPriorReduxPipeline,
+)
+from diffusers.utils import load_image
+
+# NEW PIPELINE (updated name)
+from pipline_flux_fill_controlnet_Inpaint import  FluxControlNetFillInpaintPipeline
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+dtype = torch.bfloat16
+
+# Models
+base_model = "black-forest-labs/FLUX.1-Fill-dev"
+controlnet_model = "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro-2.0"
+prior_model = "black-forest-labs/FLUX.1-Redux-dev"
+
+# Load ControlNet
+controlnet = FluxControlNetModel.from_pretrained(
+    controlnet_model,
+    torch_dtype=dtype,
+)
+
+# Load Fill + ControlNet Pipeline
+fill_pipe = FluxControlNetFillInpaintPipeline.from_pretrained(
+    base_model,
+    controlnet=controlnet,
+    torch_dtype=dtype,
+).to(device)
+
+# OPTIONAL FP8
+# fill_pipe.transformer.enable_layerwise_casting(
+#     storage_dtype=torch.float8_e4m3fn,
+#     compute_dtype=torch.bfloat16
+# )
+
+#  OPTIONAL Prior Redux
+#pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(
+#    prior_model,
+#    torch_dtype=dtype,
+#).to(device)
+
+# Inputs
+
+# combined_image = load_image("person_input.png")
+
+
+# 1. Prior conditioning
+#prior_out = pipe_prior_redux(
+#    image=cloth_image,
+#    prompt=cloth_prompt,
+#)
+
+# 2. Fill Inpaint with ControlNet
+
+# canny (0), tile (1), depth (2), blur (3), pose (4), gray (5), low quality (6).
+
+img = load_image(r"imgs/background.jpg")
+mask = load_image(r"imgs/mask.png")
+
+control_image_depth = load_image(r"imgs/dog_depth _2.png")
+
+result = fill_pipe(
+    prompt="a dog on a bench",
+    image=img,
+    mask_image=mask,
+
+    control_image=control_image_depth,
+    control_mode=[2],  # union mode
+    control_guidance_start=0.0,
+    control_guidance_end=0.8,
+    controlnet_conditioning_scale=0.9,
+
+    height=1024,
+    width=1024,
+
+    strength=1.0,
+    guidance_scale=50.0,
+    num_inference_steps=60,
+    max_sequence_length=512,
+
+#    **prior_out,
+)
+
+# result.images[0].save("flux_fill_controlnet_inpaint.png")
+
+from datetime import datetime
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+result.images[0].save(f"flux_fill_controlnet_inpaint_depth{timestamp}.jpg")
+```
+

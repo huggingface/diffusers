@@ -26,7 +26,7 @@ from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DiagonalGaussianDistribution
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -584,7 +584,7 @@ class HunyuanImageRefinerDecoder3D(nn.Module):
         return hidden_states
 
 
-class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
+class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Used for
     HunyuanImage-2.1 Refiner.
@@ -601,7 +601,7 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
         in_channels: int = 3,
         out_channels: int = 3,
         latent_channels: int = 32,
-        block_out_channels: Tuple[int] = (128, 256, 512, 1024, 1024),
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 1024, 1024),
         layers_per_block: int = 2,
         spatial_compression_ratio: int = 16,
         temporal_compression_ratio: int = 4,
@@ -684,27 +684,6 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
         self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
         self.tile_overlap_factor = tile_overlap_factor or self.tile_overlap_factor
-
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_tiling = False
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         _, _, _, height, width = x.shape

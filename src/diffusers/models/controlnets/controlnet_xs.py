@@ -21,11 +21,11 @@ from torch import Tensor, nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
 from ...utils.torch_utils import apply_freeu
+from ..attention import AttentionMixin
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
     Attention,
-    AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
     FusedAttnProcessor2_0,
@@ -241,7 +241,7 @@ def get_up_block_adapter(
     return UpBlockControlNetXSAdapter(ctrl_to_base=nn.ModuleList(ctrl_to_base))
 
 
-class ControlNetXSAdapter(ModelMixin, ConfigMixin):
+class ControlNetXSAdapter(ModelMixin, AttentionMixin, ConfigMixin):
     r"""
     A `ControlNetXSAdapter` model. To use it, pass it into a `UNetControlNetXSModel` (together with a
     `UNet2DConditionModel` base model).
@@ -293,14 +293,14 @@ class ControlNetXSAdapter(ModelMixin, ConfigMixin):
         self,
         conditioning_channels: int = 3,
         conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
         time_embedding_mix: float = 1.0,
         learn_time_embedding: bool = False,
         num_attention_heads: Union[int, Tuple[int]] = 4,
-        block_out_channels: Tuple[int] = (4, 8, 16, 16),
-        base_block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        block_out_channels: Tuple[int, ...] = (4, 8, 16, 16),
+        base_block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         cross_attention_dim: int = 1024,
-        down_block_types: Tuple[str] = (
+        down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
@@ -436,7 +436,7 @@ class ControlNetXSAdapter(ModelMixin, ConfigMixin):
         time_embedding_mix: int = 1.0,
         conditioning_channels: int = 3,
         conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
     ):
         r"""
         Instantiate a [`ControlNetXSAdapter`] from a [`UNet2DConditionModel`].
@@ -508,7 +508,7 @@ class ControlNetXSAdapter(ModelMixin, ConfigMixin):
         )
 
 
-class UNetControlNetXSModel(ModelMixin, ConfigMixin):
+class UNetControlNetXSModel(ModelMixin, AttentionMixin, ConfigMixin):
     r"""
     A UNet fused with a ControlNet-XS adapter model
 
@@ -529,14 +529,19 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         self,
         # unet configs
         sample_size: Optional[int] = 96,
-        down_block_types: Tuple[str] = (
+        down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
-        block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        up_block_types: Tuple[str, ...] = (
+            "UpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+        ),
+        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         norm_num_groups: Optional[int] = 32,
         cross_attention_dim: Union[int, Tuple[int]] = 1024,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
@@ -550,10 +555,10 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         # additional controlnet configs
         time_embedding_mix: float = 1.0,
         ctrl_conditioning_channels: int = 3,
-        ctrl_conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
+        ctrl_conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
         ctrl_conditioning_channel_order: str = "rgb",
         ctrl_learn_time_embedding: bool = False,
-        ctrl_block_out_channels: Tuple[int] = (4, 8, 16, 16),
+        ctrl_block_out_channels: Tuple[int, ...] = (4, 8, 16, 16),
         ctrl_num_attention_heads: Union[int, Tuple[int]] = 4,
         ctrl_max_norm_num_groups: int = 32,
     ):
@@ -862,66 +867,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         self.mid_block.freeze_base_params()
         for u in self.up_blocks:
             u.freeze_base_params()
-
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):

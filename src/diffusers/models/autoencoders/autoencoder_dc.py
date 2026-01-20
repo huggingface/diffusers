@@ -102,14 +102,14 @@ def get_block(
     attention_head_dim: int,
     norm_type: str,
     act_fn: str,
-    qkv_mutliscales: Tuple[int] = (),
+    qkv_multiscales: Tuple[int, ...] = (),
 ):
     if block_type == "ResBlock":
         block = ResBlock(in_channels, out_channels, norm_type, act_fn)
 
     elif block_type == "EfficientViTBlock":
         block = EfficientViTBlock(
-            in_channels, attention_head_dim=attention_head_dim, norm_type=norm_type, qkv_multiscales=qkv_mutliscales
+            in_channels, attention_head_dim=attention_head_dim, norm_type=norm_type, qkv_multiscales=qkv_multiscales
         )
 
     else:
@@ -206,8 +206,8 @@ class Encoder(nn.Module):
         latent_channels: int,
         attention_head_dim: int = 32,
         block_type: Union[str, Tuple[str]] = "ResBlock",
-        block_out_channels: Tuple[int] = (128, 256, 512, 512, 1024, 1024),
-        layers_per_block: Tuple[int] = (2, 2, 2, 2, 2, 2),
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
+        layers_per_block: Tuple[int, ...] = (2, 2, 2, 2, 2, 2),
         qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         downsample_block_type: str = "pixel_unshuffle",
         out_shortcut: bool = True,
@@ -247,7 +247,7 @@ class Encoder(nn.Module):
                     attention_head_dim=attention_head_dim,
                     norm_type="rms_norm",
                     act_fn="silu",
-                    qkv_mutliscales=qkv_multiscales[i],
+                    qkv_multiscales=qkv_multiscales[i],
                 )
                 down_block_list.append(block)
 
@@ -292,8 +292,8 @@ class Decoder(nn.Module):
         latent_channels: int,
         attention_head_dim: int = 32,
         block_type: Union[str, Tuple[str]] = "ResBlock",
-        block_out_channels: Tuple[int] = (128, 256, 512, 512, 1024, 1024),
-        layers_per_block: Tuple[int] = (2, 2, 2, 2, 2, 2),
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
+        layers_per_block: Tuple[int, ...] = (2, 2, 2, 2, 2, 2),
         qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         norm_type: Union[str, Tuple[str]] = "rms_norm",
         act_fn: Union[str, Tuple[str]] = "silu",
@@ -339,7 +339,7 @@ class Decoder(nn.Module):
                     attention_head_dim=attention_head_dim,
                     norm_type=norm_type[i],
                     act_fn=act_fn[i],
-                    qkv_mutliscales=qkv_multiscales[i],
+                    qkv_multiscales=qkv_multiscales[i],
                 )
                 up_block_list.append(block)
 
@@ -440,8 +440,8 @@ class AutoencoderDC(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
         decoder_block_types: Union[str, Tuple[str]] = "ResBlock",
         encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
         decoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
-        encoder_layers_per_block: Tuple[int] = (2, 2, 2, 3, 3, 3),
-        decoder_layers_per_block: Tuple[int] = (3, 3, 3, 3, 3, 3),
+        encoder_layers_per_block: Tuple[int, ...] = (2, 2, 2, 3, 3, 3),
+        decoder_layers_per_block: Tuple[int, ...] = (3, 3, 3, 3, 3, 3),
         encoder_qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         decoder_qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         upsample_block_type: str = "pixel_shuffle",
