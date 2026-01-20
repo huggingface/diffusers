@@ -296,13 +296,9 @@ class GlmImagePipeline(DiffusionPipeline):
                 inputs["pixel_values"], image_grid_thw[:-1]
             )
             prior_token_image_embed = torch.cat(prior_token_image_embed, dim=0)
-            prior_token_image_ids_flat = self.vision_language_encoder.get_image_tokens(
+            prior_token_image_ids = self.vision_language_encoder.get_image_tokens(
                 prior_token_image_embed, image_grid_thw[:-1]
             )
-            # Split prior_token_image_ids by image (each image may have different number of tokens)
-            # image_grid_thw[:-1] contains grids for source images only
-            split_sizes = (image_grid_thw[:-1].prod(dim=-1)).tolist()
-            prior_token_image_ids = list(torch.split(prior_token_image_ids_flat, split_sizes, dim=0))
 
         # For GLM-Image, greedy decoding is not allowed; it may cause repetitive outputs.
         # max_new_tokens must be exactly grid_h * grid_w + 1 (the +1 is for EOS).
@@ -720,17 +716,14 @@ class GlmImagePipeline(DiffusionPipeline):
             latents_mean = latents_mean.to(device=device, dtype=prompt_embeds.dtype)
             latents_std = latents_std.to(device=device, dtype=prompt_embeds.dtype)
 
-            # prior_token_image_ids is a list of tensors, one per condition image
-            # Each tensor has shape (num_tokens_for_that_image,)
+            # prior_token_image_ids is a 1D tensor with all source image tokens concatenated
+            # When zipping with image list, we iterate through both - each image gets its corresponding token
             for condition_image, condition_image_prior_token_id in zip(image, prior_token_image_ids):
                 condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
                 condition_latent = retrieve_latents(
                     self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
                 )
                 condition_latent = (condition_latent - latents_mean) / latents_std
-
-                # Reshape prior_token_id to (1, seq_len) for transformer
-                condition_image_prior_token_id = condition_image_prior_token_id.unsqueeze(0)
 
                 # Do not remove.
                 # It would be use to run the reference image through a
