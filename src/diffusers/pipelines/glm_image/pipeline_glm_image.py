@@ -296,9 +296,21 @@ class GlmImagePipeline(DiffusionPipeline):
                 inputs["pixel_values"], image_grid_thw[:-1]
             )
             prior_token_image_embed = torch.cat(prior_token_image_embed, dim=0)
-            prior_token_image_ids = self.vision_language_encoder.get_image_tokens(
+            prior_token_image_ids_d32 = self.vision_language_encoder.get_image_tokens(
                 prior_token_image_embed, image_grid_thw[:-1]
             )
+            # Upsample each source image's prior tokens to match VAE/DiT resolution
+            # AR model works at d32, VAE/DiT works at d8, so we need 2x upsampling
+            source_grids = image_grid_thw[:-1]  # (num_source_images, 3)
+            split_sizes = source_grids.prod(dim=-1).tolist()
+            prior_ids_per_source = torch.split(prior_token_image_ids_d32, split_sizes)
+            upsampled_prior_ids = []
+            for i, prior_ids in enumerate(prior_ids_per_source):
+                t, h, w = source_grids[i].tolist()
+                # Each source image's tokens need 2x upsampling
+                upsampled = self._upsample_token_ids(prior_ids, h, w)
+                upsampled_prior_ids.append(upsampled.squeeze(0))  # Remove batch dim
+            prior_token_image_ids = torch.cat(upsampled_prior_ids, dim=0)
 
         # For GLM-Image, greedy decoding is not allowed; it may cause repetitive outputs.
         # max_new_tokens must be exactly grid_h * grid_w + 1 (the +1 is for EOS).
@@ -314,7 +326,16 @@ class GlmImagePipeline(DiffusionPipeline):
         prior_token_ids = self._upsample_token_ids(prior_token_ids_d32, token_h, token_w)
 
         # Return source image grid info for splitting prior_token_image_ids later
-        source_image_grid_thw = image_grid_thw[:-1] if image is not None and image_grid_thw is not None else None
+        # Note: grid is 2x upsampled to match the upsampled prior_token_image_ids
+        if image is not None and image_grid_thw is not None:
+            source_grids = image_grid_thw[:-1]  # (num_source_images, 3)
+            # Upsample grid dimensions (t stays same, h and w are 2x)
+            upsampled_grids = source_grids.clone()
+            upsampled_grids[:, 1] = upsampled_grids[:, 1] * 2  # h
+            upsampled_grids[:, 2] = upsampled_grids[:, 2] * 2  # w
+            source_image_grid_thw = upsampled_grids
+        else:
+            source_image_grid_thw = None
 
         return prior_token_ids, prior_token_image_ids, source_image_grid_thw
 
