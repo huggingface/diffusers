@@ -43,7 +43,7 @@ else:
         "Flux2ProcessImagesInputStep",
         "Flux2TextInputStep",
     ]
-    _import_structure["modular_blocks"] = [
+    _import_structure["modular_blocks_flux2"] = [
         "ALL_BLOCKS",
         "AUTO_BLOCKS",
         "REMOTE_AUTO_BLOCKS",
@@ -54,7 +54,8 @@ else:
         "Flux2BeforeDenoiseStep",
         "Flux2VaeEncoderSequentialStep",
     ]
-    _import_structure["modular_pipeline"] = ["Flux2ModularPipeline"]
+    _import_structure["modular_blocks_flux2_klein"] = ["Flux2KleinAutoBlocks", "Flux2KleinBaseAutoBlocks"]
+    _import_structure["modular_pipeline"] = ["Flux2ModularPipeline", "Flux2KleinModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -85,7 +86,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2ProcessImagesInputStep,
             Flux2TextInputStep,
         )
-        from .modular_blocks import (
+        from .modular_blocks_flux2 import (
             ALL_BLOCKS,
             AUTO_BLOCKS,
             IMAGE_CONDITIONED_BLOCKS,
@@ -96,7 +97,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2BeforeDenoiseStep,
             Flux2VaeEncoderSequentialStep,
         )
-        from .modular_pipeline import Flux2ModularPipeline
+        from .modular_blocks_flux2_klein import (
+            Flux2KleinAutoBlocks,
+            Flux2KleinBaseAutoBlocks,
+        )
+        from .modular_pipeline import Flux2ModularPipeline, Flux2KleinModularPipeline
 else:
     import sys
 

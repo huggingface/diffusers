@@ -353,7 +353,7 @@ class Flux2RoPEInputsStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(name="prompt_embeds", required=True),
-            InputParam(name="latent_ids"),
+            InputParam(name="negative_prompt_embeds", required=False),
         ]
 
     @property
@@ -366,10 +366,10 @@ class Flux2RoPEInputsStep(ModularPipelineBlocks):
                 description="4D position IDs (T, H, W, L) for text tokens, used for RoPE calculation.",
             ),
             OutputParam(
-                name="latent_ids",
+                name="negative_txt_ids",
                 kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
-                description="4D position IDs (T, H, W, L) for image latents, used for RoPE calculation.",
+                description="4D position IDs (T, H, W, L) for negative text tokens, used for RoPE calculation.",
             ),
         ]
 
@@ -398,6 +398,11 @@ class Flux2RoPEInputsStep(ModularPipelineBlocks):
 
         block_state.txt_ids = self._prepare_text_ids(prompt_embeds)
         block_state.txt_ids = block_state.txt_ids.to(device)
+
+        block_state.negative_txt_ids = None
+        if block_state.negative_prompt_embeds is not None:
+            block_state.negative_txt_ids = self._prepare_text_ids(block_state.negative_prompt_embeds)
+            block_state.negative_txt_ids = block_state.negative_txt_ids.to(device)
 
         self.set_block_state(state, block_state)
         return components, state

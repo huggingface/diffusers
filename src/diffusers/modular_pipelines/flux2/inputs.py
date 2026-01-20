@@ -47,7 +47,14 @@ class Flux2TextInputStep(ModularPipelineBlocks):
                 required=True,
                 kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
-                description="Pre-generated text embeddings from Mistral3. Can be generated from text_encoder step.",
+                description="Pre-generated text embeddings. Can be generated from text_encoder step.",
+            ),
+            InputParam(
+                "negative_prompt_embeds",
+                required=False,
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="Pre-generated negative text embeddings. Can be generated from text_encoder step.",
             ),
         ]
 
@@ -70,6 +77,12 @@ class Flux2TextInputStep(ModularPipelineBlocks):
                 kwargs_type="denoiser_input_fields",
                 description="Text embeddings used to guide the image generation",
             ),
+            OutputParam(
+                "negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Negative text embeddings used to guide the image generation",
+            ),
         ]
 
     @torch.no_grad()
@@ -84,6 +97,13 @@ class Flux2TextInputStep(ModularPipelineBlocks):
         block_state.prompt_embeds = block_state.prompt_embeds.view(
             block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
         )
+
+        if block_state.negative_prompt_embeds is not None:
+            _, seq_len, _ = block_state.negative_prompt_embeds.shape
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.view(
+                block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
+            )
 
         self.set_block_state(state, block_state)
         return components, state
