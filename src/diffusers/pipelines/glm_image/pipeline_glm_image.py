@@ -639,40 +639,79 @@ class GlmImagePipeline(DiffusionPipeline):
 
         device = self._execution_device
 
+        # Detect if image is per-prompt or shared
+        # Per-prompt: List[List[PIL.Image]] - each prompt has its own condition images
+        # Shared: List[PIL.Image] - all prompts share the same condition images
+        per_prompt_images = False
+        if image is not None and len(image) > 0:
+            first_element = image[0]
+            if isinstance(first_element, (list, tuple)):
+                per_prompt_images = True
+                # Validate: number of image lists must match batch_size
+                if len(image) != batch_size:
+                    raise ValueError(
+                        f"When providing per-prompt images, the number of image lists ({len(image)}) "
+                        f"must match the batch size ({batch_size})."
+                    )
+
         # 2. Preprocess image tokens and prompt tokens
         if prior_token_ids is None:
             prompt_list = [prompt] if isinstance(prompt, str) else prompt
             all_prior_token_ids = []
-            # For i2i, compute prior_token_image_ids only once since all prompts share the same condition images
-            shared_prior_token_image_ids = None
+            all_prior_token_image_ids = []  # List of tensors, one per prompt
+            
             for idx, p in enumerate(prompt_list):
+                # Determine which images to use for this prompt
+                if per_prompt_images:
+                    prompt_images = image[idx]
+                else:
+                    prompt_images = image  # Shared images for all prompts
+                
                 p_prior_token_ids, p_prior_token_image_ids = self.generate_prior_tokens(
                     prompt=p,
-                    image=image,
+                    image=prompt_images,
                     height=height,
                     width=width,
                     device=device,
                 )
                 all_prior_token_ids.append(p_prior_token_ids)
-                # Only keep the first sample's prior_token_image_ids (they are identical for all prompts)
-                if idx == 0 and p_prior_token_image_ids is not None:
-                    shared_prior_token_image_ids = p_prior_token_image_ids
+                if p_prior_token_image_ids is not None:
+                    all_prior_token_image_ids.append(p_prior_token_image_ids)
+            
             prior_token_ids = torch.cat(all_prior_token_ids, dim=0)
-            prior_token_image_ids = shared_prior_token_image_ids
+            prior_token_image_ids = all_prior_token_image_ids if len(all_prior_token_image_ids) > 0 else None
 
         # 3. Preprocess image
         if image is not None:
-            preprocessed_condition_images = []
-            for img in image:
-                image_height, image_width = img.size[::-1] if isinstance(img, PIL.Image.Image) else img.shape[:2]
-                multiple_of = self.vae_scale_factor * self.transformer.config.patch_size
-                image_height = (image_height // multiple_of) * multiple_of
-                image_width = (image_width // multiple_of) * multiple_of
-                img = self.image_processor.preprocess(img, height=image_height, width=image_width)
-                preprocessed_condition_images.append(img)
-                height = height or image_height
-                width = width or image_width
-            image = preprocessed_condition_images
+            if per_prompt_images:
+                # Per-prompt images: List[List[preprocessed]]
+                preprocessed_condition_images = []
+                for prompt_images in image:
+                    prompt_preprocessed = []
+                    for img in prompt_images:
+                        image_height, image_width = img.size[::-1] if isinstance(img, PIL.Image.Image) else img.shape[:2]
+                        multiple_of = self.vae_scale_factor * self.transformer.config.patch_size
+                        image_height = (image_height // multiple_of) * multiple_of
+                        image_width = (image_width // multiple_of) * multiple_of
+                        img = self.image_processor.preprocess(img, height=image_height, width=image_width)
+                        prompt_preprocessed.append(img)
+                        height = height or image_height
+                        width = width or image_width
+                    preprocessed_condition_images.append(prompt_preprocessed)
+                image = preprocessed_condition_images
+            else:
+                # Shared images: List[preprocessed]
+                preprocessed_condition_images = []
+                for img in image:
+                    image_height, image_width = img.size[::-1] if isinstance(img, PIL.Image.Image) else img.shape[:2]
+                    multiple_of = self.vae_scale_factor * self.transformer.config.patch_size
+                    image_height = (image_height // multiple_of) * multiple_of
+                    image_width = (image_width // multiple_of) * multiple_of
+                    img = self.image_processor.preprocess(img, height=image_height, width=image_width)
+                    preprocessed_condition_images.append(img)
+                    height = height or image_height
+                    width = width or image_width
+                image = preprocessed_condition_images
 
         # 5. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
@@ -701,14 +740,6 @@ class GlmImagePipeline(DiffusionPipeline):
         kv_caches = GlmImageKVCache(num_layers=self.transformer.config.num_layers)
 
         if image is not None:
-            # For image-to-image, batch > 1 is not yet fully supported
-            # because KV cache is shared across the batch
-            if batch_size > 1:
-                logger.warning(
-                    "Image-to-image generation with batch_size > 1 is experimental. "
-                    "All samples in the batch will share the same condition images."
-                )
-
             kv_caches.set_mode("write")
             latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.latent_channels, 1, 1)
             latents_std = torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.latent_channels, 1, 1)
@@ -716,29 +747,58 @@ class GlmImagePipeline(DiffusionPipeline):
             latents_mean = latents_mean.to(device=device, dtype=prompt_embeds.dtype)
             latents_std = latents_std.to(device=device, dtype=prompt_embeds.dtype)
 
-            # prior_token_image_ids is a 1D tensor with all source image tokens concatenated
-            # When zipping with image list, we iterate through both - each image gets its corresponding token
-            for condition_image, condition_image_prior_token_id in zip(image, prior_token_image_ids):
-                condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
-                condition_latent = retrieve_latents(
-                    self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
-                )
-                condition_latent = (condition_latent - latents_mean) / latents_std
+            if per_prompt_images:
+                # Per-prompt images: each prompt has its own condition images
+                # prior_token_image_ids is List[Tensor], one per prompt
+                for prompt_idx in range(batch_size):
+                    prompt_images = image[prompt_idx]  # List of preprocessed images for this prompt
+                    prompt_prior_ids = prior_token_image_ids[prompt_idx]  # 1D tensor for this prompt
+                    
+                    # Process each condition image for this prompt
+                    for condition_image, condition_image_prior_token_id in zip(prompt_images, prompt_prior_ids):
+                        condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
+                        condition_latent = retrieve_latents(
+                            self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
+                        )
+                        condition_latent = (condition_latent - latents_mean) / latents_std
 
-                # Do not remove.
-                # It would be use to run the reference image through a
-                # forward pass at timestep 0 and keep the KV cache.
-                _ = self.transformer(
-                    hidden_states=condition_latent,
-                    encoder_hidden_states=torch.zeros_like(prompt_embeds)[:1, :0, ...],
-                    prior_token_id=condition_image_prior_token_id,
-                    prior_token_drop=torch.full_like(condition_image_prior_token_id, False, dtype=torch.bool),
-                    timestep=torch.zeros((1,), device=device),
-                    target_size=torch.tensor([condition_image.shape[-2:]], device=device),
-                    crop_coords=torch.zeros((1, 2), device=device),
-                    attention_kwargs=attention_kwargs,
-                    kv_caches=kv_caches,
-                )
+                        _ = self.transformer(
+                            hidden_states=condition_latent,
+                            encoder_hidden_states=torch.zeros_like(prompt_embeds)[:1, :0, ...],
+                            prior_token_id=condition_image_prior_token_id,
+                            prior_token_drop=torch.full_like(condition_image_prior_token_id, False, dtype=torch.bool),
+                            timestep=torch.zeros((1,), device=device),
+                            target_size=torch.tensor([condition_image.shape[-2:]], device=device),
+                            crop_coords=torch.zeros((1, 2), device=device),
+                            attention_kwargs=attention_kwargs,
+                            kv_caches=kv_caches,
+                        )
+                    
+                    # Move to next sample's cache slot
+                    kv_caches.next_sample()
+            else:
+                # Shared images: all prompts share the same condition images
+                # prior_token_image_ids is List with one element (1D tensor)
+                shared_prior_ids = prior_token_image_ids[0] if prior_token_image_ids else []
+                
+                for condition_image, condition_image_prior_token_id in zip(image, shared_prior_ids):
+                    condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
+                    condition_latent = retrieve_latents(
+                        self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
+                    )
+                    condition_latent = (condition_latent - latents_mean) / latents_std
+
+                    _ = self.transformer(
+                        hidden_states=condition_latent,
+                        encoder_hidden_states=torch.zeros_like(prompt_embeds)[:1, :0, ...],
+                        prior_token_id=condition_image_prior_token_id,
+                        prior_token_drop=torch.full_like(condition_image_prior_token_id, False, dtype=torch.bool),
+                        timestep=torch.zeros((1,), device=device),
+                        target_size=torch.tensor([condition_image.shape[-2:]], device=device),
+                        crop_coords=torch.zeros((1, 2), device=device),
+                        attention_kwargs=attention_kwargs,
+                        kv_caches=kv_caches,
+                    )
 
         # 6. Prepare additional timestep conditions
         target_size = (height, width)
