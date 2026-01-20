@@ -712,6 +712,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             device=device,
             max_sequence_length=max_sequence_length,
         )
+        # TODO(migmartin): add img ref to prompt_embeds via siglip if provided
+        encoder_hidden_states = (prompt_embeds, None)
 
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
@@ -800,22 +802,29 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 in_latents = in_latents.to(transformer_dtype)
                 in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
                 control_blocks = None
+
+                prepared_inputs = self.transformer.prepare_inputs(
+                    hidden_states=in_latents,
+                    condition_mask=cond_mask,
+                    timestep=in_timestep,
+                    encoder_hidden_states=encoder_hidden_states,
+                    padding_mask=padding_mask,
+                )
+                # import IPython; IPython.embed()
+                # breakpoint()
                 if controls is not None:
                     control_blocks = self.controlnet(
                         hidden_states=in_latents,
                         controlnet_cond=controls_latents.to(dtype=transformer_dtype),
                         timestep=in_timestep,
-                        encoder_hidden_states=prompt_embeds,
+                        encoder_hidden_states=encoder_hidden_states,
                         conditioning_scale=controls_conditioning_scale,
                         return_dict=True,
                     )
 
-                noise_pred = self.transformer(
-                    hidden_states=in_latents,
-                    condition_mask=cond_mask,
-                    timestep=in_timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    padding_mask=padding_mask,
+                # breakpoint()
+                noise_pred = self.transformer._forward(
+                    prepared_inputs=prepared_inputs,
                     block_controlnet_hidden_states=control_blocks,
                     return_dict=False,
                 )[0]
@@ -823,12 +832,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 noise_pred = gt_velocity + noise_pred * (1 - cond_mask)
 
                 if self.do_classifier_free_guidance:
-                    noise_pred_neg = self.transformer(
-                        hidden_states=in_latents,
-                        condition_mask=cond_mask,
-                        timestep=in_timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        padding_mask=padding_mask,
+                    noise_pred_neg = self.transformer._forward(
+                        prepared_inputs=prepared_inputs,
                         block_controlnet_hidden_states=control_blocks,
                         return_dict=False,
                     )[0]
@@ -862,6 +867,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             latents_std = self.latents_std.to(latents.device, latents.dtype)
             latents = latents * latents_std + latents_mean
             video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
+            video = self._match_num_frames(video, num_frames)
 
             assert self.safety_checker is not None
             self.safety_checker.to(device)
@@ -872,7 +878,10 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 vid = self.safety_checker.check_video_safety(vid)
                 video_batch.append(vid)
             video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
-            video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
+            try:
+                video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
+            except:
+                breakpoint()
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
@@ -884,3 +893,19 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             return (video,)
 
         return CosmosPipelineOutput(frames=video)
+    
+    def _match_num_frames(self, video: torch.Tensor, target_num_frames: int) -> torch.Tensor:
+        if target_num_frames <= 0 or video.shape[2] == target_num_frames:
+            return video
+
+        frames_per_latent = max(self.vae_scale_factor_temporal, 1)
+        video = torch.repeat_interleave(video, repeats=frames_per_latent, dim=2)
+
+        current_frames = video.shape[2]
+        if current_frames < target_num_frames:
+            pad = video[:, :, -1:, :, :].repeat(1, 1, target_num_frames - current_frames, 1, 1)
+            video = torch.cat([video, pad], dim=2)
+        elif current_frames > target_num_frames:
+            video = video[:, :, :target_num_frames]
+
+        return video
