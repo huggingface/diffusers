@@ -313,7 +313,10 @@ class GlmImagePipeline(DiffusionPipeline):
         )
         prior_token_ids = self._upsample_token_ids(prior_token_ids_d32, token_h, token_w)
 
-        return prior_token_ids, prior_token_image_ids
+        # Return source image grid info for splitting prior_token_image_ids later
+        source_image_grid_thw = image_grid_thw[:-1] if image is not None and image_grid_thw is not None else None
+
+        return prior_token_ids, prior_token_image_ids, source_image_grid_thw
 
     def get_glyph_texts(self, prompt):
         """Extract glyph texts from prompt(s). Returns a list of lists for batch processing."""
@@ -659,6 +662,7 @@ class GlmImagePipeline(DiffusionPipeline):
             prompt_list = [prompt] if isinstance(prompt, str) else prompt
             all_prior_token_ids = []
             all_prior_token_image_ids = []  # List of tensors, one per prompt
+            all_source_image_grid_thw = []  # List of grid info, one per prompt
             
             for idx, p in enumerate(prompt_list):
                 # Determine which images to use for this prompt
@@ -667,7 +671,7 @@ class GlmImagePipeline(DiffusionPipeline):
                 else:
                     prompt_images = image  # Shared images for all prompts
                 
-                p_prior_token_ids, p_prior_token_image_ids = self.generate_prior_tokens(
+                p_prior_token_ids, p_prior_token_image_ids, p_source_grid_thw = self.generate_prior_tokens(
                     prompt=p,
                     image=prompt_images,
                     height=height,
@@ -677,9 +681,17 @@ class GlmImagePipeline(DiffusionPipeline):
                 all_prior_token_ids.append(p_prior_token_ids)
                 if p_prior_token_image_ids is not None:
                     all_prior_token_image_ids.append(p_prior_token_image_ids)
+                if p_source_grid_thw is not None:
+                    all_source_image_grid_thw.append(p_source_grid_thw)
             
             prior_token_ids = torch.cat(all_prior_token_ids, dim=0)
             prior_token_image_ids = all_prior_token_image_ids if len(all_prior_token_image_ids) > 0 else None
+            source_image_grid_thw = all_source_image_grid_thw if len(all_source_image_grid_thw) > 0 else None
+        else:
+            # User provided prior_token_ids directly, we don't have source_image_grid_thw
+            # This path doesn't support KV cache for condition images
+            prior_token_image_ids = None
+            source_image_grid_thw = None
 
         # 3. Preprocess image
         if image is not None:
@@ -750,12 +762,19 @@ class GlmImagePipeline(DiffusionPipeline):
             if per_prompt_images:
                 # Per-prompt images: each prompt has its own condition images
                 # prior_token_image_ids is List[Tensor], one per prompt
+                # source_image_grid_thw is List[Tensor], one per prompt
                 for prompt_idx in range(batch_size):
                     prompt_images = image[prompt_idx]  # List of preprocessed images for this prompt
-                    prompt_prior_ids = prior_token_image_ids[prompt_idx]  # 1D tensor for this prompt
+                    prompt_prior_ids = prior_token_image_ids[prompt_idx]  # 1D tensor (all tokens concatenated)
+                    prompt_grid_thw = source_image_grid_thw[prompt_idx]  # Grid info for this prompt's images
+                    
+                    # Split prior_token_image_ids by each source image's token count
+                    # Each image has prod(grid_thw[i]) tokens
+                    split_sizes = prompt_grid_thw.prod(dim=-1).tolist()
+                    prior_ids_per_image = torch.split(prompt_prior_ids, split_sizes)
                     
                     # Process each condition image for this prompt
-                    for condition_image, condition_image_prior_token_id in zip(prompt_images, prompt_prior_ids):
+                    for condition_image, condition_image_prior_token_id in zip(prompt_images, prior_ids_per_image):
                         condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
                         condition_latent = retrieve_latents(
                             self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
@@ -779,9 +798,18 @@ class GlmImagePipeline(DiffusionPipeline):
             else:
                 # Shared images: all prompts share the same condition images
                 # prior_token_image_ids is List with one element (1D tensor)
-                shared_prior_ids = prior_token_image_ids[0] if prior_token_image_ids else []
+                # source_image_grid_thw is List with one element
+                shared_prior_ids = prior_token_image_ids[0] if prior_token_image_ids else None
+                shared_grid_thw = source_image_grid_thw[0] if source_image_grid_thw else None
                 
-                for condition_image, condition_image_prior_token_id in zip(image, shared_prior_ids):
+                # Split prior_token_image_ids by each source image's token count
+                if shared_prior_ids is not None and shared_grid_thw is not None:
+                    split_sizes = shared_grid_thw.prod(dim=-1).tolist()
+                    prior_ids_per_image = torch.split(shared_prior_ids, split_sizes)
+                else:
+                    prior_ids_per_image = []
+                
+                for condition_image, condition_image_prior_token_id in zip(image, prior_ids_per_image):
                     condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
                     condition_latent = retrieve_latents(
                         self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
