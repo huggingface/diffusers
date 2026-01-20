@@ -15,13 +15,13 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
-from transformers import AutoProcessor, Mistral3ForConditionalGeneration, Qwen3ForCausalLM, Qwen2TokenizerFast
+from transformers import AutoProcessor, Mistral3ForConditionalGeneration, Qwen2TokenizerFast, Qwen3ForCausalLM
 
 from ...models import AutoencoderKLFlux2
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam, ConfigSpec
-from .modular_pipeline import Flux2ModularPipeline, Flux2KleinModularPipeline
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
+from .modular_pipeline import Flux2KleinModularPipeline, Flux2ModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -245,10 +245,8 @@ class Flux2RemoteTextEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
-
 class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
     model_name = "flux2-klein"
-
 
     @property
     def description(self) -> str:
@@ -284,7 +282,6 @@ class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Text embeddings from qwen3 used to guide the image generation",
             ),
-
             OutputParam(
                 "negative_prompt_embeds",
                 type_hint=torch.Tensor,
@@ -390,7 +387,7 @@ class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
             )
         else:
             block_state.negative_prompt_embeds = None
-        
+
         self.set_block_state(state, block_state)
         return components, state
 

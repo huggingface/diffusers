@@ -12,24 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Tuple
 import inspect
+from typing import Any, List, Tuple
 
 import torch
 
 from ...configuration_utils import FrozenDict
+from ...guiders import ClassifierFreeGuidance
 from ...models import Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging
-from ...guiders import ClassifierFreeGuidance
 from ..modular_pipeline import (
     BlockState,
     LoopSequentialPipelineBlocks,
     ModularPipelineBlocks,
     PipelineState,
 )
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam, ConfigSpec
-from .modular_pipeline import Flux2ModularPipeline, Flux2KleinModularPipeline
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
+from .modular_pipeline import Flux2KleinModularPipeline, Flux2ModularPipeline
 
 
 if is_torch_xla_available():
@@ -136,7 +136,8 @@ class Flux2LoopDenoiser(ModularPipelineBlocks):
 
         return components, block_state
 
-# sane as Flux2 but guidance=None
+
+# same as Flux2LoopDenoiser but guidance=None
 class Flux2KleinLoopDenoiser(ModularPipelineBlocks):
     model_name = "flux2-klein"
 
@@ -308,7 +309,7 @@ class Flux2KleinBaseLoopDenoiser(ModularPipelineBlocks):
             InputParam(
                 kwargs_type="denoiser_input_fields",
                 description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
-            )
+            ),
         ]
 
     @torch.no_grad()
@@ -367,7 +368,6 @@ class Flux2KleinBaseLoopDenoiser(ModularPipelineBlocks):
 
         # perform guidance
         block_state.noise_pred = components.guider(guider_state)[0]
-
 
         return components, block_state
 
@@ -490,6 +490,7 @@ class Flux2DenoiseStep(Flux2DenoiseLoopWrapper):
             " - `Flux2LoopAfterDenoiser`\n"
             "This block supports both text-to-image and image-conditioned generation."
         )
+
 
 class Flux2KleinDenoiseStep(Flux2DenoiseLoopWrapper):
     block_classes = [Flux2KleinLoopDenoiser, Flux2LoopAfterDenoiser]

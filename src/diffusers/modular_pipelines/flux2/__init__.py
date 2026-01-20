@@ -101,7 +101,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinAutoBlocks,
             Flux2KleinBaseAutoBlocks,
         )
-        from .modular_pipeline import Flux2ModularPipeline, Flux2KleinModularPipeline
+        from .modular_pipeline import Flux2KleinModularPipeline, Flux2ModularPipeline
 else:
     import sys
 

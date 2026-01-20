@@ -84,7 +84,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .components_manager import ComponentsManager
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
-        from .flux2 import Flux2AutoBlocks, Flux2KleinAutoBlocks, Flux2KleinBaseAutoBlocks, Flux2ModularPipeline, Flux2KleinModularPipeline
+        from .flux2 import (
+            Flux2AutoBlocks,
+            Flux2KleinAutoBlocks,
+            Flux2KleinBaseAutoBlocks,
+            Flux2KleinModularPipeline,
+            Flux2ModularPipeline,
+        )
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,

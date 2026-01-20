@@ -13,11 +13,11 @@
 # limitations under the License.
 
 
+from typing import Any, Dict, Optional
+
 from ...loaders import Flux2LoraLoaderMixin
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
-
-from typing import Optional, Dict, Any
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -59,8 +59,6 @@ class Flux2ModularPipeline(ModularPipeline, Flux2LoraLoaderMixin):
         return num_channels_latents
 
 
-
-
 class Flux2KleinModularPipeline(ModularPipeline, Flux2LoraLoaderMixin):
     """
     A ModularPipeline for Flux2-Klein.
@@ -71,7 +69,6 @@ class Flux2KleinModularPipeline(ModularPipeline, Flux2LoraLoaderMixin):
     default_blocks_name = "Flux2KleinBaseAutoBlocks"
 
     def get_default_blocks_name(self, config_dict: Optional[Dict[str, Any]]) -> Optional[str]:
-
         if config_dict is not None and "is_distilled" in config_dict and config_dict["is_distilled"]:
             return "Flux2KleinAutoBlocks"
         else:
@@ -105,7 +102,6 @@ class Flux2KleinModularPipeline(ModularPipeline, Flux2LoraLoaderMixin):
 
     @property
     def requires_unconditional_embeds(self):
-
         if hasattr(self.config, "is_distilled") and self.config.is_distilled:
             return False
 

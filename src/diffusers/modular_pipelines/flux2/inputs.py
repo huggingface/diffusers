@@ -100,7 +100,9 @@ class Flux2TextInputStep(ModularPipelineBlocks):
 
         if block_state.negative_prompt_embeds is not None:
             _, seq_len, _ = block_state.negative_prompt_embeds.shape
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(
+                1, block_state.num_images_per_prompt, 1
+            )
             block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.view(
                 block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
             )
