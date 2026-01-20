@@ -46,10 +46,16 @@ class CosmosPatchEmbed(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.patch_size
+        print(".shape=", hidden_states.shape)
+        # breakpoint()
         hidden_states = hidden_states.reshape(
             batch_size, num_channels, num_frames // p_t, p_t, height // p_h, p_h, width // p_w, p_w
         )
+        print(".shape=", hidden_states.shape)
+        # breakpoint()
         hidden_states = hidden_states.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7)
+        print(".shape=", hidden_states.shape)
+        # breakpoint()
         hidden_states = self.proj(hidden_states)
         return hidden_states
 
