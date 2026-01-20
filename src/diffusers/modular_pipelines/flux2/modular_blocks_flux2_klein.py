@@ -12,13 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
+import PIL.Image
+from typing import List
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict
+from ..modular_pipeline_utils import InsertableDict, OutputParam
 from .before_denoise import (
     Flux2PrepareImageLatentsStep,
     Flux2PrepareLatentsStep,
     Flux2RoPEInputsStep,
+    Flux2KleinBaseRoPEInputsStep,
     Flux2SetTimestepsStep,
 )
 from .decoders import Flux2DecodeStep, Flux2UnpackLatentsStep
@@ -31,6 +35,7 @@ from .encoders import (
 from .inputs import (
     Flux2ProcessImagesInputStep,
     Flux2TextInputStep,
+    Flux2KleinBaseTextInputStep,
 )
 
 
@@ -101,7 +106,7 @@ class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
         return "Core denoise step that performs the denoising process for Flux2-Klein (distilled model)."
         return (
             "Core denoise step that performs the denoising process for Flux2-Klein.\n"
-            " - `Flux2KleinTextInputStep` (input) standardizes the text inputs for the denoising step.\n"
+            " - `Flux2KleinTextInputStep` (input) standardizes the text inputs (prompt_embeds) for the denoising step.\n"
             " - `Flux2PrepareImageLatentsStep` (prepare_image_latents) prepares the image latents  and image_latent_ids for the denoising step.\n"
             " - `Flux2PrepareLatentsStep` (prepare_latents) prepares the initial latents (latents) and latent_ids for the denoising step.\n"
             " - `Flux2SetTimestepsStep` (set_timesteps) sets the timesteps for the denoising step.\n"
@@ -110,14 +115,24 @@ class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
             " - `Flux2UnpackLatentsStep` (after_denoise) unpacks the latents from the denoising step.\n"
         )
 
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                description="The latents from the denoising step.",
+            )
+        ]
+
 
 Flux2KleinBaseCoreDenoiseBlocks = InsertableDict(
     [
-        ("input", Flux2TextInputStep()),
+        ("input", Flux2KleinBaseTextInputStep()),
         ("prepare_latents", Flux2PrepareLatentsStep()),
         ("prepare_image_latents", Flux2PrepareImageLatentsStep()),
         ("set_timesteps", Flux2SetTimestepsStep()),
-        ("prepare_rope_inputs", Flux2RoPEInputsStep()),
+        ("prepare_rope_inputs", Flux2KleinBaseRoPEInputsStep()),
         ("denoise", Flux2KleinBaseDenoiseStep()),
         ("after_denoise", Flux2UnpackLatentsStep()),
     ]
@@ -134,14 +149,23 @@ class Flux2KleinBaseCoreDenoiseStep(SequentialPipelineBlocks):
         return "Core denoise step that performs the denoising process for Flux2-Klein (base model)."
         return (
             "Core denoise step that performs the denoising process for Flux2-Klein (base model).\n"
-            " - `Flux2KleinTextInputStep` (input) standardizes the text inputs for the denoising step.\n"
+            " - `Flux2KleinBaseTextInputStep` (input) standardizes the text inputs (prompt_embeds + negative_prompt_embeds) for the denoising step.\n"
             " - `Flux2PrepareImageLatentsStep` (prepare_image_latents) prepares the image latents and image_latent_ids for the denoising step.\n"
             " - `Flux2PrepareLatentsStep` (prepare_latents) prepares the initial latents (latents) and latent_ids for the denoising step.\n"
             " - `Flux2SetTimestepsStep` (set_timesteps) sets the timesteps for the denoising step.\n"
-            " - `Flux2RoPEInputsStep` (prepare_rope_inputs) prepares the RoPE inputs (txt_ids) for the denoising step.\n"
+            " - `Flux2KleinBaseRoPEInputsStep` (prepare_rope_inputs) prepares the RoPE inputs (txt_ids + negative_txt_ids) for the denoising step.\n"
             " - `Flux2KleinBaseDenoiseStep` (denoise) iteratively denoises the latents using Classifier-Free Guidance.\n"
             " - `Flux2UnpackLatentsStep` (after_denoise) unpacks the latents from the denoising step.\n"
         )
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                description="The latents from the denoising step.",
+            )
+        ]
 
 
 ###
@@ -165,6 +189,16 @@ class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
             + " - for text-to-image generation, all you need to provide is `prompt`.\n"
         )
 
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                name="images",
+                type_hint=List[PIL.Image.Image],
+                description="The images from the decoding step.",
+            )
+        ]
+
 
 class Flux2KleinBaseAutoBlocks(SequentialPipelineBlocks):
     model_name = "flux2-klein"
@@ -183,3 +217,13 @@ class Flux2KleinBaseAutoBlocks(SequentialPipelineBlocks):
             + " - for image-conditioned generation, you need to provide `image` (list of PIL images).\n"
             + " - for text-to-image generation, all you need to provide is `prompt`.\n"
         )
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                name="images",
+                type_hint=List[PIL.Image.Image],
+                description="The images from the decoding step.",
+            )
+        ]

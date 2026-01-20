@@ -19,6 +19,7 @@ from .before_denoise import (
     Flux2PrepareImageLatentsStep,
     Flux2PrepareLatentsStep,
     Flux2RoPEInputsStep,
+    Flux2PrepareGuidanceStep,
     Flux2SetTimestepsStep,
 )
 from .decoders import Flux2DecodeStep, Flux2UnpackLatentsStep
@@ -76,6 +77,7 @@ Flux2BeforeDenoiseBlocks = InsertableDict(
     [
         ("prepare_latents", Flux2PrepareLatentsStep()),
         ("set_timesteps", Flux2SetTimestepsStep()),
+        ("prepare_guidance", Flux2PrepareGuidanceStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
     ]
 )
@@ -139,6 +141,7 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
         ("text_input", Flux2TextInputStep()),
         ("prepare_latents", Flux2PrepareLatentsStep()),
         ("set_timesteps", Flux2SetTimestepsStep()),
+        ("prepare_guidance", Flux2PrepareGuidanceStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
         ("denoise", Flux2DenoiseStep()),
         ("after_denoise", Flux2UnpackLatentsStep()),
@@ -155,6 +158,7 @@ IMAGE_CONDITIONED_BLOCKS = InsertableDict(
         ("prepare_image_latents", Flux2PrepareImageLatentsStep()),
         ("prepare_latents", Flux2PrepareLatentsStep()),
         ("set_timesteps", Flux2SetTimestepsStep()),
+        ("prepare_guidance", Flux2PrepareGuidanceStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
         ("denoise", Flux2DenoiseStep()),
         ("after_denoise", Flux2UnpackLatentsStep()),
