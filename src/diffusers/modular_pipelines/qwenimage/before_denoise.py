@@ -455,7 +455,7 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that sets the the scheduler's timesteps for text-to-image generation. Should be run after prepare latents step."
+        return "Step that sets the scheduler's timesteps for text-to-image generation. Should be run after prepare latents step."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -579,7 +579,7 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that sets the the scheduler's timesteps for image-to-image generation, and inpainting. Should be run after prepare latents step."
+        return "Step that sets the scheduler's timesteps for image-to-image generation, and inpainting. Should be run after prepare latents step."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -682,18 +682,6 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
                 type_hint=List[List[Tuple[int, int, int]]],
                 description="The shapes of the images latents, used for RoPE calculation",
             ),
-            OutputParam(
-                name="txt_seq_lens",
-                kwargs_type="denoiser_input_fields",
-                type_hint=List[int],
-                description="The sequence lengths of the prompt embeds, used for RoPE calculation",
-            ),
-            OutputParam(
-                name="negative_txt_seq_lens",
-                kwargs_type="denoiser_input_fields",
-                type_hint=List[int],
-                description="The sequence lengths of the negative prompt embeds, used for RoPE calculation",
-            ),
         ]
 
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -708,14 +696,6 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
                 )
             ]
         ] * block_state.batch_size
-        block_state.txt_seq_lens = (
-            block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
-        )
-        block_state.negative_txt_seq_lens = (
-            block_state.negative_prompt_embeds_mask.sum(dim=1).tolist()
-            if block_state.negative_prompt_embeds_mask is not None
-            else None
-        )
 
         self.set_block_state(state, block_state)
 
@@ -750,18 +730,6 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
                 type_hint=List[List[Tuple[int, int, int]]],
                 description="The shapes of the images latents, used for RoPE calculation",
             ),
-            OutputParam(
-                name="txt_seq_lens",
-                kwargs_type="denoiser_input_fields",
-                type_hint=List[int],
-                description="The sequence lengths of the prompt embeds, used for RoPE calculation",
-            ),
-            OutputParam(
-                name="negative_txt_seq_lens",
-                kwargs_type="denoiser_input_fields",
-                type_hint=List[int],
-                description="The sequence lengths of the negative prompt embeds, used for RoPE calculation",
-            ),
         ]
 
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -782,15 +750,6 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
                 ),
             ]
         ] * block_state.batch_size
-
-        block_state.txt_seq_lens = (
-            block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
-        )
-        block_state.negative_txt_seq_lens = (
-            block_state.negative_prompt_embeds_mask.sum(dim=1).tolist()
-            if block_state.negative_prompt_embeds_mask is not None
-            else None
-        )
 
         self.set_block_state(state, block_state)
 

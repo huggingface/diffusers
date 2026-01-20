@@ -23,6 +23,8 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_bria_fibo"] = ["BriaFiboPipeline"]
+    _import_structure["pipeline_bria_fibo_edit"] = ["BriaFiboEditPipeline"]
+
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +35,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_bria_fibo import BriaFiboPipeline
+        from .pipeline_bria_fibo_edit import BriaFiboEditPipeline
 
 else:
     import sys
