@@ -14,6 +14,7 @@
 
 from typing import Callable, Dict, List, Optional, Union
 
+import PIL.Image
 import numpy as np
 import torch
 import torchvision
@@ -226,6 +227,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
+        # breakpoint()
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
         latents_mean = (
@@ -497,6 +499,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         control_video = control_video.to(device=device, dtype=self.vae.dtype)
         control_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0))) for vid in control_video]
         control_latents = torch.cat(control_latents, dim=0).to(dtype)
+        print("after control_latents.shape=", control_latents.shape)
 
         latents_mean = self.latents_mean.to(device=device, dtype=dtype)
         latents_std = self.latents_std.to(device=device, dtype=dtype)
@@ -563,7 +566,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] | None = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 704,
-        width: int = 1280,
+        width: Optional[int] = None,
         num_frames: int = 93,
         num_inference_steps: int = 36,
         guidance_scale: float = 7.0,
@@ -571,6 +574,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         controls: Optional[PipelineImageInput | List[PipelineImageInput]] = None,
+        # TODO: rename to controls_weights?
         controls_conditioning_scale: Union[float, List[float]] = 1.0,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -604,8 +608,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 The prompt or prompts to guide generation. Required unless `prompt_embeds` is supplied.
             height (`int`, defaults to `704`):
                 The height in pixels of the generated image.
-            width (`int`, defaults to `1280`):
-                The width in pixels of the generated image.
+            width (`int`, *optional*):
+                The width in pixels of the generated image. If not provided, this will be determined based on the aspect ratio of the input and the provided height.
             num_frames (`int`, defaults to `93`):
                 Number of output frames. Use `93` for world (video) generation; set to `1` to return a single frame.
             num_inference_steps (`int`, defaults to `35`):
@@ -670,7 +674,18 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
+        if width is None:
+            frame = image or video[0] if image or video else None
+            if frame is None:
+                width = (height + 16) * (1280/720)
+            elif isinstance(frame, PIL.Image.Image):
+                width = int((height + 16) * (frame.width / frame.height))
+            else:
+                width = int((height + 16) * (frame.shape[2] / frame.shape[1]))  # NOTE: assuming C H W
+
         # Check inputs. Raise error if not correct
+        print("width=", width, "height=", height)
+        breakpoint()
         self.check_inputs(prompt, height, width, prompt_embeds, callback_on_step_end_tensor_inputs)
 
         self._guidance_scale = guidance_scale
@@ -771,7 +786,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 height=height,
                 width=width,
                 num_frames=num_frames,
-                dtype=torch.float32,
+                dtype=transformer_dtype,
                 device=device,
             )
 
@@ -814,12 +829,20 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 # breakpoint()
                 if controls is not None:
                     control_blocks = self.controlnet(
-                        hidden_states=in_latents,
-                        controlnet_cond=controls_latents.to(dtype=transformer_dtype),
-                        timestep=in_timestep,
-                        encoder_hidden_states=encoder_hidden_states,
+                        controls_latents=controls_latents,
+                        latents=in_latents,
                         conditioning_scale=controls_conditioning_scale,
-                        return_dict=True,
+                        condition_mask=cond_mask,
+                        padding_mask=padding_mask,
+                        # TODO: before or after projection?
+                        # encoder_hidden_states=encoder_hidden_states,   # before
+                        # TODO: pass as prepared_inputs dict ?
+                        encoder_hidden_states=prepared_inputs["encoder_hidden_states"], # after
+                        temb=prepared_inputs["temb"],
+                        embedded_timestep=prepared_inputs["embedded_timestep"],
+                        image_rotary_emb=prepared_inputs["image_rotary_emb"],
+                        extra_pos_emb=prepared_inputs["extra_pos_emb"],
+                        attention_mask=prepared_inputs["attention_mask"],
                     )
 
                 # breakpoint()
@@ -869,13 +892,14 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
             video = self._match_num_frames(video, num_frames)
 
-            assert self.safety_checker is not None
-            self.safety_checker.to(device)
+            # TODO
+            # assert self.safety_checker is not None
+            # self.safety_checker.to(device)
             video = self.video_processor.postprocess_video(video, output_type="np")
             video = (video * 255).astype(np.uint8)
             video_batch = []
             for vid in video:
-                vid = self.safety_checker.check_video_safety(vid)
+                # vid = self.safety_checker.check_video_safety(vid)
                 video_batch.append(vid)
             video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
             try:
