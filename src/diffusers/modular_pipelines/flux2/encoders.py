@@ -17,9 +17,8 @@ from typing import List, Optional, Tuple, Union
 import torch
 from transformers import AutoProcessor, Mistral3ForConditionalGeneration, Qwen2TokenizerFast, Qwen3ForCausalLM
 
-from ...guiders import ClassifierFreeGuidance
 from ...configuration_utils import FrozenDict
-
+from ...guiders import ClassifierFreeGuidance
 from ...models import AutoencoderKLFlux2
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState

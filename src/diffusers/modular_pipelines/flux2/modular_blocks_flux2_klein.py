@@ -24,8 +24,8 @@ from .before_denoise import (
 from .decoders import Flux2DecodeStep, Flux2UnpackLatentsStep
 from .denoise import Flux2KleinBaseDenoiseStep, Flux2KleinDenoiseStep
 from .encoders import (
-    Flux2KleinTextEncoderStep,
     Flux2KleinBaseTextEncoderStep,
+    Flux2KleinTextEncoderStep,
     Flux2VaeEncoderStep,
 )
 from .inputs import (
@@ -71,6 +71,7 @@ class Flux2KleinAutoVaeEncoderStep(AutoPipelineBlocks):
             " - `Flux2KleinVaeEncoderSequentialStep` is used when `image` is provided.\n"
             " - If `image` is not provided, step will be skipped."
         )
+
 
 ###
 ### Core denoise
@@ -141,6 +142,7 @@ class Flux2KleinBaseCoreDenoiseStep(SequentialPipelineBlocks):
             " - `Flux2KleinBaseDenoiseStep` (denoise) iteratively denoises the latents using Classifier-Free Guidance.\n"
             " - `Flux2UnpackLatentsStep` (after_denoise) unpacks the latents from the denoising step.\n"
         )
+
 
 ###
 ### Auto blocks

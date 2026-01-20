@@ -94,11 +94,9 @@ class Flux2UnpackLatentsStep(ModularPipelineBlocks):
 
         return torch.stack(x_list, dim=0)
 
-
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-
 
         latents = block_state.latents
         latent_ids = block_state.latent_ids
