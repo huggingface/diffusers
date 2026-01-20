@@ -10,6 +10,7 @@ from ...utils import BaseOutput, logging
 from ..modeling_utils import ModelMixin
 from ..transformers.transformer_cosmos import (
     CosmosPatchEmbed,
+    CosmosTransformerBlock,
 )
 from .controlnet import zero_module
 
@@ -17,42 +18,44 @@ from .controlnet import zero_module
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class CosmosControlNetBlock(nn.Module):
-    def __init__(self, hidden_size: int):
-        super().__init__()
-        self.proj = zero_module(nn.Linear(hidden_size, hidden_size, bias=True))
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        return self.proj(hidden_states)
-
-
 # TODO(migmartin): implement me
 # see i4/projects/cosmos/transfer2/networks/minimal_v4_lvg_dit_control_vace.py
 class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
-    Minimal ControlNet for Cosmos Transfer2.5.
-
-    This module projects encoded control latents into per-block residuals aligned with the
-    `CosmosTransformer3DModel` hidden size. All projections are zero-initialized so the ControlNet
-    starts neutral by default.
+    ControlNet for Cosmos Transfer2.5.
     """
 
     @register_to_config
     def __init__(
         self,
+        n_controlnet_blocks: int = 4,
         in_channels: int = 16,
+        model_channels: int = 2048,
         num_attention_heads: int = 32,
         attention_head_dim: int = 128,
-        num_layers: int = 4,
+        mlp_ratio: float = 4.0,
+        text_embed_dim: int = 1024,
+        adaln_lora_dim: int = 256,
         patch_size: Tuple[int, int, int] = (1, 2, 2),
-        control_block_indices: Tuple[int, ...] = (6, 13, 20, 27),
     ):
         super().__init__()
-        hidden_size = num_attention_heads * attention_head_dim
-
-        self.patch_embed = CosmosPatchEmbed(in_channels, hidden_size, patch_size, bias=False)
+        self.patch_embed = CosmosPatchEmbed(in_channels, model_channels, patch_size, bias=False)
         self.control_blocks = nn.ModuleList(
-            CosmosControlNetBlock(hidden_size) for _ in range(num_layers)
+            [
+                CosmosTransformerBlock(
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
+                    cross_attention_dim=text_embed_dim,
+                    mlp_ratio=mlp_ratio,
+                    adaln_lora_dim=adaln_lora_dim,
+                    qk_norm="rms_norm",
+                    out_bias=False,
+                    img_context=True,
+                    before_proj=(block_idx == 0),
+                    after_proj=True,
+                )
+                for block_idx in range(n_controlnet_blocks)
+            ]
         )
 
     def _expand_conditioning_scale(self, conditioning_scale: Union[float, List[float]]) -> List[float]:
@@ -61,7 +64,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         else:
             scales = [conditioning_scale] * len(self.control_blocks)
 
-        if len(scales) != len(self.control_blocks):
+        if len(scales) < len(self.control_blocks):
             logger.warning(
                 "Received %d control scales, but control network defines %d blocks. "
                 "Scales will be trimmed or repeated to match.",
@@ -75,16 +78,25 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         hidden_states: torch.Tensor,
         controlnet_cond: torch.Tensor,
-        timestep: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
         conditioning_scale: Union[float, List[float]] = 1.0,
-        return_dict: bool = True,
     ) -> List[torch.Tensor]:
-        del hidden_states, timestep, encoder_hidden_states  # not used in this minimal control path
-
         control_hidden_states = self.patch_embed(controlnet_cond)
         control_hidden_states = control_hidden_states.flatten(1, 3)
 
         scales = self._expand_conditioning_scale(conditioning_scale)
-        control_residuals = tuple(block(control_hidden_states) * scale for block, scale in zip(self.control_blocks, scales))
-        return control_residuals
+        x = hidden_states
+
+        # NOTE: args to block
+        # hidden_states: torch.Tensor,
+        # encoder_hidden_states: torch.Tensor,
+        # embedded_timestep: torch.Tensor,
+        # temb: Optional[torch.Tensor] = None,
+        # image_rotary_emb: Optional[torch.Tensor] = None,
+        # extra_pos_emb: Optional[torch.Tensor] = None,
+        # attention_mask: Optional[torch.Tensor] = None,
+        # controlnet_residual: Optional[torch.Tensor] = None,
+        result = []
+        for block, scale in zip(self.control_blocks, scales):
+            x = block(x)
+            result.append(x * scale)
+        return result

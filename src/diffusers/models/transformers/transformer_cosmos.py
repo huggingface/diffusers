@@ -341,6 +341,8 @@ class CosmosTransformerBlock(nn.Module):
         qk_norm: str = "rms_norm",
         out_bias: bool = False,
         img_context: bool = False,
+        before_proj: bool = False,
+        after_proj: bool = False,
     ) -> None:
         super().__init__()
 
@@ -386,6 +388,13 @@ class CosmosTransformerBlock(nn.Module):
         self.norm3 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
         self.ff = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu", bias=out_bias)
 
+        # NOTE: zero conv for CosmosControlNet 
+        if before_proj:
+            # TODO: check hint_dim in i4
+            self.before_proj = nn.Linear(hidden_size, hidden_size)
+        if after_proj:
+            self.after_proj = nn.Linear(hidden_size, hidden_size)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -418,7 +427,7 @@ class CosmosTransformerBlock(nn.Module):
         hidden_states = hidden_states + gate * ff_output
 
         if controlnet_residual is not None:
-            # TODO: add control_context_scale ?
+            # NOTE: this is assumed to be scaled by the controlnet
             hidden_states += controlnet_residual
 
         return hidden_states
@@ -556,8 +565,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         controlnet_block_every_n (`int`, *optional*):
             Interval between transformer blocks that should receive control residuals (for example, `7` to inject after
             every seventh block). Required for Cosmos Transfer2.5.
-        n_controlnet_blocks (`int`, *optional*):
-            The number of control net blocks. If None provided: as many as possible will be placed respecting `controlnet_block_every_n`
         img_context_dim (`int`, *optional*):
             TODO document me
             TODO rename?
@@ -588,7 +595,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         crossattn_proj_in_channels: int = 1024,
         encoder_hidden_states_channels: int = 1024,
         controlnet_block_every_n: Optional[int] = None,
-        n_control_net_blocks: Optional[int] = None,
         img_context_dim: Optional[int] = None,
     ) -> None:
         super().__init__()
@@ -744,7 +750,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             n_blocks = len(self.transformer_blocks)
             controlnet_block_index_map = {
                 block_idx: block_controlnet_hidden_states[idx]
-                for idx, block_idx in list(enumerate(range(0, n_blocks, self.config.controlnet_block_every_n)))[0:self.config.n_controlnet_blocks]
+                for idx, block_idx in list(enumerate(range(0, n_blocks, self.config.controlnet_block_every_n)))
             }
 
         # 5. Transformer blocks
