@@ -177,7 +177,7 @@ class Flux2KleinLoopDenoiser(ModularPipelineBlocks):
                 "prompt_embeds",
                 required=True,
                 type_hint=torch.Tensor,
-                description="Text embeddings from Mistral3",
+                description="Text embeddings from Qwen3",
             ),
             InputParam(
                 "txt_ids",
@@ -280,7 +280,7 @@ class Flux2KleinBaseLoopDenoiser(ModularPipelineBlocks):
                 "prompt_embeds",
                 required=True,
                 type_hint=torch.Tensor,
-                description="Text embeddings from Mistral3",
+                description="Text embeddings from Qwen3",
             ),
             InputParam(
                 "negative_prompt_embeds",

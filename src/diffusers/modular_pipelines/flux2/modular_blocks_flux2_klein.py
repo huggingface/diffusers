@@ -141,7 +141,7 @@ class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
         Flux2KleinCoreDenoiseStep(),
         Flux2DecodeStep(),
     ]
-    block_names = ["text_encoder", "vae_image_encoder", "denoise", "decode"]
+    block_names = ["text_encoder", "vae_encoder", "denoise", "decode"]
 
     @property
     def description(self):
@@ -160,7 +160,7 @@ class Flux2KleinBaseAutoBlocks(SequentialPipelineBlocks):
         Flux2KleinBaseCoreDenoiseStep(),
         Flux2DecodeStep(),
     ]
-    block_names = ["text_encoder", "vae_image_encoder", "denoise", "decode"]
+    block_names = ["text_encoder", "vae_encoder", "denoise", "decode"]
 
     @property
     def description(self):
