@@ -107,13 +107,14 @@ jobs:
           path: reports
 
   torch_pipelines_cuda_tests:
-    name: Torch Pipelines CUDA Tests
+    name: Torch Pipelines CUDA Tests (transformers ${{ matrix.transformers_version }})
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
       fail-fast: false
       max-parallel: 8
       matrix:
         module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
+        transformers_version: ["4.57.3", "main"]
     runs-on:
       group: aws-g4dn-2xlarge
     container:
@@ -132,8 +133,11 @@ jobs:
         run: |
           uv pip install -e ".[quality]"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          # uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
+          if [ "${{ matrix.transformers_version }}" = "main" ]; then
+            uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+          else
+            uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
+          fi
 
       - name: Environment
         run: |
@@ -173,11 +177,11 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v6
         with:
-          name: pipeline_${{ matrix.module }}_test_reports
+          name: pipeline_${{ matrix.module }}_transformers_${{ matrix.transformers_version }}_test_reports
           path: reports
 
   torch_cuda_tests:
-    name: Torch CUDA Tests
+    name: Torch CUDA Tests (transformers ${{ matrix.transformers_version }})
     needs: [check_code_quality, check_repository_consistency]
     runs-on:
       group: aws-g4dn-2xlarge
@@ -192,6 +196,7 @@ jobs:
       max-parallel: 4
       matrix:
         module: [models, schedulers, lora, others]
+        transformers_version: ["4.57.3", "main"]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v6
@@ -203,8 +208,11 @@ jobs:
         uv pip install -e ".[quality]"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        # uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
+        if [ "${{ matrix.transformers_version }}" = "main" ]; then
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        else
+          uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
+        fi
 
     - name: Environment
       run: |
@@ -242,12 +250,16 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v6
       with:
-        name: torch_cuda_test_reports_${{ matrix.module }}
+        name: torch_cuda_test_reports_${{ matrix.module }}_transformers_${{ matrix.transformers_version }}
         path: reports
 
   run_examples_tests:
-    name: Examples PyTorch CUDA tests on Ubuntu
+    name: Examples PyTorch CUDA tests on Ubuntu (transformers ${{ matrix.transformers_version }})
     needs: [check_code_quality, check_repository_consistency]
+    strategy:
+      fail-fast: false
+      matrix:
+        transformers_version: ["4.57.3", "main"]
     runs-on:
       group: aws-g4dn-2xlarge
 
@@ -265,8 +277,11 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        # uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
+        if [ "${{ matrix.transformers_version }}" = "main" ]; then
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        else
+          uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
+        fi
         uv pip install -e ".[quality,training]"
 
     - name: Environment
@@ -290,6 +305,6 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v6
       with:
-        name: examples_test_reports
+        name: examples_transformers_${{ matrix.transformers_version }}_test_reports
         path: reports
 
