@@ -59,11 +59,8 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import (
-    PushToHubMixin,
-    load_or_create_model_card,
-    populate_model_card,
-)
+from ..utils.distributed_utils import is_torch_dist_rank_zero
+from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache
 from ._modeling_parallel import ContextParallelConfig, ContextParallelModelPlan, ParallelConfig
 from .model_loading_utils import (
@@ -602,6 +599,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         from .attention import AttentionModuleMixin
         from .attention_dispatch import (
             AttentionBackendName,
+            _AttentionBackendRegistry,
             _check_attention_backend_requirements,
             _maybe_download_kernel_for_backend,
         )
@@ -610,6 +608,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         from .attention_processor import Attention, MochiAttention
 
         logger.warning("Attention backends are an experimental feature and the API may be subject to change.")
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        parallel_config_set = False
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if getattr(processor, "_parallel_config", None) is not None:
+                parallel_config_set = True
+                break
 
         backend = backend.lower()
         available_backends = {x.value for x in AttentionBackendName.__members__.values()}
@@ -617,10 +625,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
 
         backend = AttentionBackendName(backend)
+        if parallel_config_set and not _AttentionBackendRegistry._is_context_parallel_available(backend):
+            compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
+            raise ValueError(
+                f"Context parallelism is enabled but current attention backend '{backend.value}' "
+                f"does not support context parallelism. "
+                f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()`."
+            )
+
         _check_attention_backend_requirements(backend)
         _maybe_download_kernel_for_backend(backend)
 
-        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
         for module in self.modules():
             if not isinstance(module, attention_classes):
                 continue
@@ -628,6 +643,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if processor is None or not hasattr(processor, "_attention_backend"):
                 continue
             processor._attention_backend = backend
+
+        # Important to set the active backend so that it propagates gracefully throughout.
+        _AttentionBackendRegistry.set_active_backend(backend)
 
     def reset_attention_backend(self) -> None:
         """
@@ -1309,6 +1327,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             keep_in_fp32_modules=keep_in_fp32_modules,
             dduf_entries=dduf_entries,
             is_parallel_loading_enabled=is_parallel_loading_enabled,
+            disable_mmap=disable_mmap,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1363,12 +1382,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # Checks if the model has been loaded in 4-bit or 8-bit with BNB
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            if getattr(self, "is_loaded_in_8bit", False):
+            if getattr(self, "is_loaded_in_8bit", False) and is_bitsandbytes_version("<", "0.48.0"):
                 raise ValueError(
-                    "Calling `cuda()` is not supported for `8-bit` quantized models. "
-                    " Please use the model as it is, since the model has already been set to the correct devices."
+                    "Calling `cuda()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
+                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
                 )
-            elif is_bitsandbytes_version("<", "0.43.2"):
+            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
                 raise ValueError(
                     "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
@@ -1415,17 +1434,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
 
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            if getattr(self, "is_loaded_in_8bit", False):
+            if getattr(self, "is_loaded_in_8bit", False) and is_bitsandbytes_version("<", "0.48.0"):
                 raise ValueError(
-                    "`.to` is not supported for `8-bit` bitsandbytes models. Please use the model as it is, since the"
-                    " model has already been set to the correct devices and casted to the correct `dtype`."
+                    "Calling `to()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
+                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
                 )
-            elif is_bitsandbytes_version("<", "0.43.2"):
+            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
                 raise ValueError(
                     "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
-
         if _is_group_offload_enabled(self) and device_arg_or_kwarg_present:
             logger.warning(
                 f"The module '{self.__class__.__name__}' is group offloaded and moving it using `.to()` is not supported."
@@ -1541,7 +1559,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
                         f"is using backend '{attention_backend.value}' which does not support context parallelism. "
                         f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
-                        f"calling `enable_parallelism()`."
+                        f"calling `model.enable_parallelism()`."
                     )
 
                 # All modules use the same attention processor and backend. We don't need to
@@ -1595,6 +1613,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         offload_folder: Optional[Union[str, os.PathLike]] = None,
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
         is_parallel_loading_enabled: Optional[bool] = False,
+        disable_mmap: bool = False,
     ):
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
@@ -1663,6 +1682,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             state_dict_folder=state_dict_folder,
             ignore_mismatched_sizes=ignore_mismatched_sizes,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            disable_mmap=disable_mmap,
         )
 
         if is_parallel_loading_enabled:
@@ -1672,7 +1692,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             shard_files = resolved_model_file
             if len(resolved_model_file) > 1:
-                shard_files = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
+                shard_tqdm_kwargs = {"desc": "Loading checkpoint shards"}
+                if not is_torch_dist_rank_zero():
+                    shard_tqdm_kwargs["disable"] = True
+                shard_files = logging.tqdm(resolved_model_file, **shard_tqdm_kwargs)
 
             for shard_file in shard_files:
                 offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(shard_file)

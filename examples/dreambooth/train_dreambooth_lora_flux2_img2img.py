@@ -43,6 +43,7 @@ import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -74,13 +75,16 @@ from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux2.image_processor import Flux2ImageProcessor
 from diffusers.training_utils import (
     _collate_lora_metadata,
+    _to_cpu_contiguous,
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
     find_nearest_bucket,
     free_memory,
+    get_fsdp_kwargs_from_accelerator,
     offload_models,
     parse_buckets_string,
+    wrap_with_fsdp,
 )
 from diffusers.utils import (
     check_min_version,
@@ -92,6 +96,9 @@ from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_
 from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import is_compiled_module
 
+
+if getattr(torch, "distributed", None) is not None:
+    import torch.distributed as dist
 
 if is_wandb_available():
     import wandb
@@ -120,7 +127,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# Flux DreamBooth LoRA - {repo_id}
+# Flux.2 DreamBooth LoRA - {repo_id}
 
 <Gallery />
 
@@ -339,7 +346,7 @@ def parse_args(input_args=None):
         "--instance_prompt",
         type=str,
         default=None,
-        required=True,
+        required=False,
         help="The prompt with identifier specifying the instance, e.g. 'photo of a TOK dog', 'in the style of TOK'",
     )
     parser.add_argument(
@@ -691,6 +698,7 @@ def parse_args(input_args=None):
 
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument("--enable_npu_flash_attention", action="store_true", help="Enabla Flash Attention for NPU")
+    parser.add_argument("--fsdp_text_encoder", action="store_true", help="Use FSDP for text encoder")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -827,15 +835,28 @@ class DreamBoothDataset(Dataset):
                 dest_image = self.cond_images[i]
                 image_width, image_height = dest_image.size
                 if image_width * image_height > 1024 * 1024:
-                    dest_image = Flux2ImageProcessor.image_processor._resize_to_target_area(dest_image, 1024 * 1024)
+                    dest_image = Flux2ImageProcessor._resize_to_target_area(dest_image, 1024 * 1024)
                     image_width, image_height = dest_image.size
 
                 multiple_of = 2 ** (4 - 1)  # 2 ** (len(vae.config.block_out_channels) - 1), temp!
                 image_width = (image_width // multiple_of) * multiple_of
                 image_height = (image_height // multiple_of) * multiple_of
-                dest_image = Flux2ImageProcessor.image_processor.preprocess(
+                image_processor = Flux2ImageProcessor()
+                dest_image = image_processor.preprocess(
                     dest_image, height=image_height, width=image_width, resize_mode="crop"
                 )
+                # Convert back to PIL
+                dest_image = dest_image.squeeze(0)
+                if dest_image.min() < 0:
+                    dest_image = (dest_image + 1) / 2
+                dest_image = (torch.clamp(dest_image, 0, 1) * 255).byte().cpu()
+
+                if dest_image.shape[0] == 1:
+                    # Gray scale image
+                    dest_image = Image.fromarray(dest_image.squeeze().numpy(), mode="L")
+                else:
+                    # RGB scale image: (C, H, W) -> (H, W, C)
+                    dest_image = TF.to_pil_image(dest_image)
 
                 dest_image = exif_transpose(dest_image)
                 if not dest_image.mode == "RGB":
@@ -1156,7 +1177,11 @@ def main(args):
         if args.bnb_quantization_config_path is not None
         else {"device": accelerator.device, "dtype": weight_dtype}
     )
-    transformer.to(**transformer_to_kwargs)
+
+    is_fsdp = getattr(accelerator.state, "fsdp_plugin", None) is not None
+    if not is_fsdp:
+        transformer.to(**transformer_to_kwargs)
+
     if args.do_fp8_training:
         convert_to_float8_training(
             transformer, module_filter_fn=module_filter_fn, config=Float8LinearConfig(pad_inner_dim=True)
@@ -1200,17 +1225,42 @@ def main(args):
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
-        if accelerator.is_main_process:
-            transformer_lora_layers_to_save = None
-            modules_to_save = {}
-            for model in models:
-                if isinstance(model, type(unwrap_model(transformer))):
-                    transformer_lora_layers_to_save = get_peft_model_state_dict(model)
-                    modules_to_save["transformer"] = model
-                else:
-                    raise ValueError(f"unexpected save model: {model.__class__}")
+        transformer_cls = type(unwrap_model(transformer))
 
-                # make sure to pop weight so that corresponding model is not saved again
+        # 1) Validate and pick the transformer model
+        modules_to_save: dict[str, Any] = {}
+        transformer_model = None
+
+        for model in models:
+            if isinstance(unwrap_model(model), transformer_cls):
+                transformer_model = model
+                modules_to_save["transformer"] = model
+            else:
+                raise ValueError(f"unexpected save model: {model.__class__}")
+
+        if transformer_model is None:
+            raise ValueError("No transformer model found in 'models'")
+
+        # 2) Optionally gather FSDP state dict once
+        state_dict = accelerator.get_state_dict(model) if is_fsdp else None
+
+        # 3) Only main process materializes the LoRA state dict
+        transformer_lora_layers_to_save = None
+        if accelerator.is_main_process:
+            peft_kwargs = {}
+            if is_fsdp:
+                peft_kwargs["state_dict"] = state_dict
+
+            transformer_lora_layers_to_save = get_peft_model_state_dict(
+                unwrap_model(transformer_model) if is_fsdp else transformer_model,
+                **peft_kwargs,
+            )
+
+            if is_fsdp:
+                transformer_lora_layers_to_save = _to_cpu_contiguous(transformer_lora_layers_to_save)
+
+            # make sure to pop weight so that corresponding model is not saved again
+            if weights:
                 weights.pop()
 
             Flux2Pipeline.save_lora_weights(
@@ -1222,13 +1272,20 @@ def main(args):
     def load_model_hook(models, input_dir):
         transformer_ = None
 
-        while len(models) > 0:
-            model = models.pop()
+        if not is_fsdp:
+            while len(models) > 0:
+                model = models.pop()
 
-            if isinstance(model, type(unwrap_model(transformer))):
-                transformer_ = model
-            else:
-                raise ValueError(f"unexpected save model: {model.__class__}")
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    transformer_ = unwrap_model(model)
+                else:
+                    raise ValueError(f"unexpected save model: {model.__class__}")
+        else:
+            transformer_ = Flux2Transformer2DModel.from_pretrained(
+                args.pretrained_model_name_or_path,
+                subfolder="transformer",
+            )
+            transformer_.add_adapter(transformer_lora_config)
 
         lora_state_dict = Flux2Pipeline.lora_state_dict(input_dir)
 
@@ -1419,9 +1476,9 @@ def main(args):
                     args.instance_prompt, text_encoding_pipeline
                 )
 
-    validation_image = load_image(args.validation_image_path).convert("RGB")
-    validation_kwargs = {"image": validation_image}
     if args.validation_prompt is not None:
+        validation_image = load_image(args.validation_image_path).convert("RGB")
+        validation_kwargs = {"image": validation_image}
         if args.remote_text_encoder:
             validation_kwargs["prompt_embeds"] = compute_remote_text_embeddings(args.validation_prompt)
         else:
@@ -1429,6 +1486,21 @@ def main(args):
                 validation_kwargs["prompt_embeds"] = compute_text_embeddings(
                     args.validation_prompt, text_encoding_pipeline
                 )
+
+    # Init FSDP for text encoder
+    if args.fsdp_text_encoder:
+        fsdp_kwargs = get_fsdp_kwargs_from_accelerator(accelerator)
+        text_encoder_fsdp = wrap_with_fsdp(
+            model=text_encoding_pipeline.text_encoder,
+            device=accelerator.device,
+            offload=args.offload,
+            limit_all_gathers=True,
+            use_orig_params=True,
+            fsdp_kwargs=fsdp_kwargs,
+        )
+
+        text_encoding_pipeline.text_encoder = text_encoder_fsdp
+        dist.barrier()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1461,6 +1533,8 @@ def main(args):
                 if train_dataset.custom_instance_prompts:
                     if args.remote_text_encoder:
                         prompt_embeds, text_ids = compute_remote_text_embeddings(batch["prompts"])
+                    elif args.fsdp_text_encoder:
+                        prompt_embeds, text_ids = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
                     else:
                         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
                             prompt_embeds, text_ids = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
@@ -1621,8 +1695,12 @@ def main(args):
                 cond_model_input = (cond_model_input - latents_bn_mean) / latents_bn_std
 
                 model_input_ids = Flux2Pipeline._prepare_latent_ids(model_input).to(device=model_input.device)
-                cond_model_input_ids = Flux2Pipeline._prepare_image_ids(cond_model_input).to(
+                cond_model_input_list = [cond_model_input[i].unsqueeze(0) for i in range(cond_model_input.shape[0])]
+                cond_model_input_ids = Flux2Pipeline._prepare_image_ids(cond_model_input_list).to(
                     device=cond_model_input.device
+                )
+                cond_model_input_ids = cond_model_input_ids.view(
+                    cond_model_input.shape[0], -1, model_input_ids.shape[-1]
                 )
 
                 # Sample noise that we'll add to the latents
@@ -1650,6 +1728,9 @@ def main(args):
                 packed_noisy_model_input = Flux2Pipeline._pack_latents(noisy_model_input)
                 packed_cond_model_input = Flux2Pipeline._pack_latents(cond_model_input)
 
+                orig_input_shape = packed_noisy_model_input.shape
+                orig_input_ids_shape = model_input_ids.shape
+
                 # concatenate the model inputs with the cond inputs
                 packed_noisy_model_input = torch.cat([packed_noisy_model_input, packed_cond_model_input], dim=1)
                 model_input_ids = torch.cat([model_input_ids, cond_model_input_ids], dim=1)
@@ -1668,7 +1749,8 @@ def main(args):
                     img_ids=model_input_ids,  # B, image_seq_len, 4
                     return_dict=False,
                 )[0]
-                model_pred = model_pred[:, : packed_noisy_model_input.size(1) :]
+                model_pred = model_pred[:, : orig_input_shape[1], :]
+                model_input_ids = model_input_ids[:, : orig_input_ids_shape[1], :]
 
                 model_pred = Flux2Pipeline._unpack_latents_with_ids(model_pred, model_input_ids)
 
@@ -1700,7 +1782,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
+                if accelerator.is_main_process or is_fsdp:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1759,15 +1841,41 @@ def main(args):
 
     # Save the lora layers
     accelerator.wait_for_everyone()
+
+    if is_fsdp:
+        transformer = unwrap_model(transformer)
+        state_dict = accelerator.get_state_dict(transformer)
     if accelerator.is_main_process:
         modules_to_save = {}
-        transformer = unwrap_model(transformer)
-        if args.bnb_quantization_config_path is None:
-            if args.upcast_before_saving:
-                transformer.to(torch.float32)
-            else:
-                transformer = transformer.to(weight_dtype)
-        transformer_lora_layers = get_peft_model_state_dict(transformer)
+        if is_fsdp:
+            if args.bnb_quantization_config_path is None:
+                if args.upcast_before_saving:
+                    state_dict = {
+                        k: v.to(torch.float32) if isinstance(v, torch.Tensor) else v for k, v in state_dict.items()
+                    }
+                else:
+                    state_dict = {
+                        k: v.to(weight_dtype) if isinstance(v, torch.Tensor) else v for k, v in state_dict.items()
+                    }
+
+            transformer_lora_layers = get_peft_model_state_dict(
+                transformer,
+                state_dict=state_dict,
+            )
+            transformer_lora_layers = {
+                k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v
+                for k, v in transformer_lora_layers.items()
+            }
+
+        else:
+            transformer = unwrap_model(transformer)
+            if args.bnb_quantization_config_path is None:
+                if args.upcast_before_saving:
+                    transformer.to(torch.float32)
+                else:
+                    transformer = transformer.to(weight_dtype)
+            transformer_lora_layers = get_peft_model_state_dict(transformer)
+
         modules_to_save["transformer"] = transformer
 
         Flux2Pipeline.save_lora_weights(
