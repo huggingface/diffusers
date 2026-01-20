@@ -284,6 +284,7 @@ class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
             ),
             OutputParam(
                 "negative_prompt_embeds",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Negative text embeddings from qwen3 used to guide the image generation",
             ),
