@@ -262,23 +262,64 @@ class GlmImagePipeline(DiffusionPipeline):
 
     def generate_prior_tokens(
         self,
-        prompt: str,
+        prompt: Union[str, List[str]],
         height: int,
         width: int,
-        image: Optional[List[PIL.Image.Image]] = None,
+        image: Optional[List[List[PIL.Image.Image]]] = None,
         device: Optional[torch.device] = None,
     ):
+        """
+        Generate prior tokens for the DiT model using the AR model.
+        
+        Args:
+            prompt: Single prompt or list of prompts
+            height: Target image height
+            width: Target image width
+            image: List of image lists, one per prompt. Each inner list contains condition images
+                   for that prompt. For batchsize=1, can also be a simple List[PIL.Image].
+            device: Target device
+            
+        Returns:
+            prior_token_ids: Tensor of shape (batch_size, num_tokens) with upsampled prior tokens
+            prior_token_image_ids: Tensor with upsampled source image tokens (or None for t2i)
+            source_image_grid_thw: Upsampled grid info for splitting prior_token_image_ids
+        """
         device = device or self._execution_device
-        is_text_to_image = image is None or len(image) == 0
-        content = []
-        if image is not None:
-            for img in image:
-                content.append({"type": "image", "image": img})
-        content.append({"type": "text", "text": prompt})
-        messages = [{"role": "user", "content": content}]
+        
+        # Normalize inputs to list format
+        prompt_list = [prompt] if isinstance(prompt, str) else prompt
+        batch_size = len(prompt_list)
+        
+        # Normalize image format: convert to List[List[PIL.Image]]
+        # Handle legacy format: List[PIL.Image] -> [[img1], [img2], ...] for batch or [[img1, img2, ...]] for single
+        if image is not None and len(image) > 0:
+            first_element = image[0]
+            if not isinstance(first_element, (list, tuple)):
+                # Legacy format: List[PIL.Image]
+                if batch_size == 1:
+                    # Single prompt with multiple images: [[img1, img2, ...]]
+                    image = [image]
+                else:
+                    # Multiple prompts, one image each: [[img1], [img2], ...]
+                    image = [[img] for img in image]
+        
+        is_text_to_image = image is None or len(image) == 0 or all(len(imgs) == 0 for imgs in image)
+        
+        # Build messages for each sample in the batch
+        all_messages = []
+        for idx, p in enumerate(prompt_list):
+            content = []
+            if not is_text_to_image and image is not None and idx < len(image):
+                for img in image[idx]:
+                    content.append({"type": "image", "image": img})
+            content.append({"type": "text", "text": p})
+            all_messages.append([{"role": "user", "content": content}])
+        
+        # Process with the processor (supports batch with left padding)
         inputs = self.processor.apply_chat_template(
-            messages,
+            all_messages,
             tokenize=True,
+            padding=True if batch_size > 1 else False,
             target_h=height,
             target_w=width,
             return_dict=True,
@@ -286,58 +327,93 @@ class GlmImagePipeline(DiffusionPipeline):
         ).to(device)
 
         image_grid_thw = inputs.get("image_grid_thw")
+        images_per_sample = inputs.get("images_per_sample")
+        num_source_images_per_sample = inputs.get("num_source_images_per_sample")
+        
+        # Compute generation params (same for all samples in homogeneous batch)
+        # For batch, we use the first sample's params since they should be identical
+        if images_per_sample is not None:
+            # Get grids for first sample
+            first_sample_grids = image_grid_thw[:images_per_sample[0].item()]
+        else:
+            first_sample_grids = image_grid_thw
+            
         max_new_tokens, large_image_offset, token_h, token_w = self._compute_generation_params(
-            image_grid_thw=image_grid_thw, is_text_to_image=is_text_to_image
+            image_grid_thw=first_sample_grids, is_text_to_image=is_text_to_image
         )
 
+        # Generate source image tokens (prior_token_image_ids)
         prior_token_image_ids = None
-        if image is not None:
-            prior_token_image_embed = self.vision_language_encoder.get_image_features(
-                inputs["pixel_values"], image_grid_thw[:-1]
-            )
-            prior_token_image_embed = torch.cat(prior_token_image_embed, dim=0)
-            prior_token_image_ids_d32 = self.vision_language_encoder.get_image_tokens(
-                prior_token_image_embed, image_grid_thw[:-1]
-            )
-            # Upsample each source image's prior tokens to match VAE/DiT resolution
-            # AR model works at d32, VAE/DiT works at d8, so we need 2x upsampling
-            source_grids = image_grid_thw[:-1]  # (num_source_images, 3)
-            split_sizes = source_grids.prod(dim=-1).tolist()
-            prior_ids_per_source = torch.split(prior_token_image_ids_d32, split_sizes)
-            upsampled_prior_ids = []
-            for i, prior_ids in enumerate(prior_ids_per_source):
-                t, h, w = source_grids[i].tolist()
-                # Each source image's tokens need 2x upsampling
-                upsampled = self._upsample_token_ids(prior_ids, h, w)
-                upsampled_prior_ids.append(upsampled.squeeze(0))  # Remove batch dim
-            prior_token_image_ids = torch.cat(upsampled_prior_ids, dim=0)
+        source_image_grid_thw = None
+        if not is_text_to_image and "pixel_values" in inputs:
+            # Get source image grids (exclude target grids)
+            if num_source_images_per_sample is not None:
+                total_source_images = num_source_images_per_sample.sum().item()
+                if total_source_images > 0:
+                    # Split grids by sample and extract source grids
+                    grids_per_sample = torch.split(image_grid_thw, images_per_sample.tolist())
+                    source_grids_list = []
+                    for idx in range(batch_size):
+                        num_source = num_source_images_per_sample[idx].item()
+                        if num_source > 0:
+                            source_grids_list.append(grids_per_sample[idx][:num_source])
+                    source_grids = torch.cat(source_grids_list, dim=0) if source_grids_list else None
+                else:
+                    source_grids = None
+            else:
+                # Fallback for batch_size=1: all but last grid are source images
+                source_grids = image_grid_thw[:-1] if len(image_grid_thw) > 1 else None
+            
+            if source_grids is not None and len(source_grids) > 0:
+                prior_token_image_embed = self.vision_language_encoder.get_image_features(
+                    inputs["pixel_values"], source_grids
+                )
+                prior_token_image_embed = torch.cat(prior_token_image_embed, dim=0)
+                prior_token_image_ids_d32 = self.vision_language_encoder.get_image_tokens(
+                    prior_token_image_embed, source_grids
+                )
+                
+                # Upsample each source image's prior tokens to match VAE/DiT resolution
+                split_sizes = source_grids.prod(dim=-1).tolist()
+                prior_ids_per_source = torch.split(prior_token_image_ids_d32, split_sizes)
+                upsampled_prior_ids = []
+                for i, prior_ids in enumerate(prior_ids_per_source):
+                    t, h, w = source_grids[i].tolist()
+                    upsampled = self._upsample_token_ids(prior_ids, int(h), int(w))
+                    upsampled_prior_ids.append(upsampled.squeeze(0))
+                prior_token_image_ids = torch.cat(upsampled_prior_ids, dim=0)
+                
+                # Upsample grid dimensions for later splitting
+                upsampled_grids = source_grids.clone()
+                upsampled_grids[:, 1] = upsampled_grids[:, 1] * 2
+                upsampled_grids[:, 2] = upsampled_grids[:, 2] * 2
+                source_image_grid_thw = upsampled_grids
 
-        # For GLM-Image, greedy decoding is not allowed; it may cause repetitive outputs.
-        # max_new_tokens must be exactly grid_h * grid_w + 1 (the +1 is for EOS).
+        # Generate with AR model
         outputs = self.vision_language_encoder.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=True,
         )
 
-        prior_token_ids_d32 = self._extract_large_image_tokens(
-            outputs, inputs["input_ids"].shape[-1], large_image_offset, token_h * token_w
-        )
-        prior_token_ids = self._upsample_token_ids(prior_token_ids_d32, token_h, token_w)
+        # Extract and upsample prior tokens for each sample
+        all_prior_token_ids = []
+        for idx in range(batch_size):
+            # Account for padding by finding actual input length
+            if "attention_mask" in inputs:
+                input_length = inputs["attention_mask"][idx].sum().item()
+            else:
+                input_length = inputs["input_ids"].shape[-1]
+            
+            prior_token_ids_d32 = self._extract_large_image_tokens(
+                outputs[idx:idx+1], input_length, large_image_offset, token_h * token_w
+            )
+            prior_token_ids = self._upsample_token_ids(prior_token_ids_d32, token_h, token_w)
+            all_prior_token_ids.append(prior_token_ids)
+        
+        prior_token_ids = torch.cat(all_prior_token_ids, dim=0)
 
-        # Return source image grid info for splitting prior_token_image_ids later
-        # Note: grid is 2x upsampled to match the upsampled prior_token_image_ids
-        if image is not None and image_grid_thw is not None:
-            source_grids = image_grid_thw[:-1]  # (num_source_images, 3)
-            # Upsample grid dimensions (t stays same, h and w are 2x)
-            upsampled_grids = source_grids.clone()
-            upsampled_grids[:, 1] = upsampled_grids[:, 1] * 2  # h
-            upsampled_grids[:, 2] = upsampled_grids[:, 2] * 2  # w
-            source_image_grid_thw = upsampled_grids
-        else:
-            source_image_grid_thw = None
-
-        return prior_token_ids, prior_token_image_ids, source_image_grid_thw
+        return prior_token_ids, prior_token_image_ids, source_image_grid_thw, num_source_images_per_sample
 
     def get_glyph_texts(self, prompt):
         """Extract glyph texts from prompt(s). Returns a list of lists for batch processing."""
@@ -663,88 +739,70 @@ class GlmImagePipeline(DiffusionPipeline):
 
         device = self._execution_device
 
-        # Detect if image is per-prompt or shared
-        # Per-prompt: List[List[PIL.Image]] - each prompt has its own condition images
-        # Shared: List[PIL.Image] - all prompts share the same condition images
-        per_prompt_images = False
+        # Normalize image format to List[List[PIL.Image]]
+        # For homogeneous batch: each prompt must have the same number of condition images
+        normalized_image = None
+        num_images_per_sample = 0
         if image is not None and len(image) > 0:
             first_element = image[0]
             if isinstance(first_element, (list, tuple)):
-                per_prompt_images = True
-                # Validate: number of image lists must match batch_size
+                # Already in List[List[PIL.Image]] format
+                normalized_image = image
                 if len(image) != batch_size:
                     raise ValueError(
                         f"When providing per-prompt images, the number of image lists ({len(image)}) "
                         f"must match the batch size ({batch_size})."
                     )
-
-        # 2. Preprocess image tokens and prompt tokens
-        if prior_token_ids is None:
-            prompt_list = [prompt] if isinstance(prompt, str) else prompt
-            all_prior_token_ids = []
-            all_prior_token_image_ids = []  # List of tensors, one per prompt
-            all_source_image_grid_thw = []  # List of grid info, one per prompt
-            
-            for idx, p in enumerate(prompt_list):
-                # Determine which images to use for this prompt
-                if per_prompt_images:
-                    prompt_images = image[idx]
+                # Validate homogeneous batch: all samples must have same number of images
+                num_images_per_sample = len(image[0])
+                for idx, imgs in enumerate(image):
+                    if len(imgs) != num_images_per_sample:
+                        raise ValueError(
+                            f"Homogeneous batch requires all samples to have the same number of images. "
+                            f"Sample 0 has {num_images_per_sample} images, but sample {idx} has {len(imgs)} images."
+                        )
+            else:
+                # Legacy format: List[PIL.Image]
+                if batch_size == 1:
+                    # Single prompt with multiple images
+                    normalized_image = [image]
+                    num_images_per_sample = len(image)
                 else:
-                    prompt_images = image  # Shared images for all prompts
-                
-                p_prior_token_ids, p_prior_token_image_ids, p_source_grid_thw = self.generate_prior_tokens(
-                    prompt=p,
-                    image=prompt_images,
-                    height=height,
-                    width=width,
-                    device=device,
-                )
-                all_prior_token_ids.append(p_prior_token_ids)
-                if p_prior_token_image_ids is not None:
-                    all_prior_token_image_ids.append(p_prior_token_image_ids)
-                if p_source_grid_thw is not None:
-                    all_source_image_grid_thw.append(p_source_grid_thw)
-            
-            prior_token_ids = torch.cat(all_prior_token_ids, dim=0)
-            prior_token_image_ids = all_prior_token_image_ids if len(all_prior_token_image_ids) > 0 else None
-            source_image_grid_thw = all_source_image_grid_thw if len(all_source_image_grid_thw) > 0 else None
+                    # Multiple prompts, one image each
+                    normalized_image = [[img] for img in image]
+                    num_images_per_sample = 1
+
+        # 2. Generate prior tokens (batch mode)
+        num_source_images_per_sample = None
+        if prior_token_ids is None:
+            prior_token_ids, prior_token_image_ids, source_image_grid_thw, num_source_images_per_sample = self.generate_prior_tokens(
+                prompt=prompt,
+                image=normalized_image,
+                height=height,
+                width=width,
+                device=device,
+            )
         else:
-            # User provided prior_token_ids directly, we don't have source_image_grid_thw
-            # This path doesn't support KV cache for condition images
+            # User provided prior_token_ids directly
             prior_token_image_ids = None
             source_image_grid_thw = None
 
-        # 3. Preprocess image
-        if image is not None:
-            if per_prompt_images:
-                # Per-prompt images: List[List[preprocessed]]
-                preprocessed_condition_images = []
-                for prompt_images in image:
-                    prompt_preprocessed = []
-                    for img in prompt_images:
-                        image_height, image_width = img.size[::-1] if isinstance(img, PIL.Image.Image) else img.shape[:2]
-                        multiple_of = self.vae_scale_factor * self.transformer.config.patch_size
-                        image_height = (image_height // multiple_of) * multiple_of
-                        image_width = (image_width // multiple_of) * multiple_of
-                        img = self.image_processor.preprocess(img, height=image_height, width=image_width)
-                        prompt_preprocessed.append(img)
-                        height = height or image_height
-                        width = width or image_width
-                    preprocessed_condition_images.append(prompt_preprocessed)
-                image = preprocessed_condition_images
-            else:
-                # Shared images: List[preprocessed]
-                preprocessed_condition_images = []
-                for img in image:
+        # 3. Preprocess images for VAE encoding
+        preprocessed_images = None
+        if normalized_image is not None:
+            preprocessed_images = []
+            for prompt_images in normalized_image:
+                prompt_preprocessed = []
+                for img in prompt_images:
                     image_height, image_width = img.size[::-1] if isinstance(img, PIL.Image.Image) else img.shape[:2]
                     multiple_of = self.vae_scale_factor * self.transformer.config.patch_size
                     image_height = (image_height // multiple_of) * multiple_of
                     image_width = (image_width // multiple_of) * multiple_of
                     img = self.image_processor.preprocess(img, height=image_height, width=image_width)
-                    preprocessed_condition_images.append(img)
+                    prompt_preprocessed.append(img)
                     height = height or image_height
                     width = width or image_width
-                image = preprocessed_condition_images
+                preprocessed_images.append(prompt_preprocessed)
 
         # 5. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
@@ -772,7 +830,7 @@ class GlmImagePipeline(DiffusionPipeline):
         )
         kv_caches = GlmImageKVCache(num_layers=self.transformer.config.num_layers)
 
-        if image is not None:
+        if preprocessed_images is not None and prior_token_image_ids is not None:
             kv_caches.set_mode("write")
             latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.latent_channels, 1, 1)
             latents_std = torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.latent_channels, 1, 1)
@@ -780,57 +838,42 @@ class GlmImagePipeline(DiffusionPipeline):
             latents_mean = latents_mean.to(device=device, dtype=prompt_embeds.dtype)
             latents_std = latents_std.to(device=device, dtype=prompt_embeds.dtype)
 
-            if per_prompt_images:
-                # Per-prompt images: each prompt has its own condition images
-                # prior_token_image_ids is List[Tensor], one per prompt
-                # source_image_grid_thw is List[Tensor], one per prompt
-                for prompt_idx in range(batch_size):
-                    prompt_images = image[prompt_idx]  # List of preprocessed images for this prompt
-                    prompt_prior_ids = prior_token_image_ids[prompt_idx]  # 1D tensor (all tokens concatenated)
-                    prompt_grid_thw = source_image_grid_thw[prompt_idx]  # Grid info for this prompt's images
-                    
-                    # Split prior_token_image_ids by each source image's token count
-                    # Each image has prod(grid_thw[i]) tokens
-                    split_sizes = prompt_grid_thw.prod(dim=-1).tolist()
-                    prior_ids_per_image = torch.split(prompt_prior_ids, split_sizes)
-                    
-                    # Process each condition image for this prompt
-                    for condition_image, condition_image_prior_token_id in zip(prompt_images, prior_ids_per_image):
-                        condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
-                        condition_latent = retrieve_latents(
-                            self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
-                        )
-                        condition_latent = (condition_latent - latents_mean) / latents_std
-
-                        _ = self.transformer(
-                            hidden_states=condition_latent,
-                            encoder_hidden_states=torch.zeros_like(prompt_embeds)[:1, :0, ...],
-                            prior_token_id=condition_image_prior_token_id,
-                            prior_token_drop=torch.full_like(condition_image_prior_token_id, False, dtype=torch.bool),
-                            timestep=torch.zeros((1,), device=device),
-                            target_size=torch.tensor([condition_image.shape[-2:]], device=device),
-                            crop_coords=torch.zeros((1, 2), device=device),
-                            attention_kwargs=attention_kwargs,
-                            kv_caches=kv_caches,
-                        )
-                    
-                    # Move to next sample's cache slot
-                    kv_caches.next_sample()
+            # Split prior_token_image_ids by sample using num_source_images_per_sample and source_image_grid_thw
+            if num_source_images_per_sample is not None and source_image_grid_thw is not None:
+                # Calculate tokens per sample
+                tokens_per_image = source_image_grid_thw.prod(dim=-1).tolist()  # tokens for each image
+                num_images_list = num_source_images_per_sample.tolist()
+                
+                # Map images to samples
+                image_idx = 0
+                tokens_per_sample = []
+                for num_imgs in num_images_list:
+                    sample_tokens = sum(tokens_per_image[image_idx:image_idx + num_imgs])
+                    tokens_per_sample.append(sample_tokens)
+                    image_idx += num_imgs
+                
+                prior_ids_per_sample = torch.split(prior_token_image_ids, tokens_per_sample)
+                grids_per_sample = torch.split(source_image_grid_thw, num_images_list)
             else:
-                # Shared images: all prompts share the same condition images
-                # prior_token_image_ids is List with one element (1D tensor)
-                # source_image_grid_thw is List with one element
-                shared_prior_ids = prior_token_image_ids[0] if prior_token_image_ids else None
-                shared_grid_thw = source_image_grid_thw[0] if source_image_grid_thw else None
+                # Fallback for batch_size=1
+                prior_ids_per_sample = [prior_token_image_ids]
+                grids_per_sample = [source_image_grid_thw] if source_image_grid_thw is not None else [[]]
+
+            # Process each sample's condition images
+            for prompt_idx in range(batch_size):
+                prompt_images = preprocessed_images[prompt_idx]
+                prompt_prior_ids = prior_ids_per_sample[prompt_idx]
+                prompt_grid_thw = grids_per_sample[prompt_idx]
                 
-                # Split prior_token_image_ids by each source image's token count
-                if shared_prior_ids is not None and shared_grid_thw is not None:
-                    split_sizes = shared_grid_thw.prod(dim=-1).tolist()
-                    prior_ids_per_image = torch.split(shared_prior_ids, split_sizes)
-                else:
-                    prior_ids_per_image = []
+                if len(prompt_grid_thw) == 0:
+                    continue
+                    
+                # Split this sample's prior_token_image_ids by each image's token count
+                split_sizes = prompt_grid_thw.prod(dim=-1).tolist()
+                prior_ids_per_image = torch.split(prompt_prior_ids, split_sizes)
                 
-                for condition_image, condition_image_prior_token_id in zip(image, prior_ids_per_image):
+                # Process each condition image for this sample
+                for condition_image, condition_image_prior_token_id in zip(prompt_images, prior_ids_per_image):
                     condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
                     condition_latent = retrieve_latents(
                         self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
@@ -848,6 +891,9 @@ class GlmImagePipeline(DiffusionPipeline):
                         attention_kwargs=attention_kwargs,
                         kv_caches=kv_caches,
                     )
+                
+                # Move to next sample's cache slot
+                kv_caches.next_sample()
 
         # 6. Prepare additional timestep conditions
         target_size = (height, width)
@@ -898,7 +944,7 @@ class GlmImagePipeline(DiffusionPipeline):
 
                 timestep = t.expand(latents.shape[0]) - 1
 
-                if image is not None:
+                if normalized_image is not None:
                     kv_caches.set_mode("read")
 
                 noise_pred_cond = self.transformer(
@@ -916,7 +962,7 @@ class GlmImagePipeline(DiffusionPipeline):
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
-                    if image is not None:
+                    if normalized_image is not None:
                         kv_caches.set_mode("skip")
                     noise_pred_uncond = self.transformer(
                         hidden_states=latent_model_input,
