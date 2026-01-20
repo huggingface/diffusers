@@ -369,7 +369,7 @@ class GlmImagePipeline(DiffusionPipeline):
             glyph_embeds = outputs.last_hidden_state[attention_mask.bool()].unsqueeze(0)
             all_glyph_embeds.append(glyph_embeds)
 
-        # Pad to same sequence length and stack
+        # Pad to same sequence length and stack (use left padding to match transformers)
         max_seq_len = max(emb.size(1) for emb in all_glyph_embeds)
         padded_embeds = []
         for emb in all_glyph_embeds:
@@ -377,7 +377,7 @@ class GlmImagePipeline(DiffusionPipeline):
                 pad = torch.zeros(
                     emb.size(0), max_seq_len - emb.size(1), emb.size(2), device=device, dtype=emb.dtype
                 )
-                emb = torch.cat([emb, pad], dim=1)
+                emb = torch.cat([pad, emb], dim=1)  # left padding
             padded_embeds.append(emb)
 
         glyph_embeds = torch.cat(padded_embeds, dim=0)
@@ -425,9 +425,9 @@ class GlmImagePipeline(DiffusionPipeline):
         if prompt_embeds is None:
             prompt_embeds = self._get_glyph_embeds(prompt, max_sequence_length, device, dtype)
 
-        seq_len = prompt_embeds.size(1)
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+        # Repeat embeddings for num_images_per_prompt
+        if num_images_per_prompt > 1:
+            prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
         # For GLM-Image, negative_prompt must be "" instead of None
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -435,9 +435,8 @@ class GlmImagePipeline(DiffusionPipeline):
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
             negative_prompt_embeds = self._get_glyph_embeds(negative_prompt, max_sequence_length, device, dtype)
 
-            seq_len = negative_prompt_embeds.size(1)
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            if num_images_per_prompt > 1:
+                negative_prompt_embeds = negative_prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
         return prompt_embeds, negative_prompt_embeds
 
