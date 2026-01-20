@@ -667,7 +667,7 @@ def get_args():
 
     parser.add_argument(
         "--original_state_dict_repo_id",
-        default="Lightricks/LTX-2",
+        default=None,
         type=str,
         help="HF Hub repo id with LTX 2.0 checkpoint",
     )
