@@ -21,7 +21,7 @@ from .before_denoise import (
     Flux2RoPEInputsStep,
     Flux2SetTimestepsStep,
 )
-from .decoders import Flux2DecodeStep
+from .decoders import Flux2DecodeStep, Flux2UnpackLatentsStep
 from .denoise import Flux2DenoiseStep
 from .encoders import (
     Flux2RemoteTextEncoderStep,
@@ -99,6 +99,7 @@ AUTO_BLOCKS = InsertableDict(
         ("vae_image_encoder", Flux2AutoVaeEncoderStep()),
         ("before_denoise", Flux2BeforeDenoiseStep()),
         ("denoise", Flux2DenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
         ("decode", Flux2DecodeStep()),
     ]
 )
@@ -111,6 +112,7 @@ REMOTE_AUTO_BLOCKS = InsertableDict(
         ("vae_image_encoder", Flux2AutoVaeEncoderStep()),
         ("before_denoise", Flux2BeforeDenoiseStep()),
         ("denoise", Flux2DenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
         ("decode", Flux2DecodeStep()),
     ]
 )
@@ -139,6 +141,7 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
         ("set_timesteps", Flux2SetTimestepsStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
         ("denoise", Flux2DenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
         ("decode", Flux2DecodeStep()),
     ]
 )
@@ -154,6 +157,7 @@ IMAGE_CONDITIONED_BLOCKS = InsertableDict(
         ("set_timesteps", Flux2SetTimestepsStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
         ("denoise", Flux2DenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
         ("decode", Flux2DecodeStep()),
     ]
 )

@@ -21,10 +21,11 @@ from .before_denoise import (
     Flux2RoPEInputsStep,
     Flux2SetTimestepsStep,
 )
-from .decoders import Flux2DecodeStep
+from .decoders import Flux2DecodeStep, Flux2UnpackLatentsStep
 from .denoise import Flux2KleinBaseDenoiseStep, Flux2KleinDenoiseStep
 from .encoders import (
     Flux2KleinTextEncoderStep,
+    Flux2KleinBaseTextEncoderStep,
     Flux2VaeEncoderStep,
 )
 from .inputs import (
@@ -35,7 +36,9 @@ from .inputs import (
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
+###
+### VAE encoder
+###
 Flux2KleinVaeEncoderBlocks = InsertableDict(
     [
         ("preprocess", Flux2ProcessImagesInputStep()),
@@ -69,6 +72,9 @@ class Flux2KleinAutoVaeEncoderStep(AutoPipelineBlocks):
             " - If `image` is not provided, step will be skipped."
         )
 
+###
+### Core denoise
+###
 
 Flux2KleinCoreDenoiseBlocks = InsertableDict(
     [
@@ -78,6 +84,7 @@ Flux2KleinCoreDenoiseBlocks = InsertableDict(
         ("set_timesteps", Flux2SetTimestepsStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
         ("denoise", Flux2KleinDenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
     ]
 )
 
@@ -99,6 +106,7 @@ class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
             " - `Flux2SetTimestepsStep` (set_timesteps) sets the timesteps for the denoising step.\n"
             " - `Flux2RoPEInputsStep` (prepare_rope_inputs) prepares the RoPE inputs (txt_ids) for the denoising step.\n"
             " - `Flux2KleinDenoiseStep` (denoise) iteratively denoises the latents.\n"
+            " - `Flux2UnpackLatentsStep` (after_denoise) unpacks the latents from the denoising step.\n"
         )
 
 
@@ -110,6 +118,7 @@ Flux2KleinBaseCoreDenoiseBlocks = InsertableDict(
         ("set_timesteps", Flux2SetTimestepsStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
         ("denoise", Flux2KleinBaseDenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
     ]
 )
 
@@ -130,9 +139,12 @@ class Flux2KleinBaseCoreDenoiseStep(SequentialPipelineBlocks):
             " - `Flux2SetTimestepsStep` (set_timesteps) sets the timesteps for the denoising step.\n"
             " - `Flux2RoPEInputsStep` (prepare_rope_inputs) prepares the RoPE inputs (txt_ids) for the denoising step.\n"
             " - `Flux2KleinBaseDenoiseStep` (denoise) iteratively denoises the latents using Classifier-Free Guidance.\n"
+            " - `Flux2UnpackLatentsStep` (after_denoise) unpacks the latents from the denoising step.\n"
         )
 
-
+###
+### Auto blocks
+###
 class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
     model_name = "flux2-klein"
     block_classes = [
@@ -155,7 +167,7 @@ class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
 class Flux2KleinBaseAutoBlocks(SequentialPipelineBlocks):
     model_name = "flux2-klein"
     block_classes = [
-        Flux2KleinTextEncoderStep(),
+        Flux2KleinBaseTextEncoderStep(),
         Flux2KleinAutoVaeEncoderStep(),
         Flux2KleinBaseCoreDenoiseStep(),
         Flux2DecodeStep(),

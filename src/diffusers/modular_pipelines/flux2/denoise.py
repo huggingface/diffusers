@@ -306,10 +306,6 @@ class Flux2KleinBaseLoopDenoiser(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="4D position IDs for latent tokens (T, H, W, L)",
             ),
-            InputParam(
-                kwargs_type="denoiser_input_fields",
-                description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
-            ),
         ]
 
     @torch.no_grad()
@@ -339,20 +335,12 @@ class Flux2KleinBaseLoopDenoiser(ModularPipelineBlocks):
             ),
         }
 
-        transformer_args = set(inspect.signature(components.transformer.forward).parameters.keys())
-        additional_cond_kwargs = {}
-        for field_name, field_value in block_state.denoiser_input_fields.items():
-            if field_name in transformer_args and field_name not in guider_inputs:
-                additional_cond_kwargs[field_name] = field_value
-        block_state.additional_cond_kwargs.update(additional_cond_kwargs)
-
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         guider_state = components.guider.prepare_inputs(guider_inputs)
 
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
             cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
-            cond_kwargs.update(additional_cond_kwargs)
 
             noise_pred = components.transformer(
                 hidden_states=latent_model_input,
@@ -457,8 +445,6 @@ class Flux2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         block_state.num_warmup_steps = max(
             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0
         )
-
-        block_state.additional_cond_kwargs = {}
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
