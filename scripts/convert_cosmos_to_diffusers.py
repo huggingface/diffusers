@@ -393,7 +393,6 @@ TRANSFORMER_CONFIGS = {
         "use_crossattn_projection": True,
         "crossattn_proj_in_channels": 100352,
         "encoder_hidden_states_channels": 1024,
-        "n_control_net_blocks": 4,
         "controlnet_block_every_n": 7,
         "img_context_dim": 1152,
     },
@@ -401,42 +400,28 @@ TRANSFORMER_CONFIGS = {
 
 CONTROLNET_CONFIGS = {
     "Cosmos-2.5-Transfer-General-2B": {
-        "in_channels": 16 + 1,
+        "n_controlnet_blocks": 4,
+        "model_channels": 2048,
+        "in_channels": 130,
         "num_attention_heads": 16,
         "attention_head_dim": 128,
-        "num_layers": 4,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
         "patch_size": (1, 2, 2),
-        "control_block_indices": (6, 13, 20, 27),
     },
 }
 
 # TODO(migmartin): fix this, this is not correct
 CONTROLNET_KEYS_RENAME_DICT = {
-    "controlnet_blocks": "control_blocks",
-    "control_net_blocks": "control_blocks",
-    "control_blocks.block": "control_blocks.",
-    "control_blocks": "control_blocks",
-    ".linear": ".proj",
-    ".proj.0": ".proj",
-    ".proj.1": ".proj",
-    "x_embedder_control": "patch_embed",
-    "control_patch_embed": "patch_embed",
-    "controlnet_patch_embed": "patch_embed",
-    "control_embedder": "patch_embed",
+    **TRANSFORMER_KEYS_RENAME_DICT_COSMOS_2_0,
+    "blocks": "blocks",
+    "control_embedder.proj.1": "patch_embed.proj",
 }
 
 
-def rename_controlnet_blocks_(key: str, state_dict: Dict[str, Any]):
-    block_index = int(key.split(".")[1].removeprefix("block"))
-    new_key = key
-    old_prefix = f"control_blocks.block{block_index}"
-    new_prefix = f"control_blocks.{block_index}"
-    new_key = new_prefix + new_key.removeprefix(old_prefix)
-    state_dict[new_key] = state_dict.pop(key)
-
-
 CONTROLNET_SPECIAL_KEYS_REMAP = {
-    "control_blocks.block": rename_controlnet_blocks_,
+    **TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_2_0
 }
 
 VAE_KEYS_RENAME_DICT = {
@@ -605,8 +590,6 @@ def convert_controlnet(transformer_type: str, state_dict: Dict[str, Any], weight
         old2new[key] = new_key
         new2old[new_key] = key
         update_state_dict_(state_dict, key, new_key)
-
-    breakpoint()
 
     for key in list(state_dict.keys()):
         for special_key, handler_fn_inplace in CONTROLNET_SPECIAL_KEYS_REMAP.items():
@@ -832,11 +815,11 @@ if __name__ == "__main__":
                     base_state_dict[k] = v
             assert len(base_state_dict.keys() & control_state_dict.keys()) == 0
 
-            transformer = convert_transformer(args.transformer_type, state_dict=base_state_dict, weights_only=weights_only)
-            transformer = transformer.to(dtype=dtype)
-
             controlnet = convert_controlnet(args.transformer_type, control_state_dict, weights_only=weights_only)
             controlnet = controlnet.to(dtype=dtype)
+
+            transformer = convert_transformer(args.transformer_type, state_dict=base_state_dict, weights_only=weights_only)
+            transformer = transformer.to(dtype=dtype)
 
             if not args.save_pipeline:
                 transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
