@@ -296,9 +296,13 @@ class GlmImagePipeline(DiffusionPipeline):
                 inputs["pixel_values"], image_grid_thw[:-1]
             )
             prior_token_image_embed = torch.cat(prior_token_image_embed, dim=0)
-            prior_token_image_ids = self.vision_language_encoder.get_image_tokens(
+            prior_token_image_ids_flat = self.vision_language_encoder.get_image_tokens(
                 prior_token_image_embed, image_grid_thw[:-1]
             )
+            # Split prior_token_image_ids by image (each image may have different number of tokens)
+            # image_grid_thw[:-1] contains grids for source images only
+            split_sizes = (image_grid_thw[:-1].prod(dim=-1)).tolist()
+            prior_token_image_ids = list(torch.split(prior_token_image_ids_flat, split_sizes, dim=0))
 
         # For GLM-Image, greedy decoding is not allowed; it may cause repetitive outputs.
         # max_new_tokens must be exactly grid_h * grid_w + 1 (the +1 is for EOS).
@@ -643,8 +647,9 @@ class GlmImagePipeline(DiffusionPipeline):
         if prior_token_ids is None:
             prompt_list = [prompt] if isinstance(prompt, str) else prompt
             all_prior_token_ids = []
-            all_prior_token_image_ids = []
-            for p in prompt_list:
+            # For i2i, compute prior_token_image_ids only once since all prompts share the same condition images
+            shared_prior_token_image_ids = None
+            for idx, p in enumerate(prompt_list):
                 p_prior_token_ids, p_prior_token_image_ids = self.generate_prior_tokens(
                     prompt=p,
                     image=image,
@@ -653,10 +658,11 @@ class GlmImagePipeline(DiffusionPipeline):
                     device=device,
                 )
                 all_prior_token_ids.append(p_prior_token_ids)
-                if p_prior_token_image_ids is not None:
-                    all_prior_token_image_ids.append(p_prior_token_image_ids)
+                # Only keep the first sample's prior_token_image_ids (they are identical for all prompts)
+                if idx == 0 and p_prior_token_image_ids is not None:
+                    shared_prior_token_image_ids = p_prior_token_image_ids
             prior_token_ids = torch.cat(all_prior_token_ids, dim=0)
-            prior_token_image_ids = all_prior_token_image_ids if len(all_prior_token_image_ids) > 0 else None
+            prior_token_image_ids = shared_prior_token_image_ids
 
         # 3. Preprocess image
         if image is not None:
@@ -714,14 +720,17 @@ class GlmImagePipeline(DiffusionPipeline):
             latents_mean = latents_mean.to(device=device, dtype=prompt_embeds.dtype)
             latents_std = latents_std.to(device=device, dtype=prompt_embeds.dtype)
 
-            # Use the first sample's prior_token_image_ids for KV cache (shared across batch)
-            first_prior_token_image_ids = prior_token_image_ids[0] if prior_token_image_ids else []
-            for condition_image, condition_image_prior_token_id in zip(image, first_prior_token_image_ids):
+            # prior_token_image_ids is a list of tensors, one per condition image
+            # Each tensor has shape (num_tokens_for_that_image,)
+            for condition_image, condition_image_prior_token_id in zip(image, prior_token_image_ids):
                 condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
                 condition_latent = retrieve_latents(
                     self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
                 )
                 condition_latent = (condition_latent - latents_mean) / latents_std
+
+                # Reshape prior_token_id to (1, seq_len) for transformer
+                condition_image_prior_token_id = condition_image_prior_token_id.unsqueeze(0)
 
                 # Do not remove.
                 # It would be use to run the reference image through a
