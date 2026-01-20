@@ -79,24 +79,31 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         hidden_states: torch.Tensor,
         controlnet_cond: torch.Tensor,
         conditioning_scale: Union[float, List[float]] = 1.0,
+        temb: Optional[torch.Tensor] = None,
+        embedded_timestep: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+        extra_pos_emb: Optional[torch.Tensor] = None,
+        attention_mask: Optional[Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]] = None,
+        encoder_hidden_states: Optional[Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]] = None,
     ) -> List[torch.Tensor]:
+        # TODO: check if temb, etc. is None
+        # if so, then do our own embedding of the inputs
+
         control_hidden_states = self.patch_embed(controlnet_cond)
         control_hidden_states = control_hidden_states.flatten(1, 3)
 
         scales = self._expand_conditioning_scale(conditioning_scale)
-        x = hidden_states
-
-        # NOTE: args to block
-        # hidden_states: torch.Tensor,
-        # encoder_hidden_states: torch.Tensor,
-        # embedded_timestep: torch.Tensor,
-        # temb: Optional[torch.Tensor] = None,
-        # image_rotary_emb: Optional[torch.Tensor] = None,
-        # extra_pos_emb: Optional[torch.Tensor] = None,
-        # attention_mask: Optional[torch.Tensor] = None,
-        # controlnet_residual: Optional[torch.Tensor] = None,
         result = []
         for block, scale in zip(self.control_blocks, scales):
-            x = block(x)
-            result.append(x * scale)
+            hidden_states = block(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                embedded_timestep=embedded_timestep,
+                temb=temb,
+                image_rotary_emb=image_rotary_emb,
+                extra_pos_emb=extra_pos_emb,
+                attention_mask=attention_mask,
+                controlnet_residual=None,
+            )
+            result.append(hidden_states * scale)
         return result
