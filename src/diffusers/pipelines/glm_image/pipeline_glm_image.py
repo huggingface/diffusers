@@ -397,16 +397,14 @@ class GlmImagePipeline(DiffusionPipeline):
         )
 
         # Extract and upsample prior tokens for each sample
+        # For left-padded inputs, generated tokens start after the padded input sequence
         all_prior_token_ids = []
+        max_input_length = inputs["input_ids"].shape[-1]
         for idx in range(batch_size):
-            # Account for padding by finding actual input length
-            if "attention_mask" in inputs:
-                input_length = inputs["attention_mask"][idx].sum().item()
-            else:
-                input_length = inputs["input_ids"].shape[-1]
-            
+            # For left-padded sequences, generated tokens start at max_input_length
+            # (padding is on the left, so all sequences end at the same position)
             prior_token_ids_d32 = self._extract_large_image_tokens(
-                outputs[idx:idx+1], input_length, large_image_offset, token_h * token_w
+                outputs[idx:idx+1], max_input_length, large_image_offset, token_h * token_w
             )
             prior_token_ids = self._upsample_token_ids(prior_token_ids_d32, token_h, token_w)
             all_prior_token_ids.append(prior_token_ids)
