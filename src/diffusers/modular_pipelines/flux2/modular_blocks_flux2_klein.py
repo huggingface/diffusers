@@ -12,17 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-import PIL.Image
 from typing import List
+
+import PIL.Image
+import torch
+
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict, OutputParam
 from .before_denoise import (
+    Flux2KleinBaseRoPEInputsStep,
     Flux2PrepareImageLatentsStep,
     Flux2PrepareLatentsStep,
     Flux2RoPEInputsStep,
-    Flux2KleinBaseRoPEInputsStep,
     Flux2SetTimestepsStep,
 )
 from .decoders import Flux2DecodeStep, Flux2UnpackLatentsStep
@@ -33,9 +35,9 @@ from .encoders import (
     Flux2VaeEncoderStep,
 )
 from .inputs import (
+    Flux2KleinBaseTextInputStep,
     Flux2ProcessImagesInputStep,
     Flux2TextInputStep,
-    Flux2KleinBaseTextInputStep,
 )
 
 
@@ -157,6 +159,7 @@ class Flux2KleinBaseCoreDenoiseStep(SequentialPipelineBlocks):
             " - `Flux2KleinBaseDenoiseStep` (denoise) iteratively denoises the latents using Classifier-Free Guidance.\n"
             " - `Flux2UnpackLatentsStep` (after_denoise) unpacks the latents from the denoising step.\n"
         )
+
     @property
     def outputs(self):
         return [
