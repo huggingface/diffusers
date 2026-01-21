@@ -514,7 +514,7 @@ class Flux2KleinBaseTextEncoderStep(ModularPipelineBlocks):
         )
 
         if components.requires_unconditional_embeds:
-            negative_prompt = ""
+            negative_prompt = [""] * len(prompt)
             block_state.negative_prompt_embeds = self._get_qwen3_prompt_embeds(
                 text_encoder=components.text_encoder,
                 tokenizer=components.tokenizer,
