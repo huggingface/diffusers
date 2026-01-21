@@ -1133,6 +1133,7 @@ def _npu_attention_forward_op(
         key,
         value,
         query.size(2),  # num_heads
+        atten_mask=attn_mask,
         input_layout="BSND",
         pse=None,
         scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
@@ -2422,7 +2423,14 @@ def _native_npu_attention(
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
     if attn_mask is not None:
-        raise ValueError("`attn_mask` is not supported for NPU attention")
+        q_seqlen, kv_seqlen = query.size(-2), key.size(-2)
+        if 0 not in attn_mask:
+            attn_mask = None
+        elif attn_mask.dim() not in [2, 4] or attn_mask.size(-2) != q_seqlen or attn_mask.size(-1) != kv_seqlen:
+            raise ValueError("The attn_mask must be a 2D tensor with shape [q_seqlen, kv_seqlen],"
+                                    " or a 4D tensor with shape [batch_size, num_heads, q_seqlen, kv_seqlen]")
+        else:
+            attn_mask = ~attn_mask.to(torch.bool)
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
     if _parallel_config is None:
@@ -2431,6 +2439,7 @@ def _native_npu_attention(
             key,
             value,
             query.size(2),  # num_heads
+            atten_mask=attn_mask,
             input_layout="BSND",
             pse=None,
             scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
@@ -2445,7 +2454,7 @@ def _native_npu_attention(
             query,
             key,
             value,
-            None,
+            attn_mask,
             dropout_p,
             None,
             scale,
