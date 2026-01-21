@@ -74,6 +74,48 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
+# TODO: move this to a utility module aka Transfer2_5 model ?
+def transfer2_5_forward(
+    transformer,
+    controlnet,
+    in_latents,
+    controls_latents,
+    controls_conditioning_scale,
+    in_timestep,
+    encoder_hidden_states,
+    cond_mask,
+    padding_mask,
+):
+    control_blocks = None
+    prepared_inputs = transformer.prepare_inputs(
+        hidden_states=in_latents,
+        condition_mask=cond_mask,
+        timestep=in_timestep,
+        encoder_hidden_states=encoder_hidden_states,
+        padding_mask=padding_mask,
+    )
+    if controls_latents is not None:
+        control_blocks = controlnet(
+            controls_latents=controls_latents,
+            latents=in_latents,
+            conditioning_scale=controls_conditioning_scale,
+            condition_mask=cond_mask,
+            padding_mask=padding_mask,
+            encoder_hidden_states=prepared_inputs["encoder_hidden_states"],
+            temb=prepared_inputs["temb"],
+            embedded_timestep=prepared_inputs["embedded_timestep"],
+            image_rotary_emb=prepared_inputs["image_rotary_emb"],
+            extra_pos_emb=prepared_inputs["extra_pos_emb"],
+            attention_mask=prepared_inputs["attention_mask"],
+        )
+
+    noise_pred = transformer._forward(
+        prepared_inputs=prepared_inputs,
+        block_controlnet_hidden_states=control_blocks,
+        return_dict=False,
+    )[0]
+    return noise_pred
+
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -227,7 +269,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
-        # breakpoint()
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
         latents_mean = (
@@ -470,8 +511,10 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
             num_cond_latent_frames = (num_frames_in - 1) // self.vae_scale_factor_temporal + 1
             cond_indicator = latents.new_zeros(1, 1, latents.size(2), 1, 1)
-            cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0
-            cond_mask = cond_indicator * ones_padding + (1 - cond_indicator) * zeros_padding
+            # cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0
+            # TODO: modify cond_mask per chunk
+            # cond_mask = cond_indicator * ones_padding + (1 - cond_indicator) * zeros_padding
+            cond_mask = zeros_padding  # TODO this is what i4 uses
 
             return (
                 latents,
@@ -569,7 +612,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         width: Optional[int] = None,
         num_frames: int = 93,
         num_inference_steps: int = 36,
-        guidance_scale: float = 7.0,
+        # guidance_scale: float = 7.0,  # TODO: check default
+        guidance_scale: float = 3.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -676,8 +720,13 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
         if width is None:
             frame = image or video[0] if image or video else None
+            if frame is None and controls is not None:
+                frame = controls[0] if isinstance(controls, list) else controls
+                if isinstance(frame, (torch.Tensor, np.ndarray)) and len(frame.shape) == 4:
+                    frame = controls[0]
+
             if frame is None:
-                width = (height + 16) * (1280/720)
+                width = int((height + 16) * (1280/720))
             elif isinstance(frame, PIL.Image.Image):
                 width = int((height + 16) * (frame.width / frame.height))
             else:
@@ -685,7 +734,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
         # Check inputs. Raise error if not correct
         print("width=", width, "height=", height)
-        breakpoint()
+        # breakpoint()
         self.check_inputs(prompt, height, width, prompt_embeds, callback_on_step_end_tensor_inputs)
 
         self._guidance_scale = guidance_scale
@@ -729,6 +778,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         )
         # TODO(migmartin): add img ref to prompt_embeds via siglip if provided
         encoder_hidden_states = (prompt_embeds, None)
+        neg_encoder_hidden_states = (negative_prompt_embeds, None)
 
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
@@ -815,51 +865,37 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                 in_latents = in_latents.to(transformer_dtype)
-                in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
-                control_blocks = None
-
-                prepared_inputs = self.transformer.prepare_inputs(
-                    hidden_states=in_latents,
-                    condition_mask=cond_mask,
-                    timestep=in_timestep,
-                    encoder_hidden_states=encoder_hidden_states,
-                    padding_mask=padding_mask,
-                )
-                # import IPython; IPython.embed()
-                # breakpoint()
-                if controls is not None:
-                    control_blocks = self.controlnet(
-                        controls_latents=controls_latents,
-                        latents=in_latents,
-                        conditioning_scale=controls_conditioning_scale,
-                        condition_mask=cond_mask,
-                        padding_mask=padding_mask,
-                        # TODO: before or after projection?
-                        # encoder_hidden_states=encoder_hidden_states,   # before
-                        # TODO: pass as prepared_inputs dict ?
-                        encoder_hidden_states=prepared_inputs["encoder_hidden_states"], # after
-                        temb=prepared_inputs["temb"],
-                        embedded_timestep=prepared_inputs["embedded_timestep"],
-                        image_rotary_emb=prepared_inputs["image_rotary_emb"],
-                        extra_pos_emb=prepared_inputs["extra_pos_emb"],
-                        attention_mask=prepared_inputs["attention_mask"],
-                    )
-
-                # breakpoint()
-                noise_pred = self.transformer._forward(
-                    prepared_inputs=prepared_inputs,
-                    block_controlnet_hidden_states=control_blocks,
-                    return_dict=False,
-                )[0]
+                # in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
                 # NOTE: replace velocity (noise_pred) with gt_velocity for conditioning inputs only
+                in_latents = (0.5 * torch.ones((1, 16, 24, 88, 120))).cuda().to(dtype=transformer_dtype)
+                in_timestep = (torch.ones((1, 1, 24, 1, 1)) * 0.966).cuda().to(dtype=transformer_dtype)
+                breakpoint()
+                noise_pred = transfer2_5_forward(
+                    transformer=self.transformer,
+                    controlnet=self.controlnet,
+                    in_latents=in_latents,
+                    controls_latents=controls_latents,
+                    controls_conditioning_scale=controls_conditioning_scale,
+                    in_timestep=in_timestep,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cond_mask=cond_mask,
+                    padding_mask=padding_mask
+                )
                 noise_pred = gt_velocity + noise_pred * (1 - cond_mask)
+                breakpoint()
 
                 if self.do_classifier_free_guidance:
-                    noise_pred_neg = self.transformer._forward(
-                        prepared_inputs=prepared_inputs,
-                        block_controlnet_hidden_states=control_blocks,
-                        return_dict=False,
-                    )[0]
+                    noise_pred_neg = transfer2_5_forward(
+                        transformer=self.transformer,
+                        controlnet=self.controlnet,
+                        in_latents=in_latents,
+                        controls_latents=controls_latents,
+                        controls_conditioning_scale=controls_conditioning_scale,
+                        in_timestep=in_timestep,
+                        encoder_hidden_states=neg_encoder_hidden_states,
+                        cond_mask=cond_mask,
+                        padding_mask=padding_mask
+                    )
                     # NOTE: replace velocity (noise_pred_neg) with gt_velocity for conditioning inputs only
                     noise_pred_neg = gt_velocity + noise_pred_neg * (1 - cond_mask)
                     noise_pred = noise_pred + self.guidance_scale * (noise_pred - noise_pred_neg)
@@ -902,10 +938,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 # vid = self.safety_checker.check_video_safety(vid)
                 video_batch.append(vid)
             video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
-            try:
-                video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
-            except:
-                breakpoint()
+            video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
