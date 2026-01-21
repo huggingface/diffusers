@@ -27,18 +27,19 @@ from transformers import (
     XLMRobertaTokenizerFast
 )
 
-from ..pipeline_utils import ImagePipelineOutput
-from ..lumina2 import Lumina2Pipeline
-
+from ...image_processor import VaeImageProcessor
+from ...loaders import Lumina2LoraLoaderMixin
 from ...models import AutoencoderKL
 from ...models.transformers.transformer_lumina2 import Lumina2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-
 from ...utils import (
     is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -187,7 +188,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class NewbiePipeline(Lumina2Pipeline):
+class NewbiePipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Lumina-T2I.
 
@@ -213,7 +214,7 @@ class NewbiePipeline(Lumina2Pipeline):
 
     _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
-    model_cpu_offload_seq = "text_encoder->transformer->vae" # JinaCLIPTextModel is not compatible with cpu offload
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
 
     def __init__(
         self,
@@ -225,20 +226,78 @@ class NewbiePipeline(Lumina2Pipeline):
         tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
         tokenizer_2: Union[XLMRobertaTokenizer, XLMRobertaTokenizerFast],
     ):
-        super().__init__(
+        super().__init__()
+
+        self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
+            text_encoder_2=text_encoder_2,
             tokenizer=tokenizer,
+            tokenizer_2=tokenizer_2,
             transformer=transformer,
             scheduler=scheduler,
         )
+        self.vae_scale_factor = 8
+        self.default_sample_size = (
+            self.transformer.config.sample_size
+            if hasattr(self, "transformer") and self.transformer is not None
+            else 128
+        )
+        self.default_image_size = self.default_sample_size * self.vae_scale_factor
+        self.system_prompt = "You are an assistant designed to generate superior images with the superior degree of image-text alignment based on textual prompts or user prompts."
 
-        self.register_modules(
-            text_encoder_2=text_encoder_2,
-            tokenizer_2=tokenizer_2,
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+
+        if getattr(self, "tokenizer", None) is not None:
+            self.tokenizer.padding_side = "right"
+
+    # copied from diffusers.pipelines.lumina2.pipeline_lumina2.Lumina2Pipeline._get_gemma_prompt_embeds
+    def _get_gemma_prompt_embeds(
+        self,
+        prompt: Union[str, List[str]],
+        device: Optional[torch.device] = None,
+        max_sequence_length: int = 256,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        device = device or self._execution_device
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=max_sequence_length,
+            truncation=True,
+            return_tensors="pt",
         )
 
-    def _get_clip_prompt_embeds(
+        text_input_ids = text_inputs.input_ids.to(device)
+        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids.to(device)
+
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because Gemma can only handle sequences up to"
+                f" {max_sequence_length} tokens: {removed_text}"
+            )
+
+        prompt_attention_mask = text_inputs.attention_mask.to(device)
+        prompt_embeds = self.text_encoder(
+            text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
+        )
+        prompt_embeds = prompt_embeds.hidden_states[-2]
+
+        if self.text_encoder is not None:
+            dtype = self.text_encoder.dtype
+        elif self.transformer is not None:
+            dtype = self.transformer.dtype
+        else:
+            dtype = None
+
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+
+        _, seq_len, _ = prompt_embeds.shape
+
+        return prompt_embeds, prompt_attention_mask
+
+    def _get_jina_clip_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
@@ -281,7 +340,7 @@ class NewbiePipeline(Lumina2Pipeline):
 
         return prompt_embeds
 
-    # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
+    # Adapted from diffusers.pipelines.lumina2.pipeline_lumina2.Lumina2Pipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -343,7 +402,7 @@ class NewbiePipeline(Lumina2Pipeline):
                 max_sequence_length=max_sequence_length,
             )
         if pooled_prompt_embeds is None:
-            pooled_prompt_embeds = self._get_clip_prompt_embeds(
+            pooled_prompt_embeds = self._get_jina_clip_prompt_embeds(
                 prompt=prompt,
                 device=device,
                 max_sequence_length=max_sequence_length,
@@ -395,7 +454,7 @@ class NewbiePipeline(Lumina2Pipeline):
 
             # encode with clip after gemma for better offloading
             if negative_pooled_prompt_embeds is None:
-                negative_pooled_prompt_embeds = self._get_clip_prompt_embeds(
+                negative_pooled_prompt_embeds = self._get_jina_clip_prompt_embeds(
                     prompt=negative_prompt,
                     device=device,
                     max_sequence_length=max_sequence_length,
@@ -404,6 +463,25 @@ class NewbiePipeline(Lumina2Pipeline):
 
         return prompt_embeds, pooled_prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_pooled_prompt_embeds, negative_prompt_attention_mask
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
+    def prepare_extra_step_kwargs(self, generator, eta):
+        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
+        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
+        # and should be between [0, 1]
+
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        extra_step_kwargs = {}
+        if accepts_eta:
+            extra_step_kwargs["eta"] = eta
+
+        # check if the scheduler accepts generator
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        if accepts_generator:
+            extra_step_kwargs["generator"] = generator
+        return extra_step_kwargs
+
+    # Adapted from diffusers.pipelines.lumina2.pipeline_lumina2.Lumina2Pipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -486,6 +564,47 @@ class NewbiePipeline(Lumina2Pipeline):
             raise ValueError(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
+
+    # copied from diffusers.pipelines.lumina2.pipeline_lumina2.Lumina2Pipeline.prepare_latents
+    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        # VAE applies 8x compression on images but we must also account for packing which requires
+        # latent height and width to be divisible by 2.
+        height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        width = 2 * (int(width) // (self.vae_scale_factor * 2))
+
+        shape = (batch_size, num_channels_latents, height, width)
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device)
+
+        return latents
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+    # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
+    # corresponds to doing no classifier free guidance.
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
