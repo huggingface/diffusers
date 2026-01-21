@@ -2423,14 +2423,17 @@ def _native_npu_attention(
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
     if attn_mask is not None:
+        # https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0034.html
+        attn_mask = attn_mask.bool()
         q_seqlen, kv_seqlen = query.size(-2), key.size(-2)
-        if 0 not in attn_mask:
+
+        if attn_mask.all().item():
             attn_mask = None
         elif attn_mask.dim() not in [2, 4] or attn_mask.size(-2) != q_seqlen or attn_mask.size(-1) != kv_seqlen:
             raise ValueError("The attn_mask must be a 2D tensor with shape [q_seqlen, kv_seqlen],"
                                     " or a 4D tensor with shape [batch_size, num_heads, q_seqlen, kv_seqlen]")
         else:
-            attn_mask = ~attn_mask.to(torch.bool)
+            attn_mask = ~attn_mask
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
     if _parallel_config is None:
