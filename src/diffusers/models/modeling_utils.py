@@ -1217,17 +1217,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
 
             model = load_flax_checkpoint_in_pytorch_model(model, resolved_model_file)
-        else:
-            # If we are using `use_flashpack`, we try to load the model from flashpack first.
-            # If flashpack is not available or the file cannot be loaded, we fall back to
-            # the standard loading path (e.g. safetensors or PyTorch).
-            if use_flashpack:
-                weights_name = _add_variant("model.flashpack", variant)
 
+        else:
+            flashpack_file = None
+            if use_flashpack:
                 try:
-                    resolved_model_file = _get_model_file(
+                    flashpack_file = _get_model_file(
                         pretrained_model_name_or_path,
-                        weights_name=weights_name,
+                        weights_name=_add_variant("model.flashpack", variant),
                         cache_dir=cache_dir,
                         force_download=force_download,
                         proxies=proxies,
@@ -1237,47 +1234,56 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         subfolder=subfolder,
                         user_agent=user_agent,
                         commit_hash=commit_hash,
+                        dduf_entries=dduf_entries,
                     )
                 except EnvironmentError:
-                    resolved_model_file = None
-                with no_init_weights():
-                    model = cls.from_config(config, **unused_kwargs)
-                if resolved_model_file is not None:
-                    from ..utils.flashpack_utils import load_flashpack
-                    load_flashpack(model, resolved_model_file)
-                    model.register_to_config(_name_or_path=pretrained_model_name_or_path)
-                    model.eval()
+                    flashpack_file = None
 
-                    if output_loading_info:
-                        loading_info = {
-                            "missing_keys": [],
-                            "unexpected_keys": [],
-                            "mismatched_keys": [],
-                            "error_msgs": [],
-                        }
-                        return model, loading_info
+            if flashpack_file is None:
+                # in the case it is sharded, we have already the index
+                if is_sharded:
+                    resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
+                        pretrained_model_name_or_path,
+                        index_file,
+                        cache_dir=cache_dir,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        token=token,
+                        user_agent=user_agent,
+                        revision=revision,
+                        subfolder=subfolder or "",
+                        dduf_entries=dduf_entries,
+                    )
+                elif use_safetensors:
+                    logger.warning("Trying to load model weights with safetensors format.")
+                    try:
+                        resolved_model_file = _get_model_file(
+                            pretrained_model_name_or_path,
+                            weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
+                            cache_dir=cache_dir,
+                            force_download=force_download,
+                            proxies=proxies,
+                            local_files_only=local_files_only,
+                            token=token,
+                            revision=revision,
+                            subfolder=subfolder,
+                            user_agent=user_agent,
+                            commit_hash=commit_hash,
+                            dduf_entries=dduf_entries,
+                        )
 
-                    return model
-  
-            # in the case it is sharded, we have already the index
-            if is_sharded:
-                resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
-                    pretrained_model_name_or_path,
-                    index_file,
-                    cache_dir=cache_dir,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    user_agent=user_agent,
-                    revision=revision,
-                    subfolder=subfolder or "",
-                    dduf_entries=dduf_entries,
-                )
-            elif use_safetensors:
-                try:
+                    except IOError as e:
+                        logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
+                        if not allow_pickle:
+                            raise
+                        logger.warning(
+                            "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
+                        )
+                    
+                if resolved_model_file is None and not is_sharded:
                     resolved_model_file = _get_model_file(
                         pretrained_model_name_or_path,
-                        weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
+                        weights_name=_add_variant(WEIGHTS_NAME, variant),
                         cache_dir=cache_dir,
                         force_download=force_download,
                         proxies=proxies,
@@ -1290,32 +1296,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         dduf_entries=dduf_entries,
                     )
 
-                except IOError as e:
-                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
-                    if not allow_pickle:
-                        raise
-                    logger.warning(
-                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
-                    )
-
-            if resolved_model_file is None and not is_sharded:
-                resolved_model_file = _get_model_file(
-                    pretrained_model_name_or_path,
-                    weights_name=_add_variant(WEIGHTS_NAME, variant),
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    user_agent=user_agent,
-                    commit_hash=commit_hash,
-                    dduf_entries=dduf_entries,
-                )
-
-        if not isinstance(resolved_model_file, list):
-            resolved_model_file = [resolved_model_file]
+                if not isinstance(resolved_model_file, list):
+                    resolved_model_file = [resolved_model_file]
 
         # set dtype to instantiate the model under:
         # 1. If torch_dtype is not None, we use that dtype
@@ -1338,6 +1320,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if dtype_orig is not None:
             torch.set_default_dtype(dtype_orig)
+
+        if flashpack_file is not None:
+            from ..utils.flashpack_utils import load_flashpack
+            # Even when using FlashPack, we preserve `low_cpu_mem_usage` behavior by initializing
+            # the model with meta tensors. Since FlashPack cannot write into meta tensors, we
+            # explicitly materialize parameters before loading to ensure correctness and parity
+            # with the standard loading path.
+            if any(p.device.type == "meta" for p in model.parameters()):
+                 model.to_empty(device="cpu")
+            load_flashpack(model, flashpack_file)
+            model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+            model.eval()
+
+            if output_loading_info:
+                return model, {
+                    "missing_keys": [],
+                    "unexpected_keys": [],
+                    "mismatched_keys": [],
+                    "error_msgs": [],
+                }
+
+            return model
 
         state_dict = None
         if not is_sharded:
@@ -1386,7 +1390,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             keep_in_fp32_modules=keep_in_fp32_modules,
             dduf_entries=dduf_entries,
             is_parallel_loading_enabled=is_parallel_loading_enabled,
-            disable_mmap=disable_mmap,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1431,8 +1434,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if output_loading_info:
             return model, loading_info
+        
+        logger.warning(f"Model till end {pretrained_model_name_or_path} loaded successfully")
 
         return model
+
 
     # Adapted from `transformers`.
     @wraps(torch.nn.Module.cuda)
