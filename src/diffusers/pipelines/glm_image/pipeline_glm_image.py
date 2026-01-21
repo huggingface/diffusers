@@ -391,15 +391,17 @@ class GlmImagePipeline(DiffusionPipeline):
                 source_image_grid_thw = upsampled_grids
 
         # Generate with AR model
-        # Use a separate generator for AR model to ensure reproducibility
-        ar_generator = generator
-        if ar_generator is None:
-            ar_generator = torch.Generator(device=device)
+        # Set torch random seed from generator for reproducibility
+        # (transformers generate() doesn't accept generator parameter)
+        if generator is not None:
+            seed = generator.initial_seed()
+            torch.manual_seed(seed)
+            if device is not None and device.type == "cuda":
+                torch.cuda.manual_seed(seed)
         outputs = self.vision_language_encoder.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=True,
-            generator=ar_generator,
         )
 
         # Extract and upsample prior tokens for each sample
