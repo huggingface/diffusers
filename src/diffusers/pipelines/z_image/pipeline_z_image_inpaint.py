@@ -204,6 +204,7 @@ class ZImageInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
             do_convert_grayscale=True,
         )
 
+    # Copied from diffusers.pipelines.z_image.pipeline_z_image.ZImagePipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -238,6 +239,7 @@ class ZImageInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
             negative_prompt_embeds = []
         return prompt_embeds, negative_prompt_embeds
 
+    # Copied from diffusers.pipelines.z_image.pipeline_z_image.ZImagePipeline._encode_prompt
     def _encode_prompt(
         self,
         prompt: Union[str, List[str]],
