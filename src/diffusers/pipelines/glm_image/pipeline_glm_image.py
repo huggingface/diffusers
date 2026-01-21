@@ -267,6 +267,7 @@ class GlmImagePipeline(DiffusionPipeline):
         width: int,
         image: Optional[List[List[PIL.Image.Image]]] = None,
         device: Optional[torch.device] = None,
+        generator: Optional[torch.Generator] = None,
     ):
         """
         Generate prior tokens for the DiT model using the AR model.
@@ -390,10 +391,15 @@ class GlmImagePipeline(DiffusionPipeline):
                 source_image_grid_thw = upsampled_grids
 
         # Generate with AR model
+        # Use a separate generator for AR model to ensure reproducibility
+        ar_generator = generator
+        if ar_generator is None:
+            ar_generator = torch.Generator(device=device)
         outputs = self.vision_language_encoder.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=True,
+            generator=ar_generator,
         )
 
         # Extract and upsample prior tokens for each sample
@@ -772,6 +778,8 @@ class GlmImagePipeline(DiffusionPipeline):
 
         # 2. Generate prior tokens (batch mode)
         num_source_images_per_sample = None
+        # Get a single generator for AR model (use first if list provided)
+        ar_generator = generator[0] if isinstance(generator, list) else generator
         if prior_token_ids is None:
             prior_token_ids, prior_token_image_ids, source_image_grid_thw, num_source_images_per_sample = self.generate_prior_tokens(
                 prompt=prompt,
@@ -779,6 +787,7 @@ class GlmImagePipeline(DiffusionPipeline):
                 height=height,
                 width=width,
                 device=device,
+                generator=ar_generator,
             )
         else:
             # User provided prior_token_ids directly
