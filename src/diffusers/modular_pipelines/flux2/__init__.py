@@ -51,7 +51,7 @@ else:
         "IMAGE_CONDITIONED_BLOCKS",
         "Flux2AutoBlocks",
         "Flux2AutoVaeEncoderStep",
-        "Flux2BeforeDenoiseStep",
+        "Flux2CoreDenoiseStep",
         "Flux2VaeEncoderSequentialStep",
     ]
     _import_structure["modular_blocks_flux2_klein"] = ["Flux2KleinAutoBlocks", "Flux2KleinBaseAutoBlocks"]
@@ -94,7 +94,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TEXT2IMAGE_BLOCKS,
             Flux2AutoBlocks,
             Flux2AutoVaeEncoderStep,
-            Flux2BeforeDenoiseStep,
+            Flux2CoreDenoiseStep,
             Flux2VaeEncoderSequentialStep,
         )
         from .modular_blocks_flux2_klein import (
