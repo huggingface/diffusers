@@ -1296,8 +1296,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         dduf_entries=dduf_entries,
                     )
 
-                if not isinstance(resolved_model_file, list):
-                    resolved_model_file = [resolved_model_file]
+            if not isinstance(resolved_model_file, list):
+                resolved_model_file = [resolved_model_file]
 
         # set dtype to instantiate the model under:
         # 1. If torch_dtype is not None, we use that dtype
