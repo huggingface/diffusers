@@ -135,9 +135,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
         self.dtype = dtype
 
-    def create_state(
-        self, common: Optional[CommonSchedulerState] = None
-    ) -> DDIMSchedulerState:
+    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DDIMSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 
@@ -146,9 +144,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # `set_alpha_to_one` decides whether we set this parameter simply to one or
         # whether we use the final alpha of the "non-previous" one.
         final_alpha_cumprod = (
-            jnp.array(1.0, dtype=self.dtype)
-            if self.config.set_alpha_to_one
-            else common.alphas_cumprod[0]
+            jnp.array(1.0, dtype=self.dtype) if self.config.set_alpha_to_one else common.alphas_cumprod[0]
         )
 
         # standard deviation of the initial noise distribution
@@ -195,9 +191,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         step_ratio = self.config.num_train_timesteps // num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # rounding to avoid issues when num_inference_step is power of 3
-        timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).round()[
-            ::-1
-        ] + self.config.steps_offset
+        timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).round()[::-1] + self.config.steps_offset
 
         return state.replace(
             num_inference_steps=num_inference_steps,
@@ -214,9 +208,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
-        variance = (beta_prod_t_prev / beta_prod_t) * (
-            1 - alpha_prod_t / alpha_prod_t_prev
-        )
+        variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
 
         return variance
 
@@ -263,40 +255,28 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get previous step value (=t-1)
-        prev_timestep = (
-            timestep - self.config.num_train_timesteps // state.num_inference_steps
-        )
+        prev_timestep = timestep - self.config.num_train_timesteps // state.num_inference_steps
 
         alphas_cumprod = state.common.alphas_cumprod
         final_alpha_cumprod = state.final_alpha_cumprod
 
         # 2. compute alphas, betas
         alpha_prod_t = alphas_cumprod[timestep]
-        alpha_prod_t_prev = jnp.where(
-            prev_timestep >= 0, alphas_cumprod[prev_timestep], final_alpha_cumprod
-        )
+        alpha_prod_t_prev = jnp.where(prev_timestep >= 0, alphas_cumprod[prev_timestep], final_alpha_cumprod)
 
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://huggingface.co/papers/2010.02502
         if self.config.prediction_type == "epsilon":
-            pred_original_sample = (
-                sample - beta_prod_t ** (0.5) * model_output
-            ) / alpha_prod_t ** (0.5)
+            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
             pred_epsilon = model_output
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
-            pred_epsilon = (
-                sample - alpha_prod_t ** (0.5) * pred_original_sample
-            ) / beta_prod_t ** (0.5)
+            pred_epsilon = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
         elif self.config.prediction_type == "v_prediction":
-            pred_original_sample = (alpha_prod_t**0.5) * sample - (
-                beta_prod_t**0.5
-            ) * model_output
-            pred_epsilon = (alpha_prod_t**0.5) * model_output + (
-                beta_prod_t**0.5
-            ) * sample
+            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
+            pred_epsilon = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
@@ -315,14 +295,10 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         std_dev_t = eta * variance ** (0.5)
 
         # 5. compute "direction pointing to x_t" of formula (12) from https://huggingface.co/papers/2010.02502
-        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (
-            0.5
-        ) * pred_epsilon
+        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * pred_epsilon
 
         # 6. compute x_t without "random noise" of formula (12) from https://huggingface.co/papers/2010.02502
-        prev_sample = (
-            alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
-        )
+        prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if not return_dict:
             return (prev_sample, state)
