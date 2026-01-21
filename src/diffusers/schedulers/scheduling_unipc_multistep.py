@@ -319,9 +319,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_inference_steps: Optional[int] = None,
         device: Union[str, torch.device] = None,
-        mu: Optional[float] = None,
         sigmas: Optional[List[float]] = None,
-        timesteps: Optional[List[float]] = None,
+        mu: Optional[float] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -331,24 +330,22 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+            sigmas (`List[float]`, *optional*):
+                Custom values for sigmas to be used for each diffusion step. If `None`, the sigmas are computed
+                automatically.
             mu (`float`, *optional*):
                 Optional mu parameter for dynamic shifting when using exponential time shift type.
         """
         if self.config.use_dynamic_shifting and mu is None:
             raise ValueError("`mu` must be passed when `use_dynamic_shifting` is set to be `True`")
 
-        if sigmas is not None or timesteps is not None:
+        if sigmas is not None:
             if not self.config.use_flow_sigmas:
                 raise ValueError(
-                    "Passing `sigmas` or `timesteps` is only supported when `use_flow_sigmas=True`. "
+                    "Passing `sigmas` is only supported when `use_flow_sigmas=True`. "
                     "Please set `use_flow_sigmas=True` during scheduler initialization."
                 )
-            num_inference_steps = len(sigmas) if sigmas is not None else len(timesteps)
-        if sigmas is not None and timesteps is not None:
-            if len(sigmas) != len(timesteps):
-                raise ValueError("`sigmas` and `timesteps` should have the same length")
-
-        is_timesteps_provided = timesteps is not None
+            num_inference_steps = len(sigmas)
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://huggingface.co/papers/2305.08891
         if self.config.timestep_spacing == "linspace":
@@ -441,8 +438,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             if np.fabs(sigmas[0] - 1) < eps:
                 # to avoid inf torch.log(alpha_si) in multistep_uni_p_bh_update during first/second update
                 sigmas[0] -= eps
-            if not is_timesteps_provided:
-                timesteps = (sigmas * self.config.num_train_timesteps).copy()
+            timesteps = (sigmas * self.config.num_train_timesteps).copy()
             if self.config.final_sigmas_type == "sigma_min":
                 sigma_last = sigmas[-1]
             elif self.config.final_sigmas_type == "zero":
