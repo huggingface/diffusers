@@ -43,9 +43,10 @@ from .inputs import (
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-###
-### VAE encoder
-###
+################
+# VAE encoder
+################
+
 Flux2KleinVaeEncoderBlocks = InsertableDict(
     [
         ("preprocess", Flux2ProcessImagesInputStep()),
@@ -105,9 +106,8 @@ class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return "Core denoise step that performs the denoising process for Flux2-Klein (distilled model)."
         return (
-            "Core denoise step that performs the denoising process for Flux2-Klein.\n"
+            "Core denoise step that performs the denoising process for Flux2-Klein (distilled model).\n"
             " - `Flux2KleinTextInputStep` (input) standardizes the text inputs (prompt_embeds) for the denoising step.\n"
             " - `Flux2PrepareImageLatentsStep` (prepare_image_latents) prepares the image latents  and image_latent_ids for the denoising step.\n"
             " - `Flux2PrepareLatentsStep` (prepare_latents) prepares the initial latents (latents) and latent_ids for the denoising step.\n"
