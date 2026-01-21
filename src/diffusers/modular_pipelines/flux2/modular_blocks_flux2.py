@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import PIL.Image
 from typing import List
+
+import PIL.Image
 import torch
 
 from ...utils import logging
