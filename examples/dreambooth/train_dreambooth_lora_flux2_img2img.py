@@ -127,7 +127,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# Flux DreamBooth LoRA - {repo_id}
+# Flux.2 DreamBooth LoRA - {repo_id}
 
 <Gallery />
 
@@ -346,7 +346,7 @@ def parse_args(input_args=None):
         "--instance_prompt",
         type=str,
         default=None,
-        required=True,
+        required=False,
         help="The prompt with identifier specifying the instance, e.g. 'photo of a TOK dog', 'in the style of TOK'",
     )
     parser.add_argument(
@@ -835,15 +835,28 @@ class DreamBoothDataset(Dataset):
                 dest_image = self.cond_images[i]
                 image_width, image_height = dest_image.size
                 if image_width * image_height > 1024 * 1024:
-                    dest_image = Flux2ImageProcessor.image_processor._resize_to_target_area(dest_image, 1024 * 1024)
+                    dest_image = Flux2ImageProcessor._resize_to_target_area(dest_image, 1024 * 1024)
                     image_width, image_height = dest_image.size
 
                 multiple_of = 2 ** (4 - 1)  # 2 ** (len(vae.config.block_out_channels) - 1), temp!
                 image_width = (image_width // multiple_of) * multiple_of
                 image_height = (image_height // multiple_of) * multiple_of
-                dest_image = Flux2ImageProcessor.image_processor.preprocess(
+                image_processor = Flux2ImageProcessor()
+                dest_image = image_processor.preprocess(
                     dest_image, height=image_height, width=image_width, resize_mode="crop"
                 )
+                # Convert back to PIL
+                dest_image = dest_image.squeeze(0)
+                if dest_image.min() < 0:
+                    dest_image = (dest_image + 1) / 2
+                dest_image = (torch.clamp(dest_image, 0, 1) * 255).byte().cpu()
+
+                if dest_image.shape[0] == 1:
+                    # Gray scale image
+                    dest_image = Image.fromarray(dest_image.squeeze().numpy(), mode="L")
+                else:
+                    # RGB scale image: (C, H, W) -> (H, W, C)
+                    dest_image = TF.to_pil_image(dest_image)
 
                 dest_image = exif_transpose(dest_image)
                 if not dest_image.mode == "RGB":
@@ -1165,7 +1178,7 @@ def main(args):
         else {"device": accelerator.device, "dtype": weight_dtype}
     )
 
-    is_fsdp = accelerator.state.fsdp_plugin is not None
+    is_fsdp = getattr(accelerator.state, "fsdp_plugin", None) is not None
     if not is_fsdp:
         transformer.to(**transformer_to_kwargs)
 
@@ -1463,9 +1476,9 @@ def main(args):
                     args.instance_prompt, text_encoding_pipeline
                 )
 
-    validation_image = load_image(args.validation_image_path).convert("RGB")
-    validation_kwargs = {"image": validation_image}
     if args.validation_prompt is not None:
+        validation_image = load_image(args.validation_image_path).convert("RGB")
+        validation_kwargs = {"image": validation_image}
         if args.remote_text_encoder:
             validation_kwargs["prompt_embeds"] = compute_remote_text_embeddings(args.validation_prompt)
         else:
@@ -1682,8 +1695,12 @@ def main(args):
                 cond_model_input = (cond_model_input - latents_bn_mean) / latents_bn_std
 
                 model_input_ids = Flux2Pipeline._prepare_latent_ids(model_input).to(device=model_input.device)
-                cond_model_input_ids = Flux2Pipeline._prepare_image_ids(cond_model_input).to(
+                cond_model_input_list = [cond_model_input[i].unsqueeze(0) for i in range(cond_model_input.shape[0])]
+                cond_model_input_ids = Flux2Pipeline._prepare_image_ids(cond_model_input_list).to(
                     device=cond_model_input.device
+                )
+                cond_model_input_ids = cond_model_input_ids.view(
+                    cond_model_input.shape[0], -1, model_input_ids.shape[-1]
                 )
 
                 # Sample noise that we'll add to the latents
@@ -1711,6 +1728,9 @@ def main(args):
                 packed_noisy_model_input = Flux2Pipeline._pack_latents(noisy_model_input)
                 packed_cond_model_input = Flux2Pipeline._pack_latents(cond_model_input)
 
+                orig_input_shape = packed_noisy_model_input.shape
+                orig_input_ids_shape = model_input_ids.shape
+
                 # concatenate the model inputs with the cond inputs
                 packed_noisy_model_input = torch.cat([packed_noisy_model_input, packed_cond_model_input], dim=1)
                 model_input_ids = torch.cat([model_input_ids, cond_model_input_ids], dim=1)
@@ -1729,7 +1749,8 @@ def main(args):
                     img_ids=model_input_ids,  # B, image_seq_len, 4
                     return_dict=False,
                 )[0]
-                model_pred = model_pred[:, : packed_noisy_model_input.size(1) :]
+                model_pred = model_pred[:, : orig_input_shape[1], :]
+                model_input_ids = model_input_ids[:, : orig_input_ids_shape[1], :]
 
                 model_pred = Flux2Pipeline._unpack_latents_with_ids(model_pred, model_input_ids)
 

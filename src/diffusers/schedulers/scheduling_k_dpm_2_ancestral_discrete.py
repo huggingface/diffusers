@@ -52,7 +52,7 @@ class KDPM2AncestralDiscreteSchedulerOutput(BaseOutput):
 def betas_for_alpha_bar(
     num_diffusion_timesteps: int,
     max_beta: float = 0.999,
-    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
+    alpha_transform_type: Literal["cosine", "exp", "laplace"] = "cosine",
 ) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -66,8 +66,8 @@ def betas_for_alpha_bar(
             The number of betas to produce.
         max_beta (`float`, defaults to `0.999`):
             The maximum beta to use; use values lower than 1 to avoid numerical instability.
-        alpha_transform_type (`"cosine"` or `"exp"`, defaults to `"cosine"`):
-            The type of noise schedule for `alpha_bar`. Choose from `cosine` or `exp`.
+        alpha_transform_type (`str`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine`, `exp`, or `laplace`.
 
     Returns:
         `torch.Tensor`:
@@ -77,6 +77,13 @@ def betas_for_alpha_bar(
 
         def alpha_bar_fn(t):
             return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    elif alpha_transform_type == "laplace":
+
+        def alpha_bar_fn(t):
+            lmb = -0.5 * math.copysign(1, 0.5 - t) * math.log(1 - 2 * math.fabs(0.5 - t) + 1e-6)
+            snr = math.exp(lmb)
+            return math.sqrt(snr / (1 + snr))
 
     elif alpha_transform_type == "exp":
 

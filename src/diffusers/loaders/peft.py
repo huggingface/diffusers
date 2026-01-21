@@ -63,9 +63,12 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "HunyuanVideoFramepackTransformer3DModel": lambda model_cls, weights: weights,
     "WanVACETransformer3DModel": lambda model_cls, weights: weights,
     "ChromaTransformer2DModel": lambda model_cls, weights: weights,
+    "ChronoEditTransformer3DModel": lambda model_cls, weights: weights,
     "QwenImageTransformer2DModel": lambda model_cls, weights: weights,
     "Flux2Transformer2DModel": lambda model_cls, weights: weights,
     "ZImageTransformer2DModel": lambda model_cls, weights: weights,
+    "LTX2VideoTransformer3DModel": lambda model_cls, weights: weights,
+    "LTX2TextConnectors": lambda model_cls, weights: weights,
 }
 
 
@@ -475,7 +478,7 @@ class PeftAdapterMixin:
         Args:
             adapter_names (`List[str]` or `str`):
                 The names of the adapters to use.
-            adapter_weights (`Union[List[float], float]`, *optional*):
+            weights (`Union[List[float], float]`, *optional*):
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
                 adapters.
 
@@ -492,7 +495,7 @@ class PeftAdapterMixin:
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.unet.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
+        pipeline.unet.set_adapters(["cinematic", "pixel"], weights=[0.5, 0.5])
         ```
         """
         if not USE_PEFT_BACKEND:

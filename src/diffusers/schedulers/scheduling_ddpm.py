@@ -48,7 +48,7 @@ class DDPMSchedulerOutput(BaseOutput):
 def betas_for_alpha_bar(
     num_diffusion_timesteps: int,
     max_beta: float = 0.999,
-    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
+    alpha_transform_type: Literal["cosine", "exp", "laplace"] = "cosine",
 ) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -62,8 +62,8 @@ def betas_for_alpha_bar(
             The number of betas to produce.
         max_beta (`float`, defaults to `0.999`):
             The maximum beta to use; use values lower than 1 to avoid numerical instability.
-        alpha_transform_type (`"cosine"` or `"exp"`, defaults to `"cosine"`):
-            The type of noise schedule for `alpha_bar`. Choose from `cosine` or `exp`.
+        alpha_transform_type (`str`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine`, `exp`, or `laplace`.
 
     Returns:
         `torch.Tensor`:
@@ -73,6 +73,13 @@ def betas_for_alpha_bar(
 
         def alpha_bar_fn(t):
             return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    elif alpha_transform_type == "laplace":
+
+        def alpha_bar_fn(t):
+            lmb = -0.5 * math.copysign(1, 0.5 - t) * math.log(1 - 2 * math.fabs(0.5 - t) + 1e-6)
+            snr = math.exp(lmb)
+            return math.sqrt(snr / (1 + snr))
 
     elif alpha_transform_type == "exp":
 
@@ -185,7 +192,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule: Literal["linear", "scaled_linear", "squaredcos_cap_v2", "sigmoid"] = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         variance_type: Literal[
-            "fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"
+            "fixed_small",
+            "fixed_small_log",
+            "fixed_large",
+            "fixed_large_log",
+            "learned",
+            "learned_range",
         ] = "fixed_small",
         clip_sample: bool = True,
         prediction_type: Literal["epsilon", "sample", "v_prediction"] = "epsilon",
@@ -203,10 +215,20 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            self.betas = (
+                torch.linspace(
+                    beta_start**0.5,
+                    beta_end**0.5,
+                    num_train_timesteps,
+                    dtype=torch.float32,
+                )
+                ** 2
+            )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
+        elif beta_schedule == "laplace":
+            self.betas = betas_for_alpha_bar(num_train_timesteps, alpha_transform_type="laplace")
         elif beta_schedule == "sigmoid":
             # GeoDiff sigmoid schedule
             betas = torch.linspace(-6, 6, num_train_timesteps)
@@ -328,7 +350,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         t: int,
         predicted_variance: Optional[torch.Tensor] = None,
         variance_type: Optional[
-            Literal["fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"]
+            Literal[
+                "fixed_small",
+                "fixed_small_log",
+                "fixed_large",
+                "fixed_large_log",
+                "learned",
+                "learned_range",
+            ]
         ] = None,
     ) -> torch.Tensor:
         """
@@ -463,7 +492,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         prev_t = self.previous_timestep(t)
 
-        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
+        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in [
+            "learned",
+            "learned_range",
+        ]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
         else:
             predicted_variance = None
@@ -512,7 +544,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         if t > 0:
             device = model_output.device
             variance_noise = randn_tensor(
-                model_output.shape, generator=generator, device=device, dtype=model_output.dtype
+                model_output.shape,
+                generator=generator,
+                device=device,
+                dtype=model_output.dtype,
             )
             if self.variance_type == "fixed_small_log":
                 variance = self._get_variance(t, predicted_variance=predicted_variance) * variance_noise

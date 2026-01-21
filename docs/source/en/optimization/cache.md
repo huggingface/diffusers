@@ -68,6 +68,20 @@ config = FasterCacheConfig(
 pipeline.transformer.enable_cache(config)
 ```
 
+## FirstBlockCache
+
+[FirstBlock Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) checks how much the early layers of the denoiser changes from one timestep to the next. If the change is small, the model skips the expensive later layers and reuses the previous output.
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.hooks import apply_first_block_cache, FirstBlockCacheConfig
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "Qwen/Qwen-Image", torch_dtype=torch.bfloat16
+)
+apply_first_block_cache(pipeline.transformer, FirstBlockCacheConfig(threshold=0.2))
+```
 ## TaylorSeer Cache
 
 [TaylorSeer Cache](https://huggingface.co/papers/2403.06923) accelerates diffusion inference by using Taylor series expansions to approximate and cache intermediate activations across denoising steps. The method predicts future outputs based on past computations, reusing them at specified intervals to reduce redundant calculations.
@@ -87,8 +101,7 @@ from diffusers import FluxPipeline, TaylorSeerCacheConfig
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     torch_dtype=torch.bfloat16,
-)
-pipe.to("cuda")
+).to("cuda")
 
 config = TaylorSeerCacheConfig(
     cache_interval=5,
