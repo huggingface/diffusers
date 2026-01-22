@@ -379,13 +379,19 @@ class GlmImagePipeline(DiffusionPipeline):
         ).to(device)
 
         image_grid_thw = inputs.get("image_grid_thw")
+        images_per_sample = inputs.get("images_per_sample")
 
-        # For homogeneous batch, all samples have the same number of condition images
+        # Determine number of grids per sample
+        # For homogeneous batch, all samples have the same structure
         num_condition_images = len(image[0]) if image is not None and len(image) > 0 else 0
-        num_grids_per_sample = num_condition_images + 1  # condition images + target
+        if images_per_sample is not None:
+            num_grids_per_sample = images_per_sample[0].item()
+        else:
+            # Fallback for batch_size=1: total grids is for single sample
+            num_grids_per_sample = image_grid_thw.shape[0]
 
         # Compute generation params (same for all samples in homogeneous batch)
-        first_sample_grids = image_grid_thw[:num_grids_per_sample] if batch_size > 1 else image_grid_thw
+        first_sample_grids = image_grid_thw[:num_grids_per_sample]
         max_new_tokens, large_image_offset, token_h, token_w = self._compute_generation_params(
             image_grid_thw=first_sample_grids, is_text_to_image=is_text_to_image
         )
