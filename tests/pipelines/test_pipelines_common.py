@@ -2212,7 +2212,7 @@ class PipelineTesterMixin:
 
     @require_hf_hub_version_greater("0.26.5")
     @require_transformers_version_greater("4.47.1")
-    def test_save_load_dduf(self, atol=1e-3, rtol=1e-3):
+    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
         if not self.supports_dduf:
             return
 
