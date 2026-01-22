@@ -49,6 +49,12 @@ class ModularPipelineTesterMixin:
         )
 
     @property
+    def default_repo_id(self) -> str:
+        raise NotImplementedError(
+            "You need to set the attribute `default_repo_id` in the child test class. See existing pipeline tests for reference."
+        )
+
+    @property
     def pipeline_blocks_class(self) -> Union[Callable, ModularPipelineBlocks]:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_blocks_class = ClassNameOfPipelineBlocks` in the child test class. "
@@ -90,6 +96,30 @@ class ModularPipelineTesterMixin:
             "See existing pipeline tests for reference."
         )
 
+    def text_encoder_block_params(self) -> frozenset:
+        raise NotImplementedError(
+            "You need to set the attribute `text_encoder_block_params` in the child test class. "
+            "`text_encoder_block_params` are the parameters required to be passed to the text encoder block. "
+            " if should be a subset of the parameters returned by `get_dummy_inputs`"
+            "See existing pipeline tests for reference."
+        )
+    
+    def decode_block_params(self) -> frozenset:
+        raise NotImplementedError(
+            "You need to set the attribute `decode_block_params` in the child test class. "
+            "`decode_block_params` are the parameters required to be passed to the decode block. "
+            " if should be a subset of the parameters returned by `get_dummy_inputs`"
+            "See existing pipeline tests for reference."
+        )
+    
+    def vae_encoder_block_params(self) -> frozenset:
+        raise NotImplementedError(
+            "You need to set the attribute `vae_encoder_block_params` in the child test class. "
+            "`vae_encoder_block_params` are the parameters required to be passed to the vae encoder block. "
+            " if should be a subset of the parameters returned by `get_dummy_inputs`"
+            "See existing pipeline tests for reference."
+        )
+
     def setup_method(self):
         # clean up the VRAM before each test
         torch.compiler.reset()
@@ -124,6 +154,98 @@ class ModularPipelineTesterMixin:
         _check_for_parameters(self.params, input_parameters, "input")
         _check_for_parameters(self.optional_params, optional_parameters, "optional")
 
+    def test_loading_from_default_repo(self):
+        if self.default_repo_id is None:
+            return
+
+        try:
+            pipe = ModularPipeline.from_pretrained(self.default_repo_id)
+            assert pipe.blocks.__class__ == self.pipeline_blocks_class
+        except Exception as e:
+            assert False, f"Failed to load pipeline from default repo: {e}"
+
+
+ 
+    def test_modular_inference(self):
+
+        # run the pipeline to get the base output for comparison
+        pipe = self.get_pipeline()
+        pipe.to(torch_device, torch.float32)
+
+        inputs = self.get_dummy_inputs()
+        standard_output = pipe(**inputs, output="images")
+
+        # create text, denoise, decoder (and optional vae encoder) nodes
+        blocks = self.pipeline_blocks_class()
+
+        assert "text_encoder" in blocks.sub_blocks, "`text_encoder` block is not present in the pipeline"
+        assert "denoise" in blocks.sub_blocks, "`denoise` block is not present in the pipeline"
+        assert "decode" in blocks.sub_blocks, "`decode` block is not present in the pipeline"
+        if self.vae_encoder_block_params is not None:
+            assert "vae_encoder" in blocks.sub_blocks, "`vae_encoder` block is not present in the pipeline"
+
+        # manually set the components in the sub_pipe
+        # a hack to workaround the fact the default pipeline properties are often incorrect for testing cases, 
+        # #e.g. vae_scale_factor is ususally not 8 because vae is configured to be smaller for testing
+        def manually_set_all_components(pipe: ModularPipeline, sub_pipe: ModularPipeline):
+            for n, comp in pipe.components.items():
+                if not hasattr(sub_pipe, n):
+                    setattr(sub_pipe, n, comp)
+
+        text_node = blocks.sub_blocks["text_encoder"].init_pipeline(self.pretrained_model_name_or_path)
+        text_node.load_components(torch_dtype=torch.float32)
+        text_node.to(torch_device)
+        manually_set_all_components(pipe, text_node)
+
+        denoise_node = blocks.sub_blocks["denoise"].init_pipeline(self.pretrained_model_name_or_path)
+        denoise_node.load_components(torch_dtype=torch.float32)
+        denoise_node.to(torch_device)
+        manually_set_all_components(pipe, denoise_node)
+    
+        decoder_node = blocks.sub_blocks["decode"].init_pipeline(self.pretrained_model_name_or_path)
+        decoder_node.load_components(torch_dtype=torch.float32)
+        decoder_node.to(torch_device)
+        manually_set_all_components(pipe, decoder_node)
+
+        if self.vae_encoder_block_params is not None:
+            vae_encoder_node = blocks.sub_blocks["vae_encoder"].init_pipeline(self.pretrained_model_name_or_path)
+            vae_encoder_node.load_components(torch_dtype=torch.float32)
+            vae_encoder_node.to(torch_device)
+            manually_set_all_components(pipe, vae_encoder_node)
+        else:
+            vae_encoder_node = None
+        
+        # prepare inputs for each node
+        inputs = self.get_dummy_inputs()
+
+        def get_block_inputs(inputs: dict, block_params: frozenset) -> tuple[dict, dict]:
+            block_inputs = {}
+            for name in block_params:
+                if name in inputs:
+                    block_inputs[name] = inputs.pop(name)
+            return block_inputs, inputs
+
+        text_inputs, inputs = get_block_inputs(inputs, self.text_encoder_block_params)
+        decoder_inputs, inputs = get_block_inputs(inputs, self.decode_block_params)
+        if vae_encoder_node is not None:
+            vae_encoder_inputs, inputs = get_block_inputs(inputs, self.vae_encoder_block_params)
+
+        # this is also to make sure pipelines mark text outputs as denoiser_input_fields
+        text_output = text_node(**text_inputs).get_by_kwargs("denoiser_input_fields")
+        if vae_encoder_node is not None:
+            vae_encoder_output = vae_encoder_node(**vae_encoder_inputs).values
+            denoise_inputs = {**text_output, **vae_encoder_output, **inputs}
+        else:
+            denoise_inputs = {**text_output, **inputs}
+
+        # denoise node output should be "latents"
+        latents = denoise_node(**denoise_inputs).latents
+        # denoder node input should be "latents" and output should be "images"
+        modular_output = decoder_node(**decoder_inputs, latents=latents).images
+
+        assert modular_output.shape == standard_output.shape, f"Modular output should have same shape as standard output {standard_output.shape}, but got {modular_output.shape}"
+ 
+ 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
         pipe = self.get_pipeline().to(torch_device)
 

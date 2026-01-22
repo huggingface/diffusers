@@ -32,9 +32,14 @@ class TestFlux2ModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Flux2ModularPipeline
     pipeline_blocks_class = Flux2AutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-modular"
+    default_repo_id = "black-forest-labs/FLUX.2-dev"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_params = frozenset(["prompt"])
+    # should choose from the dict returned by `get_dummy_inputs`
+    text_encoder_block_params = frozenset(["prompt", "max_sequence_length", "text_encoder_out_layers"])
+    decode_block_params = frozenset(["output_type"])
+    vae_encoder_block_params = None 
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
@@ -63,6 +68,10 @@ class TestFlux2ImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
+    # should choose from the dict returned by `get_dummy_inputs`
+    text_encoder_block_params = frozenset(["prompt", "max_sequence_length", "text_encoder_out_layers"])
+    decode_block_params = frozenset(["output_type"])
+    vae_encoder_block_params = frozenset(["image", "height", "width"])
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)

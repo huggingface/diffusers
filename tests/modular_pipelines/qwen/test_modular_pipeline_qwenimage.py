@@ -34,9 +34,15 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuider
     pipeline_class = QwenImageModularPipeline
     pipeline_blocks_class = QwenImageAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-modular"
+    default_repo_id = "Qwen/Qwen-Image"
 
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
+
+    # should choose from the dict returned by `get_dummy_inputs`
+    text_encoder_block_params = frozenset(["prompt", "negative_prompt", "max_sequence_length"])
+    decode_block_params = frozenset(["output_type"])
+    vae_encoder_block_params = None # None if vae_encoder is not supported
 
     def get_dummy_inputs(self):
         generator = self.get_generator()
@@ -60,9 +66,15 @@ class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGu
     pipeline_class = QwenImageEditModularPipeline
     pipeline_blocks_class = QwenImageEditAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-modular"
+    default_repo_id = "Qwen/Qwen-Image-Edit"
 
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
+
+    # should choose from the dict returned by `get_dummy_inputs`
+    text_encoder_block_params = frozenset(["prompt", "negative_prompt", "max_sequence_length"])
+    decode_block_params = frozenset(["output_type"])
+    vae_encoder_block_params = frozenset(["image", "height", "width"])
 
     def get_dummy_inputs(self):
         generator = self.get_generator()
@@ -86,6 +98,7 @@ class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, Modul
     pipeline_class = QwenImageEditPlusModularPipeline
     pipeline_blocks_class = QwenImageEditPlusAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-plus-modular"
+    default_repo_id = "Qwen/Qwen-Image-Edit-2509"
 
     # No `mask_image` yet.
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image"])
