@@ -246,6 +246,7 @@ class CosmosAttnProcessor2_5(CosmosAttnProcessor2_0):
         img_context=None,
         attention_mask=None,
     ):
+        print("compute_attn_i2v", flush=True)
         q_img = attn.q_img(hidden_states)
         k_img = attn.k_img(img_context)
         v_img = attn.v_img(img_context)
@@ -293,7 +294,10 @@ class CosmosAttnProcessor2_5(CosmosAttnProcessor2_0):
             image_rotary_emb=image_rotary_emb,
         )
 
+        # TODO: fixme
+        # NOTE: img_context should be zeros
         if img_context is not None:
+            print("compute_attn_i2v", flush=True)
             img_out = self.compute_attn_i2v(
                 attn=attn,
                 hidden_states=hidden_states,
@@ -416,7 +420,7 @@ class CosmosTransformerBlock(nn.Module):
         block_idx: Optional[int] = None,
     ) -> torch.Tensor:
         if self.before_proj is not None:
-            hidden_states = self.before_proj(hidden_states)
+            hidden_states = self.before_proj(hidden_states) + hidden_states
             print(f"before_proj, block_idx={block_idx}")
 
         if extra_pos_emb is not None:
@@ -824,6 +828,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         post_patch_width = prepared_inputs["post_patch_width"]
 
         # 5. Transformer blocks
+        hidden_states = prepared_inputs["hidden_states"]
         for block_idx, block in enumerate(self.transformer_blocks):
             controlnet_residual = controlnet_block_index_map.get(block_idx)
             if controlnet_residual is not None:
@@ -831,7 +836,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
                     block,
-                    prepared_inputs["hidden_states"],
+                    hidden_states,
                     prepared_inputs["encoder_hidden_states"],
                     prepared_inputs["embedded_timestep"],
                     prepared_inputs["temb"],
@@ -842,7 +847,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 )
             else:
                 hidden_states = block(
-                    prepared_inputs["hidden_states"],
+                    hidden_states,
                     prepared_inputs["encoder_hidden_states"],
                     prepared_inputs["embedded_timestep"],
                     prepared_inputs["temb"],

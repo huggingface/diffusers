@@ -511,10 +511,9 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
             num_cond_latent_frames = (num_frames_in - 1) // self.vae_scale_factor_temporal + 1
             cond_indicator = latents.new_zeros(1, 1, latents.size(2), 1, 1)
+            # TODO: add num_cond_frames as a parameter
             # cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0
-            # TODO: modify cond_mask per chunk
-            # cond_mask = cond_indicator * ones_padding + (1 - cond_indicator) * zeros_padding
-            cond_mask = zeros_padding  # TODO this is what i4 uses
+            cond_mask = cond_indicator * ones_padding + (1 - cond_indicator) * zeros_padding
 
             return (
                 latents,
@@ -865,11 +864,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                 in_latents = in_latents.to(transformer_dtype)
-                # in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
-                # NOTE: replace velocity (noise_pred) with gt_velocity for conditioning inputs only
-                in_latents = (0.5 * torch.ones((1, 16, 24, 88, 120))).cuda().to(dtype=transformer_dtype)
-                in_timestep = (torch.ones((1, 1, 24, 1, 1)) * 0.966).cuda().to(dtype=transformer_dtype)
-                breakpoint()
+                in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
                 noise_pred = transfer2_5_forward(
                     transformer=self.transformer,
                     controlnet=self.controlnet,
@@ -882,7 +877,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                     padding_mask=padding_mask
                 )
                 noise_pred = gt_velocity + noise_pred * (1 - cond_mask)
-                breakpoint()
 
                 if self.do_classifier_free_guidance:
                     noise_pred_neg = transfer2_5_forward(
@@ -892,7 +886,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                         controls_latents=controls_latents,
                         controls_conditioning_scale=controls_conditioning_scale,
                         in_timestep=in_timestep,
-                        encoder_hidden_states=neg_encoder_hidden_states,
+                        encoder_hidden_states=neg_encoder_hidden_states,  # NOTE: negative prompt
                         cond_mask=cond_mask,
                         padding_mask=padding_mask
                     )
