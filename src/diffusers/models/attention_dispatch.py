@@ -2195,20 +2195,18 @@ def _native_attention(
         attn_mask = attn_mask.unsqueeze(1).unsqueeze(1)
 
     if _parallel_config is None:
-        out = npu_fusion_attention(
-            query,
-            key,
-            value,
-            query.size(2),  # num_heads
-            input_layout="BSND",
-            pse=None,
-            scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
-            pre_tockens=65536,
-            next_tockens=65536,
-            keep_prob=1.0 - dropout_p,
-            sync=False,
-            inner_precise=0,
-        )[0]
+        query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+        out = torch.nn.functional.scaled_dot_product_attention(
+            query=query,
+            key=key,
+            value=value,
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+            is_causal=is_causal,
+            scale=scale,
+            enable_gqa=enable_gqa,
+        )
+        out = out.permute(0, 2, 1, 3)
     else:
         out = _templated_context_parallel_attention(
             query,
