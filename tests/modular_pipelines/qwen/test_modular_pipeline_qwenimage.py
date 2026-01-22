@@ -42,7 +42,7 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuider
     # should choose from the dict returned by `get_dummy_inputs`
     text_encoder_block_params = frozenset(["prompt", "negative_prompt", "max_sequence_length"])
     decode_block_params = frozenset(["output_type"])
-    vae_encoder_block_params = None # None if vae_encoder is not supported
+    vae_encoder_block_params = None  # None if vae_encoder is not supported
 
     def get_dummy_inputs(self):
         generator = self.get_generator()

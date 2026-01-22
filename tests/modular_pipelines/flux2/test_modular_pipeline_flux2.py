@@ -39,7 +39,7 @@ class TestFlux2ModularPipelineFast(ModularPipelineTesterMixin):
     # should choose from the dict returned by `get_dummy_inputs`
     text_encoder_block_params = frozenset(["prompt", "max_sequence_length", "text_encoder_out_layers"])
     decode_block_params = frozenset(["output_type"])
-    vae_encoder_block_params = None 
+    vae_encoder_block_params = None
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
