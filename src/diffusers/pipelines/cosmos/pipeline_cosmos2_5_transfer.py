@@ -76,15 +76,15 @@ def retrieve_latents(
 
 # TODO: move this to a utility module aka Transfer2_5 model ?
 def transfer2_5_forward(
-    transformer,
-    controlnet,
-    in_latents,
-    controls_latents,
-    controls_conditioning_scale,
-    in_timestep,
-    encoder_hidden_states,
-    cond_mask,
-    padding_mask,
+    transformer: CosmosTransformer3DModel,
+    controlnet: CosmosControlNetModel,
+    in_latents: torch.Tensor,
+    controls_latents: torch.Tensor,
+    controls_conditioning_scale: list[float],
+    in_timestep: torch.Tensor,
+    encoder_hidden_states: tuple[torch.Tensor | None, torch.Tensor | None] | None,
+    cond_mask: torch.Tensor,
+    padding_mask: torch.Tensor,
 ):
     control_blocks = None
     prepared_inputs = transformer.prepare_inputs(
@@ -97,7 +97,7 @@ def transfer2_5_forward(
     if controls_latents is not None:
         control_blocks = controlnet(
             controls_latents=controls_latents,
-            latents=in_latents,
+            latents=prepared_inputs["hidden_states"],
             conditioning_scale=controls_conditioning_scale,
             condition_mask=cond_mask,
             padding_mask=padding_mask,
