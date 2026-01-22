@@ -1127,6 +1127,25 @@ def _npu_attention_forward_op(
 ):
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
+    
+    # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
+    if (
+        attn_mask is not None
+        and torch.all(attn_mask != 0).item()
+    ):
+        attn_mask = None
+
+    # Reshape Attention Mask: [batch_size, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
+    # https://www.hiascend.com/document/detail/zh/Pytorch/730/apiref/torchnpuCustomsapi/docs/context/torch_npu-npu_fusion_attention.md
+    if (
+        attn_mask is not None
+        and attn_mask.ndim == 2
+        and attn_mask.shape[0] == query.shape[0]
+        and attn_mask.shape[1] == key.shape[1]
+    ):
+        B, Sq, Skv = attn_mask.shape[0], query.shape[1], key.shape[1]
+        attn_mask = ~attn_mask.to(torch.bool)
+        attn_mask = attn_mask.unsqueeze(1).expand(B, Sq, Skv).unsqueeze(1).contiguous()
 
     out = npu_fusion_attention(
         query,
@@ -2422,21 +2441,28 @@ def _native_npu_attention(
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    if attn_mask is not None:
-        # https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0034.html
-        q_seqlen, kv_seqlen = query.size(-2), key.size(-2)
-
-        if attn_mask.dim() not in [2, 4] or attn_mask.size(-2) != q_seqlen or attn_mask.size(-1) != kv_seqlen:
-            if torch.all(attn_mask != 0).item():
-                attn_mask = None
-            else:
-                raise ValueError("The attn_mask must be a 2D tensor with shape [q_seqlen, kv_seqlen],"
-                                        " or a 4D tensor with shape [batch_size, num_heads, q_seqlen, kv_seqlen]")
-        else:
-            attn_mask = ~attn_mask.to(torch.bool)
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
     if _parallel_config is None:
+        # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
+        if (
+            attn_mask is not None
+            and torch.all(attn_mask != 0).item()
+        ):
+            attn_mask = None
+
+        # Reshape Attention Mask: [batch_size, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
+        # https://www.hiascend.com/document/detail/zh/Pytorch/730/apiref/torchnpuCustomsapi/docs/context/torch_npu-npu_fusion_attention.md
+        if (
+            attn_mask is not None
+            and attn_mask.ndim == 2
+            and attn_mask.shape[0] == query.shape[0]
+            and attn_mask.shape[1] == key.shape[1]
+        ):
+            B, Sq, Skv = attn_mask.shape[0], query.shape[1], key.shape[1]
+            attn_mask = ~attn_mask.to(torch.bool)
+            attn_mask = attn_mask.unsqueeze(1).expand(B, Sq, Skv).unsqueeze(1).contiguous()
+        
         out = npu_fusion_attention(
             query,
             key,
