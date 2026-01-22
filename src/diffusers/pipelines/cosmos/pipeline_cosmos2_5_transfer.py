@@ -732,8 +732,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 width = int((height + 16) * (frame.shape[2] / frame.shape[1]))  # NOTE: assuming C H W
 
         # Check inputs. Raise error if not correct
-        print("width=", width, "height=", height)
-        # breakpoint()
         self.check_inputs(prompt, height, width, prompt_embeds, callback_on_step_end_tensor_inputs)
 
         self._guidance_scale = guidance_scale
