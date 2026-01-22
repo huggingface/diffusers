@@ -233,6 +233,7 @@ _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("mo
 _av_available, _av_version = _is_package_available("av")
 _flashpack_available, _flashpack_version = _is_package_available("flashpack")
 
+
 def is_torch_available():
     return _torch_available
 
@@ -424,8 +425,10 @@ def is_kornia_available():
 def is_av_available():
     return _av_available
 
+
 def is_flashpack_available():
     return _flashpack_available
+
 
 # docstyle-ignore
 FLAX_IMPORT_ERROR = """
@@ -943,6 +946,7 @@ def is_aiter_version(operation: str, version: str):
         return False
     return compare_versions(parse(_aiter_version), operation, version)
 
+
 @cache
 def is_flashpack_version(operation: str, version: str):
     """
@@ -951,6 +955,7 @@ def is_flashpack_version(operation: str, version: str):
     if not _flashpack_available:
         return False
     return compare_versions(parse(_flashpack_version), operation, version)
+
 
 def get_objects_from_module(module):
     """

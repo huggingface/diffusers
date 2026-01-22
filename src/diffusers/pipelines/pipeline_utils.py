@@ -270,8 +270,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
             use_flashpack (`bool`, *optional*, defaults to `False`):
-                Whether or not to use `flashpack` to save the model weights. Requires the `flashpack` library: `pip install
-                flashpack`.
+                Whether or not to use `flashpack` to save the model weights. Requires the `flashpack` library: `pip
+                install flashpack`.
             kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """

@@ -1,11 +1,14 @@
 import json
 import os
 from typing import Optional
+
+from ..utils import _add_variant
 from .import_utils import is_flashpack_available
 from .logging import get_logger
-from ..utils import _add_variant
+
 
 logger = get_logger(__name__)
+
 
 def save_flashpack(
     model,
@@ -54,30 +57,25 @@ def save_flashpack(
                     json.dump(config_data, f, indent=4)
 
             except Exception as config_err:
-                logger.warning(
-                    f"FlashPack weights saved, but config serialization failed: {config_err}"
-                )
+                logger.warning(f"FlashPack weights saved, but config serialization failed: {config_err}")
 
     except Exception as e:
         logger.error(f"Failed to save weights in FlashPack format: {e}")
         raise
+
 
 def load_flashpack(model, flashpack_file: str):
     """
     Assign FlashPack weights from a file into an initialized PyTorch model.
     """
     if not is_flashpack_available():
-        raise ImportError(
-            "FlashPack weights require the `flashpack` package. "
-            "Install with `pip install flashpack`."
-        )
+        raise ImportError("FlashPack weights require the `flashpack` package. Install with `pip install flashpack`.")
 
     from flashpack import assign_from_file
+
     logger.warning(f"Loading FlashPack weights from {flashpack_file}")
 
     try:
         assign_from_file(model, flashpack_file)
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to load FlashPack weights from {flashpack_file}"
-        ) from e
+        raise RuntimeError(f"Failed to load FlashPack weights from {flashpack_file}") from e

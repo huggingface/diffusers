@@ -709,9 +709,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
             use_flashpack (`bool`, *optional*, defaults to `False`):
-                Whether to save the model in [FlashPack](https://github.com/fal-ai/flashpack) format.
-                FlashPack is a binary format that allows for faster loading.
-                Requires the `flashpack` library to be installed.
+                Whether to save the model in [FlashPack](https://github.com/fal-ai/flashpack) format. FlashPack is a
+                binary format that allows for faster loading. Requires the `flashpack` library to be installed.
             kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
@@ -743,6 +742,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if not is_main_process:
                 return
             from ..utils.flashpack_utils import save_flashpack
+
             save_flashpack(
                 self,
                 save_directory,
@@ -953,9 +953,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 `safetensors` library is installed. If set to `True`, the model is forcibly loaded from `safetensors`
                 weights. If set to `False`, `safetensors` weights are not loaded.
             use_flashpack (`bool`, *optional*, defaults to `False`):
-                If set to `True`, the model is first loaded from  `flashpack` (https://github.com/fal-ai/flashpack) weights if a compatible `.flashpack` file
-                is found. If flashpack is unavailable or the `.flashpack` file cannot be used, automatic fallback to
-                the standard loading path (for example, `safetensors`).
+                If set to `True`, the model is first loaded from `flashpack` (https://github.com/fal-ai/flashpack)
+                weights if a compatible `.flashpack` file is found. If flashpack is unavailable or the `.flashpack`
+                file cannot be used, automatic fallback to the standard loading path (for example, `safetensors`).
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
@@ -1279,7 +1279,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         logger.warning(
                             "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
                         )
-                    
+
                 if resolved_model_file is None and not is_sharded:
                     resolved_model_file = _get_model_file(
                         pretrained_model_name_or_path,
@@ -1323,12 +1323,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if flashpack_file is not None:
             from ..utils.flashpack_utils import load_flashpack
+
             # Even when using FlashPack, we preserve `low_cpu_mem_usage` behavior by initializing
             # the model with meta tensors. Since FlashPack cannot write into meta tensors, we
             # explicitly materialize parameters before loading to ensure correctness and parity
             # with the standard loading path.
             if any(p.device.type == "meta" for p in model.parameters()):
-                 model.to_empty(device="cpu")
+                model.to_empty(device="cpu")
             load_flashpack(model, flashpack_file)
             model.register_to_config(_name_or_path=pretrained_model_name_or_path)
             model.eval()
@@ -1434,11 +1435,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if output_loading_info:
             return model, loading_info
-        
+
         logger.warning(f"Model till end {pretrained_model_name_or_path} loaded successfully")
 
         return model
-
 
     # Adapted from `transformers`.
     @wraps(torch.nn.Module.cuda)
