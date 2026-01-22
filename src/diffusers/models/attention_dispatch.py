@@ -2422,7 +2422,6 @@ def _native_npu_attention(
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    # attn_mask = None
     if attn_mask is not None:
         # https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0034.html
         q_seqlen, kv_seqlen = query.size(-2), key.size(-2)
