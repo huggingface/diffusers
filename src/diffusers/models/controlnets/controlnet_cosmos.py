@@ -79,7 +79,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     def forward(
         self,
         controls_latents: torch.Tensor,
-        latents: torch.Tensor,  # TODO: removeme
+        latents: torch.Tensor,
         conditioning_scale: Union[float, List[float]] = 1.0,
         condition_mask: Optional[torch.Tensor] = None,
         padding_mask: Optional[torch.Tensor] = None,
@@ -145,6 +145,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 attention_mask=attention_mask,
                 controlnet_residual=None,
                 block_idx=block_idx,
+                latents=latents,
             )
             result.append(control_hidden_states * scale)
         return result

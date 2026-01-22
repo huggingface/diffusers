@@ -417,10 +417,11 @@ class CosmosTransformerBlock(nn.Module):
         extra_pos_emb: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         controlnet_residual: Optional[torch.Tensor] = None,
+        latents: Optional[torch.Tensor] = None,
         block_idx: Optional[int] = None,
     ) -> torch.Tensor:
         if self.before_proj is not None:
-            hidden_states = self.before_proj(hidden_states) + hidden_states
+            hidden_states = self.before_proj(hidden_states) + latents
             print(f"before_proj, block_idx={block_idx}")
 
         if extra_pos_emb is not None:
@@ -443,14 +444,14 @@ class CosmosTransformerBlock(nn.Module):
         ff_output = self.ff(norm_hidden_states)
         hidden_states = hidden_states + gate * ff_output
 
-        if controlnet_residual is not None:
-            # NOTE: this is assumed to be scaled by the controlnet
-            # print("controlnet_residual")
-            hidden_states += controlnet_residual
-
         if self.after_proj is not None:
             hidden_states = self.after_proj(hidden_states)
             print(f"after_proj, block_idx={block_idx}")
+
+        if controlnet_residual is not None:
+            # NOTE: this is assumed to be scaled by the controlnet
+            print("controlnet_residual", flush=True)
+            hidden_states += controlnet_residual
 
         return hidden_states
 
@@ -794,6 +795,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         fps: Optional[int] = None,
         condition_mask: Optional[torch.Tensor] = None,
         padding_mask: Optional[torch.Tensor] = None,
+        latents: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         prepared_inputs = self.prepare_inputs(
@@ -844,6 +846,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     prepared_inputs["extra_pos_emb"],
                     prepared_inputs["attention_mask"],
                     controlnet_residual,
+                    latents,
                 )
             else:
                 hidden_states = block(
@@ -854,7 +857,8 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     prepared_inputs["image_rotary_emb"],
                     prepared_inputs["extra_pos_emb"],
                     prepared_inputs["attention_mask"],
-                    controlnet_residual=controlnet_residual,
+                    controlnet_residual,
+                    latents,
                 )
 
         temb = prepared_inputs["temb"]
