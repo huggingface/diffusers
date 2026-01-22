@@ -419,7 +419,7 @@ class CosmosTransformerBlock(nn.Module):
         controlnet_residual: Optional[torch.Tensor] = None,
         latents: Optional[torch.Tensor] = None,
         block_idx: Optional[int] = None,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         if self.before_proj is not None:
             hidden_states = self.before_proj(hidden_states) + latents
             print(f"before_proj, block_idx={block_idx}")
@@ -445,8 +445,10 @@ class CosmosTransformerBlock(nn.Module):
         hidden_states = hidden_states + gate * ff_output
 
         if self.after_proj is not None:
-            hidden_states = self.after_proj(hidden_states)
+            assert controlnet_residual is None
+            hs_proj = self.after_proj(hidden_states)
             print(f"after_proj, block_idx={block_idx}")
+            return hidden_states, hs_proj
 
         if controlnet_residual is not None:
             # NOTE: this is assumed to be scaled by the controlnet
@@ -846,7 +848,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     prepared_inputs["extra_pos_emb"],
                     prepared_inputs["attention_mask"],
                     controlnet_residual,
-                    latents,
                 )
             else:
                 hidden_states = block(
@@ -858,7 +859,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     prepared_inputs["extra_pos_emb"],
                     prepared_inputs["attention_mask"],
                     controlnet_residual,
-                    latents,
                 )
 
         temb = prepared_inputs["temb"]

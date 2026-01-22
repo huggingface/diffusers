@@ -135,7 +135,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         scales = self._expand_conditioning_scale(conditioning_scale)
         result = []
         for block_idx, (block, scale) in enumerate(zip(self.control_blocks, scales)):
-            control_hidden_states = block(
+            control_hidden_states, control_proj = block(
                 hidden_states=control_hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 embedded_timestep=embedded_timestep,
@@ -147,5 +147,5 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 block_idx=block_idx,
                 latents=latents,
             )
-            result.append(control_hidden_states * scale)
+            result.append(control_proj * scale)
         return result
