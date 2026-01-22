@@ -1111,23 +1111,11 @@ def _sage_attention_backward_op(
     raise NotImplementedError("Backward pass is not implemented for Sage attention.")
 
 
-def _npu_attention_forward_op(
-    ctx: torch.autograd.function.FunctionCtx,
+def _maybe_modify_attn_mask_npu(
     query: torch.Tensor,
     key: torch.Tensor,
-    value: torch.Tensor,
-    attn_mask: Optional[torch.Tensor] = None,
-    dropout_p: float = 0.0,
-    is_causal: bool = False,
-    scale: Optional[float] = None,
-    enable_gqa: bool = False,
-    return_lse: bool = False,
-    _save_ctx: bool = True,
-    _parallel_config: Optional["ParallelConfig"] = None,
+    attn_mask: Optional[torch.Tensor] = None
 ):
-    if return_lse:
-        raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
-    
     # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
     if (attn_mask is not None and torch.all(attn_mask != 0)):
         attn_mask = None
@@ -1143,6 +1131,28 @@ def _npu_attention_forward_op(
         B, Sq, Skv = attn_mask.shape[0], query.shape[1], key.shape[1]
         attn_mask = ~attn_mask.to(torch.bool)
         attn_mask = attn_mask.unsqueeze(1).expand(B, Sq, Skv).unsqueeze(1).contiguous()
+    
+    return attn_mask
+
+
+def _npu_attention_forward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+    _save_ctx: bool = True,
+    _parallel_config: Optional["ParallelConfig"] = None,
+):
+    if return_lse:
+        raise ValueError("NPU attention backend does not support setting `return_lse=True`.")    
+
+    attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
 
     out = npu_fusion_attention(
         query,
@@ -2441,21 +2451,7 @@ def _native_npu_attention(
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
     if _parallel_config is None:
-        # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
-        if (attn_mask is not None and torch.all(attn_mask != 0)):
-            attn_mask = None
-
-        # Reshape Attention Mask: [batch_size, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
-        # https://www.hiascend.com/document/detail/zh/Pytorch/730/apiref/torchnpuCustomsapi/docs/context/torch_npu-npu_fusion_attention.md
-        if (
-            attn_mask is not None
-            and attn_mask.ndim == 2
-            and attn_mask.shape[0] == query.shape[0]
-            and attn_mask.shape[1] == key.shape[1]
-        ):
-            B, Sq, Skv = attn_mask.shape[0], query.shape[1], key.shape[1]
-            attn_mask = ~attn_mask.to(torch.bool)
-            attn_mask = attn_mask.unsqueeze(1).expand(B, Sq, Skv).unsqueeze(1).contiguous()
+        attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
         
         out = npu_fusion_attention(
             query,
