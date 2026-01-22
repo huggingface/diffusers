@@ -1129,10 +1129,7 @@ def _npu_attention_forward_op(
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
     
     # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
-    if (
-        attn_mask is not None
-        and torch.all(attn_mask != 0).item()
-    ):
+    if (attn_mask is not None and torch.all(attn_mask != 0)):
         attn_mask = None
 
     # Reshape Attention Mask: [batch_size, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
@@ -2445,10 +2442,7 @@ def _native_npu_attention(
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
     if _parallel_config is None:
         # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
-        if (
-            attn_mask is not None
-            and torch.all(attn_mask != 0).item()
-        ):
+        if (attn_mask is not None and torch.all(attn_mask != 0)):
             attn_mask = None
 
         # Reshape Attention Mask: [batch_size, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
