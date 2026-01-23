@@ -534,7 +534,7 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`): direct output from learned diffusion model.
             timesteps (`torch.Tensor`):
-                current discrete timesteps in the diffusion chain.
+                current discrete timesteps in the diffusion chain. This is now a list of integers.
             sample (`torch.Tensor`):
                 current instance of sample being created by diffusion process.
             eta (`float`): weight of noise for added noise in diffusion step.
