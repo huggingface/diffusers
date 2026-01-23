@@ -2,7 +2,7 @@ FROM nvidia/cuda:12.1.0-runtime-ubuntu20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.11
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get -y update \
@@ -32,10 +32,12 @@ RUN uv venv --python ${PYTHON_VERSION} --seed ${VIRTUAL_ENV}
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
+# Install torch, torchvision, and torchaudio together to ensure compatibility
 RUN uv pip install --no-cache-dir \
     torch \
     torchvision \
-    torchaudio
+    torchaudio \
+    --index-url https://download.pytorch.org/whl/cu121
 
 RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers[test]"
 
