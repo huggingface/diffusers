@@ -150,7 +150,6 @@ class GlmImageLayerKVCache:
     """
 
     def __init__(self):
-        # List of (k_cache, v_cache) tuples, one per batch sample
         self.k_caches: List[Optional[torch.Tensor]] = []
         self.v_caches: List[Optional[torch.Tensor]] = []
         self.mode: Optional[str] = None  # "write", "read", "skip"

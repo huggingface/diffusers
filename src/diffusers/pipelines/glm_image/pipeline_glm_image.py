@@ -354,14 +354,14 @@ class GlmImagePipeline(DiffusionPipeline):
         prompt_list = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt_list)
 
-        # Image should already be normalized by caller, but handle None case
-        is_text_to_image = image is None or len(image) == 0 or all(len(imgs) == 0 for imgs in image)
+        # Image is already normalized by _validate_and_normalize_images(): None or List[List[PIL.Image]]
+        is_text_to_image = image is None
         
         # Build messages for each sample in the batch
         all_messages = []
         for idx, p in enumerate(prompt_list):
             content = []
-            if not is_text_to_image and image is not None and idx < len(image):
+            if not is_text_to_image:
                 for img in image[idx]:
                     content.append({"type": "image", "image": img})
             content.append({"type": "text", "text": p})
@@ -399,7 +399,7 @@ class GlmImagePipeline(DiffusionPipeline):
         # Generate source image tokens (prior_token_image_ids) for i2i mode
         prior_token_image_ids = None
         source_image_grid_thw = None
-        if not is_text_to_image and "pixel_values" in inputs and num_condition_images > 0:
+        if not is_text_to_image:
             # Extract source grids by selecting condition image indices (skip target grids)
             # Grid order from processor: [s0_cond1, s0_cond2, ..., s0_target, s1_cond1, s1_cond2, ..., s1_target, ...]
             # We need indices: [0, 1, ..., num_condition_images-1, num_grids_per_sample, num_grids_per_sample+1, ...]
