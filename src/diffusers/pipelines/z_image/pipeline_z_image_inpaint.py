@@ -24,7 +24,7 @@ from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import ZImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import ZImagePipelineOutput
 
@@ -35,7 +35,7 @@ if is_torch_xla_available():
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
-    
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
@@ -476,6 +476,57 @@ class ZImageInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
     def interrupt(self):
         return self._interrupt
 
+    def check_inputs(
+        self,
+        prompt,
+        image,
+        mask_image,
+        strength,
+        height,
+        width,
+        output_type,
+        negative_prompt=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
+    ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should be in [0.0, 1.0] but is {strength}")
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if image is None:
+            raise ValueError("`image` input cannot be undefined for inpainting.")
+
+        if mask_image is None:
+            raise ValueError("`mask_image` input cannot be undefined for inpainting.")
+
+        if output_type not in ["latent", "pil", "np", "pt"]:
+            raise ValueError(f"`output_type` must be one of 'latent', 'pil', 'np', or 'pt', but got {output_type}")
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -598,9 +649,20 @@ class ZImageInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
             generated images.
         """
-        # 1. Check inputs and validate strength
-        if strength < 0 or strength > 1:
-            raise ValueError(f"The value of strength should be in [0.0, 1.0] but is {strength}")
+        # 1. Check inputs
+        self.check_inputs(
+            prompt=prompt,
+            image=image,
+            mask_image=mask_image,
+            strength=strength,
+            height=height,
+            width=width,
+            output_type=output_type,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+        )
 
         # 2. Preprocess image and mask
         init_image = self.image_processor.preprocess(image)
@@ -847,6 +909,9 @@ class ZImageInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if output_type == "latent":
             image = latents
