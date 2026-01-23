@@ -868,7 +868,7 @@ class GlmImagePipeline(DiffusionPipeline):
         )
         kv_caches = GlmImageKVCache(num_layers=self.transformer.config.num_layers)
 
-        if preprocessed_images is not None and prior_token_image_ids_per_sample is not None:
+        if normalized_image is not None:
             kv_caches.set_mode("write")
             latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.latent_channels, 1, 1)
             latents_std = torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.latent_channels, 1, 1)
