@@ -126,7 +126,7 @@ def calculate_shift(
     return mu
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -186,7 +186,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
 ):
@@ -567,7 +567,7 @@ class FluxKontextPipeline(
             raise ValueError(f"`max_sequence_length` cannot be greater than 512 but is {max_sequence_length}")
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._prepare_latent_image_ids
+    # Copied from diffusers.pipelines.flux.pipeline_flux_utils.FluxMixin._prepare_latent_image_ids
     def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
         latent_image_ids = torch.zeros(height, width, 3)
         latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
@@ -582,7 +582,7 @@ class FluxKontextPipeline(
         return latent_image_ids.to(device=device, dtype=dtype)
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._pack_latents
+    # Copied from diffusers.pipelines.flux.pipeline_flux_utils.FluxMixin._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
@@ -591,7 +591,7 @@ class FluxKontextPipeline(
         return latents
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
+    # Copied from diffusers.pipelines.flux.pipeline_flux_utils.FluxMixin._unpack_latents
     def _unpack_latents(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 

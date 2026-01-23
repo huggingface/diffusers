@@ -26,7 +26,7 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import QwenImageLayeredPachifier, QwenImageModularPipeline, QwenImagePachifier
 
 
-# Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
+# Copied from diffusers.pipelines.qwenimage.pipeline_qwen_utils.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -40,7 +40,7 @@ def calculate_shift(
     return mu
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,

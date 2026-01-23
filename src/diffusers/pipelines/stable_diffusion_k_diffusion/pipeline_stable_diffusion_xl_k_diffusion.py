@@ -198,7 +198,7 @@ class StableDiffusionXLKDiffusionPipeline(
 
             raise ValueError(f"Invalid scheduler type {scheduler_type}. Please choose one of {valid_samplers}.")
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_utils.StableDiffusionXLMixin.encode_prompt
     def encode_prompt(
         self,
         prompt: str,
@@ -539,7 +539,7 @@ class StableDiffusionXLKDiffusionPipeline(
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         return add_time_ids
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.upcast_vae
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_utils.StableDiffusionXLMixin.upcast_vae
     def upcast_vae(self):
         deprecate(
             "upcast_vae",

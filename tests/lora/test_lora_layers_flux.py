@@ -346,7 +346,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger = logging.get_logger("diffusers.pipelines.flux.lora_utils")
         logger.setLevel(logging.INFO)
 
         original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -397,7 +397,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
         original_out = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger = logging.get_logger("diffusers.pipelines.flux.lora_utils")
         logger.setLevel(logging.DEBUG)
 
         # Change the transformer config to mimic a real use case.
@@ -480,7 +480,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger = logging.get_logger("diffusers.pipelines.flux.lora_utils")
         logger.setLevel(logging.DEBUG)
 
         out_features, in_features = pipe.transformer.x_embedder.weight.shape
@@ -535,7 +535,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger = logging.get_logger("diffusers.pipelines.flux.lora_utils")
         logger.setLevel(logging.DEBUG)
 
         out_features, in_features = pipe.transformer.x_embedder.weight.shape
@@ -584,7 +584,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger = logging.get_logger("diffusers.pipelines.flux.lora_utils")
         logger.setLevel(logging.DEBUG)
 
         out_features, in_features = pipe.transformer.x_embedder.weight.shape
@@ -647,7 +647,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             "transformer.x_embedder.lora_B.weight": normal_lora_B.weight,
         }
 
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger = logging.get_logger("diffusers.pipelines.flux.lora_utils")
         logger.setLevel(logging.INFO)
         with CaptureLogger(logger) as cap_logger:
             pipe.load_lora_weights(lora_state_dict, "adapter-1")
@@ -662,7 +662,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_lora_unload_with_parameter_expanded_shapes(self):
         components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
 
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger = logging.get_logger("diffusers.pipelines.flux.lora_utils")
         logger.setLevel(logging.DEBUG)
 
         # Change the transformer config to mimic a real use case.
@@ -728,7 +728,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_lora_unload_with_parameter_expanded_shapes_and_no_reset(self):
         components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
 
-        logger = logging.get_logger("diffusers.loaders.lora_pipeline")
+        logger = logging.get_logger("diffusers.pipelines.flux.lora_utils")
         logger.setLevel(logging.DEBUG)
 
         # Change the transformer config to mimic a real use case.
