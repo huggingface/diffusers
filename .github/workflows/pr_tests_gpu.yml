@@ -132,11 +132,11 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install -e ".[quality]"
-          uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
           if [ "${{ matrix.transformers_version }}" = "main" ]; then
-            uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+            uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
           else
-            uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
+            uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }} --no-deps
           fi
 
       - name: Environment
@@ -206,12 +206,12 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
-        uv pip install peft@git+https://github.com/huggingface/peft.git
-        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+        uv pip install peft@git+https://github.com/huggingface/peft.git --no-deps
+        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
         if [ "${{ matrix.transformers_version }}" = "main" ]; then
-          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
         else
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
+          uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }} --no-deps
         fi
 
     - name: Environment
