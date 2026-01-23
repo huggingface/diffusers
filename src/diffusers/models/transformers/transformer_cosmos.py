@@ -241,12 +241,11 @@ class CosmosAttnProcessor2_5(CosmosAttnProcessor2_0):
 
     def compute_attn_i2v(
         self,
-        attn: Attention,  # TODO: CosmosAttention
+        attn: Attention,
         hidden_states: torch.Tensor,
         img_context=None,
         attention_mask=None,
     ):
-        print("compute_attn_i2v", flush=True)
         q_img = attn.q_img(hidden_states)
         k_img = attn.k_img(img_context)
         v_img = attn.v_img(img_context)
@@ -294,10 +293,7 @@ class CosmosAttnProcessor2_5(CosmosAttnProcessor2_0):
             image_rotary_emb=image_rotary_emb,
         )
 
-        # TODO: fixme
-        # NOTE: img_context should be zeros
         if img_context is not None:
-            print("compute_attn_i2v", flush=True)
             img_out = self.compute_attn_i2v(
                 attn=attn,
                 hidden_states=hidden_states,
@@ -422,7 +418,7 @@ class CosmosTransformerBlock(nn.Module):
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         if self.before_proj is not None:
             hidden_states = self.before_proj(hidden_states) + latents
-            print(f"before_proj, block_idx={block_idx}")
+            # print(f"before_proj, block_idx={block_idx}")
 
         if extra_pos_emb is not None:
             hidden_states = hidden_states + extra_pos_emb
@@ -444,16 +440,17 @@ class CosmosTransformerBlock(nn.Module):
         ff_output = self.ff(norm_hidden_states)
         hidden_states = hidden_states + gate * ff_output
 
+        if controlnet_residual is not None:
+            assert self.after_proj is None
+            # NOTE: this is assumed to be scaled by the controlnet
+            # print("controlnet_residual", flush=True)
+            hidden_states += controlnet_residual
+
         if self.after_proj is not None:
             assert controlnet_residual is None
             hs_proj = self.after_proj(hidden_states)
-            print(f"after_proj, block_idx={block_idx}")
+            # print(f"after_proj, block_idx={block_idx}")
             return hidden_states, hs_proj
-
-        if controlnet_residual is not None:
-            # NOTE: this is assumed to be scaled by the controlnet
-            print("controlnet_residual", flush=True)
-            hidden_states += controlnet_residual
 
         return hidden_states
 

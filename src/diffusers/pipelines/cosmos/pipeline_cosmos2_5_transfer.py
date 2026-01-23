@@ -611,7 +611,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         width: Optional[int] = None,
         num_frames: int = 93,
         num_inference_steps: int = 36,
-        # guidance_scale: float = 7.0,  # TODO: check default
         guidance_scale: float = 3.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -658,7 +657,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             num_inference_steps (`int`, defaults to `35`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, defaults to `7.0`):
+            guidance_scale (`float`, defaults to `3.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
@@ -773,12 +772,15 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             device=device,
             max_sequence_length=max_sequence_length,
         )
-        # TODO(migmartin): add img ref to prompt_embeds via siglip if provided
-        encoder_hidden_states = (prompt_embeds, None)
-        neg_encoder_hidden_states = (negative_prompt_embeds, None)
 
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
+
+        # TODO(migmartin): add img ref to prompt_embeds via siglip if image ref is provided
+        img_context_ref = torch.zeros(1, 256, 1152).to(device=prompt_embeds.device, dtype=transformer_dtype)
+        encoder_hidden_states = (prompt_embeds, img_context_ref)
+        # NOTE: rojects/cosmos/transfer2/configs/vid2vid_transfer/defaults/conditioner.py L240
+        neg_encoder_hidden_states = (negative_prompt_embeds, None)
 
         num_frames_in = None
         if image is not None:
