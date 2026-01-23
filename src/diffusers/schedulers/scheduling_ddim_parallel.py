@@ -407,7 +407,7 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
                 current instance of sample being created by diffusion process.
             eta (`float`): weight of noise for added noise in diffusion step.
             use_clipped_model_output (`bool`, defaults to `False`):
-                if `True`, compute "corrected" `model_output` from the clipped predicted original sample. Necessary
+                If `True`, compute "corrected" `model_output` from the clipped predicted original sample. This correction is necessary
                 because predicted original sample is clipped to [-1, 1] when `self.config.clip_sample` is `True`. If no
                 clipping has happened, "corrected" `model_output` would coincide with the one provided as input and
                 `use_clipped_model_output` will have not effect.
