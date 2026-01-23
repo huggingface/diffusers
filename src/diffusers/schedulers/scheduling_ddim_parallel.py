@@ -412,7 +412,7 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
                 clipping occurred, the "corrected" `model_output` matches the input and
                 `use_clipped_model_output` has no effect.
             generator (`torch.Generator`, *optional*):
-                random number generator.
+                Random number generator.
             variance_noise (`torch.Tensor`): instead of generating noise for the variance using `generator`, we
                 can directly provide the noise for the variance itself. This is useful for methods such as
                 CycleDiffusion. (https://huggingface.co/papers/2210.05559)
