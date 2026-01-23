@@ -605,6 +605,12 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         latents_mean = latents_mean.to(latents.device, latents.dtype)
         latents_std = latents_std.to(latents.device, latents.dtype)
         return (latents * latents_std) + latents_mean
+    
+    @staticmethod
+    def _create_noised_state(latents: torch.Tensor, noise_scale: float, generator: Optional[torch.Generator] = None):
+        noise = randn_tensor(latents.shape, generator=generator, device=latents.device, dtype=latents.dtype)
+        noised_latents = noise_scale * noise + (1 - noise_scale) * latents
+        return noised_latents
 
     @staticmethod
     def _pack_audio_latents(
@@ -653,6 +659,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         height: int = 512,
         width: int = 768,
         num_frames: int = 121,
+        noise_scale: float = 0.0,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[torch.Generator] = None,
@@ -664,6 +671,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 latents = self._pack_latents(
                     latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
                 )
+            latents = self._create_noised_state(latents, noise_scale, generator)
             return latents.to(device=device, dtype=dtype)
 
         height = height // self.vae_spatial_compression_ratio
@@ -690,6 +698,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         num_channels_latents: int = 8,
         audio_latent_length: int = 1,  # 1 is just a dummy value
         num_mel_bins: int = 64,
+        noise_scale: float = 0.0,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[torch.Generator] = None,
@@ -700,6 +709,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 # latents are of shape [B, C, L, M], need to be packed
                 latents = self._pack_audio_latents(latents)
             latents = self._normalize_audio_latents(latents, self.audio_vae.latents_mean, self.audio_vae.latents_std)
+            latents = self._create_noised_state(latents, noise_scale, generator)
             return latents.to(device=device, dtype=dtype)
 
         # TODO: confirm whether this logic is correct
@@ -760,6 +770,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         timesteps: List[int] = None,
         guidance_scale: float = 4.0,
         guidance_rescale: float = 0.0,
+        noise_scale: float = 0.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -815,6 +826,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://huggingface.co/papers/2305.08891). Guidance rescale factor should fix overexposure when
                 using zero terminal SNR.
+            noise_scale (`float`, *optional*, defaults to `0.0`):
+                The interpolation factor between random noise and denoised latents at each timestep. Applying noise to
+                the `latents` and `audio_latents` before continue denoising.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -950,6 +964,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             height,
             width,
             num_frames,
+            noise_scale,
             torch.float32,
             device,
             generator,
@@ -980,6 +995,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             num_channels_latents=num_channels_latents_audio,
             audio_latent_length=audio_num_frames,
             num_mel_bins=num_mel_bins,
+            noise_scale=noise_scale,
             dtype=torch.float32,
             device=device,
             generator=generator,
