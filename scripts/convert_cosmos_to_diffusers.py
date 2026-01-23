@@ -87,14 +87,24 @@ hf download nvidia/Cosmos-Transfer2.5-2B
 
 Convert checkpoint
 ```bash
-# pre-trained
+# blur
 transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/depth/626e6618-bfcd-4d9a-a077-1409e2ce353f_ema_bf16.pt
 
 python scripts/convert_cosmos_to_diffusers.py \
     --transformer_type Cosmos-2.5-Transfer-General-2B \
     --transformer_ckpt_path $transformer_ckpt_path \
     --vae_type wan2.1 \
-    --output_path converted/transfer/2b/626e6618-bfcd-4d9a-a077-1409e2ce353f \
+    --output_path converted/transfer/2b/blur \
+    --save_pipeline
+
+# edge
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/edge/61f5694b-0ad5-4ecd-8ad7-c8545627d125_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/edge \
     --save_pipeline
 ```
 """
