@@ -409,8 +409,8 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
             use_clipped_model_output (`bool`, defaults to `False`):
                 If `True`, compute "corrected" `model_output` from the clipped predicted original sample. This correction is necessary
                 because the predicted original sample is clipped to [-1, 1] when `self.config.clip_sample` is `True`. If no
-                clipping has happened, "corrected" `model_output` would coincide with the one provided as input and
-                `use_clipped_model_output` will have not effect.
+                clipping occurred, the "corrected" `model_output` matches the input and
+                `use_clipped_model_output` has no effect.
             generator (`torch.Generator`, *optional*):
                 random number generator.
             variance_noise (`torch.Tensor`): instead of generating noise for the variance using `generator`, we
