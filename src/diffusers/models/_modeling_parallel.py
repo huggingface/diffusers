@@ -97,6 +97,11 @@ class ContextParallelConfig:
             raise NotImplementedError(
                 f"Only rotate_method='allgather' is supported for now, but got {self.rotate_method}."
             )
+        if self.ulysses_anything:
+            if self.ulysses_degree == 1:
+                raise ValueError("ulysses_degree must be greater than 1 for ulysses_anything to be enabled.")
+            if self.ring_degree > 1:
+                raise ValueError("ulysses_anything cannot be enabled when ring_degree > 1.")
 
     @property
     def mesh_shape(self) -> Tuple[int, int]:
