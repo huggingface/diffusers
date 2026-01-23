@@ -29,6 +29,13 @@ from ...utils.torch_utils import randn_tensor
 from .pipeline_output import ZImagePipelineOutput
 
 
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+    
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
