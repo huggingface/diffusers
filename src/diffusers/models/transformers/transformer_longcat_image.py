@@ -406,6 +406,7 @@ class LongCatImageTransformer2DModel(
     """
 
     _supports_gradient_checkpointing = True
+    _repeated_blocks = ["LongCatImageTransformerBlock", "LongCatImageSingleTransformerBlock"]
 
     @register_to_config
     def __init__(
