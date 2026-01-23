@@ -633,7 +633,9 @@ class GlmImagePipeline(DiffusionPipeline):
         prompt_embeds=None,
         negative_prompt_embeds=None,
         prior_token_ids=None,
-        prior_image_token_ids=None,
+        prior_token_image_ids=None,
+        source_image_grid_thw=None,
+        image=None,
     ):
         if (
             height is not None
@@ -679,12 +681,24 @@ class GlmImagePipeline(DiffusionPipeline):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-        if (prior_token_ids is None and prior_image_token_ids is not None) or (
-            prior_token_ids is not None and prior_image_token_ids is None
-        ):
+        # Validate prior token inputs: for i2i mode, all three must be provided together
+        # For t2i mode, only prior_token_ids is needed (prior_token_image_ids and source_image_grid_thw should be None)
+        prior_image_inputs = [prior_token_image_ids, source_image_grid_thw]
+        num_prior_image_inputs = sum(x is not None for x in prior_image_inputs)
+        if num_prior_image_inputs > 0 and num_prior_image_inputs < len(prior_image_inputs):
             raise ValueError(
-                f"Cannot forward only one `prior_token_ids`: {prior_token_ids} or `prior_image_token_ids`:"
-                f" {prior_image_token_ids} provided. Please make sure both are provided or neither."
+                "`prior_token_image_ids` and `source_image_grid_thw` must be provided together for i2i mode. "
+                f"Got prior_token_image_ids={prior_token_image_ids is not None}, "
+                f"source_image_grid_thw={source_image_grid_thw is not None}."
+            )
+        if num_prior_image_inputs > 0 and prior_token_ids is None:
+            raise ValueError(
+                "`prior_token_ids` must be provided when `prior_token_image_ids` and `source_image_grid_thw` are provided."
+            )
+        if num_prior_image_inputs > 0 and image is None:
+            raise ValueError(
+                "`image` must be provided when `prior_token_image_ids` and `source_image_grid_thw` are provided "
+                "for i2i mode, as the images are needed for VAE encoding to build the KV cache."
             )
 
         if prior_token_ids is not None and prompt_embeds is None:
@@ -736,7 +750,8 @@ class GlmImagePipeline(DiffusionPipeline):
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         prior_token_ids: Optional[torch.FloatTensor] = None,
-        prior_image_token_ids: Optional[torch.Tensor] = None,
+        prior_token_image_ids: Optional[List[torch.Tensor]] = None,
+        source_image_grid_thw: Optional[List[torch.Tensor]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         output_type: str = "pil",
         return_dict: bool = True,
@@ -789,7 +804,9 @@ class GlmImagePipeline(DiffusionPipeline):
             prompt_embeds,
             negative_prompt_embeds,
             prior_token_ids,
-            prior_image_token_ids,
+            prior_token_image_ids,
+            source_image_grid_thw,
+            image,
         )
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
@@ -821,9 +838,9 @@ class GlmImagePipeline(DiffusionPipeline):
                 generator=ar_generator,
             )
         else:
-            # User provided prior_token_ids directly
-            prior_token_image_ids_per_sample = None
-            source_image_grid_thw_per_sample = None
+            # User provided prior_token_ids directly (from generate_prior_tokens)
+            prior_token_image_ids_per_sample = prior_token_image_ids
+            source_image_grid_thw_per_sample = source_image_grid_thw
 
         # 4. Preprocess images for VAE encoding
         preprocessed_images = None
@@ -958,7 +975,7 @@ class GlmImagePipeline(DiffusionPipeline):
 
                 timestep = t.expand(latents.shape[0]) - 1
 
-                if normalized_image is not None:
+                if prior_token_image_ids_per_sample is not None:
                     kv_caches.set_mode("read")
 
                 noise_pred_cond = self.transformer(
@@ -976,7 +993,7 @@ class GlmImagePipeline(DiffusionPipeline):
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
-                    if normalized_image is not None:
+                    if prior_token_image_ids_per_sample is not None:
                         kv_caches.set_mode("skip")
                     noise_pred_uncond = self.transformer(
                         hidden_states=latent_model_input,
