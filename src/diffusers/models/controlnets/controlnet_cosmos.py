@@ -9,6 +9,7 @@ from ...loaders import FromOriginalModelMixin
 from ...utils import BaseOutput, logging, is_torchvision_available
 from ..modeling_utils import ModelMixin
 from ..transformers.transformer_cosmos import (
+    CosmosRotaryPosEmbed,
     CosmosPatchEmbed,
     CosmosTransformerBlock,
 )
@@ -39,9 +40,13 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         text_embed_dim: int = 1024,
         adaln_lora_dim: int = 256,
         patch_size: Tuple[int, int, int] = (1, 2, 2),
+        max_size: Tuple[int, int, int] = (128, 240, 240),
+        rope_scale: Tuple[float, float, float] = (2.0, 1.0, 1.0),
     ):
         super().__init__()
         self.patch_embed = CosmosPatchEmbed(in_channels, model_channels, patch_size, bias=False)
+        # NOTE: rope is copied from original model weights
+        self.rope = CosmosRotaryPosEmbed(hidden_size=attention_head_dim, max_size=max_size, patch_size=patch_size, rope_scale=rope_scale)
         self.control_blocks = nn.ModuleList(
             [
                 CosmosTransformerBlock(
@@ -88,9 +93,10 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         encoder_hidden_states: Optional[Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]] = None,
         temb: Optional[torch.Tensor] = None,
         embedded_timestep: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        extra_pos_emb: Optional[torch.Tensor] = None,
+        fps: Optional[int] = None,
     ) -> List[torch.Tensor]:
+        # TODO: remove Optional
+        assert condition_mask is not None
         # TODO: check if temb, etc. is None
         # if so, then do our own embedding of the inputs
 
@@ -110,28 +116,23 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 dim=1,
             )
 
-        # TODO: pass in condition_mask
-        # if condition_mask is not None:
         control_hidden_states = torch.cat([control_hidden_states, torch.zeros_like(controls_latents[:, :1])], dim=1)
         print("control_hidden_states.dtype=", control_hidden_states.dtype)
 
-        # TODO
-        # if self.config.concat_padding_mask:
         padding_mask = transforms.functional.resize(
             padding_mask, list(control_hidden_states.shape[-2:]), interpolation=transforms.InterpolationMode.NEAREST
         )
         control_hidden_states = torch.cat(
             [control_hidden_states, padding_mask.unsqueeze(2).repeat(B, 1, T, 1, 1)], dim=1
         )
-        # print("after cond_mask & padding_mask, control_hidden_states=", control_hidden_states.shape)
-        # breakpoint()
+
+        image_rotary_emb = self.rope(control_hidden_states, fps=fps)
 
         # NOTE: failure here
         print("* control_hidden_states.dtype=", control_hidden_states.dtype)
         control_hidden_states = self.patch_embed(control_hidden_states)
         control_hidden_states = control_hidden_states.flatten(1, 3)
 
-        # TODO: check before_proj 
         scales = self._expand_conditioning_scale(conditioning_scale)
         result = []
         for block_idx, (block, scale) in enumerate(zip(self.control_blocks, scales)):
@@ -141,7 +142,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 embedded_timestep=embedded_timestep,
                 temb=temb,
                 image_rotary_emb=image_rotary_emb,
-                extra_pos_emb=extra_pos_emb,
+                extra_pos_emb=None,
                 attention_mask=attention_mask,
                 controlnet_residual=None,
                 block_idx=block_idx,

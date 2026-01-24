@@ -104,8 +104,6 @@ def transfer2_5_forward(
             encoder_hidden_states=prepared_inputs["encoder_hidden_states"],
             temb=prepared_inputs["temb"],
             embedded_timestep=prepared_inputs["embedded_timestep"],
-            image_rotary_emb=prepared_inputs["image_rotary_emb"],
-            extra_pos_emb=prepared_inputs["extra_pos_emb"],
             attention_mask=prepared_inputs["attention_mask"],
         )
 
@@ -530,6 +528,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         num_frames: int,
         dtype: torch.dtype,
         device: torch.device,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]],
     ) -> Optional[torch.Tensor]:
         if controls is None:
             return None
@@ -539,7 +538,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         control_video = _maybe_pad_video(control_video, num_frames)
 
         control_video = control_video.to(device=device, dtype=self.vae.dtype)
-        control_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0))) for vid in control_video]
+        control_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator=generator) for vid in control_video]
         control_latents = torch.cat(control_latents, dim=0).to(dtype)
         print("after control_latents.shape=", control_latents.shape)
 
@@ -837,6 +836,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 num_frames=num_frames,
                 dtype=transformer_dtype,
                 device=device,
+                generator=generator,
             )
 
         padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)

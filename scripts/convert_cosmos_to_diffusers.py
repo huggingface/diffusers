@@ -419,6 +419,9 @@ CONTROLNET_CONFIGS = {
         "text_embed_dim": 1024,
         "adaln_lora_dim": 256,
         "patch_size": (1, 2, 2),
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (1.0, 3.0, 3.0),
     },
 }
 
