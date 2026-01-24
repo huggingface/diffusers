@@ -22,7 +22,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..loaders.single_file_utils import _is_single_file_path_or_url
-from ..utils import is_torch_available, logging
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, is_torch_available, logging
 
 
 if is_torch_available():
@@ -185,7 +185,7 @@ class ComponentSpec:
         """
         Return the names of all loading‐related fields (i.e. those whose field.metadata["loading"] is True).
         """
-        return [f.name for f in fields(cls) if f.metadata.get("loading", False)]
+        return DIFFUSERS_LOAD_ID_FIELDS.copy()
 
     @property
     def load_id(self) -> str:
@@ -197,7 +197,7 @@ class ComponentSpec:
             return "null"
         parts = [getattr(self, k) for k in self.loading_fields()]
         parts = ["null" if p is None else p for p in parts]
-        return "|".join(p for p in parts if p)
+        return "|".join(parts)
 
     @classmethod
     def decode_load_id(cls, load_id: str) -> Dict[str, Optional[str]]:

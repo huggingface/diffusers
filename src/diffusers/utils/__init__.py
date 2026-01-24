@@ -37,6 +37,7 @@ from .constants import (
     USE_PEFT_BACKEND,
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
+    DIFFUSERS_LOAD_ID_FIELDS,
 )
 from .deprecation_utils import _maybe_remap_transformers_class, deprecate
 from .doc_utils import replace_example_docstring
