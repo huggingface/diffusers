@@ -23,6 +23,7 @@ from .constants import (
     DEFAULT_HF_PARALLEL_LOADING_WORKERS,
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
+    DIFFUSERS_LOAD_ID_FIELDS,
     FLAX_WEIGHTS_NAME,
     GGUF_FILE_EXTENSION,
     HF_ENABLE_PARALLEL_LOADING,
@@ -37,7 +38,6 @@ from .constants import (
     USE_PEFT_BACKEND,
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
-    DIFFUSERS_LOAD_ID_FIELDS,
 )
 from .deprecation_utils import _maybe_remap_transformers_class, deprecate
 from .doc_utils import replace_example_docstring

@@ -15,7 +15,7 @@
 import inspect
 import re
 from collections import OrderedDict
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 import torch

@@ -18,7 +18,7 @@ from typing import Optional, Union
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
-from ..utils import logging, DIFFUSERS_LOAD_ID_FIELDS
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 
 
