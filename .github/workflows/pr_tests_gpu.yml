@@ -114,7 +114,7 @@ jobs:
       max-parallel: 8
       matrix:
         module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
-        transformers_version: ["4.57.3", "main"]
+        transformers_version: ["4.57.1", "main"]
     runs-on:
       group: aws-g4dn-2xlarge
     container:
@@ -196,7 +196,7 @@ jobs:
       max-parallel: 4
       matrix:
         module: [models, schedulers, lora, others]
-        transformers_version: ["4.57.3", "main"]
+        transformers_version: ["4.57.1", "main"]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v6
@@ -259,7 +259,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        transformers_version: ["4.57.3", "main"]
+        transformers_version: ["4.57.1", "main"]
     runs-on:
       group: aws-g4dn-2xlarge
 

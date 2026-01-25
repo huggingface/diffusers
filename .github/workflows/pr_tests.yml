@@ -92,7 +92,7 @@ jobs:
             runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_example_cpu
-        transformers_version: ["4.57.3", "main"]
+        transformers_version: ["4.57.1", "main"]
 
     name: ${{ matrix.config.name }} (transformers ${{ matrix.transformers_version }})
 
@@ -225,7 +225,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        transformers_version: ["4.57.3", "main"]
+        transformers_version: ["4.57.1", "main"]
 
     name: LoRA tests with PEFT main (transformers ${{ matrix.transformers_version }})
 
