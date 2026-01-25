@@ -599,7 +599,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`): direct output from learned diffusion model.
             timesteps (`torch.Tensor`):
-                current discrete timesteps in the diffusion chain. This is a tensor of integers.
+                Current discrete timesteps in the diffusion chain. This is a tensor of integers.
             sample (`torch.Tensor`):
                 current instance of sample being created by diffusion process.
 
