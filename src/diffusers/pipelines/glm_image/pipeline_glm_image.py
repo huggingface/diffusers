@@ -409,7 +409,7 @@ class GlmImagePipeline(DiffusionPipeline):
 
             if len(source_grids) > 0:
                 prior_token_image_embed = self.vision_language_encoder.get_image_features(
-                    inputs["pixel_values"], source_grids
+                    inputs["pixel_values"], source_grids, return_dict=False
                 )
                 prior_token_image_embed = torch.cat(prior_token_image_embed, dim=0)
                 prior_token_image_ids_d32 = self.vision_language_encoder.get_image_tokens(
