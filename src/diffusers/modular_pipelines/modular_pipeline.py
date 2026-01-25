@@ -39,11 +39,12 @@ from .modular_pipeline_utils import (
     InputParam,
     InsertableDict,
     OutputParam,
-    format_components,
-    format_configs,
-    make_doc_string,
     combine_inputs,
     combine_outputs,
+    format_components,
+    format_configs,
+    format_workflow,
+    make_doc_string,
 )
 
 
@@ -303,9 +304,9 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     # currentlyonly ConditionalPipelineBlocks and SequentialPipelineBlocks support `get_execution_blocks`
     def get_execution_blocks(self, **kwargs):
         """
-        Get the block(s) that would execute given the inputs.
-        Must be implemented by subclasses that support conditional block selection.
-        
+        Get the block(s) that would execute given the inputs. Must be implemented by subclasses that support
+        conditional block selection.
+
         Args:
             **kwargs: Input names and values. Only trigger inputs affect block selection.
         """
@@ -315,16 +316,15 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     @property
     def workflow_names(self):
         """
-        Returns a list of available workflow names.
-        Must be implemented by subclasses that define `_workflow_map`.
+        Returns a list of available workflow names. Must be implemented by subclasses that define `_workflow_map`.
         """
         raise NotImplementedError(f"`workflow_names` is not implemented for {self.__class__.__name__}")
 
     def get_workflow(self, workflow_name: str):
         """
-        Get the execution blocks for a specific workflow.
-        Must be implemented by subclasses that define `_workflow_map`.
-        
+        Get the execution blocks for a specific workflow. Must be implemented by subclasses that define
+        `_workflow_map`.
+
         Args:
             workflow_name: Name of the workflow to retrieve.
         """
@@ -498,8 +498,8 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 class ConditionalPipelineBlocks(ModularPipelineBlocks):
     """
     A Pipeline Blocks that conditionally selects a block to run based on the inputs. Subclasses must implement the
-    `select_block` method to define the logic for selecting the block. Currently, we only support selection logic 
-    based on the presence or absence of inputs (i.e., whether they are `None` or not)
+    `select_block` method to define the logic for selecting the block. Currently, we only support selection logic based
+    on the presence or absence of inputs (i.e., whether they are `None` or not)
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
@@ -510,9 +510,9 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         block_classes: List of block classes to be used. Must have the same length as `block_names`.
         block_names: List of names for each block. Must have the same length as `block_classes`.
         block_trigger_inputs: List of input names that `select_block()` uses to determine which block to run.
-            For `ConditionalPipelineBlocks`, this does not need to correspond to `block_names` and `block_classes`.
-            For `AutoPipelineBlocks`, this must have the same length as `block_names` and `block_classes`,
-            where each element specifies the trigger input for the corresponding block.
+            For `ConditionalPipelineBlocks`, this does not need to correspond to `block_names` and `block_classes`. For
+            `AutoPipelineBlocks`, this must have the same length as `block_names` and `block_classes`, where each
+            element specifies the trigger input for the corresponding block.
         default_block_name: Name of the default block to run when no trigger inputs match.
             If None, this block can be skipped entirely when no trigger inputs are provided.
     """
@@ -676,34 +676,34 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
     def get_execution_blocks(self, **kwargs) -> Optional["ModularPipelineBlocks"]:
         """
         Get the block(s) that would execute given the inputs.
-        
+
         Recursively resolves nested ConditionalPipelineBlocks until reaching either:
         - A leaf block (no sub_blocks) → returns single `ModularPipelineBlocks`
-        - A `SequentialPipelineBlocks` → delegates to its `get_execution_blocks()` which returns 
+        - A `SequentialPipelineBlocks` → delegates to its `get_execution_blocks()` which returns
         a `SequentialPipelineBlocks` containing the resolved execution blocks
-        
+
         Args:
             **kwargs: Input names and values. Only trigger inputs affect block selection.
-            
+
         Returns:
             - `ModularPipelineBlocks`: A leaf block or resolved `SequentialPipelineBlocks`
             - `None`: If this block would be skipped (no trigger matched and no default)
         """
         trigger_kwargs = {name: kwargs.get(name) for name in self.block_trigger_inputs if name is not None}
         block_name = self.select_block(**trigger_kwargs)
-        
+
         if block_name is None:
             block_name = self.default_block_name
-        
+
         if block_name is None:
             return None
-        
+
         block = self.sub_blocks[block_name]
-        
+
         # Recursively resolve until we hit a leaf block or a SequentialPipelineBlocks
         if block.sub_blocks:
             return block.get_execution_blocks(**kwargs)
-        
+
         return block
 
     def __repr__(self):
@@ -784,32 +784,37 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
 class AutoPipelineBlocks(ConditionalPipelineBlocks):
     """
-    A Pipeline Blocks that automatically selects a block to run based on the presence of trigger inputs.
-    
-    This is a specialized version of `ConditionalPipelineBlocks` where:
-    - Each block has one corresponding trigger input (1:1 mapping)
-    - Block selection is automatic: the first block whose trigger input is present gets selected
-    - `block_trigger_inputs` must have the same length as `block_names` and `block_classes`
-    - Use `None` in `block_trigger_inputs` to specify the default block, i.e the block that will run if no trigger inputs are present
-    
-    Attributes:
-        block_classes: List of block classes to be used. Must have the same length as `block_names` and `block_trigger_inputs`.
-        block_names: List of names for each block. Must have the same length as `block_classes` and `block_trigger_inputs`.
-        block_trigger_inputs: List of input names where each element specifies the trigger input for the corresponding block.
-            Use `None` to mark the default block.
-    
-    Example:
-```python
-    class MyAutoBlock(AutoPipelineBlocks):
-        block_classes = [InpaintEncoderBlock, ImageEncoderBlock, TextEncoderBlock]
-        block_names = ["inpaint", "img2img", "text2img"]
-        block_trigger_inputs = ["mask_image", "image", None]  # text2img is the default
-```
-        
-    With this definition:
-    - As long as `mask_image` is provided, "inpaint" block runs (regardless of `image` being provided or not)
-    - If `mask_image` is not provided but `image` is provided, "img2img" block runs
-    - Otherwise, "text2img" block runs (default, trigger is `None`)
+        A Pipeline Blocks that automatically selects a block to run based on the presence of trigger inputs.
+
+        This is a specialized version of `ConditionalPipelineBlocks` where:
+        - Each block has one corresponding trigger input (1:1 mapping)
+        - Block selection is automatic: the first block whose trigger input is present gets selected
+        - `block_trigger_inputs` must have the same length as `block_names` and `block_classes`
+        - Use `None` in `block_trigger_inputs` to specify the default block, i.e the block that will run if no trigger
+          inputs are present
+
+        Attributes:
+            block_classes:
+                List of block classes to be used. Must have the same length as `block_names` and
+                `block_trigger_inputs`.
+            block_names:
+                List of names for each block. Must have the same length as `block_classes` and `block_trigger_inputs`.
+            block_trigger_inputs:
+                List of input names where each element specifies the trigger input for the corresponding block. Use
+                `None` to mark the default block.
+
+        Example:
+    ```python
+        class MyAutoBlock(AutoPipelineBlocks):
+            block_classes = [InpaintEncoderBlock, ImageEncoderBlock, TextEncoderBlock]
+            block_names = ["inpaint", "img2img", "text2img"]
+            block_trigger_inputs = ["mask_image", "image", None]  # text2img is the default
+    ```
+
+        With this definition:
+        - As long as `mask_image` is provided, "inpaint" block runs (regardless of `image` being provided or not)
+        - If `mask_image` is not provided but `image` is provided, "img2img" block runs
+        - Otherwise, "text2img" block runs (default, trigger is `None`)
     """
 
     def __init__(self):
@@ -829,7 +834,6 @@ class AutoPipelineBlocks(ConditionalPipelineBlocks):
         if None in self.block_trigger_inputs:
             idx = self.block_trigger_inputs.index(None)
             self.default_block_name = self.block_names[idx]
-
 
     def select_block(self, **kwargs) -> Optional[str]:
         """Select block based on which trigger input is present (not None)."""
@@ -883,21 +887,24 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                     expected_configs.append(config)
         return expected_configs
 
-
     @property
     def workflow_names(self):
         if self._workflow_map is None:
-            raise NotImplementedError(f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}")
-        
+            raise NotImplementedError(
+                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
+            )
+
         return list(self._workflow_map.keys())
 
     def get_workflow(self, workflow_name: str):
         if self._workflow_map is None:
-            raise NotImplementedError(f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}")
-        
+            raise NotImplementedError(
+                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
+            )
+
         if workflow_name not in self._workflow_map:
             raise ValueError(f"Workflow {workflow_name} not found in {self.__class__.__name__}")
-        
+
         trigger_inputs = self._workflow_map[workflow_name]
         workflow_blocks = self.get_execution_blocks(**trigger_inputs)
 
@@ -1058,7 +1065,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         """
         # Copy kwargs so we can add outputs as we traverse
         active_inputs = dict(kwargs)
-        
+
         def fn_recursive_traverse(block, block_name, active_inputs):
             result_blocks = OrderedDict()
 
@@ -1088,7 +1095,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         for block_name, block in self.sub_blocks.items():
             nested_blocks = fn_recursive_traverse(block, block_name, active_inputs)
             all_blocks.update(nested_blocks)
-        
+
         return SequentialPipelineBlocks.from_blocks_dict(all_blocks)
 
     def __repr__(self):
@@ -1098,7 +1105,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             f"{class_name}(\n  Class: {base_class}\n" if base_class and base_class != "object" else f"{class_name}(\n"
         )
 
-        if self._get_trigger_inputs():
+        if self._workflow_map is None and self._get_trigger_inputs():
             header += "\n"
             header += "  " + "=" * 100 + "\n"
             header += "  This pipeline contains blocks that are selected at runtime based on inputs.\n"
@@ -1108,8 +1115,13 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             header += f"  Use `get_execution_blocks()` to see selected blocks (e.g. `get_execution_blocks({example_input}=...)`).\n"
             header += "  " + "=" * 100 + "\n\n"
 
+        description = self.description
+        if self._workflow_map is not None:
+            workflow_str = format_workflow(self._workflow_map)
+            description = f"{self.description}\n\n{workflow_str}"
+
         # Format description with proper indentation
-        desc_lines = self.description.split("\n")
+        desc_lines = description.split("\n")
         desc = []
         # First line with "Description:" label
         desc.append(f"  Description: {desc_lines[0]}")
@@ -1157,10 +1169,15 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     @property
     def doc(self):
+        description = self.description
+        if self._workflow_map is not None:
+            workflow_str = format_workflow(self._workflow_map)
+            description = f"{self.description}\n\n{workflow_str}"
+
         return make_doc_string(
             self.inputs,
             self.outputs,
-            self.description,
+            description=description,
             class_name=self.__class__.__name__,
             expected_components=self.expected_components,
             expected_configs=self.expected_configs,

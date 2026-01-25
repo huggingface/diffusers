@@ -14,11 +14,10 @@
 
 import inspect
 import re
-import numpy as np
 import warnings
 from collections import OrderedDict
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Literal, Optional, Type, Union, Set, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
 
 import PIL.Image
 import torch
@@ -862,6 +861,30 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
     return "\n".join(formatted_configs)
 
 
+def format_workflow(workflow_map):
+    """Format a workflow map into a readable string representation.
+
+    Args:
+        workflow_map: Dictionary mapping workflow names to trigger inputs
+
+    Returns:
+        A formatted string representing all workflows
+    """
+    if workflow_map is None:
+        return ""
+
+    lines = ["Supported workflows:"]
+    for workflow_name, trigger_inputs in workflow_map.items():
+        required_inputs = [k for k, v in trigger_inputs.items() if v]
+        if required_inputs:
+            inputs_str = ", ".join(f"`{t}`" for t in required_inputs)
+            lines.append(f"  - `{workflow_name}`: requires {inputs_str}")
+        else:
+            lines.append(f"  - `{workflow_name}`: default (no additional inputs required)")
+
+    return "\n".join(lines)
+
+
 def make_doc_string(
     inputs,
     outputs,
@@ -920,9 +943,9 @@ def make_doc_string(
 
 def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
     """
-    Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if
-    current default value is None and new default value is not None. Warns if multiple non-None default values
-    exist for the same input.
+    Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if current
+    default value is None and new default value is not None. Warns if multiple non-None default values exist for the
+    same input.
 
     Args:
         named_input_lists: List of tuples containing (block_name, input_param_list) pairs
@@ -959,6 +982,7 @@ def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> Li
                 value_sources[input_name] = block_name
 
     return list(combined_dict.values())
+
 
 def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) -> List[OutputParam]:
     """
