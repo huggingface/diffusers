@@ -357,7 +357,6 @@ class GlmImagePipeline(DiffusionPipeline):
 
         # Image is already normalized by _validate_and_normalize_images(): None or List[List[PIL.Image]]
         is_text_to_image = image is None
-        
         # Build messages for each sample in the batch
         all_messages = []
         for idx, p in enumerate(prompt_list):
@@ -367,7 +366,6 @@ class GlmImagePipeline(DiffusionPipeline):
                     content.append({"type": "image", "image": img})
             content.append({"type": "text", "text": p})
             all_messages.append([{"role": "user", "content": content}])
-        
         # Process with the processor (supports batch with left padding)
         inputs = self.processor.apply_chat_template(
             all_messages,
@@ -417,7 +415,6 @@ class GlmImagePipeline(DiffusionPipeline):
                 prior_token_image_ids_d32 = self.vision_language_encoder.get_image_tokens(
                     prior_token_image_embed, source_grids
                 )
-                
                 # Upsample each source image's prior tokens to match VAE/DiT resolution
                 split_sizes = source_grids.prod(dim=-1).tolist()
                 prior_ids_per_source = torch.split(prior_token_image_ids_d32, split_sizes)
@@ -427,7 +424,6 @@ class GlmImagePipeline(DiffusionPipeline):
                     upsampled = self._upsample_token_ids(prior_ids, int(h), int(w))
                     upsampled_prior_ids.append(upsampled.squeeze(0))
                 prior_token_image_ids = torch.cat(upsampled_prior_ids, dim=0)
-                
                 # Upsample grid dimensions for later splitting
                 upsampled_grids = source_grids.clone()
                 upsampled_grids[:, 1] = upsampled_grids[:, 1] * 2
@@ -460,7 +456,6 @@ class GlmImagePipeline(DiffusionPipeline):
             )
             prior_token_ids = self._upsample_token_ids(prior_token_ids_d32, token_h, token_w)
             all_prior_token_ids.append(prior_token_ids)
-        
         prior_token_ids = torch.cat(all_prior_token_ids, dim=0)
 
         # Split prior_token_image_ids and source_image_grid_thw into per-sample lists for easier consumption
@@ -469,7 +464,6 @@ class GlmImagePipeline(DiffusionPipeline):
         if prior_token_image_ids is not None and source_image_grid_thw is not None:
             # Split grids: each sample has num_condition_images grids
             source_image_grid_thw_per_sample = list(torch.split(source_image_grid_thw, num_condition_images))
-            
             # Split prior_token_image_ids: tokens per sample may vary due to different image sizes
             tokens_per_image = source_image_grid_thw.prod(dim=-1).tolist()
             tokens_per_sample = []
@@ -902,7 +896,6 @@ class GlmImagePipeline(DiffusionPipeline):
                 # Split this sample's prior_token_image_ids by each image's token count
                 split_sizes = prompt_grid_thw.prod(dim=-1).tolist()
                 prior_ids_per_image = torch.split(prompt_prior_ids, split_sizes)
-                
                 # Process each condition image for this sample
                 for condition_image, condition_image_prior_token_id in zip(prompt_images, prior_ids_per_image):
                     condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
@@ -922,7 +915,6 @@ class GlmImagePipeline(DiffusionPipeline):
                         attention_kwargs=attention_kwargs,
                         kv_caches=kv_caches,
                     )
-                
                 # Move to next sample's cache slot
                 kv_caches.next_sample()
 

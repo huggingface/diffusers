@@ -144,7 +144,6 @@ class GlmImageAdaLayerNormZero(nn.Module):
 
 class GlmImageLayerKVCache:
     """KV cache for GlmImage model.
-    
     Supports per-sample caching for batch processing where each sample
     may have different condition images.
     """
@@ -173,20 +172,16 @@ class GlmImageLayerKVCache:
 
     def get(self, k: torch.Tensor, v: torch.Tensor):
         """Get combined KV cache for all samples in the batch.
-        
         Args:
             k: Current key tensor, shape (batch_size, seq_len, num_heads, head_dim)
             v: Current value tensor, shape (batch_size, seq_len, num_heads, head_dim)
-        
         Returns:
             Combined key and value tensors with cached values prepended.
         """
         batch_size = k.shape[0]
         num_cached_samples = len(self.k_caches)
-        
         if num_cached_samples == 0:
             return k, v
-        
         if num_cached_samples == 1:
             # Single cache, expand for all batch samples (shared condition images)
             k_cache_expanded = self.k_caches[0].expand(batch_size, -1, -1, -1)
@@ -230,7 +225,6 @@ class GlmImageLayerKVCache:
 
 class GlmImageKVCache:
     """Container for all layers' KV caches.
-    
     Supports per-sample caching for batch processing where each sample
     may have different condition images.
     """
