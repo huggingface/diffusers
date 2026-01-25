@@ -83,7 +83,7 @@ def get_qwen_prompt_embeds(
     split_hidden_states = _extract_masked_hidden(hidden_states, txt_tokens.attention_mask)
     split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
     attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
-    max_seq_len = max([e.size(0) for e in split_hidden_states])
+    max_seq_len = tokenizer_max_length
     prompt_embeds = torch.stack(
         [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
     )
@@ -103,6 +103,7 @@ def get_qwen_prompt_embeds_edit(
     image: Optional[torch.Tensor] = None,
     prompt_template_encode: str = QWENIMAGE_EDIT_PROMPT_TEMPLATE,
     prompt_template_encode_start_idx: int = QWENIMAGE_EDIT_PROMPT_TEMPLATE_START_IDX,
+    tokenizer_max_length: int = 1024,
     device: Optional[torch.device] = None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -130,7 +131,7 @@ def get_qwen_prompt_embeds_edit(
     split_hidden_states = _extract_masked_hidden(hidden_states, model_inputs.attention_mask)
     split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
     attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
-    max_seq_len = max([e.size(0) for e in split_hidden_states])
+    max_seq_len = tokenizer_max_length
     prompt_embeds = torch.stack(
         [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
     )
@@ -151,6 +152,7 @@ def get_qwen_prompt_embeds_edit_plus(
     prompt_template_encode: str = QWENIMAGE_EDIT_PLUS_PROMPT_TEMPLATE,
     img_template_encode: str = QWENIMAGE_EDIT_PLUS_IMG_TEMPLATE,
     prompt_template_encode_start_idx: int = QWENIMAGE_EDIT_PLUS_PROMPT_TEMPLATE_START_IDX,
+    tokenizer_max_length: int = 1024,
     device: Optional[torch.device] = None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -186,7 +188,7 @@ def get_qwen_prompt_embeds_edit_plus(
     split_hidden_states = _extract_masked_hidden(hidden_states, model_inputs.attention_mask)
     split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
     attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
-    max_seq_len = max([e.size(0) for e in split_hidden_states])
+    max_seq_len = tokenizer_max_length
     prompt_embeds = torch.stack(
         [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
     )
@@ -767,6 +769,7 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
         return [
             ConfigSpec(name="prompt_template_encode", default=QWENIMAGE_EDIT_PROMPT_TEMPLATE),
             ConfigSpec(name="prompt_template_encode_start_idx", default=QWENIMAGE_EDIT_PROMPT_TEMPLATE_START_IDX),
+            ConfigSpec(name="tokenizer_max_length", default=1024),
         ]
 
     @property
@@ -838,6 +841,7 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
             image=block_state.resized_image,
             prompt_template_encode=components.config.prompt_template_encode,
             prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
+            tokenizer_max_length=components.config.tokenizer_max_length,
             device=device,
         )
 
@@ -852,6 +856,7 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
                 image=block_state.resized_image,
                 prompt_template_encode=components.config.prompt_template_encode,
                 prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
+                tokenizer_max_length=components.config.tokenizer_max_length,
                 device=device,
             )
 
@@ -890,6 +895,7 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
             ConfigSpec(name="prompt_template_encode", default=QWENIMAGE_EDIT_PLUS_PROMPT_TEMPLATE),
             ConfigSpec(name="img_template_encode", default=QWENIMAGE_EDIT_PLUS_IMG_TEMPLATE),
             ConfigSpec(name="prompt_template_encode_start_idx", default=QWENIMAGE_EDIT_PLUS_PROMPT_TEMPLATE_START_IDX),
+            ConfigSpec(name="tokenizer_max_length", default=1024),
         ]
 
     @property
@@ -962,6 +968,7 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
             prompt_template_encode=components.config.prompt_template_encode,
             img_template_encode=components.config.img_template_encode,
             prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
+            tokenizer_max_length=components.config.tokenizer_max_length,
             device=device,
         )
 
@@ -978,6 +985,7 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
                     prompt_template_encode=components.config.prompt_template_encode,
                     img_template_encode=components.config.img_template_encode,
                     prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
+                    tokenizer_max_length=components.config.tokenizer_max_length,
                     device=device,
                 )
             )
