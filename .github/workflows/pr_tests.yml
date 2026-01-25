@@ -147,6 +147,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
         uv pip install ".[training]"
+        uv pip install -U torchvision
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
@@ -258,7 +259,7 @@ jobs:
         else
           uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
         fi
-
+        
     - name: Environment
       run: |
         python utils/print_env.py

@@ -138,6 +138,7 @@ jobs:
           else
             uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
           fi
+          uv pip install -U torchvision
 
       - name: Environment
         run: |
@@ -213,6 +214,7 @@ jobs:
         else
           uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
         fi
+        uv pip install -U torchvision
 
     - name: Environment
       run: |
@@ -283,6 +285,7 @@ jobs:
           uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
         fi
         uv pip install -e ".[quality,training]"
+        uv pip install -U torchvision
 
     - name: Environment
       run: |
@@ -292,7 +295,6 @@ jobs:
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
-        uv pip install ".[training]"
         pytest -n 1 --max-worker-restart=0 --dist=loadfile --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports
