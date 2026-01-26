@@ -616,7 +616,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         latents_mean = latents_mean.to(latents.device, latents.dtype)
         latents_std = latents_std.to(latents.device, latents.dtype)
         return (latents * latents_std) + latents_mean
-    
+
     @staticmethod
     def _create_noised_state(latents: torch.Tensor, noise_scale: float, generator: Optional[torch.Generator] = None):
         noise = randn_tensor(latents.shape, generator=generator, device=latents.device, dtype=latents.dtype)

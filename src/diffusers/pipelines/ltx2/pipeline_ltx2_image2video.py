@@ -615,6 +615,13 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._create_noised_state
+    def _create_noised_state(latents: torch.Tensor, noise_scale: float, generator: Optional[torch.Generator] = None):
+        noise = randn_tensor(latents.shape, generator=generator, device=latents.device, dtype=latents.dtype)
+        noised_latents = noise_scale * noise + (1 - noise_scale) * latents
+        return noised_latents
+
+    @staticmethod
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._pack_audio_latents
     def _pack_audio_latents(
         latents: torch.Tensor, patch_size: Optional[int] = None, patch_size_t: Optional[int] = None
@@ -678,6 +685,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         height: int = 512,
         width: int = 704,
         num_frames: int = 161,
+        noise_scale: float = 0.0,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[torch.Generator] = None,
@@ -693,14 +701,18 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         if latents is not None:
             conditioning_mask = latents.new_zeros(mask_shape)
             conditioning_mask[:, :, 0] = 1.0
-            conditioning_mask = self._pack_latents(
-                conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
-            ).squeeze(-1)
             if latents.ndim == 5:
+                latents = self._normalize_latents(
+                    latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+                )
+                latents = self._create_noised_state(latents, noise_scale * (1 - conditioning_mask), generator)
                 # latents are of shape [B, C, F, H, W], need to be packed
                 latents = self._pack_latents(
                     latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
                 )
+            conditioning_mask = self._pack_latents(
+                conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+            ).squeeze(-1)
             if latents.ndim != 3 or latents.shape[:2] != conditioning_mask.shape:
                 raise ValueError(
                     f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is {conditioning_mask.shape + (num_channels_latents,)}."
@@ -751,6 +763,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         num_channels_latents: int = 8,
         audio_latent_length: int = 1,  # 1 is just a dummy value
         num_mel_bins: int = 64,
+        noise_scale: float = 0.0,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[torch.Generator] = None,
@@ -761,6 +774,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
                 # latents are of shape [B, C, L, M], need to be packed
                 latents = self._pack_audio_latents(latents)
             latents = self._normalize_audio_latents(latents, self.audio_vae.latents_mean, self.audio_vae.latents_std)
+            latents = self._create_noised_state(latents, noise_scale, generator)
             return latents.to(device=device, dtype=dtype)
 
         # TODO: confirm whether this logic is correct
@@ -822,6 +836,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         timesteps: List[int] = None,
         guidance_scale: float = 4.0,
         guidance_rescale: float = 0.0,
+        noise_scale: float = 0.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -879,6 +894,9 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
                 [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://huggingface.co/papers/2305.08891). Guidance rescale factor should fix overexposure when
                 using zero terminal SNR.
+            noise_scale (`float`, *optional*, defaults to `0.0`):
+                The interpolation factor between random noise and denoised latents at each timestep. Applying noise to
+                the `latents` and `audio_latents` before continue denoising.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -1019,6 +1037,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
             height,
             width,
             num_frames,
+            noise_scale,
             torch.float32,
             device,
             generator,
@@ -1051,6 +1070,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
             num_channels_latents=num_channels_latents_audio,
             audio_latent_length=audio_num_frames,
             num_mel_bins=num_mel_bins,
+            noise_scale=noise_scale,
             dtype=torch.float32,
             device=device,
             generator=generator,
