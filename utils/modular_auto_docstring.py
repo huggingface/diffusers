@@ -199,18 +199,36 @@ def format_docstring(doc: str, indent: str = "    ") -> str:
 
 
 def run_ruff_format(filepath: str):
-    """Run ruff format on a file to ensure consistent formatting."""
+    """Run ruff check --fix, ruff format, and doc-builder style on a file to ensure consistent formatting."""
     try:
+        # First run ruff check --fix to fix any linting issues (including line length)
+        subprocess.run(
+            ["ruff", "check", "--fix", filepath],
+            check=False,  # Don't fail if there are unfixable issues
+            capture_output=True,
+            text=True,
+        )
+        # Then run ruff format for code formatting
         subprocess.run(
             ["ruff", "format", filepath],
             check=True,
             capture_output=True,
             text=True,
         )
+        # Finally run doc-builder style for docstring formatting
+        subprocess.run(
+            ["doc-builder", "style", filepath, "--max_len", "119"],
+            check=False,  # Don't fail if doc-builder has issues
+            capture_output=True,
+            text=True,
+        )
+        print(f"Formatted {filepath}")
     except subprocess.CalledProcessError as e:
-        print(f"Warning: ruff format failed for {filepath}: {e.stderr}")
-    except FileNotFoundError:
-        print("Warning: ruff not found. Skipping formatting.")
+        print(f"Warning: formatting failed for {filepath}: {e.stderr}")
+    except FileNotFoundError as e:
+        print(f"Warning: tool not found ({e}). Skipping formatting.")
+    except Exception as e:
+        print(f"Warning: unexpected error formatting {filepath}: {e}")
 
 
 def process_file(filepath: str, overwrite: bool = False) -> list:
