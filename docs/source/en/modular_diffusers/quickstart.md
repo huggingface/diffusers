@@ -40,8 +40,11 @@ Learn more about creating and loading pipelines in the [Creating a pipeline](htt
 
 ## Understand the structure
 
-The pipeline is built from [`ModularPipelineBlocks`] specific to the model. For example, [`QwenImage`] is built from `QwenImageAutoBlocks`. Print it to see its structure.
+A [`ModularPipeline`] has two parts:
+- **State**: the loaded components (models, schedulers, processors) and configuration
+- **Definition**: the [`ModularPipelineBlocks`] that specify inputs, outputs, expected components and computation logic
 
+The blocks define *what* the pipeline does. Access them through `pipe.blocks`.
 ```py
 print(pipe.blocks)
 ```
@@ -80,8 +83,7 @@ The output returns:
 
 ### Workflows
 
-This pipeline supports multiple workflows and adapts its behavior based on the inputs you provide. For example, if you pass `image` to the pipeline, it runs an image-to-image workflow instead of text-to-image.
-
+`QwenImageAutoBlocks` is a [`ConditionalPipelineBlocks`], so this pipeline supports multiple workflows and adapts its behavior based on the inputs you provide. For example, if you pass `image` to the pipeline, it runs an image-to-image workflow instead of text-to-image.
 ```py
 from diffusers.utils import load_image
 
@@ -93,17 +95,14 @@ image = pipe(
 ).images[0]
 ```
 
-Learn more about conditional blocks in the [AutoPipelineBlocks](https://huggingface.co/docs/diffusers/modular_diffusers/auto_pipeline_blocks) guide.
-
 Use `get_workflow()` to extract the blocks for a specific workflow.
-
 ```py
 img2img_blocks = pipe.blocks.get_workflow("image2image")
 ```
 
-### Sub-blocks
+Conditional blocks are convenient for users, but their conditional logic adds complexity when customizing or debugging. Extracting a workflow gives you the specific blocks relevant to your workflow, making it easier to work with. Learn more in the [AutoPipelineBlocks](https://huggingface.co/docs/diffusers/modular_diffusers/auto_pipeline_blocks) guide.
 
-Blocks are the building blocks of the modular system. They are *definitions* that specify the inputs, outputs, and computation logic for a step - and they can be composed together in different ways.
+### Sub-blocks
 
 `QwenImageAutoBlocks` is itself composed of smaller blocks: `text_encoder`, `vae_encoder`, `controlnet_vae_encoder`, `denoise`, and `decode`. Access them through the `sub_blocks` property.
 
@@ -118,7 +117,7 @@ This block can be converted to a pipeline and run on its own with [`~ModularPipe
 ```py
 vae_encoder_pipe = vae_encoder_block.init_pipeline()
 
-# Reuse the VAE we already loaded, we can reuse it with update_componenets() method
+# Reuse the VAE we already loaded, we can reuse it with update_components() method
 vae_encoder_pipe.update_components(vae=pipe.vae)
 
 # Run just this block
@@ -128,9 +127,11 @@ print(image_latents.shape)
 
 It reuses the VAE from our original pipeline instead of reloading it, keeping memory usage efficient. Learn more in the [Loading components](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#loading-components) guide.
 
-You can also add new blocks to compose new workflows. Let's add a canny edge detection block to create a ControlNet pipeline.
+Since blocks are composable, you can modify the pipeline's definition by adding, removing, or swapping blocks to create new workflows. In the next section, we'll add a canny edge detection block to a ControlNet pipeline, so you can pass a regular image instead of a pre-processed canny edge map.
 
-1. Load the canny block from the Hub and insert it into the ControlNet workflow. If you want to learn how to create your own custom blocks and share them on the Hub, check out the [Building Custom Blocks](https://huggingface.co/docs/diffusers/modular_diffusers/custom_blocks) guide.
+## Compose new workflows
+
+Let's add a canny edge detection block to a ControlNet pipeline. First, load a pre-built canny block from the Hub (see [Building Custom Blocks](https://huggingface.co/docs/diffusers/modular_diffusers/custom_blocks) to create your own).
 
 ```py
 from diffusers.modular_pipelines import ModularPipelineBlocks
@@ -160,10 +161,10 @@ class CannyBlock
           Canny map for input image
 ```
 
-Use `get_workflow` to extract the ControlNet workflow.
+Use `get_workflow` to extract the ControlNet workflow from [`QwenImageAutoBlocks`].
 
 ```py
-# Get the controlnet workflow 
+# Get the controlnet workflow that we want to work with
 blocks = pipe.blocks.get_workflow("controlnet_text2image")
 print(blocks.doc)
 ```
@@ -183,7 +184,9 @@ It requires control_image as input. After inserting the canny block, the pipelin
 # and insert canny at the beginning
 blocks.sub_blocks.insert("canny", canny_block, 0)
 
-# Check the updated structure - notice the pipeline now takes "image" as input
+# Check the updated structure: CannyBlock is now listed as first sub-block
+print(blocks)
+# Check the updated doc: notice the pipeline now takes "image" as input
 # even though it's a controlnet pipeline, because canny preprocesses it into control_image
 print(blocks.doc)
 ```
@@ -204,10 +207,15 @@ class SequentialPipelineBlocks
 
 Now the pipeline takes `image` as input - the canny block will preprocess it into `control_image` automatically.
 
-Create a pipeline from the modified blocks and load a ControlNet model.
-
+Create a pipeline from the modified blocks and load a ControlNet model. We use [`ComponentsManager`] to enable CPU offloading for reduced memory usage (learn more in the [ComponentsManager](./components_manager) guide).
 ```py
-pipeline = blocks.init_pipeline("Qwen/Qwen-Image")
+from diffusers import ComponentsManager
+
+manager = ComponentsManager()
+manager.enable_auto_cpu_offload(device="cuda:0")
+
+pipeline = blocks.init_pipeline("Qwen/Qwen-Image", components_manager=manager)
+
 pipeline.load_components(torch_dtype=torch.bfloat16)
 
 # Load the ControlNet model
@@ -215,7 +223,6 @@ controlnet_spec = pipeline.get_component_spec("controlnet")
 controlnet_spec.pretrained_model_name_or_path = "InstantX/Qwen-Image-ControlNet-Union"
 controlnet = controlnet_spec.load(torch_dtype=torch.bfloat16)
 pipeline.update_components(controlnet=controlnet)
-pipeline.to("cuda")
 ```
 
 Now run the pipeline - the canny block preprocesses the image for ControlNet.
@@ -248,7 +255,7 @@ Use [`ComponentsManager`](./components_manager) to share models across multiple 
 </hfoption>
 <hfoption id="Visual interface">
 
-Connect modular pipelines to [Mellon](https://github.com/cubiq/Mellon), a visual node-based interface for building workflows. Custom blocks built with Modular Diffusers work out of the box with Mellon - no UI code required. Read more in Mellon guide
+Connect modular pipelines to [Mellon](https://github.com/cubiq/Mellon), a visual node-based interface for building workflows. Custom blocks built with Modular Diffusers work out of the box with Mellon - no UI code required. Read more in Mellon guide.
 
 </hfoption>
 </hfoptions>
