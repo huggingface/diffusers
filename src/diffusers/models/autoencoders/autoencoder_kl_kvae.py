@@ -19,16 +19,16 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import deprecate
-from ..activations import get_activation
 from ...utils.accelerate_utils import apply_forward_hook
+from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import AutoencoderMixin, DiagonalGaussianDistribution, DecoderOutput
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
 def get_norm_layer_2d(
-        in_channels: int, 
-        num_groups: int = 32, 
+        in_channels: int,
+        num_groups: int = 32,
         **kwargs
     ) -> nn.GroupNorm:
     """
@@ -112,7 +112,7 @@ class KVAEResnetBlock2D(nn.Module):
         else:
             h = self.norm1(h, zq)
 
-        h = self.nonlinearity(h)  
+        h = self.nonlinearity(h)
         h = self.conv1(h)
 
         if temb is not None:
@@ -138,8 +138,8 @@ class KVAEResnetBlock2D(nn.Module):
 
 class KVAEPXSDownsample(nn.Module):
     def __init__(
-            self, 
-            in_channels: int, 
+            self,
+            in_channels: int,
             factor: int = 2
         ):
         r"""
@@ -173,8 +173,8 @@ class KVAEPXSDownsample(nn.Module):
 
 class KVAEPXSUpsample(nn.Module):
     def __init__(
-            self, 
-            in_channels: int, 
+            self,
+            in_channels: int,
             factor: int = 2
         ):
         r"""
@@ -374,7 +374,7 @@ class KVAEEncoder2D(nn.Module):
         h = self.conv_out(h)
 
         return h
-    
+
 
 class KVAEDecoder2D(nn.Module):
     r"""
@@ -514,7 +514,7 @@ class KVAEDecoder2D(nn.Module):
         h = self.conv_out(h)
 
         return h
-    
+
 
 class AutoencoderKLKVAE(
     ModelMixin, AutoencoderMixin, ConfigMixin
