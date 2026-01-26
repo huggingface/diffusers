@@ -551,8 +551,7 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
 # auto_docstring
 class QwenImageSetTimestepsStep(ModularPipelineBlocks):
     """
-    Step that sets the the scheduler's timesteps for text-to-image generation. Should be run after prepare latents
-    step.
+    Step that sets the scheduler's timesteps for text-to-image generation. Should be run after prepare latents step.
 
       Components:
           scheduler (`FlowMatchEulerDiscreteScheduler`)
@@ -718,8 +717,8 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
 # auto_docstring
 class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
     """
-    Step that sets the the scheduler's timesteps for image-to-image generation, and inpainting. Should be run after
-    prepare latents step.
+    Step that sets the scheduler's timesteps for image-to-image generation, and inpainting. Should be run after prepare
+    latents step.
 
       Components:
           scheduler (`FlowMatchEulerDiscreteScheduler`)
@@ -846,10 +845,6 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
       Outputs:
           img_shapes (`List`):
               The shapes of the images latents, used for RoPE calculation
-          txt_seq_lens (`List`):
-              The sequence lengths of the prompt embeds, used for RoPE calculation
-          negative_txt_seq_lens (`List`):
-              The sequence lengths of the negative prompt embeds, used for RoPE calculation
     """
 
     model_name = "qwenimage"
@@ -925,10 +920,6 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
       Outputs:
           img_shapes (`List`):
               The shapes of the images latents, used for RoPE calculation
-          txt_seq_lens (`List`):
-              The sequence lengths of the prompt embeds, used for RoPE calculation
-          negative_txt_seq_lens (`List`):
-              The sequence lengths of the negative prompt embeds, used for RoPE calculation
     """
 
     model_name = "qwenimage"
