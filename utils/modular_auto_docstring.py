@@ -48,6 +48,7 @@ import glob
 import importlib
 import os
 import re
+import subprocess
 import sys
 
 
@@ -197,6 +198,21 @@ def format_docstring(doc: str, indent: str = "    ") -> str:
         return "".join(result)
 
 
+def run_ruff_format(filepath: str):
+    """Run ruff format on a file to ensure consistent formatting."""
+    try:
+        subprocess.run(
+            ["ruff", "format", filepath],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: ruff format failed for {filepath}: {e.stderr}")
+    except FileNotFoundError:
+        print("Warning: ruff not found. Skipping formatting.")
+
+
 def process_file(filepath: str, overwrite: bool = False) -> list:
     """
     Process a file and find/insert docstrings for # auto_docstring marked classes.
@@ -249,6 +265,8 @@ def process_file(filepath: str, overwrite: bool = False) -> list:
     if updated:
         with open(filepath, "w", encoding="utf-8", newline="\n") as f:
             f.writelines(lines)
+        # Run ruff format to ensure consistent line wrapping
+        run_ruff_format(filepath)
 
     return [(filepath, cls_name, line) for cls_name, line, _, _ in classes_to_update]
 
