@@ -105,7 +105,7 @@ img2img_blocks = pipe.blocks.get_workflow("image2image")
 
 Blocks are the building blocks of the modular system. They are *definitions* that specify the inputs, outputs, and computation logic for a step - and they can be composed together in different ways.
 
-`QwenImageAutoBlocks` is itself composed of smaller blocks: `text_encoder`, `vae_encoder`, `controlnet_vae_encoder`, `denoise`, and `decode`. Access them through the `sub_blocks` property. Let's take a look at the `vae_encoder` block - use the `doc` property to see its inputs, outputs, and components.
+`QwenImageAutoBlocks` is itself composed of smaller blocks: `text_encoder`, `vae_encoder`, `controlnet_vae_encoder`, `denoise`, and `decode`. Access them through the `sub_blocks` property.
 
 Let's take a look at the `vae_encoder` block as an example. Use the `doc` property to see the full documentation for any block, including its inputs, outputs, and components.
 
