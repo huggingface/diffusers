@@ -183,7 +183,7 @@ Use [`ComponentsManager`](./components_manager) to share models across multiple 
 </hfoption>
 <hfoption id="Visual interface">
 
-Connect modular pipelines to [Mellon](https://github.com/cubiq/Mellon), a visual node-based interface for building workflows. Custom blocks built with Modular Diffusers work out of the box with Mellon - no UI code required. Read more in [Mellon](./mellon) guide
+Connect modular pipelines to [Mellon](https://github.com/cubiq/Mellon), a visual node-based interface for building workflows. Custom blocks built with Modular Diffusers work out of the box with Mellon - no UI code required. Read more in Mellon guide
 
 </hfoption>
 </hfoptions>
