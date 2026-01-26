@@ -130,7 +130,7 @@ It reuses the VAE from our original pipeline instead of reloading it, keeping me
 
 You can also add new blocks to compose new workflows. Let's add a canny edge detection block to create a ControlNet pipeline.
 
-First, load the canny block from the Hub and insert it into the controlnet workflow. If you want to learn how to create your own custom blocks and share them on the Hub, check out the [Building Custom Blocks](https://huggingface.co/docs/diffusers/modular_diffusers/custom_blocks) guide.
+1. Load the canny block from the Hub and insert it into the ControlNet workflow. If you want to learn how to create your own custom blocks and share them on the Hub, check out the [Building Custom Blocks](https://huggingface.co/docs/diffusers/modular_diffusers/custom_blocks) guide.
 
 ```py
 from diffusers.modular_pipelines import ModularPipelineBlocks
