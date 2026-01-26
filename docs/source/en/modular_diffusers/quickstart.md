@@ -160,7 +160,7 @@ class CannyBlock
           Canny map for input image
 ```
 
-The canny block takes an `image` as input and outputs a `control_image` - exactly what we need for ControlNet. Now get the controlnet workflow and check its inputs.
+Use `get_workflow` to extract the ControlNet workflow.
 
 ```py
 # Get the controlnet workflow 
