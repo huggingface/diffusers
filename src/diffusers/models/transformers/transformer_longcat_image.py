@@ -23,7 +23,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import AttentionModuleMixin, FeedForward
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
@@ -400,6 +400,7 @@ class LongCatImageTransformer2DModel(
     PeftAdapterMixin,
     FromOriginalModelMixin,
     CacheMixin,
+    AttentionMixin,
 ):
     """
     The Transformer model introduced in Longcat-Image.
