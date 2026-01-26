@@ -87,14 +87,14 @@ hf download nvidia/Cosmos-Transfer2.5-2B
 
 Convert checkpoint
 ```bash
-# blur
+# depth
 transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/depth/626e6618-bfcd-4d9a-a077-1409e2ce353f_ema_bf16.pt
 
 python scripts/convert_cosmos_to_diffusers.py \
     --transformer_type Cosmos-2.5-Transfer-General-2B \
     --transformer_ckpt_path $transformer_ckpt_path \
     --vae_type wan2.1 \
-    --output_path converted/transfer/2b/blur \
+    --output_path converted/transfer/2b/general/depth \
     --save_pipeline
 
 # edge
@@ -104,7 +104,27 @@ python scripts/convert_cosmos_to_diffusers.py \
     --transformer_type Cosmos-2.5-Transfer-General-2B \
     --transformer_ckpt_path $transformer_ckpt_path \
     --vae_type wan2.1 \
-    --output_path converted/transfer/2b/edge \
+    --output_path converted/transfer/2b/general/edge \
+    --save_pipeline
+
+# blur
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/blur/ba2f44f2-c726-4fe7-949f-597069d9b91c_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/blur \
+    --save_pipeline
+
+# seg
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/seg/5136ef49-6d8d-42e8-8abf-7dac722a304a_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/seg \
     --save_pipeline
 ```
 """
