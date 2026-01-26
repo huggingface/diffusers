@@ -34,13 +34,13 @@ image = pipe(
 image
 ```
 
-[`~ModularPipeline.from_pretrained`] uses lazy loading - it reads the configuration and knows where to load each component from, but doesn't actually load the model weights until you call [`~ModularPipeline.load_components`]. This gives you control over when and how components are loaded.
+[`~ModularPipeline.from_pretrained`] uses lazy loading - it reads the configuration to learn where to load each component from, but doesn't actually load the model weights until you call [`~ModularPipeline.load_components`]. This gives you control over when and how components are loaded.
 
 Learn more about creating and loading pipelines in the [Creating a pipeline](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#creating-a-pipeline) and [Loading components](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#loading-components) guides.
 
 ## Understand the structure
 
-The pipeline you loaded from `"Qwen/Qwen-Image"` is built from a [`ModularPipelineBlocks`] called `QwenImageAutoBlocks`. Print it to see its structure.
+The pipeline is built from [`ModularPipelineBlocks`] specific to the model. For example, [`QwenImage`] is built from `QwenImageAutoBlocks`. Print it to see its structure.
 
 ```py
 print(pipe.blocks)
@@ -74,9 +74,9 @@ QwenImageAutoBlocks(
 )
 ```
 
-From this output you can see two things:
-- It supports multiple **workflows** (text2image, image2image, inpainting, etc.)
-- It's composed of **sub_blocks** (text_encoder, vae_encoder, denoise, decode)
+The output returns:
+- The supported workflows (text2image, image2image, inpainting, etc.)
+- The Sub-Blocks it's composed of (text_encoder, vae_encoder, denoise, decode)
 
 ### Workflows
 
@@ -107,14 +107,14 @@ Blocks are the building blocks of the modular system. They are *definitions* tha
 
 `QwenImageAutoBlocks` is itself composed of smaller blocks: `text_encoder`, `vae_encoder`, `controlnet_vae_encoder`, `denoise`, and `decode`. Access them through the `sub_blocks` property.
 
-Let's take a look at the `vae_encoder` block as an example. Use the `doc` property to see the full documentation for any block, including its inputs, outputs, and components.
+The `doc` property is useful for seeing the full documentation of any block, including its inputs, outputs, and components.
 
 ```py
 vae_encoder_block = pipe.blocks.sub_blocks["vae_encoder"]
 print(vae_encoder_block.doc)
 ```
 
-Just like `QwenImageAutoBlocks`, this block can be converted to a pipeline and run on its own.
+This block can be converted to a pipeline and run on its own with [`~ModularPipelineBlocks.init_pipeline`].
 ```py
 vae_encoder_pipe = vae_encoder_block.init_pipeline()
 
@@ -126,7 +126,7 @@ image_latents = vae_encoder_pipe(image=input_image).image_latents
 print(image_latents.shape)
 ```
 
-This reuses the VAE from our original pipeline instead of loading it again, keeping memory usage efficient. Learn more in the [Loading components](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#loading-components) guide.
+It reuses the VAE from our original pipeline instead of reloading it, keeping memory usage efficient. Learn more in the [Loading components](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#loading-components) guide.
 
 You can also add new blocks to compose new workflows. Let's add a canny edge detection block to create a ControlNet pipeline.
 
@@ -177,7 +177,7 @@ class SequentialPipelineBlocks
           Control image for ControlNet conditioning.
       ...
 ```
-Notice it requires control_image as input. After inserting the canny block, the pipeline will accept a regular image instead.
+It requires control_image as input. After inserting the canny block, the pipeline will accept a regular image instead.
 
 ```py
 # and insert canny at the beginning
