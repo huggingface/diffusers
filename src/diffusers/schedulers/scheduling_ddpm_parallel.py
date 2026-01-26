@@ -149,38 +149,41 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
     For more details, see the original paper: https://huggingface.co/papers/2006.11239
 
     Args:
-        num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        beta_start (`float`): the starting `beta` value of inference.
-        beta_end (`float`): the final `beta` value.
-        beta_schedule (`str`):
-            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
+        num_train_timesteps (`int`, defaults to 1000):
+            The number of diffusion steps to train the model.
+        beta_start (`float`, defaults to 0.0001):
+            The starting `beta` value of inference.
+        beta_end (`float`, defaults to 0.02):
+            The final `beta` value.
+        beta_schedule (`str`, defaults to `"linear"`):
+            The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, `squaredcos_cap_v2` or `sigmoid`.
-        trained_betas (`np.ndarray`, optional):
-            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-        variance_type (`str`):
-            options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
+        trained_betas (`np.ndarray`, *optional*):
+            Option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
+        variance_type (`str`, defaults to `"fixed_small"`):
+            Options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
-        clip_sample (`bool`, default `True`):
-            option to clip predicted sample for numerical stability.
-        clip_sample_range (`float`, default `1.0`):
-            the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
-        prediction_type (`str`, default `epsilon`, optional):
-            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+        clip_sample (`bool`, defaults to `True`):
+            Option to clip predicted sample for numerical stability.
+        prediction_type (`str`, defaults to `"epsilon"`):
+            Prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
             https://huggingface.co/papers/2210.02303)
-        thresholding (`bool`, default `False`):
-            whether to use the "dynamic thresholding" method (introduced by Imagen,
+        thresholding (`bool`, defaults to `False`):
+            Whether to use the "dynamic thresholding" method (introduced by Imagen,
             https://huggingface.co/papers/2205.11487). Note that the thresholding method is unsuitable for latent-space
             diffusion models (such as stable-diffusion).
-        dynamic_thresholding_ratio (`float`, default `0.995`):
-            the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
+        dynamic_thresholding_ratio (`float`, defaults to 0.995):
+            The ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
             (https://huggingface.co/papers/2205.11487). Valid only when `thresholding=True`.
-        sample_max_value (`float`, default `1.0`):
-            the threshold value for dynamic thresholding. Valid only when `thresholding=True`.
-        timestep_spacing (`str`, default `"leading"`):
+        clip_sample_range (`float`, defaults to 1.0):
+            The maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
+        sample_max_value (`float`, defaults to 1.0):
+            The threshold value for dynamic thresholding. Valid only when `thresholding=True`.
+        timestep_spacing (`str`, defaults to `"leading"`):
             The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
             Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
-        steps_offset (`int`, default `0`):
+        steps_offset (`int`, defaults to 0):
             An offset added to the inference steps, as required by some model families.
         rescale_betas_zero_snr (`bool`, defaults to `False`):
             Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
@@ -293,7 +296,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
-            num_inference_steps (`int`):
+            num_inference_steps (`int`, *optional*):
                 The number of diffusion steps used when generating samples with a pre-trained model. If used,
                 `timesteps` must be `None`.
             device (`str` or `torch.device`, *optional*):
@@ -478,7 +481,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: int,
         sample: torch.Tensor,
-        generator=None,
+        generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[DDPMParallelSchedulerOutput, Tuple]:
         """
@@ -490,7 +493,8 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 current instance of sample being created by diffusion process.
-            generator: random number generator.
+            generator (`torch.Generator`, *optional*):
+                Random number generator.
             return_dict (`bool`): option for returning tuple rather than DDPMParallelSchedulerOutput class
 
         Returns:
@@ -503,7 +507,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
 
         prev_t = self.previous_timestep(t)
 
-        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
+        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in [
+            "learned",
+            "learned_range",
+        ]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
         else:
             predicted_variance = None
@@ -552,7 +559,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         if t > 0:
             device = model_output.device
             variance_noise = randn_tensor(
-                model_output.shape, generator=generator, device=device, dtype=model_output.dtype
+                model_output.shape,
+                generator=generator,
+                device=device,
+                dtype=model_output.dtype,
             )
             if self.variance_type == "fixed_small_log":
                 variance = self._get_variance(t, predicted_variance=predicted_variance) * variance_noise
@@ -575,7 +585,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
     def batch_step_no_noise(
         self,
         model_output: torch.Tensor,
-        timesteps: List[int],
+        timesteps: torch.Tensor,
         sample: torch.Tensor,
     ) -> torch.Tensor:
         """
@@ -588,8 +598,8 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             model_output (`torch.Tensor`): direct output from learned diffusion model.
-            timesteps (`List[int]`):
-                current discrete timesteps in the diffusion chain. This is now a list of integers.
+            timesteps (`torch.Tensor`):
+                Current discrete timesteps in the diffusion chain. This is a tensor of integers.
             sample (`torch.Tensor`):
                 current instance of sample being created by diffusion process.
 
@@ -603,7 +613,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         t = t.view(-1, *([1] * (model_output.ndim - 1)))
         prev_t = prev_t.view(-1, *([1] * (model_output.ndim - 1)))
 
-        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
+        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in [
+            "learned",
+            "learned_range",
+        ]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
         else:
             pass
@@ -734,7 +747,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         return self.config.num_train_timesteps
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.previous_timestep
-    def previous_timestep(self, timestep):
+    def previous_timestep(self, timestep: int) -> Union[int, torch.Tensor]:
         """
         Compute the previous timestep in the diffusion chain.
 
@@ -743,7 +756,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
                 The current timestep.
 
         Returns:
-            `int`:
+            `int` or `torch.Tensor`:
                 The previous timestep.
         """
         if self.custom_timesteps or self.num_inference_steps:
