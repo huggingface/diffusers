@@ -29,7 +29,7 @@ pipe.load_components(torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
 image = pipe(
-    prompt="A cat astronaut floating in space",
+    prompt="cat wizard with red hat, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney",
 ).images[0]
 image
 ```
@@ -47,22 +47,31 @@ print(pipe.blocks)
 ```
 
 ```
-class QwenImageAutoBlocks
+QwenImageAutoBlocks(
+  Class: SequentialPipelineBlocks
 
-  Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks.
+  Description: Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using QwenImage.
+      
+      Supported workflows:
+        - `text2image`: requires `prompt`
+        - `image2image`: requires `prompt`, `image`
+        - `inpainting`: requires `prompt`, `mask_image`, `image`
+        - `controlnet_text2image`: requires `prompt`, `control_image`
+        ...
 
-  Supported workflows:
-    - `text2image`: requires `prompt`
-    - `image2image`: requires `prompt`, `image`
-    - `inpainting`: requires `prompt`, `mask_image`, `image`
-    - `controlnet_text2image`: requires `prompt`, `control_image`
-    ...
+  Components:
+      text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+      vae (`AutoencoderKLQwenImage`)
+      transformer (`QwenImageTransformer2DModel`)
+      ...
 
-  Sub-blocks:
-    - text_encoder: QwenImageTextEncoderStep
-    - vae_encoder: QwenImageAutoVaeEncoderStep
-    - denoise: QwenImageAutoCoreDenoiseStep
-    - decode: QwenImageAutoDecodeStep
+  Sub-Blocks:
+    [0] text_encoder (QwenImageAutoTextEncoderStep)
+    [1] vae_encoder (QwenImageAutoVaeEncoderStep)
+    [2] controlnet_vae_encoder (QwenImageOptionalControlNetVaeEncoderStep)
+    [3] denoise (QwenImageAutoCoreDenoiseStep)
+    [4] decode (QwenImageAutoDecodeStep)
+)
 ```
 
 From this output you can see two things:
@@ -79,7 +88,7 @@ from diffusers.utils import load_image
 input_image = load_image("https://github.com/Trgtuan10/Image_storage/blob/main/cute_cat.png?raw=true")
 
 image = pipe(
-    prompt="A cat astronaut floating in space",
+    prompt="cat wizard with red hat, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney",
     image=input_image,
 ).images[0]
 ```
@@ -95,6 +104,8 @@ img2img_blocks = pipe.blocks.get_workflow("image2image")
 ### Sub-blocks
 
 Blocks are the building blocks of the modular system. They are *definitions* that specify the inputs, outputs, and computation logic for a step - and they can be composed together in different ways.
+
+`QwenImageAutoBlocks` is itself composed of smaller blocks: `text_encoder`, `vae_encoder`, `controlnet_vae_encoder`, `denoise`, and `decode`. Access them through the `sub_blocks` property. Let's take a look at the `vae_encoder` block - use the `doc` property to see its inputs, outputs, and components.
 
 Let's take a look at the `vae_encoder` block as an example. Use the `doc` property to see the full documentation for any block, including its inputs, outputs, and components.
 
@@ -130,14 +141,68 @@ canny_block = ModularPipelineBlocks.from_pretrained(
     trust_remote_code=True,
 )
 
-# Get the controlnet workflow and insert canny at the beginning
+print(canny_block.doc)
+```
+```
+class CannyBlock
+
+  Inputs:
+      image (`Union[Image, ndarray]`):
+          Image to compute canny filter on
+      low_threshold (`int`, *optional*, defaults to 50):
+          Low threshold for the canny filter.
+      high_threshold (`int`, *optional*, defaults to 200):
+          High threshold for the canny filter.
+      ...
+
+  Outputs:
+      control_image (`PIL.Image`):
+          Canny map for input image
+```
+
+The canny block takes an `image` as input and outputs a `control_image` - exactly what we need for ControlNet. Now get the controlnet workflow and check its inputs.
+
+```py
+# Get the controlnet workflow 
 blocks = pipe.blocks.get_workflow("controlnet_text2image")
+print(blocks.doc)
+```
+```
+class SequentialPipelineBlocks
+
+  Inputs:
+      prompt (`str`):
+          The prompt or prompts to guide image generation.
+      control_image (`Image`):
+          Control image for ControlNet conditioning.
+      ...
+```
+Notice it requires control_image as input. After inserting the canny block, the pipeline will accept a regular image instead.
+
+```py
+# and insert canny at the beginning
 blocks.sub_blocks.insert("canny", canny_block, 0)
 
 # Check the updated structure - notice the pipeline now takes "image" as input
 # even though it's a controlnet pipeline, because canny preprocesses it into control_image
 print(blocks.doc)
 ```
+```
+class SequentialPipelineBlocks
+
+  Inputs:
+      image (`Union[Image, ndarray]`):
+          Image to compute canny filter on
+      low_threshold (`int`, *optional*, defaults to 50):
+          Low threshold for the canny filter.
+      high_threshold (`int`, *optional*, defaults to 200):
+          High threshold for the canny filter.
+      prompt (`str`):
+          The prompt or prompts to guide image generation.
+      ...
+```
+
+Now the pipeline takes `image` as input - the canny block will preprocess it into `control_image` automatically.
 
 Create a pipeline from the modified blocks and load a ControlNet model.
 
