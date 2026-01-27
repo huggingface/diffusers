@@ -305,9 +305,7 @@ class GlmImagePipeline(DiffusionPipeline):
             )
 
         if len(image) != batch_size:
-            raise ValueError(
-                f"Number of image lists ({len(image)}) must match batch size ({batch_size})."
-            )
+            raise ValueError(f"Number of image lists ({len(image)}) must match batch size ({batch_size}).")
 
         # Validate homogeneous: all sublists must have same length
         num_input_images_per_prompt = len(image[0])
@@ -452,7 +450,7 @@ class GlmImagePipeline(DiffusionPipeline):
             # For left-padded sequences, generated tokens start at max_input_length
             # (padding is on the left, so all sequences end at the same position)
             prior_token_ids_d32 = self._extract_large_image_tokens(
-                outputs[idx:idx+1], max_input_length, large_image_offset, token_h * token_w
+                outputs[idx : idx + 1], max_input_length, large_image_offset, token_h * token_w
             )
             prior_token_ids = self._upsample_token_ids(prior_token_ids_d32, token_h, token_w)
             all_prior_token_ids.append(prior_token_ids)
@@ -522,7 +520,10 @@ class GlmImagePipeline(DiffusionPipeline):
                 device=device,
             )
             input_ids = torch.tensor(
-                [input_ids_ + [self.tokenizer.pad_token_id] * (max_length - len(input_ids_)) for input_ids_ in input_ids],
+                [
+                    input_ids_ + [self.tokenizer.pad_token_id] * (max_length - len(input_ids_))
+                    for input_ids_ in input_ids
+                ],
                 device=device,
             )
             outputs = self.text_encoder(input_ids, attention_mask=attention_mask)
@@ -534,9 +535,7 @@ class GlmImagePipeline(DiffusionPipeline):
         padded_embeds = []
         for emb in all_glyph_embeds:
             if emb.size(1) < max_seq_len:
-                pad = torch.zeros(
-                    emb.size(0), max_seq_len - emb.size(1), emb.size(2), device=device, dtype=emb.dtype
-                )
+                pad = torch.zeros(emb.size(0), max_seq_len - emb.size(1), emb.size(2), device=device, dtype=emb.dtype)
                 emb = torch.cat([pad, emb], dim=1)  # left padding
             padded_embeds.append(emb)
 
@@ -823,13 +822,15 @@ class GlmImagePipeline(DiffusionPipeline):
         # Get a single generator for AR model (use first if list provided)
         ar_generator = generator[0] if isinstance(generator, list) else generator
         if prior_token_ids is None:
-            prior_token_ids, prior_token_image_ids_per_sample, source_image_grid_thw_per_sample = self.generate_prior_tokens(
-                prompt=prompt,
-                image=normalized_image,
-                height=height,
-                width=width,
-                device=device,
-                generator=ar_generator,
+            prior_token_ids, prior_token_image_ids_per_sample, source_image_grid_thw_per_sample = (
+                self.generate_prior_tokens(
+                    prompt=prompt,
+                    image=normalized_image,
+                    height=height,
+                    width=width,
+                    device=device,
+                    generator=ar_generator,
+                )
             )
         else:
             # User provided prior_token_ids directly (from generate_prior_tokens)
