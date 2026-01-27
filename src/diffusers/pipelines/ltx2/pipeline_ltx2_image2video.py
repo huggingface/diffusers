@@ -1021,11 +1021,18 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         latent_width = width // self.vae_spatial_compression_ratio
         if latents is not None:
             if latents.ndim == 5:
+                logger.info(
+                    "Got latents of shape [batch_size, latent_dim, latent_frames, latent_height, latent_width], `latent_num_frames`, `latent_height`, `latent_width` will be inferred."
+                )
                 _, _, latent_num_frames, latent_height, latent_width = latents.shape  # [B, C, F, H, W]
-            else:
+            elif latents.ndim == 3:
                 logger.warning(
                     f"You have supplied packed `latents` of shape {latents.shape}, so the latent dims cannot be"
                     f" inferred. Make sure the supplied `height`, `width`, and `num_frames` are correct."
+                )
+            else:
+                raise ValueError(
+                    f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is either [batch_size, seq_len, num_features] or [batch_size, latent_dim, latent_frames, latent_height, latent_width]."
                 )
         video_sequence_length = latent_num_frames * latent_height * latent_width
 
@@ -1057,11 +1064,18 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         audio_num_frames = round(duration_s * audio_latents_per_second)
         if audio_latents is not None:
             if audio_latents.ndim == 4:
+                logger.info(
+                    "Got audio_latents of shape [batch_size, num_channels, audio_length, mel_bins], `audio_num_frames` will be inferred."
+                )
                 _, _, audio_num_frames, _ = audio_latents.shape  # [B, C, L, M]
-            else:
+            elif audio_latents.ndim == 3:
                 logger.warning(
                     f"You have supplied packed `audio_latents` of shape {audio_latents.shape}, so the latent dims"
-                    f" cannot be inferred. Make sure the supplied `num_frames` is correct."
+                    f" cannot be inferred. Make sure the supplied `num_frames` and `frame_rate` are correct."
+                )
+            else:
+                raise ValueError(
+                    f"Provided `audio_latents` tensor has shape {audio_latents.shape}, but the expected shape is either [batch_size, seq_len, num_features] or [batch_size, num_channels, audio_length, mel_bins]."
                 )
 
         num_mel_bins = self.audio_vae.config.mel_bins if getattr(self, "audio_vae", None) is not None else 64
