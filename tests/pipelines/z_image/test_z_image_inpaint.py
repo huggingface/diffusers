@@ -109,9 +109,8 @@ class ZImageInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             axes_dims=[8, 4, 4],
             axes_lens=[256, 32, 32],
         )
-        # `x_pad_token` and `cap_pad_token` are initialized with `torch.empty`.
-        # This can cause NaN data values in our testing environment. Fixating them
-        # helps prevent that issue.
+        # `x_pad_token` and `cap_pad_token` are initialized with `torch.empty` which contains
+        # uninitialized memory. Set them to known values for deterministic test behavior.
         with torch.no_grad():
             transformer.x_pad_token.copy_(torch.ones_like(transformer.x_pad_token.data))
             transformer.cap_pad_token.copy_(torch.ones_like(transformer.cap_pad_token.data))
