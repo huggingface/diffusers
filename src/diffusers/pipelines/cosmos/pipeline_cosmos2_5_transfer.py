@@ -770,8 +770,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         transformer_dtype = self.transformer.dtype
 
         # TODO: siglip inference if image ref is provided
-        img_context_ref = torch.zeros(batch_size, self.transformer.config.image_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
-        no_img_context_ref = torch.zeros(batch_size, self.transformer.config.image_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
+        img_context_ref = torch.zeros(batch_size, self.transformer.config.img_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
+        no_img_context_ref = torch.zeros(batch_size, self.transformer.config.img_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
         encoder_hidden_states = (prompt_embeds, img_context_ref)
         neg_encoder_hidden_states = (negative_prompt_embeds, no_img_context_ref)
 
