@@ -22,6 +22,7 @@ import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -29,6 +30,9 @@ from .scheduling_utils_flax import (
     FlaxSchedulerOutput,
     add_noise_common,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -171,6 +175,10 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         timestep_spacing: str = "linspace",
         dtype: jnp.dtype = jnp.float32,
     ):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         self.dtype = dtype
 
     def create_state(self, common: Optional[CommonSchedulerState] = None) -> DPMSolverMultistepSchedulerState:
@@ -203,7 +211,10 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
 
     def set_timesteps(
-        self, state: DPMSolverMultistepSchedulerState, num_inference_steps: int, shape: Tuple
+        self,
+        state: DPMSolverMultistepSchedulerState,
+        num_inference_steps: int,
+        shape: Tuple,
     ) -> DPMSolverMultistepSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -301,10 +312,13 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             if self.config.thresholding:
                 # Dynamic thresholding in https://huggingface.co/papers/2205.11487
                 dynamic_max_val = jnp.percentile(
-                    jnp.abs(x0_pred), self.config.dynamic_thresholding_ratio, axis=tuple(range(1, x0_pred.ndim))
+                    jnp.abs(x0_pred),
+                    self.config.dynamic_thresholding_ratio,
+                    axis=tuple(range(1, x0_pred.ndim)),
                 )
                 dynamic_max_val = jnp.maximum(
-                    dynamic_max_val, self.config.sample_max_value * jnp.ones_like(dynamic_max_val)
+                    dynamic_max_val,
+                    self.config.sample_max_value * jnp.ones_like(dynamic_max_val),
                 )
                 x0_pred = jnp.clip(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
             return x0_pred
@@ -385,7 +399,11 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         """
         t, s0, s1 = prev_timestep, timestep_list[-1], timestep_list[-2]
         m0, m1 = model_output_list[-1], model_output_list[-2]
-        lambda_t, lambda_s0, lambda_s1 = state.lambda_t[t], state.lambda_t[s0], state.lambda_t[s1]
+        lambda_t, lambda_s0, lambda_s1 = (
+            state.lambda_t[t],
+            state.lambda_t[s0],
+            state.lambda_t[s1],
+        )
         alpha_t, alpha_s0 = state.alpha_t[t], state.alpha_t[s0]
         sigma_t, sigma_s0 = state.sigma_t[t], state.sigma_t[s0]
         h, h_0 = lambda_t - lambda_s0, lambda_s0 - lambda_s1
@@ -443,7 +461,12 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         Returns:
             `jnp.ndarray`: the sample tensor at the previous timestep.
         """
-        t, s0, s1, s2 = prev_timestep, timestep_list[-1], timestep_list[-2], timestep_list[-3]
+        t, s0, s1, s2 = (
+            prev_timestep,
+            timestep_list[-1],
+            timestep_list[-2],
+            timestep_list[-3],
+        )
         m0, m1, m2 = model_output_list[-1], model_output_list[-2], model_output_list[-3]
         lambda_t, lambda_s0, lambda_s1, lambda_s2 = (
             state.lambda_t[t],
@@ -615,7 +638,10 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         return FlaxDPMSolverMultistepSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def scale_model_input(
-        self, state: DPMSolverMultistepSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+        self,
+        state: DPMSolverMultistepSchedulerState,
+        sample: jnp.ndarray,
+        timestep: Optional[int] = None,
     ) -> jnp.ndarray:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
