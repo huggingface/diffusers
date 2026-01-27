@@ -46,16 +46,10 @@ class CosmosPatchEmbed(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.patch_size
-        print(".shape=", hidden_states.shape)
-        # breakpoint()
         hidden_states = hidden_states.reshape(
             batch_size, num_channels, num_frames // p_t, p_t, height // p_h, p_h, width // p_w, p_w
         )
-        print(".shape=", hidden_states.shape)
-        # breakpoint()
         hidden_states = hidden_states.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7)
-        print(".shape=", hidden_states.shape)
-        # breakpoint()
         hidden_states = self.proj(hidden_states)
         return hidden_states
 
@@ -418,7 +412,6 @@ class CosmosTransformerBlock(nn.Module):
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         if self.before_proj is not None:
             hidden_states = self.before_proj(hidden_states) + latents
-            # print(f"before_proj, block_idx={block_idx}")
 
         if extra_pos_emb is not None:
             hidden_states = hidden_states + extra_pos_emb
@@ -443,13 +436,11 @@ class CosmosTransformerBlock(nn.Module):
         if controlnet_residual is not None:
             assert self.after_proj is None
             # NOTE: this is assumed to be scaled by the controlnet
-            # print("controlnet_residual", flush=True)
             hidden_states += controlnet_residual
 
         if self.after_proj is not None:
             assert controlnet_residual is None
             hs_proj = self.after_proj(hidden_states)
-            # print(f"after_proj, block_idx={block_idx}")
             return hidden_states, hs_proj
 
         return hidden_states
@@ -587,7 +578,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         controlnet_block_every_n (`int`, *optional*):
             Interval between transformer blocks that should receive control residuals (for example, `7` to inject after
             every seventh block). Required for Cosmos Transfer2.5.
-        img_context_dim (`int`, *optional*):
+        img_context_dim_in (`int`, *optional*):
             TODO document me
             TODO rename?
     """
@@ -617,7 +608,9 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         crossattn_proj_in_channels: int = 1024,
         encoder_hidden_states_channels: int = 1024,
         controlnet_block_every_n: Optional[int] = None,
-        img_context_dim: Optional[int] = None,
+        img_context_dim_in: Optional[int] = None,
+        img_context_dim_out: int = 2048,
+        img_context_num_tokens: int = 256,
     ) -> None:
         super().__init__()
         hidden_size = num_attention_heads * attention_head_dim
@@ -653,7 +646,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                     adaln_lora_dim=adaln_lora_dim,
                     qk_norm="rms_norm",
                     out_bias=False,
-                    img_context=self.config.img_context_dim is not None and self.config.img_context_dim > 0,
+                    img_context=self.config.img_context_dim_in is not None and self.config.img_context_dim_in > 0,
                 )
                 for _ in range(num_layers)
             ]
@@ -673,10 +666,9 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         self.gradient_checkpointing = False
 
-        if self.config.img_context_dim:
+        if self.config.img_context_dim_in:
             self.img_context_proj = nn.Sequential(
-                # TODO: config
-                nn.Linear(self.config.img_context_dim, 2048, bias=True),
+                nn.Linear(self.config.img_context_dim_in, self.config.img_context_dim_out, bias=True),
                 nn.GELU(),
             )
 
@@ -765,7 +757,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if self.config.use_crossattn_projection:
             text_context = self.crossattn_proj(text_context)
 
-        if img_context is not None and self.config.img_context_dim:
+        if img_context is not None and self.config.img_context_dim_in:
             img_context = self.img_context_proj(img_context)
 
         prepared_inputs = {
@@ -832,8 +824,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         hidden_states = prepared_inputs["hidden_states"]
         for block_idx, block in enumerate(self.transformer_blocks):
             controlnet_residual = controlnet_block_index_map.get(block_idx)
-            if controlnet_residual is not None:
-                print("*", block_idx, "controlnet_residual")
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
                     block,
