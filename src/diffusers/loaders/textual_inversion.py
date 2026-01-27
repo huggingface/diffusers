@@ -11,14 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Dict, List, Optional, Union
-
 import json
-from tokenizers import Tokenizer as TokenizerFast
+from typing import Dict, List, Optional, Union
 
 import safetensors
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
+from tokenizers import Tokenizer as TokenizerFast
 from torch import nn
 
 from ..models.modeling_utils import load_state_dict
