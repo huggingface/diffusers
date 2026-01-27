@@ -579,8 +579,13 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             Interval between transformer blocks that should receive control residuals (for example, `7` to inject after
             every seventh block). Required for Cosmos Transfer2.5.
         img_context_dim_in (`int`, *optional*):
-            TODO document me
-            TODO rename?
+            The dimension of the input image context feature vector, i.e. it is the D in [B, N, D].
+        img_context_num_tokens (`int`):
+            The number of tokens in the image context feature vector, i.e. it is
+            the N in [B, N, D]. If `img_context_dim_in` is not provided, then this parameter is ignored.
+        img_context_dim_out (`int`):
+            The output dimension of the image context projection layer. If
+            `img_context_dim_in` is not provided, then this parameter is ignored.
     """
 
     _supports_gradient_checkpointing = True
@@ -609,8 +614,8 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         encoder_hidden_states_channels: int = 1024,
         controlnet_block_every_n: Optional[int] = None,
         img_context_dim_in: Optional[int] = None,
-        img_context_dim_out: int = 2048,
         img_context_num_tokens: int = 256,
+        img_context_dim_out: int = 2048,
     ) -> None:
         super().__init__()
         hidden_size = num_attention_heads * attention_head_dim
@@ -676,12 +681,11 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
-        encoder_hidden_states: Tuple[torch.Tensor, torch.Tensor],
-        block_controlnet_hidden_states: Optional[List[torch.Tensor]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        fps: Optional[int] = None,
-        condition_mask: Optional[torch.Tensor] = None,
-        padding_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Tuple[torch.Tensor | None, torch.Tensor | None] | torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+        fps: int | None = None,
+        condition_mask: torch.Tensor | None = None,
+        padding_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         r"""
         Args:
@@ -690,11 +694,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             timestep (`torch.Tensor`):
                 Current diffusion timestep.
             encoder_hidden_states (`torch.Tensor`):
-                TODO: fix docs
-                Conditional text/video embeddings.
-            block_controlnet_hidden_states (`List[torch.Tensor]`, *optional*):
-                A list of residual tensors produced by a ControlNet that are injected into the transformer blocks.
-                When provided, indices are derived from `self.config.controlnet_block_every_n`.
+                Conditional text and image/video embeddings.
             attention_mask (`torch.Tensor`, *optional*):
                 Attention mask applied to cross-attention.
             fps (`int`, *optional*):
@@ -751,7 +751,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 for x in (temb, embedded_timestep)
             )  # [BT, C] -> [B, T, 1, 1, C] -> [B, T, H, W, C] -> [B, THW, C]
         else:
-            assert False
+            raise ValueError(f"Expected timestep to have shape [B, 1, T, 1, 1] or [T], but got {timestep.shape}")
 
         text_context, img_context = encoder_hidden_states if isinstance(encoder_hidden_states, tuple) else (encoder_hidden_states, None)
         if self.config.use_crossattn_projection:
@@ -767,7 +767,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             "image_rotary_emb": image_rotary_emb,
             "extra_pos_emb": extra_pos_emb,
             "attention_mask": attention_mask,
-            # TODO: improve
             "encoder_hidden_states": (text_context, img_context) if isinstance(encoder_hidden_states, tuple) else text_context,
             "num_frames": num_frames,
             "post_patch_num_frames": post_patch_num_frames,
@@ -788,7 +787,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         padding_mask: Optional[torch.Tensor] = None,
         latents: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         prepared_inputs = self.prepare_inputs(
             hidden_states=hidden_states,
             timestep=timestep,
@@ -806,7 +805,12 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             return_dict=return_dict,
         )
 
-    def _forward(self, prepared_inputs: Dict[str, Any], block_controlnet_hidden_states: Optional[List[torch.Tensor]] = None, return_dict: bool = True) -> torch.Tensor:
+    def _forward(
+        self,
+        prepared_inputs: Dict[str, Any],
+        block_controlnet_hidden_states: Optional[List[torch.Tensor]] = None,
+        return_dict: bool = True,
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         controlnet_block_index_map = {}
         if block_controlnet_hidden_states is not None:
             n_blocks = len(self.transformer_blocks)

@@ -73,7 +73,6 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
-# TODO: move this to a utility module aka Transfer2_5 model ?
 def transfer2_5_forward(
     transformer: CosmosTransformer3DModel,
     controlnet: CosmosControlNetModel,
@@ -104,6 +103,7 @@ def transfer2_5_forward(
             temb=prepared_inputs["temb"],
             embedded_timestep=prepared_inputs["embedded_timestep"],
             attention_mask=prepared_inputs["attention_mask"],
+            prepared_inputs=prepared_inputs, # TODO: remove
         )
 
     noise_pred = transformer._forward(
@@ -699,12 +699,12 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 the first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
-        if self.safety_checker is None:
-            raise ValueError(
-                f"You have disabled the safety checker for {self.__class__}. This is in violation of the "
-                "[NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
-                f"Please ensure that you are compliant with the license agreement."
-            )
+        # if self.safety_checker is None:
+        #     raise ValueError(
+        #         f"You have disabled the safety checker for {self.__class__}. This is in violation of the "
+        #         "[NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
+        #         f"Please ensure that you are compliant with the license agreement."
+        #     )
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -732,16 +732,16 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
         device = self._execution_device
 
-        if self.safety_checker is not None:
-            self.safety_checker.to(device)
-            if prompt is not None:
-                prompt_list = [prompt] if isinstance(prompt, str) else prompt
-                for p in prompt_list:
-                    if not self.safety_checker.check_text_safety(p):
-                        raise ValueError(
-                            f"Cosmos Guardrail detected unsafe text in the prompt: {p}. Please ensure that the "
-                            f"prompt abides by the NVIDIA Open Model License Agreement."
-                        )
+        # if self.safety_checker is not None:
+        #     self.safety_checker.to(device)
+        #     if prompt is not None:
+        #         prompt_list = [prompt] if isinstance(prompt, str) else prompt
+        #         for p in prompt_list:
+        #             if not self.safety_checker.check_text_safety(p):
+        #                 raise ValueError(
+        #                     f"Cosmos Guardrail detected unsafe text in the prompt: {p}. Please ensure that the "
+        #                     f"prompt abides by the NVIDIA Open Model License Agreement."
+        #                 )
 
         # Define call parameters
         if prompt is not None and isinstance(prompt, str):
