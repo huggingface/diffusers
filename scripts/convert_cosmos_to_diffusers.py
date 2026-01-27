@@ -418,13 +418,14 @@ TRANSFORMER_CONFIGS = {
         "patch_size": (1, 2, 2),
         "rope_scale": (1.0, 3.0, 3.0),
         "concat_padding_mask": True,
-        # NOTE: source config has pos_emb_learnable: 'True' - but params are missing
         "extra_pos_embed_type": None,
         "use_crossattn_projection": True,
         "crossattn_proj_in_channels": 100352,
         "encoder_hidden_states_channels": 1024,
         "controlnet_block_every_n": 7,
-        "img_context_dim": 1152,
+        "img_context_dim_in": 1152,
+        "img_context_dim_out": 2048,
+        "img_context_num_tokens": 256,
     },
 }
 
@@ -445,7 +446,6 @@ CONTROLNET_CONFIGS = {
     },
 }
 
-# TODO(migmartin): fix this, this is not correct
 CONTROLNET_KEYS_RENAME_DICT = {
     **TRANSFORMER_KEYS_RENAME_DICT_COSMOS_2_0,
     "blocks": "blocks",
@@ -895,9 +895,6 @@ if __name__ == "__main__":
             elif "Transfer" in args.transformer_type:
                 assert controlnet is not None
                 save_pipeline_cosmos2_5_transfer(args, transformer, controlnet, vae)
-                controlnet.save_pretrained(
-                    pathlib.Path(args.output_path) / "controlnet", safe_serialization=True, max_shard_size="5GB"
-                )
             else:
                 raise AssertionError(f"{args.transformer_type} not supported")
         else:

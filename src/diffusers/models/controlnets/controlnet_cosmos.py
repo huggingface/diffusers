@@ -21,8 +21,6 @@ if is_torchvision_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# TODO(migmartin): implement me
-# see i4/projects/cosmos/transfer2/networks/minimal_v4_lvg_dit_control_vace.py
 class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     ControlNet for Cosmos Transfer2.5.

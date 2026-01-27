@@ -53,7 +53,6 @@ else:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-# TODO: output list of padded frames to handle the case when video.shape[2] > num_frames [t1 = num_frames, t2 = num_frames..2*num_frames, etc.]
 def _maybe_pad_video(video: torch.Tensor, num_frames: int):
     n_pad_frames = num_frames - video.shape[2]
     if n_pad_frames > 0:
@@ -249,6 +248,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         scheduler: UniPCMultistepScheduler,
         controlnet: CosmosControlNetModel,
         safety_checker: CosmosSafetyChecker = None,
+        image_ref_encoder: None = None,  # TODO
     ):
         super().__init__()
 
@@ -507,10 +507,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             ones_padding = latents.new_ones(padding_shape)
             zeros_padding = latents.new_zeros(padding_shape)
 
-            num_cond_latent_frames = (num_frames_in - 1) // self.vae_scale_factor_temporal + 1
             cond_indicator = latents.new_zeros(1, 1, latents.size(2), 1, 1)
-            # TODO: add num_cond_frames as a parameter
-            # cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0
             cond_mask = cond_indicator * ones_padding + (1 - cond_indicator) * zeros_padding
 
             return (
@@ -533,14 +530,12 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         if controls is None:
             return None
 
-        # TODO: handle image differently?
         control_video = self.video_processor.preprocess_video(controls, height, width)
         control_video = _maybe_pad_video(control_video, num_frames)
 
         control_video = control_video.to(device=device, dtype=self.vae.dtype)
         control_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator=generator) for vid in control_video]
         control_latents = torch.cat(control_latents, dim=0).to(dtype)
-        print("after control_latents.shape=", control_latents.shape)
 
         latents_mean = self.latents_mean.to(device=device, dtype=dtype)
         latents_std = self.latents_std.to(device=device, dtype=dtype)
@@ -615,7 +610,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         controls: Optional[PipelineImageInput | List[PipelineImageInput]] = None,
-        # TODO: rename to controls_weights?
         controls_conditioning_scale: Union[float, List[float]] = 1.0,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -775,11 +769,11 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
 
-        # TODO(migmartin): add img ref to prompt_embeds via siglip if image ref is provided
-        img_context_ref = torch.zeros(1, 256, 1152).to(device=prompt_embeds.device, dtype=transformer_dtype)
+        # TODO: siglip inference if image ref is provided
+        img_context_ref = torch.zeros(batch_size, self.transformer.config.image_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
+        no_img_context_ref = torch.zeros(batch_size, self.transformer.config.image_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
         encoder_hidden_states = (prompt_embeds, img_context_ref)
-        # NOTE: rojects/cosmos/transfer2/configs/vid2vid_transfer/defaults/conditioner.py L240
-        neg_encoder_hidden_states = (negative_prompt_embeds, None)
+        neg_encoder_hidden_states = (negative_prompt_embeds, no_img_context_ref)
 
         num_frames_in = None
         if image is not None:
@@ -922,14 +916,13 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
             video = self._match_num_frames(video, num_frames)
 
-            # TODO
-            # assert self.safety_checker is not None
-            # self.safety_checker.to(device)
+            assert self.safety_checker is not None
+            self.safety_checker.to(device)
             video = self.video_processor.postprocess_video(video, output_type="np")
             video = (video * 255).astype(np.uint8)
             video_batch = []
             for vid in video:
-                # vid = self.safety_checker.check_video_safety(vid)
+                vid = self.safety_checker.check_video_safety(vid)
                 video_batch.append(vid)
             video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
             video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
