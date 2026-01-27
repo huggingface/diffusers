@@ -83,8 +83,8 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         controls_latents: torch.Tensor,
         latents: torch.Tensor,
+        condition_mask: torch.Tensor,
         conditioning_scale: Union[float, List[float]] = 1.0,
-        condition_mask: Optional[torch.Tensor] = None,
         padding_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]] = None,
         # re-used args from CosmosTransformer.prepare_inputs
@@ -92,13 +92,11 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         temb: Optional[torch.Tensor] = None,
         embedded_timestep: Optional[torch.Tensor] = None,
         fps: Optional[int] = None,
+        prepared_inputs = None,
     ) -> List[torch.Tensor]:
-        # TODO: remove Optional
-        assert condition_mask is not None
-        # TODO: check if temb, etc. is None
-        # if so, then do our own embedding of the inputs
+        # if controls_latents.shape != latents.shape:
+        #     raise ValueError(f"Expected controls_latents and latents to have the same shape, but got {controls_latents.shape} and {latents.shape}")
 
-        # TODO: assert controls_latents.shape == latents.shape
         B, C, T, H, W = controls_latents.shape
         control_hidden_states = controls_latents
         vace_in_channels = self.config.in_channels - 1
