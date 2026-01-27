@@ -20,7 +20,7 @@ import torch
 import torchvision
 import torchvision.transforms
 import torchvision.transforms.functional
-from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration
+from transformers import AutoConfig, AutoImageProcessor, AutoTokenizer, Qwen2_5_VLForConditionalGeneration, Siglip2ImageProcessorFast, Siglip2VisionModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -248,12 +248,20 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         scheduler: UniPCMultistepScheduler,
         controlnet: CosmosControlNetModel,
         safety_checker: CosmosSafetyChecker = None,
-        image_ref_encoder: None = None,  # TODO
+        image_ref_model: Siglip2VisionModel | None = None,
+        image_ref_processor: Siglip2ImageProcessorFast | None = None,
     ):
         super().__init__()
 
         if safety_checker is None:
             safety_checker = CosmosSafetyChecker()
+        
+        if image_ref_model is None and image_ref_processor is None:
+            model_name = "google/siglip2-so400m-patch16-naflex"
+            config = AutoConfig.from_pretrained(model_name)
+            config.vision_config.vision_use_head = False
+            image_ref_model = Siglip2VisionModel(config.vision_config)
+            image_ref_processor = AutoImageProcessor.from_pretrained(model_name)
 
         self.register_modules(
             vae=vae,
@@ -263,6 +271,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             controlnet=controlnet,
             scheduler=scheduler,
             safety_checker=safety_checker,
+            image_ref_model=image_ref_model,
+            image_ref_processor=image_ref_processor,
         )
 
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
@@ -598,6 +608,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: PipelineImageInput | None = None,
+        image_ref: PipelineImageInput | None = None,
         video: List[PipelineImageInput] | None = None,
         prompt: Union[str, List[str]] | None = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -699,12 +710,12 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 the first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
-        # if self.safety_checker is None:
-        #     raise ValueError(
-        #         f"You have disabled the safety checker for {self.__class__}. This is in violation of the "
-        #         "[NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
-        #         f"Please ensure that you are compliant with the license agreement."
-        #     )
+        if self.safety_checker is None:
+            raise ValueError(
+                f"You have disabled the safety checker for {self.__class__}. This is in violation of the "
+                "[NVIDIA Open Model License Agreement](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license). "
+                f"Please ensure that you are compliant with the license agreement."
+            )
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -732,16 +743,16 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
         device = self._execution_device
 
-        # if self.safety_checker is not None:
-        #     self.safety_checker.to(device)
-        #     if prompt is not None:
-        #         prompt_list = [prompt] if isinstance(prompt, str) else prompt
-        #         for p in prompt_list:
-        #             if not self.safety_checker.check_text_safety(p):
-        #                 raise ValueError(
-        #                     f"Cosmos Guardrail detected unsafe text in the prompt: {p}. Please ensure that the "
-        #                     f"prompt abides by the NVIDIA Open Model License Agreement."
-        #                 )
+        if self.safety_checker is not None:
+            self.safety_checker.to(device)
+            if prompt is not None:
+                prompt_list = [prompt] if isinstance(prompt, str) else prompt
+                for p in prompt_list:
+                    if not self.safety_checker.check_text_safety(p):
+                        raise ValueError(
+                            f"Cosmos Guardrail detected unsafe text in the prompt: {p}. Please ensure that the "
+                            f"prompt abides by the NVIDIA Open Model License Agreement."
+                        )
 
         # Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -769,8 +780,12 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
 
-        # TODO: siglip inference if image ref is provided
-        img_context_ref = torch.zeros(batch_size, self.transformer.config.img_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
+        if image_ref is not None:
+            image_ref_inputs = self.image_ref_processor(images=[image_ref], return_tensors="pt").to(self.image_ref_model.device)
+            img_context_ref = self.image_ref_model(**image_ref_inputs).last_hidden_state.to(device=prompt_embeds.device, dtype=transformer_dtype)
+        else:
+            img_context_ref = torch.zeros(batch_size, self.transformer.config.img_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
+
         no_img_context_ref = torch.zeros(batch_size, self.transformer.config.img_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
         encoder_hidden_states = (prompt_embeds, img_context_ref)
         neg_encoder_hidden_states = (negative_prompt_embeds, no_img_context_ref)
@@ -924,7 +939,10 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             for vid in video:
                 vid = self.safety_checker.check_video_safety(vid)
                 video_batch.append(vid)
-            video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
+            try:
+                video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
+            except:
+                breakpoint()
             video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
