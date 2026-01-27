@@ -118,7 +118,40 @@ def get_timesteps(scheduler, num_inference_steps, strength):
 # ====================
 
 
+# auto_docstring
 class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
+    """
+    Prepare initial random noise for the generation process
+
+      Components:
+          pachifier (`QwenImagePachifier`)
+
+      Inputs:
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          dtype (`dtype`, *optional*, defaults to torch.float32):
+              The dtype of the model inputs, can be generated in input step.
+
+      Outputs:
+          height (`int`):
+              if not set, updated to default value
+          width (`int`):
+              if not set, updated to default value
+          latents (`Tensor`):
+              The initial latents to use for the denoising process
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -134,28 +167,20 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents"),
-            InputParam(name="height"),
-            InputParam(name="width"),
-            InputParam(name="num_images_per_prompt", default=1),
-            InputParam(name="generator"),
-            InputParam(
-                name="batch_size",
-                required=True,
-                type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
-            ),
-            InputParam(
-                name="dtype",
-                required=True,
-                type_hint=torch.dtype,
-                description="The dtype of the model inputs, can be generated in input step.",
-            ),
+            InputParam.template("latents"),
+            InputParam.template("height"),
+            InputParam.template("width"),
+            InputParam.template("num_images_per_prompt"),
+            InputParam.template("generator"),
+            InputParam.template("batch_size"),
+            InputParam.template("dtype"),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
+            OutputParam(name="height", type_hint=int, description="if not set, updated to default value"),
+            OutputParam(name="width", type_hint=int, description="if not set, updated to default value"),
             OutputParam(
                 name="latents",
                 type_hint=torch.Tensor,
@@ -209,7 +234,42 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageLayeredPrepareLatentsStep(ModularPipelineBlocks):
+    """
+    Prepare initial random noise (B, layers+1, C, H, W) for the generation process
+
+      Components:
+          pachifier (`QwenImageLayeredPachifier`)
+
+      Inputs:
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          layers (`int`, *optional*, defaults to 4):
+              Number of layers to extract from the image
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          dtype (`dtype`, *optional*, defaults to torch.float32):
+              The dtype of the model inputs, can be generated in input step.
+
+      Outputs:
+          height (`int`):
+              if not set, updated to default value
+          width (`int`):
+              if not set, updated to default value
+          latents (`Tensor`):
+              The initial latents to use for the denoising process
+    """
+
     model_name = "qwenimage-layered"
 
     @property
@@ -225,29 +285,21 @@ class QwenImageLayeredPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents"),
-            InputParam(name="height"),
-            InputParam(name="width"),
-            InputParam(name="layers", default=4),
-            InputParam(name="num_images_per_prompt", default=1),
-            InputParam(name="generator"),
-            InputParam(
-                name="batch_size",
-                required=True,
-                type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
-            ),
-            InputParam(
-                name="dtype",
-                required=True,
-                type_hint=torch.dtype,
-                description="The dtype of the model inputs, can be generated in input step.",
-            ),
+            InputParam.template("latents"),
+            InputParam.template("height"),
+            InputParam.template("width"),
+            InputParam.template("layers"),
+            InputParam.template("num_images_per_prompt"),
+            InputParam.template("generator"),
+            InputParam.template("batch_size"),
+            InputParam.template("dtype"),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
+            OutputParam(name="height", type_hint=int, description="if not set, updated to default value"),
+            OutputParam(name="width", type_hint=int, description="if not set, updated to default value"),
             OutputParam(
                 name="latents",
                 type_hint=torch.Tensor,
@@ -301,7 +353,31 @@ class QwenImageLayeredPrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
+    """
+    Step that adds noise to image latents for image-to-image/inpainting. Should be run after set_timesteps,
+    prepare_latents. Both noise and image latents should alreadybe patchified.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          latents (`Tensor`):
+              The initial random noised, can be generated in prepare latent step.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step. (Can be
+              generated from vae encoder and updated in input step.)
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+
+      Outputs:
+          initial_noise (`Tensor`):
+              The initial random noised used for inpainting denoising.
+          latents (`Tensor`):
+              The scaled noisy latents to use for inpainting/image-to-image denoising.
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -323,12 +399,7 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The initial random noised, can be generated in prepare latent step.",
             ),
-            InputParam(
-                name="image_latents",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The image latents to use for the denoising process. Can be generated in vae encoder and packed in input step.",
-            ),
+            InputParam.template("image_latents", note="Can be generated from vae encoder and updated in input step."),
             InputParam(
                 name="timesteps",
                 required=True,
@@ -344,6 +415,11 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
                 name="initial_noise",
                 type_hint=torch.Tensor,
                 description="The initial random noised used for inpainting denoising.",
+            ),
+            OutputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                description="The scaled noisy latents to use for inpainting/image-to-image denoising.",
             ),
         ]
 
@@ -382,7 +458,29 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
+    """
+    Step that creates mask latents from preprocessed mask_image by interpolating to latent space.
+
+      Components:
+          pachifier (`QwenImagePachifier`)
+
+      Inputs:
+          processed_mask_image (`Tensor`):
+              The processed mask to use for the inpainting process.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          dtype (`dtype`, *optional*, defaults to torch.float32):
+              The dtype of the model inputs, can be generated in input step.
+
+      Outputs:
+          mask (`Tensor`):
+              The mask to use for the inpainting process.
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -404,9 +502,9 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The processed mask to use for the inpainting process.",
             ),
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
-            InputParam(name="dtype", required=True),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+            InputParam.template("dtype"),
         ]
 
     @property
@@ -450,7 +548,27 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
 # ====================
 
 
+# auto_docstring
 class QwenImageSetTimestepsStep(ModularPipelineBlocks):
+    """
+    Step that sets the scheduler's timesteps for text-to-image generation. Should be run after prepare latents step.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+          latents (`Tensor`):
+              The initial random noised latents for the denoising process. Can be generated in prepare latents step.
+
+      Outputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -466,13 +584,13 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="num_inference_steps", default=50),
-            InputParam(name="sigmas"),
+            InputParam.template("num_inference_steps"),
+            InputParam.template("sigmas"),
             InputParam(
                 name="latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The latents to use for the denoising process, used to calculate the image sequence length.",
+                description="The initial random noised latents for the denoising process. Can be generated in prepare latents step.",
             ),
         ]
 
@@ -516,7 +634,27 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
+    """
+    Set timesteps step for QwenImage Layered with custom mu calculation based on image_latents.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+          image_latents (`Tensor`):
+              image latents used to guide the image generation. Can be generated from vae_encoder step.
+
+      Outputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process.
+    """
+
     model_name = "qwenimage-layered"
 
     @property
@@ -532,15 +670,17 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("num_inference_steps", default=50, type_hint=int),
-            InputParam("sigmas", type_hint=List[float]),
-            InputParam("image_latents", required=True, type_hint=torch.Tensor),
+            InputParam.template("num_inference_steps"),
+            InputParam.template("sigmas"),
+            InputParam.template("image_latents"),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="timesteps", type_hint=torch.Tensor),
+            OutputParam(
+                name="timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process."
+            ),
         ]
 
     @torch.no_grad()
@@ -574,7 +714,32 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
+    """
+    Step that sets the scheduler's timesteps for image-to-image generation, and inpainting. Should be run after prepare
+    latents step.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          sigmas (`List`, *optional*):
+              Custom sigmas for the denoising process.
+          latents (`Tensor`):
+              The latents to use for the denoising process. Can be generated in prepare latents step.
+          strength (`float`, *optional*, defaults to 0.9):
+              Strength for img2img/inpainting.
+
+      Outputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process.
+          num_inference_steps (`int`):
+              The number of denoising steps to perform at inference time. Updated based on strength.
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -590,15 +755,15 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="num_inference_steps", default=50),
-            InputParam(name="sigmas"),
+            InputParam.template("num_inference_steps"),
+            InputParam.template("sigmas"),
             InputParam(
-                name="latents",
+                "latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The latents to use for the denoising process, used to calculate the image sequence length.",
+                description="The latents to use for the denoising process. Can be generated in prepare latents step.",
             ),
-            InputParam(name="strength", default=0.9),
+            InputParam.template("strength", default=0.9),
         ]
 
     @property
@@ -607,7 +772,12 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
             OutputParam(
                 name="timesteps",
                 type_hint=torch.Tensor,
-                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
+                description="The timesteps to use for the denoising process.",
+            ),
+            OutputParam(
+                name="num_inference_steps",
+                type_hint=int,
+                description="The number of denoising steps to perform at inference time. Updated based on strength.",
             ),
         ]
 
@@ -654,7 +824,29 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
 ## RoPE inputs for denoiser
 
 
+# auto_docstring
 class QwenImageRoPEInputsStep(ModularPipelineBlocks):
+    """
+    Step that prepares the RoPE inputs for the denoising process. Should be place after prepare_latents step
+
+      Inputs:
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+
+      Outputs:
+          img_shapes (`List`):
+              The shapes of the images latents, used for RoPE calculation
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -666,11 +858,11 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="batch_size", required=True),
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
-            InputParam(name="prompt_embeds_mask"),
-            InputParam(name="negative_prompt_embeds_mask"),
+            InputParam.template("batch_size"),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+            InputParam.template("prompt_embeds_mask"),
+            InputParam.template("negative_prompt_embeds_mask"),
         ]
 
     @property
@@ -702,7 +894,34 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
+    """
+    Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit. Should be placed after
+    prepare_latents step
+
+      Inputs:
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          image_height (`int`):
+              The height of the reference image. Can be generated in input step.
+          image_width (`int`):
+              The width of the reference image. Can be generated in input step.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+
+      Outputs:
+          img_shapes (`List`):
+              The shapes of the images latents, used for RoPE calculation
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -712,13 +931,23 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="batch_size", required=True),
-            InputParam(name="image_height", required=True),
-            InputParam(name="image_width", required=True),
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
-            InputParam(name="prompt_embeds_mask"),
-            InputParam(name="negative_prompt_embeds_mask"),
+            InputParam.template("batch_size"),
+            InputParam(
+                name="image_height",
+                required=True,
+                type_hint=int,
+                description="The height of the reference image. Can be generated in input step.",
+            ),
+            InputParam(
+                name="image_width",
+                required=True,
+                type_hint=int,
+                description="The width of the reference image. Can be generated in input step.",
+            ),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+            InputParam.template("prompt_embeds_mask"),
+            InputParam.template("negative_prompt_embeds_mask"),
         ]
 
     @property
@@ -756,7 +985,39 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
+    """
+    Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit Plus.
+      Unlike Edit, Edit Plus handles lists of image_height/image_width for multiple reference images. Should be placed
+      after prepare_latents step.
+
+      Inputs:
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          image_height (`List`):
+              The heights of the reference images. Can be generated in input step.
+          image_width (`List`):
+              The widths of the reference images. Can be generated in input step.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+
+      Outputs:
+          img_shapes (`List`):
+              The shapes of the image latents, used for RoPE calculation
+          txt_seq_lens (`List`):
+              The sequence lengths of the prompt embeds, used for RoPE calculation
+          negative_txt_seq_lens (`List`):
+              The sequence lengths of the negative prompt embeds, used for RoPE calculation
+    """
+
     model_name = "qwenimage-edit-plus"
 
     @property
@@ -770,13 +1031,23 @@ class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="batch_size", required=True),
-            InputParam(name="image_height", required=True, type_hint=List[int]),
-            InputParam(name="image_width", required=True, type_hint=List[int]),
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
-            InputParam(name="prompt_embeds_mask"),
-            InputParam(name="negative_prompt_embeds_mask"),
+            InputParam.template("batch_size"),
+            InputParam(
+                name="image_height",
+                required=True,
+                type_hint=List[int],
+                description="The heights of the reference images. Can be generated in input step.",
+            ),
+            InputParam(
+                name="image_width",
+                required=True,
+                type_hint=List[int],
+                description="The widths of the reference images. Can be generated in input step.",
+            ),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+            InputParam.template("prompt_embeds_mask"),
+            InputParam.template("negative_prompt_embeds_mask"),
         ]
 
     @property
@@ -832,7 +1103,37 @@ class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
+    """
+    Step that prepares the RoPE inputs for the denoising process. Should be place after prepare_latents step
+
+      Inputs:
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          layers (`int`, *optional*, defaults to 4):
+              Number of layers to extract from the image
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+
+      Outputs:
+          img_shapes (`List`):
+              The shapes of the image latents, used for RoPE calculation
+          txt_seq_lens (`List`):
+              The sequence lengths of the prompt embeds, used for RoPE calculation
+          negative_txt_seq_lens (`List`):
+              The sequence lengths of the negative prompt embeds, used for RoPE calculation
+          additional_t_cond (`Tensor`):
+              The additional t cond, used for RoPE calculation
+    """
+
     model_name = "qwenimage-layered"
 
     @property
@@ -844,12 +1145,12 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="batch_size", required=True),
-            InputParam(name="layers", required=True),
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
-            InputParam(name="prompt_embeds_mask"),
-            InputParam(name="negative_prompt_embeds_mask"),
+            InputParam.template("batch_size"),
+            InputParam.template("layers"),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+            InputParam.template("prompt_embeds_mask"),
+            InputParam.template("negative_prompt_embeds_mask"),
         ]
 
     @property
@@ -914,7 +1215,34 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
 
 
 ## ControlNet inputs for denoiser
+
+
+# auto_docstring
 class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
+    """
+    step that prepare inputs for controlnet. Insert before the Denoise Step, after set_timesteps step.
+
+      Components:
+          controlnet (`QwenImageControlNetModel`)
+
+      Inputs:
+          control_guidance_start (`float`, *optional*, defaults to 0.0):
+              When to start applying ControlNet.
+          control_guidance_end (`float`, *optional*, defaults to 1.0):
+              When to stop applying ControlNet.
+          controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
+              Scale for ControlNet conditioning.
+          control_image_latents (`Tensor`):
+              The control image latents to use for the denoising process. Can be generated in controlnet vae encoder
+              step.
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+
+      Outputs:
+          controlnet_keep (`List`):
+              The controlnet keep values
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -930,12 +1258,17 @@ class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("control_guidance_start", default=0.0),
-            InputParam("control_guidance_end", default=1.0),
-            InputParam("controlnet_conditioning_scale", default=1.0),
-            InputParam("control_image_latents", required=True),
+            InputParam.template("control_guidance_start"),
+            InputParam.template("control_guidance_end"),
+            InputParam.template("controlnet_conditioning_scale"),
             InputParam(
-                "timesteps",
+                name="control_image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The control image latents to use for the denoising process. Can be generated in controlnet vae encoder step.",
+            ),
+            InputParam(
+                name="timesteps",
                 required=True,
                 type_hint=torch.Tensor,
                 description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
