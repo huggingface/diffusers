@@ -665,10 +665,15 @@ def get_model_state_dict_from_combined_ckpt(combined_ckpt: Dict[str, Any], prefi
 def get_args():
     parser = argparse.ArgumentParser()
 
+    def none_or_str(value: str):
+        if isinstance(value, str) and value.lower() == "none":
+            return None
+        return value
+
     parser.add_argument(
         "--original_state_dict_repo_id",
-        default=None,
-        type=str,
+        default="Lightricks/LTX-2",
+        type=none_or_str,
         help="HF Hub repo id with LTX 2.0 checkpoint",
     )
     parser.add_argument(
@@ -688,7 +693,7 @@ def get_args():
     parser.add_argument(
         "--combined_filename",
         default="ltx-2-19b-dev.safetensors",
-        type=str,
+        type=none_or_str,
         help="Filename for combined checkpoint with all LTX 2.0 models (VAE, DiT, etc.)",
     )
     parser.add_argument("--vae_prefix", default="vae.", type=str)
@@ -707,19 +712,19 @@ def get_args():
     parser.add_argument(
         "--text_encoder_model_id",
         default="google/gemma-3-12b-it-qat-q4_0-unquantized",
-        type=str,
+        type=none_or_str,
         help="HF Hub id for the LTX 2.0 base text encoder model",
     )
     parser.add_argument(
         "--tokenizer_id",
         default="google/gemma-3-12b-it-qat-q4_0-unquantized",
-        type=str,
+        type=none_or_str,
         help="HF Hub id for the LTX 2.0 text tokenizer",
     )
     parser.add_argument(
         "--latent_upsampler_filename",
         default="ltx-2-spatial-upscaler-x2-1.0.safetensors",
-        type=str,
+        type=none_or_str,
         help="Latent upsampler filename",
     )
 
