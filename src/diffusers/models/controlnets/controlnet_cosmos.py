@@ -105,7 +105,6 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if control_hidden_states.shape[1] < vace_in_channels - 1:
             pad_C = vace_in_channels - 1 - control_hidden_states.shape[1]
 
-            print("control_hidden_states.shape=", control_hidden_states.shape)
             control_hidden_states = torch.cat(
                 [
                     control_hidden_states,
@@ -115,7 +114,6 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             )
 
         control_hidden_states = torch.cat([control_hidden_states, torch.zeros_like(controls_latents[:, :1])], dim=1)
-        print("control_hidden_states.dtype=", control_hidden_states.dtype)
 
         padding_mask = transforms.functional.resize(
             padding_mask, list(control_hidden_states.shape[-2:]), interpolation=transforms.InterpolationMode.NEAREST
@@ -126,8 +124,6 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         image_rotary_emb = self.rope(control_hidden_states, fps=fps)
 
-        # NOTE: failure here
-        print("* control_hidden_states.dtype=", control_hidden_states.dtype)
         control_hidden_states = self.patch_embed(control_hidden_states)
         control_hidden_states = control_hidden_states.flatten(1, 3)
 
