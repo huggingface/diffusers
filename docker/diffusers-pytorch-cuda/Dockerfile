@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.0-runtime-ubuntu20.04
+FROM nvidia/cuda:12.9.0-runtime-ubuntu20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
@@ -36,8 +36,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 RUN uv pip install --no-cache-dir \
     torch \
     torchvision \
-    torchaudio \
-    --index-url https://download.pytorch.org/whl/cu121
+    torchaudio
 
 RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers[test]"
 
