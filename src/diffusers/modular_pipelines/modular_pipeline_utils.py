@@ -520,6 +520,7 @@ class InputParam:
     required: bool = False
     description: str = ""
     kwargs_type: str = None
+    metadata: Dict[str, Any] = None
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
@@ -553,6 +554,7 @@ class OutputParam:
     type_hint: Any = None
     description: str = ""
     kwargs_type: str = None
+    metadata: Dict[str, Any] = None
 
     def __repr__(self):
         return (
