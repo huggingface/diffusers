@@ -62,7 +62,7 @@ class Flux2ImageProcessor(VaeImageProcessor):
             do_normalize=do_normalize,
             do_binarize=do_binarize,
             do_convert_rgb=do_convert_rgb,
-            do_convert_grayscale=do_convert_grayscale
+            do_convert_grayscale=do_convert_grayscale,
         )
 
     @staticmethod

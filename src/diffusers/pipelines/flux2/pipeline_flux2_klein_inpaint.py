@@ -74,13 +74,13 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> prompt = "Replace this ball"
-        >>> img_url = "https://raw.githubusercontent.com/Fantasy-Studio/Paint-by-Example/main/examples/image/example_1.png"
+        >>> img_url = (
+        ...     "https://raw.githubusercontent.com/Fantasy-Studio/Paint-by-Example/main/examples/image/example_1.png"
+        ... )
         >>> mask_url = (
         ...     "https://raw.githubusercontent.com/Fantasy-Studio/Paint-by-Example/main/examples/mask/example_1.png"
         ... )
-        >>> image_reference_url = (
-        ...     "https://raw.githubusercontent.com/Fantasy-Studio/Paint-by-Example/main/examples/reference/example_1.jpg"
-        ... )
+        >>> image_reference_url = "https://raw.githubusercontent.com/Fantasy-Studio/Paint-by-Example/main/examples/reference/example_1.jpg"
 
         >>> source = load_image(img_url)
         >>> mask = load_image(mask_url)
@@ -513,7 +513,9 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latents = self._patchify_latents(image_latents)
 
         latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(image_latents.device, image_latents.dtype)
-        latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(image_latents.device, image_latents.dtype)
+        latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(
+            image_latents.device, image_latents.dtype
+        )
         image_latents = (image_latents - latents_bn_mean) / latents_bn_std
 
         return image_latents
@@ -816,12 +818,12 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
                 latents as `image`, but if passing latents directly it is not encoded again.
             image_reference (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`, *optional*):
-                `Image`, numpy array or tensor representing an image batch to be used as the reference for the
-                masked area. This allows conditioning the inpainted region on a specific reference image. For both
-                numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
-                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
-                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
-                latents as `image_reference`, but if passing latents directly it is not encoded again.
+                `Image`, numpy array or tensor representing an image batch to be used as the reference for the masked
+                area. This allows conditioning the inpainted region on a specific reference image. For both numpy array
+                and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list or tensors,
+                the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a list of arrays,
+                the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image latents as
+                `image_reference`, but if passing latents directly it is not encoded again.
             mask_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
                 are repainted while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a
