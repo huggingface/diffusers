@@ -28,7 +28,6 @@ from ...utils import (
     is_torch_version,
     logging,
     scale_lora_layers,
-    unscale_lora_layers,
 )
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -1340,10 +1339,6 @@ class LTX2VideoTransformer3DModel(
         audio_hidden_states = self.audio_norm_out(audio_hidden_states)
         audio_hidden_states = audio_hidden_states * (1 + audio_scale) + audio_shift
         audio_output = self.audio_proj_out(audio_hidden_states)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output, audio_output)

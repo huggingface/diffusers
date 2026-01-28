@@ -21,13 +21,10 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import (
-    USE_PEFT_BACKEND,
     BaseOutput,
     apply_lora_scale,
     deprecate,
     logging,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
 from ..attention import AttentionMixin
 from ..cache_utils import CacheMixin
@@ -190,20 +187,6 @@ class QwenImageControlNetModel(
                 standard_warn=False,
             )
 
-        if joint_attention_kwargs is not None:
-            joint_attention_kwargs = joint_attention_kwargs.copy()
-            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
-                )
         hidden_states = self.img_in(hidden_states)
 
         # add
@@ -264,10 +247,6 @@ class QwenImageControlNetModel(
         # scaling
         controlnet_block_samples = [sample * conditioning_scale for sample in controlnet_block_samples]
         controlnet_block_samples = None if len(controlnet_block_samples) == 0 else controlnet_block_samples
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return controlnet_block_samples
