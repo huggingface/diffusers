@@ -32,7 +32,6 @@ Sample usage of text-to-video one stage pipeline
 import torch
 from diffusers.pipelines.ltx2 import LTX2Pipeline
 from diffusers.pipelines.ltx2.export_utils import encode_video
-from diffusers.utils import load_image
 
 pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
