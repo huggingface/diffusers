@@ -24,46 +24,6 @@ You can find all the original LTX-Video checkpoints under the [Lightricks](https
 
 The original codebase for LTX-2 can be found [here](https://github.com/Lightricks/LTX-2).
 
-## One-stage Generation
-
-Sample usage of text-to-video one stage pipeline
-
-```py
-import torch
-from diffusers.pipelines.ltx2 import LTX2Pipeline
-from diffusers.pipelines.ltx2.export_utils import encode_video
-
-pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
-pipe.enable_model_cpu_offload()
-
-prompt = "A beautiful sunset over the ocean"
-negative_prompt = "shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, motion smear, motion artifacts, fused fingers, bad anatomy, weird hand, ugly, transition, static."
-
-frame_rate = 24.0
-video, audio = pipe(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    width=768,
-    height=512,
-    num_frames=121,
-    frame_rate=frame_rate,
-    num_inference_steps=40,
-    guidance_scale=4.0,
-    output_type="np",
-    return_dict=False,
-)
-video = (video * 255).round().astype("uint8")
-video = torch.from_numpy(video)
-
-encode_video(
-    video[0],
-    fps=frame_rate,
-    audio=audio[0].float().cpu(),
-    audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
-    output_path="ltx2_sample.mp4",
-)
-```
-
 ## Two-stages Generation
 Recommended pipeline to achieve production quality generation, this pipeline is composed of two stages:
 
@@ -140,7 +100,7 @@ video, audio = pipe(
     prompt=prompt,
     negative_prompt=negative_prompt,
     num_inference_steps=3,
-    noise_scale=STAGE_2_DISTILLED_SIGMA_VALUES[0],
+    noise_scale=STAGE_2_DISTILLED_SIGMA_VALUES[0], # renoise with first sigma value https://github.com/Lightricks/LTX-2/blob/main/packages/ltx-pipelines/src/ltx_pipelines/ti2vid_two_stages.py#L218
     sigmas=STAGE_2_DISTILLED_SIGMA_VALUES,
     guidance_scale=1.0,
     output_type="np",
@@ -218,7 +178,7 @@ video, audio = pipe(
     prompt=prompt,
     negative_prompt=negative_prompt,
     num_inference_steps=3,
-    noise_scale=STAGE_2_DISTILLED_SIGMA_VALUES[0],
+    noise_scale=STAGE_2_DISTILLED_SIGMA_VALUES[0], # renoise with first sigma value https://github.com/Lightricks/LTX-2/blob/main/packages/ltx-pipelines/src/ltx_pipelines/distilled.py#L178
     sigmas=STAGE_2_DISTILLED_SIGMA_VALUES,
     generator=generator,
     guidance_scale=1.0,
