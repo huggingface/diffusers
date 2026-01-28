@@ -23,6 +23,7 @@ from ...models.modeling_utils import ModelMixin
 from ...models.transformers.transformer_bria import BriaAttnProcessor
 from ...utils import (
     USE_PEFT_BACKEND,
+    apply_lora_scale,
     logging,
     scale_lora_layers,
     unscale_lora_layers,
@@ -510,6 +511,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         ]
         self.caption_projection = nn.ModuleList(caption_projection)
 
+    @apply_lora_scale("joint_attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,

@@ -20,7 +20,15 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin, UNet2DConditionLoadersMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
-from ...utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    USE_PEFT_BACKEND,
+    BaseOutput,
+    apply_lora_scale,
+    deprecate,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ..activations import get_activation
 from ..attention import AttentionMixin
 from ..attention_processor import (
@@ -974,6 +982,7 @@ class UNet2DConditionModel(
             encoder_hidden_states = (encoder_hidden_states, image_embeds)
         return encoder_hidden_states
 
+    @apply_lora_scale("cross_attention_kwargs")
     def forward(
         self,
         sample: torch.Tensor,

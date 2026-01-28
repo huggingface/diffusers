@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, FrozenDict, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, UNet2DConditionLoadersMixin
-from ...utils import BaseOutput, deprecate, logging
+from ...utils import BaseOutput, apply_lora_scale, deprecate, logging
 from ...utils.torch_utils import apply_freeu
 from ..attention import AttentionMixin, BasicTransformerBlock
 from ..attention_processor import (
@@ -1875,6 +1875,7 @@ class UNetMotionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLo
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
+    @apply_lora_scale("cross_attention_kwargs")
     def forward(
         self,
         sample: torch.Tensor,
