@@ -495,8 +495,8 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
-        
-        multiple_of = self.vae_scale_factor_spatial * 2 # 2 for patchification
+
+        multiple_of = self.vae_scale_factor_spatial * 2  # 2 for patchification
         calc_height = height // multiple_of * multiple_of
         calc_width = width // multiple_of * multiple_of
         if height != calc_height or width != calc_width:
