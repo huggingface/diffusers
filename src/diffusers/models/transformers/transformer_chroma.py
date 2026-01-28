@@ -21,7 +21,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import deprecate, logging
+from ...utils import apply_lora_scale, deprecate, logging
 from ...utils.import_utils import is_torch_npu_available
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, FeedForward
@@ -473,6 +473,7 @@ class ChromaTransformer2DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("joint_attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,

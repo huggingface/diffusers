@@ -20,7 +20,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import get_logger
+from ...utils import apply_lora_scale, get_logger
 from ..cache_utils import CacheMixin
 from ..embeddings import get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -198,6 +198,7 @@ class HunyuanVideoFramepackTransformer3DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,

@@ -22,7 +22,7 @@ from diffusers.loaders import FromOriginalModelMixin
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import logging
+from ...utils import apply_lora_scale, logging
 from ..attention import AttentionMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
@@ -989,6 +989,7 @@ class HunyuanVideoTransformer3DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,

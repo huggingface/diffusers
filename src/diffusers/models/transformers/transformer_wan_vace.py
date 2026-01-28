@@ -20,7 +20,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import logging
+from ...utils import apply_lora_scale, logging
 from ..attention import AttentionMixin, FeedForward
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
@@ -261,6 +261,7 @@ class WanVACETransformer3DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
