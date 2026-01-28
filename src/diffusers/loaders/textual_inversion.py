@@ -549,20 +549,39 @@ class TextualInversionLoaderMixin:
                 else:
                     last_special_token_id = added_token_id
 
-        # Fast tokenizers: serialize, filter tokens, reload
-        tokenizer_json = json.loads(tokenizer._tokenizer.to_str())
+        # Fast tokenizers (v5+)
+        if hasattr(tokenizer, "_tokenizer"):
+            # Fast tokenizers: serialize, filter tokens, reload
+            tokenizer_json = json.loads(tokenizer._tokenizer.to_str())
+            new_id = last_special_token_id + 1
+            filtered = []
+            for tok in tokenizer_json.get("added_tokens", []):
+                if tok.get("content") in set(tokens):
+                    continue
+                if not tok.get("special", False):
+                    tok["id"] = new_id
+                    new_id += 1
+                filtered.append(tok)
+            tokenizer_json["added_tokens"] = filtered
+            tokenizer._tokenizer = TokenizerFast.from_str(json.dumps(tokenizer_json))
+        else:
+            # Slow tokenizers 
+            for token_id, token_to_remove in zip(token_ids, tokens):
+                del tokenizer._added_tokens_decoder[token_id]
+                del tokenizer._added_tokens_encoder[token_to_remove]
 
-        new_id = last_special_token_id + 1
-        filtered = []
-        for tok in tokenizer_json.get("added_tokens", []):
-            if tok.get("content") in set(tokens):
-                continue
-            if not tok.get("special", False):
-                tok["id"] = new_id
-                new_id += 1
-            filtered.append(tok)
-        tokenizer_json["added_tokens"] = filtered
-        tokenizer._tokenizer = TokenizerFast.from_str(json.dumps(tokenizer_json))
+            key_id = 1
+            for token_id in list(tokenizer.added_tokens_decoder.keys()):
+                if token_id > last_special_token_id and token_id > last_special_token_id + key_id:
+                    token = tokenizer._added_tokens_decoder[token_id]
+                    tokenizer._added_tokens_decoder[last_special_token_id + key_id] = token
+                    del tokenizer._added_tokens_decoder[token_id]
+                    tokenizer._added_tokens_encoder[token.content] = last_special_token_id + key_id
+                    key_id += 1
+            if hasattr(tokenizer, "_update_trie"):
+                tokenizer._update_trie()
+            if hasattr(tokenizer, "_update_total_vocab_size"):
+                tokenizer._update_total_vocab_size()
 
         # Delete from text encoder
         text_embedding_dim = text_encoder.get_input_embeddings().embedding_dim
