@@ -21,13 +21,10 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin, UNet2DConditionLoadersMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import (
-    USE_PEFT_BACKEND,
     BaseOutput,
     apply_lora_scale,
     deprecate,
     logging,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
 from ..activations import get_activation
 from ..attention import AttentionMixin
@@ -1121,18 +1118,6 @@ class UNet2DConditionModel(
             cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
 
         # 3. down
-        # we're popping the `scale` instead of getting it because otherwise `scale` will be propagated
-        # to the internal blocks and will raise deprecation warnings. this will be confusing for our users.
-        if cross_attention_kwargs is not None:
-            cross_attention_kwargs = cross_attention_kwargs.copy()
-            lora_scale = cross_attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
         # using new arg down_intrablock_additional_residuals for T2I-Adapters, to distinguish from controlnets
         is_adapter = down_intrablock_additional_residuals is not None
@@ -1247,10 +1232,6 @@ class UNet2DConditionModel(
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (sample,)
