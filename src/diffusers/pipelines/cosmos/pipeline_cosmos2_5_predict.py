@@ -52,6 +52,15 @@ else:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+DEFAULT_NEGATIVE_PROMPT = (
+    "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
+    "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
+    "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, "
+    "jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, "
+    "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
+    "Overall, the video is of poor quality."
+)
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
@@ -359,7 +368,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
             prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            negative_prompt = negative_prompt or ""
+            negative_prompt = negative_prompt if negative_prompt is not None else DEFAULT_NEGATIVE_PROMPT
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
             if prompt is not None and type(prompt) is not type(negative_prompt):
@@ -549,6 +558,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         conditional_frame_timestep: float = 0.1,
+        num_latent_conditional_frames: int = 2,
     ):
         r"""
         The call function to the pipeline for generation. Supports three modes:
@@ -614,6 +624,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
             max_sequence_length (`int`, defaults to `512`):
                 The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated. If
                 the prompt is shorter than this length, it will be padded.
+            num_latent_conditional_frames (`int`, defaults to `2`):
+                Number of latent conditional frames to use for Video2World conditioning. The number of pixel frames
+                extracted from the input video is calculated as `4 * (num_latent_conditional_frames - 1) + 1`. Set to 1
+                for Image2World-like behavior (single frame conditioning).
 
         Examples:
 
@@ -692,19 +706,38 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
             video = torch.zeros(batch_size, num_frames, 3, height, width, dtype=torch.uint8)
             num_frames_in = 0
         else:
-            num_frames_in = len(video)
-
             if batch_size != 1:
                 raise ValueError(f"batch_size must be 1 for video input (given {batch_size})")
+
+            if num_latent_conditional_frames not in [1, 2]:
+                raise ValueError(
+                    f"num_latent_conditional_frames must be 1 or 2, but got {num_latent_conditional_frames}"
+                )
+
+            frames_to_extract = 4 * (num_latent_conditional_frames - 1) + 1
+
+            total_input_frames = len(video)
+
+            if total_input_frames < frames_to_extract:
+                raise ValueError(
+                    f"Input video has only {total_input_frames} frames but Video2World requires at least "
+                    f"{frames_to_extract} frames for conditioning."
+                )
+
+            num_frames_in = frames_to_extract
 
         assert video is not None
         video = self.video_processor.preprocess_video(video, height, width)
 
-        # pad with last frame (for video2world)
+        # For Video2World: extract last frames_to_extract frames from input, then pad
+        if image is None and num_frames_in > 0 and num_frames_in < video.shape[2]:
+            video = video[:, :, -num_frames_in:, :, :]
+
         num_frames_out = num_frames
+
         if video.shape[2] < num_frames_out:
-            n_pad_frames = num_frames_out - num_frames_in
-            last_frame = video[0, :, -1:, :, :]  # [C, T==1, H, W]
+            n_pad_frames = num_frames_out - video.shape[2]
+            last_frame = video[:, :, -1:, :, :]  # [B, C, T==1, H, W]
             pad_frames = last_frame.repeat(1, 1, n_pad_frames, 1, 1)  # [B, C, T, H, W]
             video = torch.cat((video, pad_frames), dim=2)
 
