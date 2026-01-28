@@ -25,10 +25,10 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import RMSNorm
+from ...utils import is_torch_npu_available
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_outputs import Transformer2DModelOutput
-from ...utils import is_torch_npu_available
 
 
 ADALN_EMBED_DIM = 256
@@ -342,8 +342,8 @@ class RopeEmbedder:
                     freqs_real_list.append(freqs_real.to(torch.float32))
                     freqs_imag_list.append(freqs_imag.to(torch.float32))
 
-                return freqs_real_list, freqs_imag_list 
-            else: 
+                return freqs_real_list, freqs_imag_list
+            else:
                 freqs_cis = []
                 for i, (d, e) in enumerate(zip(dim, end)):
                     freqs = 1.0 / (theta ** (torch.arange(0, d, 2, dtype=torch.float64, device="cpu") / d))
@@ -389,7 +389,7 @@ class RopeEmbedder:
             for i in range(len(self.axes_dims)):
                 index = ids[:, i]
                 result.append(self.freqs_cis[i][index])
-                
+
         return torch.cat(result, dim=-1)
 
 
