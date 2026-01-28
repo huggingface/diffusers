@@ -675,6 +675,10 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         device = self._execution_device
         # 3. Preprocess image
+        condition_image_sizes = None
+        condition_images = None
+        vae_image_sizes = None
+        vae_images = None
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
             if not isinstance(image, list):
                 image = [image]

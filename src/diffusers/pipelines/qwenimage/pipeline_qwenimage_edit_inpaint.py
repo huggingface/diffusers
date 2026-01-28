@@ -865,6 +865,8 @@ class QwenImageEditInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             crops_coords = None
             resize_mode = "default"
 
+        original_image = None
+        prompt_image = None
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
             image = self.image_processor.resize(image, calculated_height, calculated_width)
             original_image = image

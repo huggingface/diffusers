@@ -24,7 +24,7 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import UniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -202,7 +202,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder: UMT5EncoderModel,
         transformer: WanTransformer3DModel,
         vae: AutoencoderKLWan,
-        scheduler: FlowMatchEulerDiscreteScheduler,
+        scheduler: UniPCMultistepScheduler,
     ):
         super().__init__()
 

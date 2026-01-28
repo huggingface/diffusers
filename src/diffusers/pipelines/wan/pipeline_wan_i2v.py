@@ -24,7 +24,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import UniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -169,7 +169,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
-        scheduler: FlowMatchEulerDiscreteScheduler,
+        scheduler: UniPCMultistepScheduler,
         image_processor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModel = None,
         transformer: WanTransformer3DModel = None,
@@ -636,6 +636,16 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
+
+        multiple_of = self.vae_scale_factor_spatial * 2 # 2 for patchification
+        calc_height = height // multiple_of * multiple_of
+        calc_width = width // multiple_of * multiple_of
+        if height != calc_height or width != calc_width:
+            logger.warning(
+                f"`height` and `width` must be multiples of {multiple_of} for proper patchification. "
+                f"Adjusting ({height}, {width}) -> ({calc_height}, {calc_width})."
+            )
+            height, width = calc_height, calc_width
 
         if self.config.boundary_ratio is not None and guidance_scale_2 is None:
             guidance_scale_2 = guidance_scale
