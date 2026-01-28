@@ -32,11 +32,23 @@ def _get_rank_world_size(group: dist.ProcessGroup) -> Tuple[int, int]:
     return rank, world_size
 
 
-@functools.lru_cache(maxsize=128)
 def _gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
     r"""Gather the local size from all ranks.
     size: int, local size return: List[int], list of size from all ranks
     """
+    # NOTE(Serving/CP Safety):
+    # Do NOT cache this collective result.
+    #
+    # In "Ulysses Anything" mode, `size` (e.g. per-rank local seq_len / S_LOCAL)
+    # may legitimately differ across ranks. If we cache based on the *local* `size`,
+    # different ranks can have different cache hit/miss patterns across time.
+    #
+    # That can lead to a catastrophic distributed hang:
+    # - some ranks hit cache and *skip* dist.all_gather()
+    # - other ranks miss cache and *enter* dist.all_gather()
+    # This mismatched collective participation will stall the process group and
+    # eventually trigger NCCL watchdog timeouts (often surfacing later as ALLTOALL
+    # timeouts in Ulysses attention).
     world_size = dist.get_world_size(group=group)
     # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
     comm_backends = str(dist.get_backend(group=group))
