@@ -74,13 +74,13 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> prompt = "Replace this ball"
-        >>> img_url = (
-        ...     "https://raw.githubusercontent.com/Fantasy-Studio/Paint-by-Example/main/examples/image/example_1.png"
-        ... )
+        >>> img_url = "https://images.pexels.com/photos/39362/the-ball-stadion-football-the-pitch-39362.jpeg?auto=compress&cs=tinysrgb&dpr=1&w=500"
         >>> mask_url = (
-        ...     "https://raw.githubusercontent.com/Fantasy-Studio/Paint-by-Example/main/examples/mask/example_1.png"
+        ...     "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/ball_mask.png?raw=true"
         ... )
-        >>> image_reference_url = "https://raw.githubusercontent.com/Fantasy-Studio/Paint-by-Example/main/examples/reference/example_1.jpg"
+        >>> image_reference_url = (
+        ...     "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTah3x6OL_ECMBaZ5ZlJJhNsyC-OSMLWAI-xw&s"
+        ... )
 
         >>> source = load_image(img_url)
         >>> mask = load_image(mask_url)
