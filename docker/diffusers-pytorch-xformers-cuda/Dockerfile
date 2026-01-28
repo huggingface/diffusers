@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.8.0-runtime-ubuntu20.04
+FROM nvidia/cuda:12.9.1-runtime-ubuntu22.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
@@ -37,7 +37,7 @@ RUN uv pip install --no-cache-dir \
     torch \
     torchvision \
     torchaudio \
-    --index-url https://download.pytorch.org/whl/cu128
+    --index-url https://download.pytorch.org/whl/cu129
 
 # Install compatible versions of numba/llvmlite for Python 3.10+
 RUN uv pip install --no-cache-dir \
