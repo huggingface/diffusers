@@ -16,6 +16,8 @@ from typing import Any, List, Tuple
 
 import torch
 
+from ...configuration_utils import FrozenDict
+from ...guiders import ClassifierFreeGuidance
 from ...models import Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging
@@ -25,8 +27,8 @@ from ..modular_pipeline import (
     ModularPipelineBlocks,
     PipelineState,
 )
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import Flux2ModularPipeline
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
+from .modular_pipeline import Flux2KleinModularPipeline, Flux2ModularPipeline
 
 
 if is_torch_xla_available():
@@ -130,6 +132,229 @@ class Flux2LoopDenoiser(ModularPipelineBlocks):
 
         noise_pred = noise_pred[:, : latents.size(1)]
         block_state.noise_pred = noise_pred
+
+        return components, block_state
+
+
+# same as Flux2LoopDenoiser but guidance=None
+class Flux2KleinLoopDenoiser(ModularPipelineBlocks):
+    model_name = "flux2-klein"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [ComponentSpec("transformer", Flux2Transformer2DModel)]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the denoising loop that denoises the latents for Flux2. "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
+            "object (e.g. `Flux2DenoiseLoopWrapper`)"
+        )
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            InputParam("joint_attention_kwargs"),
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The latents to denoise. Shape: (B, seq_len, C)",
+            ),
+            InputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                description="Packed image latents for conditioning. Shape: (B, img_seq_len, C)",
+            ),
+            InputParam(
+                "image_latent_ids",
+                type_hint=torch.Tensor,
+                description="Position IDs for image latents. Shape: (B, img_seq_len, 4)",
+            ),
+            InputParam(
+                "prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Text embeddings from Qwen3",
+            ),
+            InputParam(
+                "txt_ids",
+                required=True,
+                type_hint=torch.Tensor,
+                description="4D position IDs for text tokens (T, H, W, L)",
+            ),
+            InputParam(
+                "latent_ids",
+                required=True,
+                type_hint=torch.Tensor,
+                description="4D position IDs for latent tokens (T, H, W, L)",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(
+        self, components: Flux2KleinModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> PipelineState:
+        latents = block_state.latents
+        latent_model_input = latents.to(components.transformer.dtype)
+        img_ids = block_state.latent_ids
+
+        image_latents = getattr(block_state, "image_latents", None)
+        if image_latents is not None:
+            latent_model_input = torch.cat([latents, image_latents], dim=1).to(components.transformer.dtype)
+            image_latent_ids = block_state.image_latent_ids
+            img_ids = torch.cat([img_ids, image_latent_ids], dim=1)
+
+        timestep = t.expand(latents.shape[0]).to(latents.dtype)
+
+        noise_pred = components.transformer(
+            hidden_states=latent_model_input,
+            timestep=timestep / 1000,
+            guidance=None,
+            encoder_hidden_states=block_state.prompt_embeds,
+            txt_ids=block_state.txt_ids,
+            img_ids=img_ids,
+            joint_attention_kwargs=block_state.joint_attention_kwargs,
+            return_dict=False,
+        )[0]
+
+        noise_pred = noise_pred[:, : latents.size(1)]
+        block_state.noise_pred = noise_pred
+
+        return components, block_state
+
+
+# support CFG for Flux2-Klein base model
+class Flux2KleinBaseLoopDenoiser(ModularPipelineBlocks):
+    model_name = "flux2-klein"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", Flux2Transformer2DModel),
+            ComponentSpec(
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 4.0}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def expected_configs(self) -> List[ConfigSpec]:
+        return [
+            ConfigSpec(name="is_distilled", default=False),
+        ]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the denoising loop that denoises the latents for Flux2. "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
+            "object (e.g. `Flux2DenoiseLoopWrapper`)"
+        )
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            InputParam("joint_attention_kwargs"),
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The latents to denoise. Shape: (B, seq_len, C)",
+            ),
+            InputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                description="Packed image latents for conditioning. Shape: (B, img_seq_len, C)",
+            ),
+            InputParam(
+                "image_latent_ids",
+                type_hint=torch.Tensor,
+                description="Position IDs for image latents. Shape: (B, img_seq_len, 4)",
+            ),
+            InputParam(
+                "prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Text embeddings from Qwen3",
+            ),
+            InputParam(
+                "negative_prompt_embeds",
+                required=False,
+                type_hint=torch.Tensor,
+                description="Negative text embeddings from Qwen3",
+            ),
+            InputParam(
+                "txt_ids",
+                required=True,
+                type_hint=torch.Tensor,
+                description="4D position IDs for text tokens (T, H, W, L)",
+            ),
+            InputParam(
+                "negative_txt_ids",
+                required=False,
+                type_hint=torch.Tensor,
+                description="4D position IDs for negative text tokens (T, H, W, L)",
+            ),
+            InputParam(
+                "latent_ids",
+                required=True,
+                type_hint=torch.Tensor,
+                description="4D position IDs for latent tokens (T, H, W, L)",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(
+        self, components: Flux2KleinModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> PipelineState:
+        latents = block_state.latents
+        latent_model_input = latents.to(components.transformer.dtype)
+        img_ids = block_state.latent_ids
+
+        image_latents = getattr(block_state, "image_latents", None)
+        if image_latents is not None:
+            latent_model_input = torch.cat([latents, image_latents], dim=1).to(components.transformer.dtype)
+            image_latent_ids = block_state.image_latent_ids
+            img_ids = torch.cat([img_ids, image_latent_ids], dim=1)
+
+        timestep = t.expand(latents.shape[0]).to(latents.dtype)
+
+        guider_inputs = {
+            "encoder_hidden_states": (
+                getattr(block_state, "prompt_embeds", None),
+                getattr(block_state, "negative_prompt_embeds", None),
+            ),
+            "txt_ids": (
+                getattr(block_state, "txt_ids", None),
+                getattr(block_state, "negative_txt_ids", None),
+            ),
+        }
+
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+        guider_state = components.guider.prepare_inputs(guider_inputs)
+
+        for guider_state_batch in guider_state:
+            components.guider.prepare_models(components.transformer)
+            cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
+
+            noise_pred = components.transformer(
+                hidden_states=latent_model_input,
+                timestep=timestep / 1000,
+                guidance=None,
+                img_ids=img_ids,
+                joint_attention_kwargs=block_state.joint_attention_kwargs,
+                return_dict=False,
+                **cond_kwargs,
+            )[0]
+            guider_state_batch.noise_pred = noise_pred[:, : latents.size(1)]
+            components.guider.cleanup_models(components.transformer)
+
+        # perform guidance
+        block_state.noise_pred = components.guider(guider_state)[0]
 
         return components, block_state
 
@@ -247,6 +472,38 @@ class Flux2DenoiseStep(Flux2DenoiseLoopWrapper):
             "Its loop logic is defined in `Flux2DenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `Flux2LoopDenoiser`\n"
+            " - `Flux2LoopAfterDenoiser`\n"
+            "This block supports both text-to-image and image-conditioned generation."
+        )
+
+
+class Flux2KleinDenoiseStep(Flux2DenoiseLoopWrapper):
+    block_classes = [Flux2KleinLoopDenoiser, Flux2LoopAfterDenoiser]
+    block_names = ["denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoises the latents for Flux2. \n"
+            "Its loop logic is defined in `Flux2DenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
+            " - `Flux2KleinLoopDenoiser`\n"
+            " - `Flux2LoopAfterDenoiser`\n"
+            "This block supports both text-to-image and image-conditioned generation."
+        )
+
+
+class Flux2KleinBaseDenoiseStep(Flux2DenoiseLoopWrapper):
+    block_classes = [Flux2KleinBaseLoopDenoiser, Flux2LoopAfterDenoiser]
+    block_names = ["denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoises the latents for Flux2. \n"
+            "Its loop logic is defined in `Flux2DenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
+            " - `Flux2KleinBaseLoopDenoiser`\n"
             " - `Flux2LoopAfterDenoiser`\n"
             "This block supports both text-to-image and image-conditioned generation."
         )
