@@ -236,6 +236,10 @@ class _AttentionBackendRegistry:
         return cls._active_backend, cls._backends[cls._active_backend]
 
     @classmethod
+    def set_active_backend(cls, backend: str):
+        cls._active_backend = backend
+
+    @classmethod
     def list_backends(cls):
         return list(cls._backends.keys())
 
@@ -294,12 +298,12 @@ def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBacke
     _maybe_download_kernel_for_backend(backend)
 
     old_backend = _AttentionBackendRegistry._active_backend
-    _AttentionBackendRegistry._active_backend = backend
+    _AttentionBackendRegistry.set_active_backend(backend)
 
     try:
         yield
     finally:
-        _AttentionBackendRegistry._active_backend = old_backend
+        _AttentionBackendRegistry.set_active_backend(old_backend)
 
 
 def dispatch_attention_fn(
@@ -348,6 +352,7 @@ def dispatch_attention_fn(
             check(**kwargs)
 
     kwargs = {k: v for k, v in kwargs.items() if k in _AttentionBackendRegistry._supported_arg_names[backend_name]}
+
     return backend_fn(**kwargs)
 
 
@@ -1573,8 +1578,6 @@ def _templated_context_parallel_attention(
     backward_op,
     _parallel_config: Optional["ParallelConfig"] = None,
 ):
-    if attn_mask is not None:
-        raise ValueError("Attention mask is not yet supported for templated attention.")
     if is_causal:
         raise ValueError("Causal attention is not yet supported for templated attention.")
     if enable_gqa:
