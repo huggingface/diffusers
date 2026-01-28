@@ -23,11 +23,9 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import (
-    USE_PEFT_BACKEND,
     BaseOutput,
     is_torch_version,
     logging,
-    scale_lora_layers,
 )
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -1170,21 +1168,6 @@ class LTX2VideoTransformer3DModel(
                 `tuple` is returned where the first element is the denoised video latent patch sequence and the second
                 element is the denoised audio latent patch sequence.
         """
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
         # Determine timestep for audio.
         audio_timestep = audio_timestep if audio_timestep is not None else timestep
 
