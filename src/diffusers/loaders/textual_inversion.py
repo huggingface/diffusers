@@ -565,7 +565,7 @@ class TextualInversionLoaderMixin:
             tokenizer_json["added_tokens"] = filtered
             tokenizer._tokenizer = TokenizerFast.from_str(json.dumps(tokenizer_json))
         else:
-            # Slow tokenizers 
+            # Slow tokenizers
             for token_id, token_to_remove in zip(token_ids, tokens):
                 del tokenizer._added_tokens_decoder[token_id]
                 del tokenizer._added_tokens_encoder[token_to_remove]
