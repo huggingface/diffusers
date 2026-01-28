@@ -1132,6 +1132,18 @@ def _maybe_modify_attn_mask_npu(
         attn_mask = ~attn_mask.to(torch.bool)
         attn_mask = attn_mask.unsqueeze(1).expand(B, Sq, Skv).unsqueeze(1).contiguous()
     
+    # Reshape Attention Mask: [batch_size, 1, 1, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
+    if (
+        attn_mask is not None
+        and attn_mask.ndim == 4
+        and attn_mask.shape[0] == query.shape[0]
+        and attn_mask.shape[-1] == key.shape[1]
+        and attn_mask.shape[-2] == 1
+    ):
+        B, Sq, Skv = attn_mask.shape[0], query.shape[1], key.shape[1]
+        attn_mask = ~attn_mask.to(torch.bool)
+        attn_mask = attn_mask.expand(B, 1, Sq, Skv) 
+    
     return attn_mask
 
 
