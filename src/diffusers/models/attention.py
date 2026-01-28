@@ -39,22 +39,10 @@ logger = logging.get_logger(__name__)
 a = 1
 
 
+b = 3
 
 
-b=3
-
-
-
-
-c=       5
-
-
-
-
-
-
-
-
+c = 5
 
 
 class AttentionMixin:
