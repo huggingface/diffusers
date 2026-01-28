@@ -496,9 +496,10 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
 
-        multiple_of = self.vae_scale_factor_spatial * 2  # 2 for patchification
-        calc_height = height // multiple_of * multiple_of
-        calc_width = width // multiple_of * multiple_of
+        h_multiple_of = self.vae_scale_factor_spatial * self.transformer.config.patch_size[1]
+        w_multiple_of = self.vae_scale_factor_spatial * self.transformer.config.patch_size[2]
+        calc_height = height // h_multiple_of * h_multiple_of
+        calc_width = width // w_multiple_of * w_multiple_of
         if height != calc_height or width != calc_width:
             logger.warning(
                 f"`height` and `width` must be multiples of {multiple_of} for proper patchification. "
