@@ -643,7 +643,7 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         calc_width = width // w_multiple_of * w_multiple_of
         if height != calc_height or width != calc_width:
             logger.warning(
-                f"`height` and `width` must be multiples of {multiple_of} for proper patchification. "
+                f"`height` and `width` must be multiples of ({h_multiple_of}, {w_multiple_of}) for proper patchification. "
                 f"Adjusting ({height}, {width}) -> ({calc_height}, {calc_width})."
             )
             height, width = calc_height, calc_width
