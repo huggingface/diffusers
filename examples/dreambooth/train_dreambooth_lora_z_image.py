@@ -1470,16 +1470,12 @@ def main(args):
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            instance_prompt_hidden_states = compute_text_embeddings(
-                args.instance_prompt, text_encoding_pipeline
-            )
+            instance_prompt_hidden_states = compute_text_embeddings(args.instance_prompt, text_encoding_pipeline)
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            class_prompt_hidden_states = compute_text_embeddings(
-                args.class_prompt, text_encoding_pipeline
-            )
+            class_prompt_hidden_states = compute_text_embeddings(args.class_prompt, text_encoding_pipeline)
     validation_embeddings = {}
     if args.validation_prompt is not None:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
@@ -1532,7 +1528,6 @@ def main(args):
                         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
                             prompt_embeds = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
                     prompt_embeds_cache.append(prompt_embeds)
-
 
     # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
     if args.cache_latents:
@@ -1697,7 +1692,6 @@ def main(args):
 
                 timestep_normalized = (1000 - timesteps) / 1000
 
-
                 noisy_model_input_5d = noisy_model_input.unsqueeze(2)  # (B, C, H, W) -> (B, C, 1, H, W)
                 noisy_model_input_list = list(noisy_model_input_5d.unbind(dim=0))  # List of (C, 1, H, W)
 
@@ -1709,7 +1703,7 @@ def main(args):
                 )[0]
                 model_pred = torch.stack(model_pred_list, dim=0)  # (B, C, 1, H, W)
                 model_pred = model_pred.squeeze(2)  # (B, C, H, W)
-                model_pred = -model_pred # z-Image negates the prediction
+                model_pred = -model_pred  # z-Image negates the prediction
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
