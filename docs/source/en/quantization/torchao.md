@@ -83,25 +83,6 @@ Refer to this [table](https://github.com/huggingface/diffusers/pull/10009#issue-
 > [!TIP]
 > The FP8 post-training quantization schemes in torchao are effective for GPUs with compute capability of at least 8.9 (RTX-4090, Hopper, etc.). FP8 often provides the best speed, memory, and quality trade-off when generating images and videos. We recommend combining FP8 and torch.compile if your GPU is compatible.
 
-## autoquant
-
-torchao provides [autoquant](https://docs.pytorch.org/ao/stable/generated/torchao.quantization.autoquant.html#torchao.quantization.autoquant) an automatic quantization API. Autoquantization chooses the best quantization strategy by comparing the performance of each strategy on chosen input types and shapes. This is only supported in Diffusers for individual models at the moment.
-
-```py
-import torch
-from diffusers import DiffusionPipeline
-from torchao.quantization import autoquant
-
-# Load the pipeline
-pipeline = DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell",
-    torch_dtype=torch.bfloat16,
-    device_map="cuda"
-)
-
-transformer = autoquant(pipeline.transformer)
-```
-
 ## Supported quantization types
 
 torchao supports weight-only quantization and weight and dynamic-activation quantization for int8, float3-float8, and uint1-uint7.
