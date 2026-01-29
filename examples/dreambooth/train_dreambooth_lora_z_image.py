@@ -211,6 +211,7 @@ def log_validation(
     for _ in range(args.num_validation_images):
         with autocast_ctx:
             image = pipeline(
+                prompt=args.validation_prompt,
                 prompt_embeds=pipeline_args["prompt_embeds"],
                 generator=generator,
             ).images[0]
@@ -1662,7 +1663,7 @@ def main(args):
                     prompt_embeds = prompt_embeds_cache[step]
                 else:
                     num_repeat_elements = len(prompts)
-                    prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
+                    prompt_embeds = [pe for pe in prompt_embeds for _ in range(num_repeat_elements)]
 
                 # Convert images to latent space
                 if args.cache_latents:
