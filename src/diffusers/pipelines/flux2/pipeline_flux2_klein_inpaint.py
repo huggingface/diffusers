@@ -640,10 +640,9 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         # latent height and width to be divisible by 2.
         height = 2 * (int(height) // (self.vae_scale_factor * 2))
         width = 2 * (int(width) // (self.vae_scale_factor * 2))
-        # resize the mask to patchified latents shape (height // 2, width // 2) since latents
-        # are patchified before packing. We do that before converting to dtype to avoid breaking
-        # in case we're using cpu_offload and half precision
-        mask = torch.nn.functional.interpolate(mask, size=(height // 2, width // 2))
+        
+        # Interpolate to VAE latent size
+        mask = torch.nn.functional.interpolate(mask, size=(height, width))
         mask = mask.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
@@ -676,8 +675,9 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
         masked_image_latents = self._pack_latents(masked_image_latents)
 
-        mask = mask.repeat(1, num_channels_latents * 4, 1, 1)
-        mask = self._pack_latents(mask)
+        mask = mask.repeat(1, self.latent_channels, 1, 1)  # Repeat to 128 channels
+        mask = self._patchify_latents(mask)  # Patchify: 128 -> 512 channels, spatial 64->32
+        mask = self._pack_latents(mask)  # Pack to (B, seq_len, 512)
 
         return mask, masked_image_latents
 
