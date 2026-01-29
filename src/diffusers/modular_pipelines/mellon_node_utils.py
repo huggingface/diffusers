@@ -1,7 +1,7 @@
+import copy
 import json
 import logging
 import os
-import copy
 
 # Simple typed wrapper for parameter overrides
 from dataclasses import asdict, dataclass
@@ -1010,8 +1010,8 @@ class MellonPipelineConfig:
 
     @classmethod
     def from_custom_block(
-        cls, 
-        block, 
+        cls,
+        block,
         node_label: str = None,
         mellon_types: Optional[Dict[str, str]] = None,
     ) -> "MellonPipelineConfig":
@@ -1023,8 +1023,9 @@ class MellonPipelineConfig:
                 Each InputParam/OutputParam should have metadata={"mellon": "<type>"} where type is one of: image,
                 video, text, checkbox, number, slider, dropdown, model. If metadata is None, maps to "custom".
             node_label: The display label for the node. Defaults to block class name with spaces.
-            mellon_types: Optional dict mapping param names to mellon types. Overrides the block's metadata if provided.
-                Example: {"prompt": "textbox", "image": "image", "out_prompt": "text"}
+            mellon_types:
+                Optional dict mapping param names to mellon types. Overrides the block's metadata if provided. Example:
+                {"prompt": "textbox", "image": "image", "out_prompt": "text"}
 
         Returns:
             MellonPipelineConfig instance
