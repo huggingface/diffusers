@@ -420,7 +420,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="flux-dreambooth-lora",
+        default="z-image-dreambooth-lora",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
@@ -1209,7 +1209,6 @@ def main(args):
         )
 
     to_kwargs = {"dtype": weight_dtype, "device": accelerator.device} if not args.offload else {"dtype": weight_dtype}
-    # flux vae is stable in bf16 so load it in weight_dtype to reduce memory
     vae.to(**to_kwargs)
     # we never offload the transformer to CPU, so we can just use the accelerator device
     transformer_to_kwargs = (
@@ -1588,7 +1587,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_name = "dreambooth-flux2-klein-lora"
+        tracker_name = "dreambooth-z-image-lora"
         args_cp = vars(args).copy()
         accelerator.init_trackers(tracker_name, config=args_cp)
 
@@ -1697,17 +1696,21 @@ def main(args):
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
-                # handle guidance
+                timestep_normalized = (1000 - timesteps) / 1000
 
-                # Predict the noise residual
-                model_pred = transformer(
-                    hidden_states=packed_noisy_model_input,  # (B, image_seq_len, C)
-                    timestep=timesteps / 1000,
-                    guidance=guidance,
-                    encoder_hidden_states=prompt_embeds,
-                    img_ids=model_input_ids,  # B, image_seq_len, 4
+
+                noisy_model_input_5d = noisy_model_input.unsqueeze(2)  # (B, C, H, W) -> (B, C, 1, H, W)
+                noisy_model_input_list = list(noisy_model_input_5d.unbind(dim=0))  # List of (C, 1, H, W)
+
+                model_pred_list = transformer(
+                    noisy_model_input_list,
+                    timestep_normalized,
+                    prompt_embeds,  # This is a List[torch.Tensor] for Z-Image
                     return_dict=False,
                 )[0]
+                model_pred = torch.stack(model_pred_list, dim=0)  # (B, C, 1, H, W)
+                model_pred = model_pred.squeeze(2)  # (B, C, H, W)
+                model_pred = -model_pred # z-Image negates the prediction
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
