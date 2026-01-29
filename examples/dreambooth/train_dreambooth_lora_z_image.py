@@ -1461,31 +1461,31 @@ def main(args):
 
     def compute_text_embeddings(prompt, text_encoding_pipeline):
         with torch.no_grad():
-            prompt_embeds, text_ids = text_encoding_pipeline.encode_prompt(
+            prompt_embeds, _ = text_encoding_pipeline.encode_prompt(
                 prompt=prompt,
                 max_sequence_length=args.max_sequence_length,
             )
-        return prompt_embeds, text_ids
+        return prompt_embeds, _
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            instance_prompt_hidden_states, instance_text_ids = compute_text_embeddings(
+            instance_prompt_hidden_states, _ = compute_text_embeddings(
                 args.instance_prompt, text_encoding_pipeline
             )
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            class_prompt_hidden_states, class_text_ids = compute_text_embeddings(
+            class_prompt_hidden_states, _ = compute_text_embeddings(
                 args.class_prompt, text_encoding_pipeline
             )
     validation_embeddings = {}
     if args.validation_prompt is not None:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            (validation_embeddings["prompt_embeds"], validation_embeddings["text_ids"]) = compute_text_embeddings(
+            (validation_embeddings["prompt_embeds"], _) = compute_text_embeddings(
                 args.validation_prompt, text_encoding_pipeline
             )
 
@@ -1509,10 +1509,8 @@ def main(args):
     # have to pass them to the dataloader.
     if not train_dataset.custom_instance_prompts:
         prompt_embeds = instance_prompt_hidden_states
-        text_ids = instance_text_ids
         if args.with_prior_preservation:
             prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
-            text_ids = torch.cat([text_ids, class_text_ids], dim=0)
 
     # if cache_latents is set to True, we encode images to latents and store them.
     # Similar to pre-encoding in the case of a single instance prompt, if custom prompts are provided
@@ -1520,7 +1518,6 @@ def main(args):
     precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
     if precompute_latents:
         prompt_embeds_cache = []
-        text_ids_cache = []
         latents_cache = []
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
@@ -1532,12 +1529,12 @@ def main(args):
                         latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
                 if train_dataset.custom_instance_prompts:
                     if args.fsdp_text_encoder:
-                        prompt_embeds, text_ids = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
+                        prompt_embeds, _ = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
                     else:
                         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-                            prompt_embeds, text_ids = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
+                            prompt_embeds, _ = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
                     prompt_embeds_cache.append(prompt_embeds)
-                    text_ids_cache.append(text_ids)
+
 
     # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
     if args.cache_latents:
@@ -1666,11 +1663,9 @@ def main(args):
             with accelerator.accumulate(models_to_accumulate):
                 if train_dataset.custom_instance_prompts:
                     prompt_embeds = prompt_embeds_cache[step]
-                    text_ids = text_ids_cache[step]
                 else:
                     num_repeat_elements = len(prompts)
                     prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
-                    text_ids = text_ids.repeat(num_repeat_elements, 1, 1)
 
                 # Convert images to latent space
                 if args.cache_latents:
@@ -1721,7 +1716,6 @@ def main(args):
                     timestep=timesteps / 1000,
                     guidance=guidance,
                     encoder_hidden_states=prompt_embeds,
-                    txt_ids=text_ids,  # B, text_seq_len, 4
                     img_ids=model_input_ids,  # B, image_seq_len, 4
                     return_dict=False,
                 )[0]
