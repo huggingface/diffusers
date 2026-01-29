@@ -1159,10 +1159,8 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
-    latents_bn_mean = vae.bn.running_mean.view(1, -1, 1, 1).to(accelerator.device)
-    latents_bn_std = torch.sqrt(vae.bn.running_var.view(1, -1, 1, 1) + vae.config.batch_norm_eps).to(
-        accelerator.device
-    )
+    vae_config_shift_factor = vae.config.shift_factor
+    vae_config_scaling_factor = vae.config.scaling_factor
 
     quantization_config = None
     if args.bnb_quantization_config_path is not None:
@@ -1674,7 +1672,7 @@ def main(args):
                         pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                     model_input = vae.encode(pixel_values).latent_dist.mode()
 
-                model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
+                model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
                 bsz = model_input.shape[0]
