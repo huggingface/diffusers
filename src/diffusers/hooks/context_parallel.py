@@ -11,12 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import copy
+import functools
 import inspect
 from dataclasses import dataclass
-from typing import Dict, List, Type, Union
+from typing import Dict, List, Tuple, Type, Union
 
 import torch
+import torch.distributed as dist
 
 
 if torch.distributed.is_available():
@@ -27,10 +29,10 @@ from ..models._modeling_parallel import (
     ContextParallelInput,
     ContextParallelModelPlan,
     ContextParallelOutput,
+    _gather_size_by_comm,
 )
-from ..models._ulysses_anything_utils import PartitionAnythingSharder
 from ..utils import get_logger
-from ..utils.torch_utils import unwrap_module
+from ..utils.torch_utils import maybe_allow_in_graph, unwrap_module
 from .hooks import HookRegistry, ModelHook
 
 
@@ -284,6 +286,73 @@ class EquipartitionSharder:
         tensor = tensor.contiguous()
         tensor = AllGatherFunction.apply(tensor, dim, mesh.get_group())
         return tensor
+
+
+class AllGatherAnythingFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, tensor: torch.Tensor, dim: int, group: dist.device_mesh.DeviceMesh):
+        ctx.dim = dim
+        ctx.group = group
+        ctx.world_size = dist.get_world_size(group)
+        ctx.rank = dist.get_rank(group)
+        gathered_tensor = _all_gather_anything(tensor, dim, group)
+        return gathered_tensor
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # NOTE: We use `tensor_split` instead of chunk, because the `chunk`
+        # function may return fewer than the specified number of chunks!
+        grad_splits = torch.tensor_split(grad_output, ctx.world_size, dim=ctx.dim)
+        return grad_splits[ctx.rank], None, None
+
+
+class PartitionAnythingSharder:
+    @classmethod
+    def shard_anything(
+        cls, tensor: torch.Tensor, dim: int, mesh: torch.distributed.device_mesh.DeviceMesh
+    ) -> torch.Tensor:
+        assert tensor.size()[dim] >= mesh.size(), (
+            f"Cannot shard tensor of size {tensor.size()} along dim {dim} across mesh of size {mesh.size()}."
+        )
+        # NOTE: We use `tensor_split` instead of chunk, because the `chunk`
+        # function may return fewer than the specified number of chunks!
+        return tensor.tensor_split(mesh.size(), dim=dim)[dist.get_rank(mesh.get_group())]
+
+    @classmethod
+    def unshard_anything(
+        cls, tensor: torch.Tensor, dim: int, mesh: torch.distributed.device_mesh.DeviceMesh
+    ) -> torch.Tensor:
+        tensor = tensor.contiguous()
+        tensor = AllGatherAnythingFunction.apply(tensor, dim, mesh.get_group())
+        return tensor
+
+
+@functools.lru_cache(maxsize=64)
+def _fill_gather_shapes(shape: Tuple[int], gather_dims: Tuple[int], dim: int, world_size: int) -> List[List[int]]:
+    gather_shapes = []
+    for i in range(world_size):
+        rank_shape = list(copy.deepcopy(shape))
+        rank_shape[dim] = gather_dims[i]
+        gather_shapes.append(rank_shape)
+    return gather_shapes
+
+
+@maybe_allow_in_graph
+def _all_gather_anything(tensor: torch.Tensor, dim: int, group: dist.device_mesh.DeviceMesh) -> torch.Tensor:
+    world_size = dist.get_world_size(group=group)
+
+    tensor = tensor.contiguous()
+    shape = tensor.shape
+    rank_dim = shape[dim]
+    gather_dims = _gather_size_by_comm(rank_dim, group)
+
+    gather_shapes = _fill_gather_shapes(tuple(shape), tuple(gather_dims), dim, world_size)
+
+    gathered_tensors = [torch.empty(shape, device=tensor.device, dtype=tensor.dtype) for shape in gather_shapes]
+
+    dist.all_gather(gathered_tensors, tensor, group=group)
+    gathered_tensor = torch.cat(gathered_tensors, dim=dim)
+    return gathered_tensor
 
 
 def _get_submodule_by_name(model: torch.nn.Module, name: str) -> Union[torch.nn.Module, List[torch.nn.Module]]:

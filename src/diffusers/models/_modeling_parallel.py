@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
+import torch.distributed as dist
 
 from ..utils import get_logger
 
@@ -265,3 +266,39 @@ ContextParallelModelPlan = Dict[str, Union[ContextParallelInputType, ContextPara
 #
 # ContextParallelOutput:
 #     specifies how to gather the input tensor in the post-forward hook in the layer it is attached to
+
+
+# Below are utility functions for distributed communication in context parallelism.
+def _gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
+    r"""Gather the local size from all ranks.
+    size: int, local size return: List[int], list of size from all ranks
+    """
+    # NOTE(Serving/CP Safety):
+    # Do NOT cache this collective result.
+    #
+    # In "Ulysses Anything" mode, `size` (e.g. per-rank local seq_len / S_LOCAL)
+    # may legitimately differ across ranks. If we cache based on the *local* `size`,
+    # different ranks can have different cache hit/miss patterns across time.
+    #
+    # That can lead to a catastrophic distributed hang:
+    # - some ranks hit cache and *skip* dist.all_gather()
+    # - other ranks miss cache and *enter* dist.all_gather()
+    # This mismatched collective participation will stall the process group and
+    # eventually trigger NCCL watchdog timeouts (often surfacing later as ALLTOALL
+    # timeouts in Ulysses attention).
+    world_size = dist.get_world_size(group=group)
+    # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
+    comm_backends = str(dist.get_backend(group=group))
+    # NOTE: e.g., dist.init_process_group(backend="cpu:gloo,cuda:nccl")
+    gather_device = "cpu" if "cpu" in comm_backends else torch.accelerator.current_accelerator()
+    gathered_sizes = [torch.empty((1,), device=gather_device, dtype=torch.int64) for _ in range(world_size)]
+    dist.all_gather(
+        gathered_sizes,
+        torch.tensor([size], device=gather_device, dtype=torch.int64),
+        group=group,
+    )
+
+    gathered_sizes = [s[0].item() for s in gathered_sizes]
+    # NOTE: DON'T use tolist here due to graph break - Explanation:
+    # Backend compiler `inductor` failed with aten._local_scalar_dense.default
+    return gathered_sizes
