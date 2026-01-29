@@ -6,7 +6,7 @@ import os
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Union
 
-from huggingface_hub import create_repo, hf_hub_download, upload_folder
+from huggingface_hub import create_repo, hf_hub_download, upload_file
 from huggingface_hub.utils import (
     EntryNotFoundError,
     HfHubHTTPError,
@@ -656,10 +656,15 @@ def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[
         params[p.name] = param_dict
         model_input_names.append(p.name)
 
-    # Process outputs
+    # Process outputs: add a prefix to the output name if it already exists as an input
     for p in node_spec.get("outputs", []):
-        params[p.name] = p.to_dict()
-        output_names.append(p.name)
+        if p.name in input_names:
+            # rename to out_<name>
+            output_name = f"out_{p.name}"
+        else:
+            output_name = p.name
+        params[output_name] = p.to_dict()
+        output_names.append(output_name)
 
     return {
         "params": params,
@@ -811,7 +816,7 @@ class MellonPipelineConfig:
         return cls.from_dict(data)
 
     def save(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
-        """Save the pipeline config to a directory."""
+        """Save the mellon pipeline config to a directory."""
         if os.path.isfile(save_directory):
             raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
 
@@ -821,21 +826,21 @@ class MellonPipelineConfig:
         logger.info(f"Pipeline config saved to {output_path}")
 
         if push_to_hub:
+
             commit_message = kwargs.pop("commit_message", None)
             private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
-            subfolder = kwargs.pop("subfolder", None)
 
-            upload_folder(
+            upload_file(
+                path_or_fileobj=output_path,
+                path_in_repo=self.config_name,
                 repo_id=repo_id,
-                folder_path=save_directory,
                 token=token,
                 commit_message=commit_message or "Upload MellonPipelineConfig",
                 create_pr=create_pr,
-                path_in_repo=subfolder,
             )
             logger.info(f"Pipeline config pushed to hub: {repo_id}")
 
