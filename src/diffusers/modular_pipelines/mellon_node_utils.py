@@ -826,7 +826,6 @@ class MellonPipelineConfig:
         logger.info(f"Pipeline config saved to {output_path}")
 
         if push_to_hub:
-
             commit_message = kwargs.pop("commit_message", None)
             private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
