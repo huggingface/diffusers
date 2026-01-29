@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import copy
 
 # Simple typed wrapper for parameter overrides
 from dataclasses import asdict, dataclass
@@ -1008,7 +1009,12 @@ class MellonPipelineConfig:
         )
 
     @classmethod
-    def from_custom_block(cls, block, node_label: str = None) -> "MellonPipelineConfig":
+    def from_custom_block(
+        cls, 
+        block, 
+        node_label: str = None,
+        mellon_types: Optional[Dict[str, str]] = None,
+    ) -> "MellonPipelineConfig":
         """
         Create a MellonPipelineConfig from a custom block.
 
@@ -1017,6 +1023,8 @@ class MellonPipelineConfig:
                 Each InputParam/OutputParam should have metadata={"mellon": "<type>"} where type is one of: image,
                 video, text, checkbox, number, slider, dropdown, model. If metadata is None, maps to "custom".
             node_label: The display label for the node. Defaults to block class name with spaces.
+            mellon_types: Optional dict mapping param names to mellon types. Overrides the block's metadata if provided.
+                Example: {"prompt": "textbox", "image": "image", "out_prompt": "text"}
 
         Returns:
             MellonPipelineConfig instance
@@ -1025,17 +1033,26 @@ class MellonPipelineConfig:
             class_name = block.__class__.__name__
             node_label = "".join([" " + c if c.isupper() else c for c in class_name]).strip()
 
+        if mellon_types is None:
+            mellon_types = {}
+
         inputs = []
         model_inputs = []
         outputs = []
 
         # Process block inputs
         for input_param in block.inputs:
+            if input_param.name in mellon_types:
+                input_param = copy.copy(input_param)
+                input_param.metadata = {"mellon": mellon_types[input_param.name]}
             print(f" processing input: {input_param.name}, metadata: {input_param.metadata}")
             inputs.append(input_param_to_mellon_param(input_param))
 
         # Process block outputs
         for output_param in block.outputs:
+            if output_param.name in mellon_types:
+                output_param = copy.copy(output_param)
+                output_param.metadata = {"mellon": mellon_types[output_param.name]}
             outputs.append(output_param_to_mellon_param(output_param))
 
         # Process expected components (all map to model inputs)
