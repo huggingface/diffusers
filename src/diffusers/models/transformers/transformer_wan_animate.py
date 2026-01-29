@@ -340,7 +340,8 @@ class WanAnimateMotionEncoder(nn.Module):
         weight = self.motion_synthesis_weight + 1e-8
         # Upcast the QR orthogonalization operation to FP32
         original_motion_dtype = motion_feat.dtype
-        motion_feat = motion_feat.to(weight.dtype)
+        motion_feat = motion_feat.to(torch.float32)
+        weight = weight.to(torch.float32)
 
         Q = torch.linalg.qr(weight)[0].to(device=motion_feat.device)
 
