@@ -129,17 +129,9 @@ class Flux2SetTimestepsStep(ModularPipelineBlocks):
             InputParam("num_inference_steps", default=50),
             InputParam("timesteps"),
             InputParam("sigmas"),
-            InputParam("guidance_scale", default=4.0),
             InputParam("latents", type_hint=torch.Tensor),
-            InputParam("num_images_per_prompt", default=1),
             InputParam("height", type_hint=int),
             InputParam("width", type_hint=int),
-            InputParam(
-                "batch_size",
-                required=True,
-                type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be `batch_size * num_images_per_prompt`.",
-            ),
         ]
 
     @property
@@ -151,13 +143,12 @@ class Flux2SetTimestepsStep(ModularPipelineBlocks):
                 type_hint=int,
                 description="The number of denoising steps to perform at inference time",
             ),
-            OutputParam("guidance", type_hint=torch.Tensor, description="Guidance scale tensor"),
         ]
 
     @torch.no_grad()
     def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        block_state.device = components._execution_device
+        device = components._execution_device
 
         scheduler = components.scheduler
 
@@ -183,18 +174,13 @@ class Flux2SetTimestepsStep(ModularPipelineBlocks):
         timesteps, num_inference_steps = retrieve_timesteps(
             scheduler,
             num_inference_steps,
-            block_state.device,
+            device,
             timesteps=timesteps,
             sigmas=sigmas,
             mu=mu,
         )
         block_state.timesteps = timesteps
         block_state.num_inference_steps = num_inference_steps
-
-        batch_size = block_state.batch_size * block_state.num_images_per_prompt
-        guidance = torch.full([1], block_state.guidance_scale, device=block_state.device, dtype=torch.float32)
-        guidance = guidance.expand(batch_size)
-        block_state.guidance = guidance
 
         components.scheduler.set_begin_index(0)
 
@@ -353,7 +339,6 @@ class Flux2RoPEInputsStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(name="prompt_embeds", required=True),
-            InputParam(name="latent_ids"),
         ]
 
     @property
@@ -364,12 +349,6 @@ class Flux2RoPEInputsStep(ModularPipelineBlocks):
                 kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="4D position IDs (T, H, W, L) for text tokens, used for RoPE calculation.",
-            ),
-            OutputParam(
-                name="latent_ids",
-                kwargs_type="denoiser_input_fields",
-                type_hint=torch.Tensor,
-                description="4D position IDs (T, H, W, L) for image latents, used for RoPE calculation.",
             ),
         ]
 
@@ -398,6 +377,72 @@ class Flux2RoPEInputsStep(ModularPipelineBlocks):
 
         block_state.txt_ids = self._prepare_text_ids(prompt_embeds)
         block_state.txt_ids = block_state.txt_ids.to(device)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Flux2KleinBaseRoPEInputsStep(ModularPipelineBlocks):
+    model_name = "flux2-klein"
+
+    @property
+    def description(self) -> str:
+        return "Step that prepares the 4D RoPE position IDs for Flux2-Klein base model denoising. Should be placed after text encoder and latent preparation steps."
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(name="prompt_embeds", required=True),
+            InputParam(name="negative_prompt_embeds", required=False),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                name="txt_ids",
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="4D position IDs (T, H, W, L) for text tokens, used for RoPE calculation.",
+            ),
+            OutputParam(
+                name="negative_txt_ids",
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="4D position IDs (T, H, W, L) for negative text tokens, used for RoPE calculation.",
+            ),
+        ]
+
+    @staticmethod
+    def _prepare_text_ids(x: torch.Tensor, t_coord: Optional[torch.Tensor] = None):
+        """Prepare 4D position IDs for text tokens."""
+        B, L, _ = x.shape
+        out_ids = []
+
+        for i in range(B):
+            t = torch.arange(1) if t_coord is None else t_coord[i]
+            h = torch.arange(1)
+            w = torch.arange(1)
+            seq_l = torch.arange(L)
+
+            coords = torch.cartesian_prod(t, h, w, seq_l)
+            out_ids.append(coords)
+
+        return torch.stack(out_ids)
+
+    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        prompt_embeds = block_state.prompt_embeds
+        device = prompt_embeds.device
+
+        block_state.txt_ids = self._prepare_text_ids(prompt_embeds)
+        block_state.txt_ids = block_state.txt_ids.to(device)
+
+        block_state.negative_txt_ids = None
+        if block_state.negative_prompt_embeds is not None:
+            block_state.negative_txt_ids = self._prepare_text_ids(block_state.negative_prompt_embeds)
+            block_state.negative_txt_ids = block_state.negative_txt_ids.to(device)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -503,6 +548,45 @@ class Flux2PrepareImageLatentsStep(ModularPipelineBlocks):
 
         block_state.image_latents = image_latents
         block_state.image_latent_ids = image_latent_ids
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Flux2PrepareGuidanceStep(ModularPipelineBlocks):
+    model_name = "flux2"
+
+    @property
+    def description(self) -> str:
+        return "Step that prepares the guidance scale tensor for Flux2 inference"
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("guidance_scale", default=4.0),
+            InputParam("num_images_per_prompt", default=1),
+            InputParam(
+                "batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be `batch_size * num_images_per_prompt`.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam("guidance", type_hint=torch.Tensor, description="Guidance scale tensor"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+        batch_size = block_state.batch_size * block_state.num_images_per_prompt
+        guidance = torch.full([1], block_state.guidance_scale, device=device, dtype=torch.float32)
+        guidance = guidance.expand(batch_size)
+        block_state.guidance = guidance
 
         self.set_block_state(state, block_state)
         return components, state

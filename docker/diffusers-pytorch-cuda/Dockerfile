@@ -1,8 +1,8 @@
-FROM nvidia/cuda:12.1.0-runtime-ubuntu20.04
+FROM nvidia/cuda:12.9.0-runtime-ubuntu20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.10
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get -y update \
@@ -36,8 +36,12 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 RUN uv pip install --no-cache-dir \
     torch \
     torchvision \
-    torchaudio \
-    --index-url https://download.pytorch.org/whl/cu121
+    torchaudio
+
+# Install compatible versions of numba/llvmlite for Python 3.10+
+RUN uv pip install --no-cache-dir \
+    "llvmlite>=0.40.0" \
+    "numba>=0.57.0"
 
 RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers[test]"
 
