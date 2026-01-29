@@ -63,15 +63,15 @@ from torch.utils.data.sampler import BatchSampler
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.auto import tqdm
-from transformers import Qwen2TokenizerFast, Qwen3ForCausalLM
+from transformers import Qwen2Tokenizer, Qwen3Model
 
 import diffusers
 from diffusers import (
-    AutoencoderKLFlux2,
+    AutoencoderKL,
     BitsAndBytesConfig,
     FlowMatchEulerDiscreteScheduler,
-    Flux2KleinPipeline,
-    Flux2Transformer2DModel,
+    ZImagePipeline,
+    ZImageTransformer2DModel,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
@@ -127,7 +127,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# Flux.2 [Klein] DreamBooth LoRA - {repo_id}
+# Z Image DreamBooth LoRA - {repo_id}
 
 <Gallery />
 
@@ -135,7 +135,7 @@ def save_model_card(
 
 These are {repo_id} DreamBooth LoRA weights for {base_model}.
 
-The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [Flux2 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_flux2.md).
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [Z Image diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_z_image.md).
 
 Quant training? {quant_training}
 
@@ -152,7 +152,7 @@ You should use `{instance_prompt}` to trigger the image generation.
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
-pipeline = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.2", torch_dtype=torch.bfloat16).to('cuda')
+pipeline = AutoPipelineForText2Image.from_pretrained("Tongyi-MAI/Z-Image", torch_dtype=torch.bfloat16).to('cuda')
 pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
 image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
 ```
@@ -177,8 +177,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
         "diffusers-training",
         "diffusers",
         "lora",
-        "flux2-klein",
-        "flux2-klein-diffusers",
+        "z-image",
         "template:sd-lora",
     ]
 
@@ -354,13 +353,7 @@ def parse_args(input_args=None):
         default=512,
         help="Maximum sequence length to use with with the T5 text encoder",
     )
-    parser.add_argument(
-        "--text_encoder_out_layers",
-        type=int,
-        nargs="+",
-        default=[10, 20, 30],
-        help="Text encoder hidden layers to compute the final text embeddings.",
-    )
+
     parser.add_argument(
         "--validation_prompt",
         type=str,
@@ -1096,7 +1089,7 @@ def main(args):
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
 
-            pipeline = Flux2KleinPipeline.from_pretrained(
+            pipeline = ZImagePipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
                 revision=args.revision,
@@ -1139,7 +1132,7 @@ def main(args):
             ).repo_id
 
     # Load the tokenizers
-    tokenizer = Qwen2TokenizerFast.from_pretrained(
+    tokenizer = Qwen2Tokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
         revision=args.revision,
@@ -1160,7 +1153,7 @@ def main(args):
         revision=args.revision,
     )
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
-    vae = AutoencoderKLFlux2.from_pretrained(
+    vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="vae",
         revision=args.revision,
@@ -1179,7 +1172,7 @@ def main(args):
                 config_kwargs["bnb_4bit_compute_dtype"] = weight_dtype
         quantization_config = BitsAndBytesConfig(**config_kwargs)
 
-    transformer = Flux2Transformer2DModel.from_pretrained(
+    transformer = ZImageTransformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="transformer",
         revision=args.revision,
@@ -1190,8 +1183,11 @@ def main(args):
     if args.bnb_quantization_config_path is not None:
         transformer = prepare_model_for_kbit_training(transformer, use_gradient_checkpointing=False)
 
-    text_encoder = Qwen3ForCausalLM.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+    text_encoder = Qwen3Model.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+        variant=args.variant,
     )
     text_encoder.requires_grad_(False)
 
@@ -1233,7 +1229,7 @@ def main(args):
 
     text_encoder.to(**to_kwargs)
     # Initialize a text encoding pipeline and keep it to CPU for now.
-    text_encoding_pipeline = Flux2KleinPipeline.from_pretrained(
+    text_encoding_pipeline = ZImagePipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         vae=None,
         transformer=None,
@@ -1306,7 +1302,7 @@ def main(args):
             if weights:
                 weights.pop()
 
-            Flux2KleinPipeline.save_lora_weights(
+            ZImagePipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
                 **_collate_lora_metadata(modules_to_save),
@@ -1324,13 +1320,13 @@ def main(args):
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
         else:
-            transformer_ = Flux2Transformer2DModel.from_pretrained(
+            transformer_ = ZImageTransformer2DModel.from_pretrained(
                 args.pretrained_model_name_or_path,
                 subfolder="transformer",
             )
             transformer_.add_adapter(transformer_lora_config)
 
-        lora_state_dict = Flux2KleinPipeline.lora_state_dict(input_dir)
+        lora_state_dict = ZImagePipeline.lora_state_dict(input_dir)
 
         transformer_state_dict = {
             f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
@@ -1468,7 +1464,6 @@ def main(args):
             prompt_embeds, text_ids = text_encoding_pipeline.encode_prompt(
                 prompt=prompt,
                 max_sequence_length=args.max_sequence_length,
-                text_encoder_out_layers=args.text_encoder_out_layers,
             )
         return prompt_embeds, text_ids
 
@@ -1598,7 +1593,6 @@ def main(args):
     if accelerator.is_main_process:
         tracker_name = "dreambooth-flux2-klein-lora"
         args_cp = vars(args).copy()
-        args_cp["text_encoder_out_layers"] = str(args_cp["text_encoder_out_layers"])
         accelerator.init_trackers(tracker_name, config=args_cp)
 
     # Train!
@@ -1817,7 +1811,7 @@ def main(args):
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
-                pipeline = Flux2KleinPipeline.from_pretrained(
+                pipeline = ZImagePipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     transformer=unwrap_model(transformer),
                     revision=args.revision,
@@ -1875,7 +1869,7 @@ def main(args):
 
         modules_to_save["transformer"] = transformer
 
-        Flux2KleinPipeline.save_lora_weights(
+        ZImagePipeline.save_lora_weights(
             save_directory=args.output_dir,
             transformer_lora_layers=transformer_lora_layers,
             **_collate_lora_metadata(modules_to_save),
@@ -1885,7 +1879,7 @@ def main(args):
         run_validation = (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt)
         should_run_final_inference = not args.skip_final_inference and run_validation
         if should_run_final_inference:
-            pipeline = Flux2KleinPipeline.from_pretrained(
+            pipeline = ZImagePipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 revision=args.revision,
                 variant=args.variant,
