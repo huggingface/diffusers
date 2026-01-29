@@ -12,16 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import List
+
+import PIL.Image
+import torch
+
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict
+from ..modular_pipeline_utils import InsertableDict, OutputParam
 from .before_denoise import (
+    Flux2PrepareGuidanceStep,
     Flux2PrepareImageLatentsStep,
     Flux2PrepareLatentsStep,
     Flux2RoPEInputsStep,
     Flux2SetTimestepsStep,
 )
-from .decoders import Flux2DecodeStep
+from .decoders import Flux2DecodeStep, Flux2UnpackLatentsStep
 from .denoise import Flux2DenoiseStep
 from .encoders import (
     Flux2RemoteTextEncoderStep,
@@ -41,7 +47,6 @@ Flux2VaeEncoderBlocks = InsertableDict(
     [
         ("preprocess", Flux2ProcessImagesInputStep()),
         ("encode", Flux2VaeEncoderStep()),
-        ("prepare_image_latents", Flux2PrepareImageLatentsStep()),
     ]
 )
 
@@ -72,33 +77,56 @@ class Flux2AutoVaeEncoderStep(AutoPipelineBlocks):
         )
 
 
-Flux2BeforeDenoiseBlocks = InsertableDict(
+Flux2CoreDenoiseBlocks = InsertableDict(
     [
+        ("input", Flux2TextInputStep()),
+        ("prepare_image_latents", Flux2PrepareImageLatentsStep()),
         ("prepare_latents", Flux2PrepareLatentsStep()),
         ("set_timesteps", Flux2SetTimestepsStep()),
+        ("prepare_guidance", Flux2PrepareGuidanceStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
+        ("denoise", Flux2DenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
     ]
 )
 
 
-class Flux2BeforeDenoiseStep(SequentialPipelineBlocks):
+class Flux2CoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "flux2"
 
-    block_classes = Flux2BeforeDenoiseBlocks.values()
-    block_names = Flux2BeforeDenoiseBlocks.keys()
+    block_classes = Flux2CoreDenoiseBlocks.values()
+    block_names = Flux2CoreDenoiseBlocks.keys()
 
     @property
     def description(self):
-        return "Before denoise step that prepares the inputs for the denoise step in Flux2 generation."
+        return (
+            "Core denoise step that performs the denoising process for Flux2-dev.\n"
+            " - `Flux2TextInputStep` (input) standardizes the text inputs (prompt_embeds) for the denoising step.\n"
+            " - `Flux2PrepareImageLatentsStep` (prepare_image_latents) prepares the image latents and image_latent_ids for the denoising step.\n"
+            " - `Flux2PrepareLatentsStep` (prepare_latents) prepares the initial latents (latents) and latent_ids for the denoising step.\n"
+            " - `Flux2SetTimestepsStep` (set_timesteps) sets the timesteps for the denoising step.\n"
+            " - `Flux2PrepareGuidanceStep` (prepare_guidance) prepares the guidance tensor for the denoising step.\n"
+            " - `Flux2RoPEInputsStep` (prepare_rope_inputs) prepares the RoPE inputs (txt_ids) for the denoising step.\n"
+            " - `Flux2DenoiseStep` (denoise) iteratively denoises the latents.\n"
+            " - `Flux2UnpackLatentsStep` (after_denoise) unpacks the latents from the denoising step.\n"
+        )
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                description="The latents from the denoising step.",
+            )
+        ]
 
 
 AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", Flux2TextEncoderStep()),
-        ("text_input", Flux2TextInputStep()),
-        ("vae_image_encoder", Flux2AutoVaeEncoderStep()),
-        ("before_denoise", Flux2BeforeDenoiseStep()),
-        ("denoise", Flux2DenoiseStep()),
+        ("vae_encoder", Flux2AutoVaeEncoderStep()),
+        ("denoise", Flux2CoreDenoiseStep()),
         ("decode", Flux2DecodeStep()),
     ]
 )
@@ -107,10 +135,8 @@ AUTO_BLOCKS = InsertableDict(
 REMOTE_AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", Flux2RemoteTextEncoderStep()),
-        ("text_input", Flux2TextInputStep()),
-        ("vae_image_encoder", Flux2AutoVaeEncoderStep()),
-        ("before_denoise", Flux2BeforeDenoiseStep()),
-        ("denoise", Flux2DenoiseStep()),
+        ("vae_encoder", Flux2AutoVaeEncoderStep()),
+        ("denoise", Flux2CoreDenoiseStep()),
         ("decode", Flux2DecodeStep()),
     ]
 )
@@ -130,6 +156,16 @@ class Flux2AutoBlocks(SequentialPipelineBlocks):
             "- For image-conditioned generation, you need to provide `image` (list of PIL images)."
         )
 
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                name="images",
+                type_hint=List[PIL.Image.Image],
+                description="The images from the decoding step.",
+            )
+        ]
+
 
 TEXT2IMAGE_BLOCKS = InsertableDict(
     [
@@ -137,8 +173,10 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
         ("text_input", Flux2TextInputStep()),
         ("prepare_latents", Flux2PrepareLatentsStep()),
         ("set_timesteps", Flux2SetTimestepsStep()),
+        ("prepare_guidance", Flux2PrepareGuidanceStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
         ("denoise", Flux2DenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
         ("decode", Flux2DecodeStep()),
     ]
 )
@@ -152,8 +190,10 @@ IMAGE_CONDITIONED_BLOCKS = InsertableDict(
         ("prepare_image_latents", Flux2PrepareImageLatentsStep()),
         ("prepare_latents", Flux2PrepareLatentsStep()),
         ("set_timesteps", Flux2SetTimestepsStep()),
+        ("prepare_guidance", Flux2PrepareGuidanceStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
         ("denoise", Flux2DenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
         ("decode", Flux2DecodeStep()),
     ]
 )
