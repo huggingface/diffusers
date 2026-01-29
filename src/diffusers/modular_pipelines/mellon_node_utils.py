@@ -15,6 +15,7 @@ from huggingface_hub.utils import (
 )
 
 from ..utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT
+from .modular_pipeline_utils import InputParam, OutputParam
 
 
 logger = logging.getLogger(__name__)
@@ -86,10 +87,12 @@ class MellonParamMeta(type):
     def __getattr__(cls, name: str):
         if name in MELLON_PARAM_TEMPLATES:
 
-            def factory(**overrides):
+            def factory(default=None, **overrides):
                 template = MELLON_PARAM_TEMPLATES[name]
                 # Use template's name if specified, otherwise use the key
                 params = {"name": template.get("name", name), **template, **overrides}
+                if default is not None:
+                    params["default"] = default
                 return cls(**params)
 
             return factory
@@ -145,33 +148,36 @@ class MellonParam(metaclass=MellonParamMeta):
     # Input: Generic input parameter factories (for custom blocks)
     # =========================================================================
     class Input:
-        """Generic input parameter factories for custom blocks."""
+        """input UI elements for custom blocks."""
 
         @classmethod
         def image(cls, name: str) -> "MellonParam":
-            """Generic image input."""
+            """image input."""
             return MellonParam(name=name, label=_name_to_label(name), type="image", display="input")
 
         @classmethod
         def textbox(cls, name: str, default: str = "") -> "MellonParam":
-            """Generic text input as textarea."""
+            """text input as textarea."""
             return MellonParam(name=name, label=_name_to_label(name), type="string", display="textarea", default=default)
 
         @classmethod
         def dropdown(cls, name: str, options: List[str] = None, default: str = None) -> "MellonParam":
-            """Generic dropdown selection."""
-            options = options or []
-            if default is None and options:
+            """dropdown selection."""
+            if options and not default:
                 default = options[0]
+            if not default:
+                default = ""
+            if not options:
+                options = [default]
             return MellonParam(
-                name=name, label=_name_to_label(name), type="string", options=options if options else None, value=default
+                name=name, label=_name_to_label(name), type="string", options=options, value=default
             )
 
         @classmethod
         def slider(
             cls, name: str, default: float = 0, min: float = None, max: float = None, step: float = None
         ) -> "MellonParam":
-            """Generic slider input."""
+            """slider input."""
             is_float = isinstance(default, float) or (step is not None and isinstance(step, float))
             param_type = "float" if is_float else "int"
             if min is None:
@@ -195,7 +201,7 @@ class MellonParam(metaclass=MellonParamMeta):
         def number(
             cls, name: str, default: float = 0, min: float = None, max: float = None, step: float = None
         ) -> "MellonParam":
-            """Generic number input (no slider)."""
+            """number input (no slider)."""
             is_float = isinstance(default, float) or (step is not None and isinstance(step, float))
             param_type = "float" if is_float else "int"
             return MellonParam(
@@ -204,48 +210,124 @@ class MellonParam(metaclass=MellonParamMeta):
 
         @classmethod
         def seed(cls, name: str = "seed", default: int = 0) -> "MellonParam":
-            """Generic seed input with randomize button."""
+            """seed input with randomize button."""
             return MellonParam(
                 name=name, label=_name_to_label(name), type="int", display="random", default=default, min=0, max=4294967295
             )
 
         @classmethod
         def checkbox(cls, name: str, default: bool = False) -> "MellonParam":
-            """Generic boolean checkbox."""
+            """boolean checkbox."""
             return MellonParam(name=name, label=_name_to_label(name), type="boolean", default=default)
 
         @classmethod
         def custom_type(cls, name: str, type: str) -> "MellonParam":
-            """Generic custom type input for node connections."""
+            """custom type input for node connections."""
             return MellonParam(name=name, label=_name_to_label(name), type=type, display="input")
+
+        @classmethod
+        def model(cls, name: str) -> "MellonParam":
+            """model input for diffusers components."""
+            return MellonParam(name=name, label=_name_to_label(name), type="diffusers_auto_model", display="input")
 
     # =========================================================================
     # Output: Generic output parameter factories (for custom blocks)
     # =========================================================================
     class Output:
-        """Generic output parameter factories for custom blocks."""
+        """output UI elements for custom blocks."""
 
         @classmethod
         def image(cls, name: str) -> "MellonParam":
-            """Generic image output."""
+            """image output."""
             return MellonParam(name=name, label=_name_to_label(name), type="image", display="output")
 
         @classmethod
         def video(cls, name: str) -> "MellonParam":
-            """Generic video output."""
+            """video output."""
             return MellonParam(name=name, label=_name_to_label(name), type="video", display="output")
 
         @classmethod
         def text(cls, name: str) -> "MellonParam":
-            """Generic text output."""
+            """text output."""
             return MellonParam(name=name, label=_name_to_label(name), type="string", display="output")
 
         @classmethod
         def custom_type(cls, name: str, type: str) -> "MellonParam":
-            """Generic custom type output for node connections."""
+            """custom type output for node connections."""
             return MellonParam(name=name, label=_name_to_label(name), type=type, display="output")
 
+        @classmethod
+        def model(cls, name: str) -> "MellonParam":
+            """model output for diffusers components."""
+            return MellonParam(name=name, label=_name_to_label(name), type="diffusers_auto_model", display="output")
 
+
+
+def input_param_to_mellon_param(input_param: "InputParam") -> MellonParam:
+    """
+    Convert an InputParam to a MellonParam using metadata.
+    
+    Args:
+        input_param: An InputParam with optional metadata={"mellon": "<type>"} where type is one of:
+            image, video, text, textbox, checkbox, number, slider, dropdown, seed, model.
+            If metadata is None or unknown, maps to "custom".
+    
+    Returns:
+        MellonParam instance
+    """
+    name = input_param.name
+    metadata = input_param.metadata
+    mellon_type = metadata.get("mellon") if metadata else None
+    default = input_param.default
+    
+    if mellon_type == "image":
+        return MellonParam.Input.image(name)
+    elif mellon_type == "textbox":
+        return MellonParam.Input.textbox(name, default=default or "")
+    elif mellon_type == "dropdown":
+        return MellonParam.Input.dropdown(name, default=default or "")
+    elif mellon_type == "slider":
+        return MellonParam.Input.slider(name, default=default or 0)
+    elif mellon_type == "number":
+        return MellonParam.Input.number(name, default=default or 0)
+    elif mellon_type == "seed":
+        return MellonParam.Input.seed(name, default=default or 0)
+    elif mellon_type == "checkbox":
+        return MellonParam.Input.checkbox(name, default=default or False)
+    elif mellon_type == "model":
+        return MellonParam.Input.model(name)
+    else:
+        # None or unknown -> custom
+        return MellonParam.Input.custom_type(name, type="custom")
+
+
+def output_param_to_mellon_param(output_param: "OutputParam") -> MellonParam:
+    """
+    Convert an OutputParam to a MellonParam using metadata.
+    
+    Args:
+        output_param: An OutputParam with optional metadata={"mellon": "<type>"} where type is one of:
+            image, video, text, model.
+            If metadata is None or unknown, maps to "custom".
+    
+    Returns:
+        MellonParam instance
+    """
+    name = output_param.name
+    metadata = output_param.metadata
+    mellon_type = metadata.get("mellon") if metadata else None
+    
+    if mellon_type == "image":
+        return MellonParam.Output.image(name)
+    elif mellon_type == "video":
+        return MellonParam.Output.video(name)
+    elif mellon_type == "text":
+        return MellonParam.Output.text(name)
+    elif mellon_type == "model":
+        return MellonParam.Output.model(name)
+    else:
+        # None or unknown -> custom
+        return MellonParam.Output.custom_type(name, type="custom")
 
 
 DEFAULT_NODE_SPECS = {
@@ -771,4 +853,59 @@ class MellonPipelineConfig:
             label=label or getattr(blocks, "model_name", ""),
             default_repo=default_repo,
             default_dtype=default_dtype,
+        )
+
+
+    @classmethod
+    def from_custom_block(cls, block, node_label: str = None) -> "MellonPipelineConfig":
+        """
+        Create a MellonPipelineConfig from a custom block.
+        
+        Args:
+            block: A block instance with `inputs`, `outputs`, and `expected_components`/`component_names` properties.
+                Each InputParam/OutputParam should have metadata={"mellon": "<type>"} where type is one of:
+                image, video, text, checkbox, number, slider, dropdown, model.
+                If metadata is None, maps to "custom".
+            node_label: The display label for the node. Defaults to block class name with spaces.
+        
+        Returns:
+            MellonPipelineConfig instance
+        """
+        if node_label is None:
+            class_name = block.__class__.__name__
+            node_label = "".join([" " + c if c.isupper() else c for c in class_name]).strip()
+        
+        inputs = []
+        model_inputs = []
+        outputs = []
+        
+        # Process block inputs
+        for input_param in block.inputs:
+            print(f" processing input: {input_param.name}, metadata: {input_param.metadata}")
+            inputs.append(input_param_to_mellon_param(input_param))
+        
+        # Process block outputs
+        for output_param in block.outputs:
+            outputs.append(output_param_to_mellon_param(output_param))
+        
+        # Process expected components (all map to model inputs)
+        component_names = block.component_names
+        for component_name in component_names:
+            model_inputs.append(MellonParam.Input.model(component_name))
+        
+        # Always add doc output
+        outputs.append(MellonParam.doc())
+        
+        node_spec = {
+            "inputs": inputs,
+            "model_inputs": model_inputs,
+            "outputs": outputs,
+            "required_inputs": [],
+            "required_model_inputs": [],
+            "block_name": "custom",
+        }
+        
+        return cls(
+            node_specs={"custom": node_spec},
+            label=node_label,
         )
