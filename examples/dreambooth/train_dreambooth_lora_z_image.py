@@ -1675,10 +1675,7 @@ def main(args):
                         pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                     model_input = vae.encode(pixel_values).latent_dist.mode()
 
-                model_input = Flux2KleinPipeline._patchify_latents(model_input)
-                model_input = (model_input - latents_bn_mean) / latents_bn_std
-
-                model_input_ids = Flux2KleinPipeline._prepare_latent_ids(model_input).to(device=model_input.device)
+                model_input = (model_input - vae.config.shift_factor) * vae.config.scaling_factor
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
                 bsz = model_input.shape[0]
@@ -1700,15 +1697,7 @@ def main(args):
                 sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
                 noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
 
-                # [B, C, H, W] -> [B, H*W, C]
-                packed_noisy_model_input = Flux2KleinPipeline._pack_latents(noisy_model_input)
-
                 # handle guidance
-                if transformer.config.guidance_embeds:
-                    guidance = torch.full([1], args.guidance_scale, device=accelerator.device)
-                    guidance = guidance.expand(model_input.shape[0])
-                else:
-                    guidance = None
 
                 # Predict the noise residual
                 model_pred = transformer(
@@ -1719,9 +1708,6 @@ def main(args):
                     img_ids=model_input_ids,  # B, image_seq_len, 4
                     return_dict=False,
                 )[0]
-                model_pred = model_pred[:, : packed_noisy_model_input.size(1) :]
-
-                model_pred = Flux2KleinPipeline._unpack_latents_with_ids(model_pred, model_input_ids)
 
                 # these weighting schemes use a uniform timestep sampling
                 # and instead post-weight the loss
