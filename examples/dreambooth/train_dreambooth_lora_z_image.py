@@ -1465,27 +1465,27 @@ def main(args):
                 prompt=prompt,
                 max_sequence_length=args.max_sequence_length,
             )
-        return prompt_embeds, _
+        return prompt_embeds
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if not train_dataset.custom_instance_prompts:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            instance_prompt_hidden_states, _ = compute_text_embeddings(
+            instance_prompt_hidden_states = compute_text_embeddings(
                 args.instance_prompt, text_encoding_pipeline
             )
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            class_prompt_hidden_states, _ = compute_text_embeddings(
+            class_prompt_hidden_states = compute_text_embeddings(
                 args.class_prompt, text_encoding_pipeline
             )
     validation_embeddings = {}
     if args.validation_prompt is not None:
         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-            (validation_embeddings["prompt_embeds"], _) = compute_text_embeddings(
+            validation_embeddings["prompt_embeds"] = compute_text_embeddings(
                 args.validation_prompt, text_encoding_pipeline
             )
 
@@ -1529,10 +1529,10 @@ def main(args):
                         latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
                 if train_dataset.custom_instance_prompts:
                     if args.fsdp_text_encoder:
-                        prompt_embeds, _ = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
+                        prompt_embeds = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
                     else:
                         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
-                            prompt_embeds, _ = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
+                            prompt_embeds = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
                     prompt_embeds_cache.append(prompt_embeds)
 
 
