@@ -15,6 +15,7 @@
 
 from collections.abc import Generator, Iterator
 from fractions import Fraction
+from itertools import chain
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -114,7 +115,7 @@ def encode_video(
 ) -> None:
     """
     Encodes a video with audio using the PyAV library. Based on code from the original LTX-2 repo:
-    https://github.com/Lightricks/LTX-2/blob/main/packages/ltx-pipelines/src/ltx_pipelines/utils/media_io.py
+    https://github.com/Lightricks/LTX-2/blob/4f410820b198e05074a1e92de793e3b59e9ab5a0/packages/ltx-pipelines/src/ltx_pipelines/utils/media_io.py#L182
 
     Args:
         video (`List[PIL.Image.Image]` or `np.ndarray` or `torch.Tensor`):
@@ -140,7 +141,9 @@ def encode_video(
         video = torch.from_numpy(video)
     elif isinstance(video, np.ndarray):
         # Pipeline output_type="np"
-        video = (video * 255).round().astype("uint8")
+        is_denormalized = np.logical_and(np.zeros_like(video) <= video, video <= np.ones_like(video))
+        if np.all(is_denormalized):
+            video = (video * 255).round().astype("uint8")
         video = torch.from_numpy(video)
 
     if isinstance(video, torch.Tensor):
