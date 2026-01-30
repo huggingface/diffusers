@@ -39,6 +39,7 @@ class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
         self,
         hidden_size: int = 4096,
         cap_feat_dim: int = 2048,
+        pooled_projection_dim: Optional[int] = None,
         frequency_embedding_size: int = 256,
         norm_eps: float = 1e-5,
     ) -> None:
@@ -56,12 +57,30 @@ class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
             RMSNorm(cap_feat_dim, eps=norm_eps), nn.Linear(cap_feat_dim, hidden_size, bias=True)
         )
 
+        if pooled_projection_dim is not None:
+            self.clip_text_pooled_proj = nn.Sequential(
+                RMSNorm(pooled_projection_dim, eps=norm_eps),
+                nn.Linear(pooled_projection_dim, pooled_projection_dim, bias=True),
+            )
+            self.time_text_embed = nn.Sequential(
+                nn.SiLU(),
+                nn.Linear(min(hidden_size, 1024) + pooled_projection_dim, min(hidden_size, 1024)),
+            )
+
     def forward(
-        self, hidden_states: torch.Tensor, timestep: torch.Tensor, encoder_hidden_states: torch.Tensor
+        self,
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        pooled_projections: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         timestep_proj = self.time_proj(timestep).type_as(hidden_states)
         time_embed = self.timestep_embedder(timestep_proj)
         caption_embed = self.caption_embedder(encoder_hidden_states)
+        if pooled_projections is not None:
+            pooled_projections = self.clip_text_pooled_proj(pooled_projections)
+            time_embed = torch.cat([time_embed, pooled_projections], dim=-1)
+            time_embed = self.time_text_embed(time_embed)
         return time_embed, caption_embed
 
 
@@ -381,6 +400,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         axes_dim_rope: Tuple[int, int, int] = (32, 32, 32),
         axes_lens: Tuple[int, int, int] = (300, 512, 512),
         cap_feat_dim: int = 1024,
+        pooled_projection_dim: Optional[int] = None,
     ) -> None:
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -393,7 +413,10 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         self.x_embedder = nn.Linear(in_features=patch_size * patch_size * in_channels, out_features=hidden_size)
 
         self.time_caption_embed = Lumina2CombinedTimestepCaptionEmbedding(
-            hidden_size=hidden_size, cap_feat_dim=cap_feat_dim, norm_eps=norm_eps
+            hidden_size=hidden_size,
+            cap_feat_dim=cap_feat_dim,
+            pooled_projection_dim=pooled_projection_dim,
+            norm_eps=norm_eps,
         )
 
         # 2. Noise and context refinement blocks
@@ -461,6 +484,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
+        pooled_projections: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
@@ -482,7 +506,12 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         # 1. Condition, positional & patch embedding
         batch_size, _, height, width = hidden_states.shape
 
-        temb, encoder_hidden_states = self.time_caption_embed(hidden_states, timestep, encoder_hidden_states)
+        temb, encoder_hidden_states = self.time_caption_embed(
+            hidden_states,
+            timestep,
+            encoder_hidden_states,
+            pooled_projections=pooled_projections,
+        )
 
         (
             hidden_states,
