@@ -152,7 +152,6 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             expected_set=expected_set, attention_head_dim=attention_head_dim, block_out_channels=block_out_channels
         )
 
-
 class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
     main_input_name = "sample"
