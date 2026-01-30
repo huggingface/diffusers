@@ -76,6 +76,7 @@ A full training run takes 2 hours on 4xV100 GPUs.
 
 <img src="https://user-images.githubusercontent.com/26864830/180248200-928953b4-db38-48db-b0c6-8b740fe6786f.png" width="700" />
 
+To obtain a quantitative evaluation of generated images, you can compute FID by passing `--compute_fid`.
 ### Training with multiple GPUs
 
 `accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
