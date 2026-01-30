@@ -20,7 +20,9 @@ class TestAutoModel(unittest.TestCase):
         side_effect=[EnvironmentError("File not found"), {"model_type": "clip_text_model"}],
     )
     def test_load_from_config_transformers_with_subfolder(self, mock_load_config):
-        model = AutoModel.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="text_encoder")
+        model = AutoModel.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="text_encoder", use_safetensors=False
+        )
         assert isinstance(model, CLIPTextModel)
 
     def test_load_from_config_without_subfolder(self):
@@ -28,5 +30,7 @@ class TestAutoModel(unittest.TestCase):
         assert isinstance(model, LongformerModel)
 
     def test_load_from_model_index(self):
-        model = AutoModel.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="text_encoder")
+        model = AutoModel.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="text_encoder", use_safetensors=False
+        )
         assert isinstance(model, CLIPTextModel)
