@@ -90,7 +90,10 @@ if is_torch_available():
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
     _import_structure["transformers.transformer_bria"] = ["BriaTransformer2DModel"]
     _import_structure["transformers.transformer_bria_fibo"] = ["BriaFiboTransformer2DModel"]
-    _import_structure["transformers.transformer_chroma"] = ["ChromaTransformer2DModel"]
+    _import_structure["transformers.transformer_chroma"] = [
+        "ChromaTransformer2DModel",
+        "ChromaRadianceTransformer2DModel",
+    ]
     _import_structure["transformers.transformer_chronoedit"] = ["ChronoEditTransformer3DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
     _import_structure["transformers.transformer_cogview4"] = ["CogView4Transformer2DModel"]
@@ -197,6 +200,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AuraFlowTransformer2DModel,
             BriaFiboTransformer2DModel,
             BriaTransformer2DModel,
+            ChromaRadianceTransformer2DModel,
             ChromaTransformer2DModel,
             ChronoEditTransformer3DModel,
             CogVideoXTransformer3DModel,
