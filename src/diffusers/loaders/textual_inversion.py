@@ -114,7 +114,12 @@ class TextualInversionLoaderMixin:
     Load Textual Inversion tokens and embeddings to the tokenizer and text encoder.
     """
 
-    def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):  # noqa: F821
+    def maybe_convert_prompt(
+        self,
+        prompt: Union[str, List[str]],
+        tokenizer: "PreTrainedTokenizer",
+        enabled_embeddings: Optional[List[str]] = None,
+    ):  # noqa: F821
         r"""
         Processes prompts that include a special token corresponding to a multi-vector textual inversion embedding to
         be replaced with multiple special tokens each corresponding to one of the vectors. If the prompt has no textual
@@ -125,6 +130,8 @@ class TextualInversionLoaderMixin:
                 The prompt or prompts to guide the image generation.
             tokenizer (`PreTrainedTokenizer`):
                 The tokenizer responsible for encoding the prompt into input tokens.
+            enabled_embeddings (list of `str`, optional):
+                The list of embeddings enabled during processing. If None is provided, all loaded embeddings are enabled.
 
         Returns:
             `str` or list of `str`: The converted prompt
@@ -134,14 +141,16 @@ class TextualInversionLoaderMixin:
         else:
             prompts = prompt
 
-        prompts = [self._maybe_convert_prompt(p, tokenizer) for p in prompts]
+        prompts = [self._maybe_convert_prompt(p, tokenizer, enabled_embeddings) for p in prompts]
 
         if not isinstance(prompt, List):
             return prompts[0]
 
         return prompts
 
-    def _maybe_convert_prompt(self, prompt: str, tokenizer: "PreTrainedTokenizer"):  # noqa: F821
+    def _maybe_convert_prompt(
+        self, prompt: str, tokenizer: "PreTrainedTokenizer", enabled_embeddings: Optional[List[str]] = None
+    ):  # noqa: F821
         r"""
         Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that corresponds
         to a multi-vector textual inversion embedding, this function will process the prompt so that the special token
@@ -153,14 +162,17 @@ class TextualInversionLoaderMixin:
                 The prompt to guide the image generation.
             tokenizer (`PreTrainedTokenizer`):
                 The tokenizer responsible for encoding the prompt into input tokens.
+            enabled_embeddings (list of `str`, optional):
+                The list of embeddings enabled during processing. If None is provided, all loaded embeddings are enabled.
 
         Returns:
             `str`: The converted prompt
         """
         tokens = tokenizer.tokenize(prompt)
         unique_tokens = set(tokens)
+        enabled_embeddings = enabled_embeddings if enabled_embeddings is not None else tokenizer.added_tokens_encoder
         for token in unique_tokens:
-            if token in tokenizer.added_tokens_encoder:
+            if token in tokenizer.added_tokens_encoder and token in enabled_embeddings:
                 replacement = token
                 i = 1
                 while f"{token}_{i}" in tokenizer.added_tokens_encoder:
