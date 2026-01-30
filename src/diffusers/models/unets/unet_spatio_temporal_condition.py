@@ -348,6 +348,8 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         batch_size, num_frames = sample.shape[:2]
+        if torch.is_tensor(num_frames):
+            num_frames = num_frames.item()
         timesteps = timesteps.expand(batch_size)
 
         t_emb = self.time_proj(timesteps)
