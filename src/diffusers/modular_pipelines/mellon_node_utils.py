@@ -1049,6 +1049,8 @@ class MellonPipelineConfig:
 
         # Process block inputs
         for input_param in block.inputs:
+            if input_param.name is None:
+                continue
             if input_param.name in input_types:
                 input_param = copy.copy(input_param)
                 input_param.metadata = {"mellon": input_types[input_param.name]}
@@ -1057,6 +1059,8 @@ class MellonPipelineConfig:
 
         # Process block outputs
         for output_param in block.outputs:
+            if output_param.name is None:
+                continue
             if output_param.name in output_types:
                 output_param = copy.copy(output_param)
                 output_param.metadata = {"mellon": output_types[output_param.name]}
