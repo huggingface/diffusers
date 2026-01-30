@@ -28,7 +28,8 @@ from diffusers import (
     UNet2DConditionModel,
     VQModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -36,11 +37,11 @@ from diffusers.utils.testing_utils import (
     load_image,
     load_numpy,
     numpy_cosine_similarity_distance,
+    require_accelerator,
     require_torch_accelerator,
     slow,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -247,6 +248,9 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=5e-1)
 
+    def test_save_load_dduf(self):
+        super().test_save_load_dduf(atol=1e-3, rtol=1e-3)
+
     @is_flaky()
     def test_model_cpu_offload_forward_pass(self):
         super().test_inference_batch_single_identical(expected_max_diff=8e-4)
@@ -254,6 +258,7 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=5e-4)
 
+    @require_accelerator
     def test_sequential_cpu_offload_forward_pass(self):
         super().test_sequential_cpu_offload_forward_pass(expected_max_diff=5e-4)
 

@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 
 import torch
 
@@ -12,10 +12,10 @@ from .scheduling_utils import SchedulerMixin
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(
-    num_diffusion_timesteps,
-    max_beta=0.999,
-    alpha_transform_type="cosine",
-):
+    num_diffusion_timesteps: int,
+    max_beta: float = 0.999,
+    alpha_transform_type: Literal["cosine", "exp", "laplace"] = "cosine",
+) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -23,21 +23,29 @@ def betas_for_alpha_bar(
     Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
     to that part of the diffusion process.
 
-
     Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
-                     Choose from `cosine` or `exp`
+        num_diffusion_timesteps (`int`):
+            The number of betas to produce.
+        max_beta (`float`, defaults to `0.999`):
+            The maximum beta to use; use values lower than 1 to avoid numerical instability.
+        alpha_transform_type (`str`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine`, `exp`, or `laplace`.
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        `torch.Tensor`:
+            The betas used by the scheduler to step the model outputs.
     """
     if alpha_transform_type == "cosine":
 
         def alpha_bar_fn(t):
             return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    elif alpha_transform_type == "laplace":
+
+        def alpha_bar_fn(t):
+            lmb = -0.5 * math.copysign(1, 0.5 - t) * math.log(1 - 2 * math.fabs(0.5 - t) + 1e-6)
+            snr = math.exp(lmb)
+            return math.sqrt(snr / (1 + snr))
 
     elif alpha_transform_type == "exp":
 
@@ -70,6 +78,22 @@ class ConsistencyDecoderSchedulerOutput(BaseOutput):
 
 
 class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
+    """
+    A scheduler for the consistency decoder used in Stable Diffusion pipelines.
+
+    This scheduler implements a two-step denoising process using consistency models for decoding latent representations
+    into images.
+
+    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
+    methods the library implements for all schedulers such as loading and saving.
+
+    Args:
+        num_train_timesteps (`int`, *optional*, defaults to `1024`):
+            The number of diffusion steps to train the model.
+        sigma_data (`float`, *optional*, defaults to `0.5`):
+            The standard deviation of the data distribution. Used for computing the skip and output scaling factors.
+    """
+
     order = 1
 
     @register_to_config
@@ -77,7 +101,7 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_train_timesteps: int = 1024,
         sigma_data: float = 0.5,
-    ):
+    ) -> None:
         betas = betas_for_alpha_bar(num_train_timesteps)
 
         alphas = 1.0 - betas
@@ -97,8 +121,18 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
-    ):
+        device: Optional[Union[str, torch.device]] = None,
+    ) -> None:
+        """
+        Sets the discrete timesteps used for the diffusion chain (to be run before inference).
+
+        Args:
+            num_inference_steps (`int`, *optional*):
+                The number of diffusion steps used when generating samples with a pre-trained model. Currently, only
+                `2` inference steps are supported.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        """
         if num_inference_steps != 2:
             raise ValueError("Currently more than 2 inference steps are not supported.")
 
@@ -110,7 +144,15 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
         self.c_in = self.c_in.to(device)
 
     @property
-    def init_noise_sigma(self):
+    def init_noise_sigma(self) -> torch.Tensor:
+        """
+        Return the standard deviation of the initial noise distribution.
+
+        Returns:
+            `torch.Tensor`:
+                The initial noise sigma value from the precomputed `sqrt_one_minus_alphas_cumprod` at the first
+                timestep.
+        """
         return self.sqrt_one_minus_alphas_cumprod[self.timesteps[0]]
 
     def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
@@ -145,20 +187,20 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`):
                 The direct output from the learned diffusion model.
-            timestep (`float`):
+            timestep (`float` or `torch.Tensor`):
                 The current timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
-                A random number generator.
+                A random number generator for reproducibility.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a
-                [`~schedulers.scheduling_consistency_models.ConsistencyDecoderSchedulerOutput`] or `tuple`.
+                [`~schedulers.scheduling_consistency_decoder.ConsistencyDecoderSchedulerOutput`] or `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_consistency_models.ConsistencyDecoderSchedulerOutput`] or `tuple`:
-                If return_dict is `True`,
-                [`~schedulers.scheduling_consistency_models.ConsistencyDecoderSchedulerOutput`] is returned, otherwise
+            [`~schedulers.scheduling_consistency_decoder.ConsistencyDecoderSchedulerOutput`] or `tuple`:
+                If `return_dict` is `True`,
+                [`~schedulers.scheduling_consistency_decoder.ConsistencyDecoderSchedulerOutput`] is returned, otherwise
                 a tuple is returned where the first element is the sample tensor.
         """
         x_0 = self.c_out[timestep] * model_output + self.c_skip[timestep] * sample

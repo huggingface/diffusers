@@ -22,7 +22,7 @@ from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL
 from ...utils import logging
 from ...video_processor import VaeImageProcessor
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
 
@@ -45,7 +45,7 @@ def _unpack_latents(latents, height, width, vae_scale_factor):
     return latents
 
 
-class FluxDecodeStep(PipelineBlock):
+class FluxDecodeStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -70,17 +70,12 @@ class FluxDecodeStep(PipelineBlock):
             InputParam("output_type", default="pil"),
             InputParam("height", default=1024),
             InputParam("width", default=1024),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "latents",
                 required=True,
                 type_hint=torch.Tensor,
                 description="The denoised latents from the denoising step",
-            )
+            ),
         ]
 
     @property

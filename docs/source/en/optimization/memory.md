@@ -291,12 +291,52 @@ Group offloading moves groups of internal layers ([torch.nn.ModuleList](https://
 > [!WARNING]
 > Group offloading may not work with all models if the forward implementation contains weight-dependent device casting of inputs because it may clash with group offloading's device casting mechanism.
 
-Call [`~ModelMixin.enable_group_offload`] to enable it for standard Diffusers model components that inherit from [`ModelMixin`]. For other model components that don't inherit from [`ModelMixin`], such as a generic [torch.nn.Module](https://pytorch.org/docs/stable/generated/torch.nn.Module.html), use [`~hooks.apply_group_offloading`] instead.
-
-The `offload_type` parameter can be set to `block_level` or `leaf_level`.
+Enable group offloading by configuring the `offload_type` parameter to `block_level` or `leaf_level`.
 
 - `block_level` offloads groups of layers based on the `num_blocks_per_group` parameter. For example, if `num_blocks_per_group=2` on a model with 40 layers, 2 layers are onloaded and offloaded at a time (20 total onloads/offloads). This drastically reduces memory requirements.
 - `leaf_level` offloads individual layers at the lowest level and is equivalent to [CPU offloading](#cpu-offloading). But it can be made faster if you use streams without giving up inference speed.
+
+Group offloading is supported for entire pipelines or individual models. Applying group offloading to the entire pipeline is the easiest option while selectively applying it to individual models gives users more flexibility to use different offloading techniques for different models.
+
+<hfoptions id="group-offloading">
+<hfoption id="pipeline">
+
+Call [`~DiffusionPipeline.enable_group_offload`] on a pipeline.
+
+```py
+import torch
+from diffusers import CogVideoXPipeline
+from diffusers.hooks import apply_group_offloading
+from diffusers.utils import export_to_video
+
+onload_device = torch.device("cuda")
+offload_device = torch.device("cpu")
+
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipeline.enable_group_offload(
+    onload_device=onload_device,
+    offload_device=offload_device,
+    offload_type="leaf_level",
+    use_stream=True
+)
+
+prompt = (
+    "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
+    "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
+    "pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, "
+    "casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. "
+    "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
+    "atmosphere of this unique musical performance."
+)
+video = pipeline(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames[0]
+print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
+export_to_video(video, "output.mp4", fps=8)
+```
+
+</hfoption>
+<hfoption id="model">
+
+Call [`~ModelMixin.enable_group_offload`] on standard Diffusers model components that inherit from [`ModelMixin`]. For other model components that don't inherit from [`ModelMixin`], such as a generic [torch.nn.Module](https://pytorch.org/docs/stable/generated/torch.nn.Module.html), use [`~hooks.apply_group_offloading`] instead.
 
 ```py
 import torch
@@ -327,6 +367,9 @@ video = pipeline(prompt=prompt, guidance_scale=6, num_inference_steps=50).frames
 print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
 export_to_video(video, "output.mp4", fps=8)
 ```
+
+</hfoption>
+</hfoptions>
 
 #### CUDA stream
 

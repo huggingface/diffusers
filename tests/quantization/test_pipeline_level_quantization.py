@@ -22,7 +22,8 @@ from parameterized import parameterized
 from diffusers import BitsAndBytesConfig, DiffusionPipeline, QuantoConfig
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     CaptureLogger,
     is_transformers_available,
     require_accelerate,
@@ -298,3 +299,19 @@ transformer BitsAndBytesConfig {
         data = json.loads(json_part)
 
         return data
+
+    def test_single_component_to_quantize(self):
+        component_to_quantize = "transformer"
+        quant_config = PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_8bit",
+            quant_kwargs={"load_in_8bit": True},
+            components_to_quantize=component_to_quantize,
+        )
+        pipe = DiffusionPipeline.from_pretrained(
+            self.model_name,
+            quantization_config=quant_config,
+            torch_dtype=torch.bfloat16,
+        )
+        for name, component in pipe.components.items():
+            if name == component_to_quantize:
+                self.assertTrue(hasattr(component.config, "quantization_config"))

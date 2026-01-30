@@ -28,7 +28,8 @@ from diffusers import (
 )
 from diffusers.utils import load_image
 from diffusers.utils.import_utils import is_accelerate_available
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     is_flaky,
     nightly,
@@ -42,7 +43,7 @@ from diffusers.utils.testing_utils import (
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 if is_accelerate_available():
@@ -54,7 +55,6 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = StableDiffusion3Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     transformer_kwargs = {
         "sample_size": 32,
         "patch_size": 1,

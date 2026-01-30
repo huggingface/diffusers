@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ...loaders import FluxLoraLoaderMixin
+from ...loaders import FluxLoraLoaderMixin, TextualInversionLoaderMixin
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
 
@@ -21,16 +21,14 @@ from ..modular_pipeline import ModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class FluxModularPipeline(ModularPipeline, FluxLoraLoaderMixin):
+class FluxModularPipeline(ModularPipeline, FluxLoraLoaderMixin, TextualInversionLoaderMixin):
     """
     A ModularPipeline for Flux.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
+
+    default_blocks_name = "FluxAutoBlocks"
 
     @property
     def default_height(self):
@@ -57,3 +55,13 @@ class FluxModularPipeline(ModularPipeline, FluxLoraLoaderMixin):
         if getattr(self, "transformer", None):
             num_channels_latents = self.transformer.config.in_channels // 4
         return num_channels_latents
+
+
+class FluxKontextModularPipeline(FluxModularPipeline):
+    """
+    A ModularPipeline for Flux Kontext.
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "FluxKontextAutoBlocks"

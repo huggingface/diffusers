@@ -25,8 +25,8 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.kolors import ChatGLMModel, ChatGLMTokenizer
-from diffusers.utils.testing_utils import enable_full_determinism
 
+from ...testing_utils import enable_full_determinism
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,

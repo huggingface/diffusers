@@ -19,13 +19,13 @@ import pytest
 import torch
 
 from diffusers import UNet1DModel
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_manual_seed,
     floats_tensor,
     slow,
     torch_device,
 )
-
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 

@@ -105,26 +105,23 @@ class AttentionMixin:
                 raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
 
         for module in self.modules():
-            if isinstance(module, AttentionModuleMixin):
+            if isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion:
                 module.fuse_projections()
 
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING] > This API is 🧪 experimental.
         """
         for module in self.modules():
-            if isinstance(module, AttentionModuleMixin):
+            if isinstance(module, AttentionModuleMixin) and module._supports_qkv_fusion:
                 module.unfuse_projections()
 
 
 class AttentionModuleMixin:
     _default_processor_cls = None
     _available_processors = []
+    _supports_qkv_fusion = True
     fused_projections = False
 
     def set_processor(self, processor: AttentionProcessor) -> None:
@@ -241,7 +238,7 @@ class AttentionModuleMixin:
                             op_fw, op_bw = attention_op
                             dtype, *_ = op_fw.SUPPORTED_DTYPES
                         q = torch.randn((1, 2, 40), device="cuda", dtype=dtype)
-                        _ = xops.memory_efficient_attention(q, q, q)
+                        _ = xops.ops.memory_efficient_attention(q, q, q)
                 except Exception as e:
                     raise e
 
@@ -252,6 +249,14 @@ class AttentionModuleMixin:
         """
         Fuse the query, key, and value projections into a single projection for efficiency.
         """
+        # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections in Flux2
+        # single stream blocks are always fused)
+        if not self._supports_qkv_fusion:
+            logger.debug(
+                f"{self.__class__.__name__} does not support fusing QKV projections, so `fuse_projections` will no-op."
+            )
+            return
+
         # Skip if already fused
         if getattr(self, "fused_projections", False):
             return
@@ -311,6 +316,11 @@ class AttentionModuleMixin:
         """
         Unfuse the query, key, and value projections back to separate projections.
         """
+        # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections in Flux2
+        # single stream blocks are always fused)
+        if not self._supports_qkv_fusion:
+            return
+
         # Skip if not fused
         if not getattr(self, "fused_projections", False):
             return
@@ -674,7 +684,7 @@ class JointTransformerBlock(nn.Module):
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         joint_attention_kwargs = joint_attention_kwargs or {}
         if self.use_dual_attention:
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, norm_hidden_states2, gate_msa2 = self.norm1(

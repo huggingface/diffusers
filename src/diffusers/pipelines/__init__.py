@@ -15,6 +15,7 @@ from ..utils import (
     is_torch_available,
     is_torch_npu_available,
     is_transformers_available,
+    is_transformers_version,
 )
 
 
@@ -127,6 +128,9 @@ else:
         "AnimateDiffVideoToVideoPipeline",
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
+    _import_structure["bria"] = ["BriaPipeline"]
+    _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
+    _import_structure["flux2"] = ["Flux2Pipeline", "Flux2KleinPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -143,6 +147,7 @@ else:
         "FluxKontextPipeline",
         "FluxKontextInpaintPipeline",
     ]
+    _import_structure["prx"] = ["PRXPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
@@ -150,7 +155,7 @@ else:
         "AudioLDM2UNet2DConditionModel",
     ]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
-    _import_structure["chroma"] = ["ChromaPipeline", "ChromaImg2ImgPipeline"]
+    _import_structure["chroma"] = ["ChromaPipeline", "ChromaImg2ImgPipeline", "ChromaInpaintPipeline"]
     _import_structure["cogvideo"] = [
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
@@ -161,6 +166,7 @@ else:
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["cosmos"] = [
+        "Cosmos2_5_PredictBasePipeline",
         "Cosmos2TextToImagePipeline",
         "CosmosTextToWorldPipeline",
         "CosmosVideoToWorldPipeline",
@@ -239,6 +245,8 @@ else:
         "HunyuanVideoImageToVideoPipeline",
         "HunyuanVideoFramepackPipeline",
     ]
+    _import_structure["hunyuan_video1_5"] = ["HunyuanVideo15Pipeline", "HunyuanVideo15ImageToVideoPipeline"]
+    _import_structure["hunyuan_image"] = ["HunyuanImagePipeline", "HunyuanImageRefinerPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -281,9 +289,13 @@ else:
         "LTXImageToVideoPipeline",
         "LTXConditionPipeline",
         "LTXLatentUpsamplePipeline",
+        "LTXI2VLongMultiPromptPipeline",
     ]
+    _import_structure["ltx2"] = ["LTX2Pipeline", "LTX2ImageToVideoPipeline", "LTX2LatentUpsamplePipeline"]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
+    _import_structure["lucy"] = ["LucyEditPipeline"]
+    _import_structure["longcat_image"] = ["LongCatImagePipeline", "LongCatImageEditPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -294,6 +306,7 @@ else:
     _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
+    _import_structure["ovis_image"] = ["OvisImagePipeline"]
     _import_structure["visualcloze"] = ["VisualClozePipeline", "VisualClozeGenerationPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
@@ -303,6 +316,10 @@ else:
         "SanaSprintPipeline",
         "SanaControlNetPipeline",
         "SanaSprintImg2ImgPipeline",
+    ]
+    _import_structure["sana_video"] = [
+        "SanaVideoPipeline",
+        "SanaImageToVideoPipeline",
     ]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
@@ -379,7 +396,26 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
-    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline", "WanVACEPipeline"]
+    _import_structure["wan"] = [
+        "WanPipeline",
+        "WanImageToVideoPipeline",
+        "WanVideoToVideoPipeline",
+        "WanVACEPipeline",
+        "WanAnimatePipeline",
+    ]
+    _import_structure["kandinsky5"] = [
+        "Kandinsky5T2VPipeline",
+        "Kandinsky5I2VPipeline",
+        "Kandinsky5T2IPipeline",
+        "Kandinsky5I2IPipeline",
+    ]
+    _import_structure["z_image"] = [
+        "ZImageImg2ImgPipeline",
+        "ZImagePipeline",
+        "ZImageControlNetPipeline",
+        "ZImageControlNetInpaintPipeline",
+        "ZImageOmniPipeline",
+    ]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
         "SkyReelsV2DiffusionForcingImageToVideoPipeline",
@@ -387,7 +423,20 @@ else:
         "SkyReelsV2ImageToVideoPipeline",
         "SkyReelsV2Pipeline",
     ]
-    _import_structure["qwenimage"] = ["QwenImagePipeline"]
+    _import_structure["qwenimage"] = [
+        "QwenImagePipeline",
+        "QwenImageImg2ImgPipeline",
+        "QwenImageInpaintPipeline",
+        "QwenImageEditPipeline",
+        "QwenImageEditPlusPipeline",
+        "QwenImageEditInpaintPipeline",
+        "QwenImageControlNetInpaintPipeline",
+        "QwenImageControlNetPipeline",
+        "QwenImageLayeredPipeline",
+    ]
+    _import_structure["chronoedit"] = ["ChronoEditPipeline"]
+    _import_structure["glm_image"] = ["GlmImagePipeline"]
+
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -547,7 +596,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
-        from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
+        from .bria import BriaPipeline
+        from .bria_fibo import BriaFiboEditPipeline, BriaFiboPipeline
+        from .chroma import ChromaImg2ImgPipeline, ChromaInpaintPipeline, ChromaPipeline
+        from .chronoedit import ChronoEditPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
@@ -577,6 +629,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetXSPipeline,
         )
         from .cosmos import (
+            Cosmos2_5_PredictBasePipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             CosmosTextToWorldPipeline,
@@ -625,13 +678,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
+        from .flux2 import Flux2KleinPipeline, Flux2Pipeline
+        from .glm_image import GlmImagePipeline
         from .hidream_image import HiDreamImagePipeline
+        from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
             HunyuanSkyreelsImageToVideoPipeline,
             HunyuanVideoFramepackPipeline,
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
         )
+        from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
@@ -659,6 +716,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
         )
+        from .kandinsky5 import (
+            Kandinsky5I2IPipeline,
+            Kandinsky5I2VPipeline,
+            Kandinsky5T2IPipeline,
+            Kandinsky5T2VPipeline,
+        )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
@@ -671,7 +734,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
-        from .ltx import LTXConditionPipeline, LTXImageToVideoPipeline, LTXLatentUpsamplePipeline, LTXPipeline
+        from .longcat_image import LongCatImageEditPipeline, LongCatImagePipeline
+        from .ltx import (
+            LTXConditionPipeline,
+            LTXI2VLongMultiPromptPipeline,
+            LTXImageToVideoPipeline,
+            LTXLatentUpsamplePipeline,
+            LTXPipeline,
+        )
+        from .ltx2 import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2Pipeline
+        from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
         from .marigold import (
@@ -682,6 +754,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
         from .omnigen import OmniGenPipeline
+        from .ovis_image import OvisImagePipeline
         from .pag import (
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
@@ -704,8 +777,25 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
-        from .qwenimage import QwenImagePipeline
-        from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintImg2ImgPipeline, SanaSprintPipeline
+        from .prx import PRXPipeline
+        from .qwenimage import (
+            QwenImageControlNetInpaintPipeline,
+            QwenImageControlNetPipeline,
+            QwenImageEditInpaintPipeline,
+            QwenImageEditPipeline,
+            QwenImageEditPlusPipeline,
+            QwenImageImg2ImgPipeline,
+            QwenImageInpaintPipeline,
+            QwenImageLayeredPipeline,
+            QwenImagePipeline,
+        )
+        from .sana import (
+            SanaControlNetPipeline,
+            SanaPipeline,
+            SanaSprintImg2ImgPipeline,
+            SanaSprintPipeline,
+        )
+        from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
@@ -764,11 +854,24 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserTextDecoder,
         )
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
-        from .wan import WanImageToVideoPipeline, WanPipeline, WanVACEPipeline, WanVideoToVideoPipeline
+        from .wan import (
+            WanAnimatePipeline,
+            WanImageToVideoPipeline,
+            WanPipeline,
+            WanVACEPipeline,
+            WanVideoToVideoPipeline,
+        )
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+        )
+        from .z_image import (
+            ZImageControlNetInpaintPipeline,
+            ZImageControlNetPipeline,
+            ZImageImg2ImgPipeline,
+            ZImageOmniPipeline,
+            ZImagePipeline,
         )
 
         try:

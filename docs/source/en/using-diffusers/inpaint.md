@@ -33,11 +33,8 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 ```
 
-<Tip>
-
-You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] and [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`], to save memory and increase inference speed. If you're using PyTorch 2.0, it's not necessary to call [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`] on your pipeline because it'll already be using PyTorch 2.0's native [scaled-dot product attention](../optimization/fp16#scaled-dot-product-attention).
-
-</Tip>
+> [!TIP]
+> You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] and [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`], to save memory and increase inference speed. If you're using PyTorch 2.0, it's not necessary to call [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`] on your pipeline because it'll already be using PyTorch 2.0's native [scaled-dot product attention](../optimization/fp16#scaled-dot-product-attention).
 
 2. Load the base and mask images:
 
@@ -115,7 +112,7 @@ blurred_mask
 
 ## Popular models
 
-[Stable Diffusion Inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting), [Stable Diffusion XL (SDXL) Inpainting](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1), and [Kandinsky 2.2 Inpainting](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images.
+[Stable Diffusion Inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting), [Stable Diffusion XL (SDXL) Inpainting](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1), and [Kandinsky 2.2 Inpainting](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images.
 
 ### Stable Diffusion Inpainting
 
@@ -127,7 +124,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -247,7 +244,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 </hfoption>
-<hfoption id="runwayml/stable-diffusion-inpainting">
+<hfoption id="stable-diffusion-v1-5/stable-diffusion-inpainting">
 
 ```py
 import torch
@@ -255,7 +252,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -281,7 +278,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-specific.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-inpainting</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">stable-diffusion-v1-5/stable-diffusion-inpainting</figcaption>
   </div>
 </div>
 
@@ -311,7 +308,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 </hfoption>
-<hfoption id="runwayml/stable-diffusion-inpaint">
+<hfoption id="stable-diffusion-v1-5/stable-diffusion-inpaint">
 
 ```py
 import torch
@@ -319,7 +316,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -343,7 +340,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/specific-inpaint-basic.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-inpainting</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">stable-diffusion-v1-5/stable-diffusion-inpainting</figcaption>
   </div>
 </div>
 
@@ -361,7 +358,7 @@ from diffusers.utils import load_image, make_image_grid
 
 device = "cuda"
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting",
+    "stable-diffusion-v1-5/stable-diffusion-inpainting",
     torch_dtype=torch.float16,
     variant="fp16"
 )
@@ -399,7 +396,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -444,7 +441,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -484,7 +481,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -609,7 +606,7 @@ from diffusers import AutoPipelineForInpainting, AutoPipelineForImage2Image
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -639,11 +636,8 @@ pipeline.enable_xformers_memory_efficient_attention()
 image = pipeline(prompt=prompt, image=image_inpainting, mask_image=mask_image, output_type="latent").images[0]
 ```
 
-<Tip>
-
-It is important to specify `output_type="latent"` in the pipeline to keep all the outputs in latent space to avoid an unnecessary decode-encode step. This only works if the chained pipelines are using the same VAE. For example, in the [Text-to-image-to-inpaint](#text-to-image-to-inpaint) section, Kandinsky 2.2 uses a different VAE class than the Stable Diffusion model so it won't work. But if you use Stable Diffusion v1.5 for both pipelines, then you can keep everything in latent space because they both use [`AutoencoderKL`].
-
-</Tip>
+> [!TIP]
+> It is important to specify `output_type="latent"` in the pipeline to keep all the outputs in latent space to avoid an unnecessary decode-encode step. This only works if the chained pipelines are using the same VAE. For example, in the [Text-to-image-to-inpaint](#text-to-image-to-inpaint) section, Kandinsky 2.2 uses a different VAE class than the Stable Diffusion model so it won't work. But if you use Stable Diffusion v1.5 for both pipelines, then you can keep everything in latent space because they both use [`AutoencoderKL`].
 
 Finally, you can pass this image to an image-to-image pipeline to put the finishing touches on it. It is more efficient to use the [`~AutoPipelineForImage2Image.from_pipe`] method to reuse the existing pipeline components, and avoid unnecessarily loading all the pipeline components into memory again.
 
@@ -689,7 +683,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16,
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16,
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -720,7 +714,7 @@ controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpai
 
 # pass ControlNet to the pipeline
 pipeline = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed

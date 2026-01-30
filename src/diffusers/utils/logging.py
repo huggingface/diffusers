@@ -32,6 +32,8 @@ from typing import Dict, Optional
 
 from tqdm import auto as tqdm_lib
 
+from .distributed_utils import is_torch_dist_rank_zero
+
 
 _lock = threading.Lock()
 _default_handler: Optional[logging.Handler] = None
@@ -47,6 +49,23 @@ log_levels = {
 _default_log_level = logging.WARNING
 
 _tqdm_active = True
+_rank_zero_filter = None
+
+
+class _RankZeroFilter(logging.Filter):
+    def filter(self, record):
+        # Always allow rank-zero logs, but keep debug-level messages from all ranks for troubleshooting.
+        return is_torch_dist_rank_zero() or record.levelno <= logging.DEBUG
+
+
+def _ensure_rank_zero_filter(logger: logging.Logger) -> None:
+    global _rank_zero_filter
+
+    if _rank_zero_filter is None:
+        _rank_zero_filter = _RankZeroFilter()
+
+    if not any(isinstance(f, _RankZeroFilter) for f in logger.filters):
+        logger.addFilter(_rank_zero_filter)
 
 
 def _get_default_logging_level() -> int:
@@ -90,6 +109,7 @@ def _configure_library_root_logger() -> None:
         library_root_logger.addHandler(_default_handler)
         library_root_logger.setLevel(_get_default_logging_level())
         library_root_logger.propagate = False
+        _ensure_rank_zero_filter(library_root_logger)
 
 
 def _reset_library_root_logger() -> None:
@@ -120,7 +140,9 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         name = _get_library_name()
 
     _configure_library_root_logger()
-    return logging.getLogger(name)
+    logger = logging.getLogger(name)
+    _ensure_rank_zero_filter(logger)
+    return logger
 
 
 def get_verbosity() -> int:

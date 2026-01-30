@@ -77,3 +77,44 @@ Once installed, set `DIFFUSERS_GGUF_CUDA_KERNELS=true`  to use optimized kernels
 - Q5_K
 - Q6_K
 
+## Convert to GGUF
+
+Use the Space below to convert a Diffusers checkpoint into the GGUF format for inference.
+run conversion:
+
+<iframe
+	src="https://diffusers-internal-dev-diffusers-to-gguf.hf.space"
+	frameborder="0"
+	width="850"
+	height="450"
+></iframe>
+
+
+```py
+import torch
+
+from diffusers import FluxPipeline, FluxTransformer2DModel, GGUFQuantizationConfig
+
+ckpt_path = (
+    "https://huggingface.co/sayakpaul/different-lora-from-civitai/blob/main/flux_dev_diffusers-q4_0.gguf"
+)
+transformer = FluxTransformer2DModel.from_single_file(
+    ckpt_path,
+    quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+    config="black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    torch_dtype=torch.bfloat16,
+)
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    transformer=transformer,
+    torch_dtype=torch.bfloat16,
+)
+pipe.enable_model_cpu_offload()
+prompt = "A cat holding a sign that says hello world"
+image = pipe(prompt, generator=torch.manual_seed(0)).images[0]
+image.save("flux-gguf.png")
+```
+
+When using Diffusers format GGUF checkpoints, it's a must to provide the model `config` path. If the
+model config resides in a `subfolder`, that needs to be specified, too.

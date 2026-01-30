@@ -32,7 +32,8 @@ from diffusers import (
 )
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import is_accelerate_version, logging
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     is_bitsandbytes_available,
@@ -50,7 +51,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_torch_compile_utils import QuantCompileTests
 
 

@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Installation
 
-Diffusers is tested on Python 3.8+, PyTorch 1.4+, and Flax 0.4.1+. Follow the installation instructions for the deep learning library you're using, [PyTorch](https://pytorch.org/get-started/locally/) or [Flax](https://flax.readthedocs.io/en/latest/).
+Diffusers is tested on Python 3.8+ and PyTorch 1.4+. Install [PyTorch](https://pytorch.org/get-started/locally/) according to your system and setup.
 
 Create a [virtual environment](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) for easier management of separate projects and to avoid compatibility issues between dependencies. Use [uv](https://docs.astral.sh/uv/), a Rust-based Python package and project manager, to create a virtual environment and install Diffusers.
 
@@ -30,12 +30,6 @@ PyTorch only supports Python 3.8 - 3.11 on Windows.
 
 ```bash
 uv pip install diffusers["torch"] transformers
-```
-
-Use the command below for Flax.
-
-```bash
-uv pip install diffusers["flax"] transformers
 ```
 
 </hfoption>
@@ -71,26 +65,11 @@ An editable install is recommended for development workflows or if you're using 
 
 Clone the repository and install Diffusers with the following commands.
 
-<hfoptions id="editable">
-<hfoption id="PyTorch">
-
 ```bash
 git clone https://github.com/huggingface/diffusers.git
 cd diffusers
 uv pip install -e ".[torch]"
 ```
-
-</hfoption>
-<hfoption id="Flax">
-
-```bash
-git clone https://github.com/huggingface/diffusers.git
-cd diffusers
-uv pip install -e ".[flax]"
-```
-
-</hfoption>
-</hfoptions>
 
 > [!WARNING]
 > You must keep the `diffusers` folder if you want to keep using the library with the editable install.
@@ -140,7 +119,7 @@ For more details about managing and cleaning the cache, take a look at the [Unde
 ## Telemetry logging
 
 Diffusers gathers telemetry information during [`~DiffusionPipeline.from_pretrained`] requests.
-The data gathered includes the Diffusers and PyTorch/Flax version, the requested model or pipeline class,
+The data gathered includes the Diffusers and PyTorch version, the requested model or pipeline class,
 and the path to a pretrained checkpoint if it is hosted on the Hub.
 
 This usage data helps us debug issues and prioritize new features.

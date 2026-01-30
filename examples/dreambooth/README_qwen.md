@@ -75,9 +75,9 @@ Now, we can launch training using:
 ```bash
 export MODEL_NAME="Qwen/Qwen-Image"
 export INSTANCE_DIR="dog"
-export OUTPUT_DIR="trained-sana-lora"
+export OUTPUT_DIR="trained-qwenimage-lora"
 
-accelerate launch train_dreambooth_lora_sana.py \
+accelerate launch train_dreambooth_lora_qwen_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \

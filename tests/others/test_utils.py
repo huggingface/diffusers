@@ -20,7 +20,8 @@ import pytest
 
 from diffusers import __version__
 from diffusers.utils import deprecate
-from diffusers.utils.testing_utils import Expectations, str_to_bool
+
+from ..testing_utils import Expectations, str_to_bool
 
 
 # Used to test the hub
