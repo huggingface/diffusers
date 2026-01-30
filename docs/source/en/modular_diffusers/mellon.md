@@ -17,18 +17,15 @@ specific language governing permissions and limitations under the License.
 
 ## Overview
 
-To use a custom block in Mellon, you need to:
+To use a custom block in Mellon, you need a `mellon_pipeline_config.json` file that defines how your block's parameters map to Mellon UI components. Here's how to create one:
 
-1. **Add `metadata` field to your block's `InputParam` and `OutputParam` definitions** - This is a simple string that tells Mellon what UI component to use (e.g., `"textbox"`, `"dropdown"`, `"image"`)
-2. **Generate `mellon_pipeline_config.json`** - We provide a utility to generate a default template and push it to your Hub repository
-3. **(Optional) Manually adjust the template** - Adjust the generated config for your specific needs
+1. **Add a "Mellon type" to your block's parameters** - Each `InputParam`/`OutputParam` needs a type that tells Mellon what UI component to render (e.g., `"textbox"`, `"dropdown"`, `"image"`). You can specify types via metadata in your block definitions, or pass them when generating the config.
+2. **Generate `mellon_pipeline_config.json`** - Use our utility to generate a default template and push it to your Hub repository
+3. **(Optional) Manually adjust the template** - Fine-tune the generated config for your specific needs
 
-## Step 1: Add Metadata to Input/Output Parameters
+## Step 1: Specify Mellon Types for Parameters
 
-The `metadata` field tells Mellon how to render each parameter in the UI. Add `metadata={"mellon": "<type>"}` to your `InputParam` and `OutputParam` definitions.
-
-> [!NOTE]
-> If you don't specify metadata for a parameter, it will default to `"custom"` type, which renders as a simple connection dot in the UI. You can always adjust this later in the generated config.
+Mellon types determine how each parameter renders in the UI. If you don't specify a type for a parameter, it will default to `"custom"`, which renders as a simple connection dot. You can always adjust this later in the generated config.
 
 ### Supported Mellon Types
 
@@ -43,10 +40,9 @@ The `metadata` field tells Mellon how to render each parameter in the UI. Add `m
 | `number` | Input | Numeric input |
 | `checkbox` | Input | Boolean toggle |
 
-### Example: Adding Metadata
+### Method 1: Using `metadata` in Block Definitions
 
-Here's an example using the [Gemini Prompt Expander](https://huggingface.co/diffusers-internal-dev/gemini-prompt-expander) block:
-
+If you're defining a custom block from scratch, you can add `metadata={"mellon": "<type>"}` directly to your `InputParam` and `OutputParam` definitions:
 ```python
 class GeminiPromptExpander(ModularPipelineBlocks):
     
@@ -80,17 +76,36 @@ class GeminiPromptExpander(ModularPipelineBlocks):
         ]
 ```
 
+### Method 2: Using `input_types` and `output_types` When Generating Config
+
+If you're working with an existing pipeline or prefer to keep your block definitions clean, you can specify types when generating the config using the `input_types/output_types` argument:
+```python
+from diffusers.modular_pipelines.mellon_node_utils import MellonPipelineConfig
+
+mellon_config = MellonPipelineConfig.from_custom_block(
+    blocks,
+    input_types={"prompt": "textbox"},
+    output_types={"prompt": "text"}
+)
+```
+
+> [!NOTE]
+> If you specify both `metadata` and `input_types`/`output_types`, the arguments take precedence, allowing you to override metadata when needed.
 
 ## Step 2: Generate and Push the Mellon Config
 
 After adding metadata to your block, generate the default Mellon configuration template and push it to the Hub:
 
 ```python
+from diffusers import ModularPipelineBlocks
 from diffusers.modular_pipelines.mellon_node_utils import MellonPipelineConfig
 
-# Generate the default config template (assume you already loaded your custom blocks into `blocks`)
+# load your custom blocks from your local dir
+blocks = ModularPipelineBlocks.from_pretrained("/path/local/folder", trust_remote_code=True)
+
+# Generate the default config template
 mellon_config = MellonPipelineConfig.from_custom_block(blocks)
-# push the default template to `repo_id`, you will also need to provide a local_dir for it to save it locally
+# push the default template to `repo_id`, you will need to pass the same local folder path so that it will save the config locally first
 mellon_config.save(
     local_dir="/path/local/folder",
     repo_id= repo_id,
