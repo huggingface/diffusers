@@ -841,10 +841,8 @@ class ComponentsManager:
             # Check for quantization
             hf_quantizer = getattr(component, "hf_quantizer", None)
             if hf_quantizer is not None:
-                quant_method = hf_quantizer.quantization_config.quant_method
-                if hasattr(quant_method, "value"):
-                    quant_method = quant_method.value
-                info["quantization"] = quant_method
+                quant_config = hf_quantizer.quantization_config
+                info["quantization"] = quant_config.to_dict()
             else:
                 info["quantization"] = None
 
