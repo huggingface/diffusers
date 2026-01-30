@@ -47,7 +47,7 @@ from ..utils import (
 )
 from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
 from ..utils.torch_utils import maybe_allow_in_graph
-from ._modeling_parallel import _gather_size_by_comm
+from ._modeling_parallel import gather_size_by_comm
 
 
 if TYPE_CHECKING:
@@ -1375,7 +1375,7 @@ def all_to_all_single_any_qkv_async(
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
     # since we don't know the actual shape before this timing, thus,
     # we have to use all gather to collect the S_LOCAL first.
-    output_split_sizes = _gather_size_by_comm(S_LOCAL, group)
+    output_split_sizes = gather_size_by_comm(S_LOCAL, group)
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
@@ -1414,7 +1414,7 @@ def all_to_all_single_any_o_async(x: torch.Tensor, group: dist.ProcessGroup, **k
     # b.tensor_split(4)[0].shape[1])
 
     S_LOCAL = kwargs.get("Q_S_LOCAL")
-    input_split_sizes = _gather_size_by_comm(S_LOCAL, group)
+    input_split_sizes = gather_size_by_comm(S_LOCAL, group)
     x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
     output_split_sizes = [S_LOCAL] * world_size
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)

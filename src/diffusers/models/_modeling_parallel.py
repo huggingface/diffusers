@@ -269,7 +269,7 @@ ContextParallelModelPlan = Dict[str, Union[ContextParallelInputType, ContextPara
 
 
 # Below are utility functions for distributed communication in context parallelism.
-def _gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
+def gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
     r"""Gather the local size from all ranks.
     size: int, local size return: List[int], list of size from all ranks
     """

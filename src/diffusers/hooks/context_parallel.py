@@ -29,7 +29,7 @@ from ..models._modeling_parallel import (
     ContextParallelInput,
     ContextParallelModelPlan,
     ContextParallelOutput,
-    _gather_size_by_comm,
+    gather_size_by_comm,
 )
 from ..utils import get_logger
 from ..utils.torch_utils import maybe_allow_in_graph, unwrap_module
@@ -344,7 +344,7 @@ def _all_gather_anything(tensor: torch.Tensor, dim: int, group: dist.device_mesh
     tensor = tensor.contiguous()
     shape = tensor.shape
     rank_dim = shape[dim]
-    gather_dims = _gather_size_by_comm(rank_dim, group)
+    gather_dims = gather_size_by_comm(rank_dim, group)
 
     gather_shapes = _fill_gather_shapes(tuple(shape), tuple(gather_dims), dim, world_size)
 
