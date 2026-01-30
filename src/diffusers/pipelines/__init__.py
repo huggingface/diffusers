@@ -48,11 +48,15 @@ else:
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
     ]
+    _import_structure["block_refinement"] = ["BlockRefinementPipeline", "BlockRefinementPipelineOutput"]
+    _import_structure["block_token_diffusion"] = ["BlockTokenDiffusionPipeline", "BlockTokenDiffusionPipelineOutput"]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["dance_diffusion"] = ["DanceDiffusionPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
     _import_structure["ddpm"] = ["DDPMPipeline"]
     _import_structure["dit"] = ["DiTPipeline"]
+    _import_structure["hybrid_token_diffusion"] = ["HybridTokenDiffusionPipeline"]
+    _import_structure["token_diffusion"] = ["TokenDiffusionPipeline", "TokenDiffusionPipelineOutput"]
     _import_structure["latent_diffusion"].extend(["LDMSuperResolutionPipeline"])
     _import_structure["pipeline_utils"] = [
         "AudioPipelineOutput",
@@ -409,6 +413,9 @@ else:
         "Kandinsky5T2IPipeline",
         "Kandinsky5I2IPipeline",
     ]
+    _import_structure["dflash"] = ["DFlashPipeline", "DFlashPipelineOutput"]
+    _import_structure["sdar"] = ["SDARPipeline", "SDARPipelineOutput"]
+    _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
     _import_structure["z_image"] = [
         "ZImageImg2ImgPipeline",
         "ZImagePipeline",
@@ -550,12 +557,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForInpainting,
             AutoPipelineForText2Image,
         )
+        from .block_refinement import BlockRefinementPipeline, BlockRefinementPipelineOutput
+        from .block_token_diffusion import BlockTokenDiffusionPipeline, BlockTokenDiffusionPipelineOutput
         from .consistency_models import ConsistencyModelPipeline
         from .dance_diffusion import DanceDiffusionPipeline
         from .ddim import DDIMPipeline
         from .ddpm import DDPMPipeline
         from .deprecated import KarrasVePipeline, LDMPipeline, PNDMPipeline, RePaintPipeline, ScoreSdeVePipeline
         from .dit import DiTPipeline
+        from .hybrid_token_diffusion import HybridTokenDiffusionPipeline
         from .latent_diffusion import LDMSuperResolutionPipeline
         from .pipeline_utils import (
             AudioPipelineOutput,
@@ -563,6 +573,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImagePipelineOutput,
             StableDiffusionMixin,
         )
+        from .token_diffusion import TokenDiffusionPipeline, TokenDiffusionPipelineOutput
 
     try:
         if not (is_torch_available() and is_librosa_available()):
@@ -657,6 +668,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
+        from .dflash import DFlashPipeline, DFlashPipelineOutput
         from .easyanimate import (
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
@@ -734,6 +746,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
+        from .llada2 import LLaDA2Pipeline, LLaDA2PipelineOutput
         from .longcat_image import LongCatImageEditPipeline, LongCatImagePipeline
         from .ltx import (
             LTXConditionPipeline,
@@ -796,6 +809,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaSprintPipeline,
         )
         from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
+        from .sdar import SDARPipeline, SDARPipelineOutput
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
