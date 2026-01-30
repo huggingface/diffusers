@@ -1240,6 +1240,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     flashpack_file = None
 
             if flashpack_file is None:
+                if use_flashpack:
+                    logger.warning(
+                        "use_flashpack=True but no compatible `.flashpack` weights were found. "
+                        "Falling back to standard loading (safetensors / PyTorch)."
+                    )
                 # in the case it is sharded, we have already the index
                 if is_sharded:
                     resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
