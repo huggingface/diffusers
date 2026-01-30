@@ -792,7 +792,6 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             hidden_states=hidden_states,
             timestep=timestep,
             encoder_hidden_states=encoder_hidden_states,
-            block_controlnet_hidden_states=block_controlnet_hidden_states,
             attention_mask=attention_mask,
             fps=fps,
             condition_mask=condition_mask,
