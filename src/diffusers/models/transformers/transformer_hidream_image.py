@@ -8,7 +8,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.modeling_outputs import Transformer2DModelOutput
 from ...models.modeling_utils import ModelMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, deprecate, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention
 from ..embeddings import TimestepEmbedding, Timesteps
@@ -773,6 +773,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         return hidden_states, hidden_states_masks, img_sizes, img_ids
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -807,21 +808,6 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             raise ValueError(
                 "if `hidden_states_masks` is passed, `hidden_states` must be a 3D tensors with shape (batch_size, patch_height * patch_width, patch_size * patch_size * channels)"
             )
-
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
 
         # spatial forward
         batch_size = hidden_states.shape[0]
@@ -932,10 +918,6 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         output = self.unpatchify(output, img_sizes, self.training)
         if hidden_states_masks is not None:
             hidden_states_masks = hidden_states_masks[:, :image_tokens_seq_len]
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)
