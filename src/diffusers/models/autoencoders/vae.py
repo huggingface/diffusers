@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 
 from ...utils import BaseOutput
 from ...utils.torch_utils import randn_tensor
@@ -926,3 +927,78 @@ class AutoencoderMixin:
         decoding in one step.
         """
         self.use_slicing = False
+
+    def enable_dp(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        if not hasattr(self, "use_tiling"):
+            raise NotImplementedError(f"Tiling Parallel doesn't seem to be implemented for {self.__class__.__name__}.")
+        self.use_dp = True
+
+    def disable_dp(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
+        decoding in one step.
+        """
+        self.use_dp = False
+
+    def run_vae_tile_parallel(
+            self, 
+            input: torch.Tensor,
+            vae_op, 
+            min_height, 
+            min_width, 
+            stride_height, 
+            stride_width, 
+            device,
+            **kwargs) -> List[List[torch.Tensor]]:
+
+        local_tiles = []
+        local_hw_shapes = []
+
+        for h_idx, w_idx in self.tile_idxs_per_rank[self.rank]:
+            patch_height_start = h_idx * stride_height
+            patch_height_end = patch_height_start + min_height
+            patch_width_start = w_idx * stride_width
+            patch_width_end = patch_width_start + min_width
+            tile = vae_op(input, patch_height_start, patch_height_end, patch_width_start, patch_width_end, **kwargs)
+            local_tiles.append(tile.flatten(-2, -1))
+            local_hw_shapes.append(torch.Tensor([*tile.shape[-2:]]).to(device).int())
+
+        # concat all tiles on local rank
+        local_tiles = torch.cat(local_tiles, dim=-1)
+        local_hw_shapes = torch.stack(local_hw_shapes)
+
+        # get all hw shapes for each rank (perhaps has different shapes for last tile)
+        gathered_shape_list = [torch.empty((num_tiles, 2), dtype=local_hw_shapes.dtype, device=device) 
+                        for num_tiles in self.num_tiles_per_rank]
+        dist.all_gather(gathered_shape_list, local_hw_shapes, group=self.vae_dp_group)
+
+        # gather tiles on all ranks
+        tile_shape_first = local_tiles.shape[:-1]
+        gathered_tiles = [
+            torch.empty(
+                (*tile_shape_first, tiles_shape.prod(dim=1).sum().item()), 
+                dtype=local_tiles.dtype, device=device) for tiles_shape in gathered_shape_list
+        ]
+        dist.all_gather(gathered_tiles, local_tiles, group=self.vae_dp_group)
+
+        # put tiles in rows based on tile_idxs_per_rank
+        rows = [[None] * self.w_split for _ in range(self.h_split)]
+        for rank_idx, tile_idxs in enumerate(self.tile_idxs_per_rank):
+            if not tile_idxs:
+                continue
+            rank_tile_hw_shapes = gathered_shape_list[rank_idx]
+            hw_start_idx = 0
+            # perhaps has more than one tile in each rank, get each by hw_shapes
+            for tile_idx, (h_idx, w_idx) in enumerate(tile_idxs):
+                rank_tile_hw_shape = rank_tile_hw_shapes[tile_idx]
+                hw_end_idx = hw_start_idx + rank_tile_hw_shape.prod().item() # flattend hw
+                rows[h_idx][w_idx] = gathered_tiles[rank_idx][..., hw_start_idx:hw_end_idx].unflatten(
+                    -1, rank_tile_hw_shape.tolist()) # unflatten hw dim
+                hw_start_idx = hw_end_idx
+
+        return rows
