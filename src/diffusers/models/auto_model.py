@@ -18,7 +18,7 @@ from typing import Optional, Union
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
-from ..utils import logging
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 
 
@@ -220,4 +220,11 @@ class AutoModel(ConfigMixin):
             raise ValueError(f"AutoModel can't find a model linked to {orig_class_name}.")
 
         kwargs = {**load_config_kwargs, **kwargs}
-        return model_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+        model = model_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+
+        load_id_kwargs = {"pretrained_model_name_or_path": pretrained_model_or_path, **kwargs}
+        parts = [load_id_kwargs.get(field, "null") for field in DIFFUSERS_LOAD_ID_FIELDS]
+        load_id = "|".join("null" if p is None else p for p in parts)
+        model._diffusers_load_id = load_id
+
+        return model
