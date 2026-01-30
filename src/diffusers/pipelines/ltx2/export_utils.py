@@ -134,11 +134,12 @@ def encode_video(
             number of chunks to use often depends on the tiling config for the video VAE.
     """
     if isinstance(video, list) and isinstance(video[0], PIL.Image.Image):
+        # Pipeline output_type="latent"
         video_frames = [np.array(frame) for frame in video]
         video = np.stack(video_frames, axis=0)
         video = torch.from_numpy(video)
-
-    if isinstance(video, np.ndarray):
+    elif isinstance(video, np.ndarray):
+        # Pipeline output_type="np"
         video = (video * 255).round().astype("uint8")
         video = torch.from_numpy(video)
 
