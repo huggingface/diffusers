@@ -15,7 +15,6 @@
 
 from collections.abc import Generator, Iterator
 from fractions import Fraction
-from itertools import chain
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
