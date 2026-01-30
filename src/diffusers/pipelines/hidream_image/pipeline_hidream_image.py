@@ -175,6 +175,10 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
         transformer: HiDreamImageTransformer2DModel,
     ):
         super().__init__()
+        self._guidance_scale = 5.0
+        self._attention_kwargs = None
+        self._num_timesteps = 0
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,
@@ -900,7 +904,6 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

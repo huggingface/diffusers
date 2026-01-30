@@ -208,6 +208,10 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         scheduler: DPMSolverMultistepScheduler,
     ):
         super().__init__()
+        self._guidance_scale = 4.5
+        self._attention_kwargs = None
+        self._num_timesteps = 0
+        self._interrupt = False
 
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
@@ -888,7 +892,6 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
-        self._interrupt = False
 
         # 2. Default height and width to transformer
         if prompt is not None and isinstance(prompt, str):

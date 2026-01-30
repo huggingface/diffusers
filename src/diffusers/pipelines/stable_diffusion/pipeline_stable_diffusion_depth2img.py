@@ -129,6 +129,10 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
         feature_extractor: DPTImageProcessor,
     ):
         super().__init__()
+        self._guidance_scale = 7.5
+        self._clip_skip = None
+        self._cross_attention_kwargs = None
+        self._num_timesteps = 0
 
         is_unet_version_less_0_9_0 = (
             unet is not None
