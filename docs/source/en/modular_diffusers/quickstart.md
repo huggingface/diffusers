@@ -165,7 +165,7 @@ class CannyBlock
           Canny map for input image
 ```
 
-Use `get_workflow` to extract the ControlNet workflow from [`QwenImageAutoBlocks`].
+UUse `get_workflow` to extract the ControlNet workflow from [`QwenImageAutoBlocks`].
 ```py
 # Get the controlnet workflow that we want to work with
 blocks = pipe.blocks.get_workflow("controlnet_text2image")
@@ -181,15 +181,17 @@ class SequentialPipelineBlocks
           Control image for ControlNet conditioning.
       ...
 ```
-It requires control_image as input. After inserting the canny block, the pipeline will accept a regular image instead.
+
+The extracted workflow is a [`SequentialPipelineBlocks`](./sequential_pipeline_blocks) - a multi-block type where blocks run one after another and data flows linearly from one block to the next. Each block's `intermediate_outputs` become available as `inputs` to subsequent blocks.
+
+Currently this workflow requires `control_image` as input. Let's insert the canny block at the beginning so the pipeline accepts a regular image instead.
 ```py
-# and insert canny at the beginning
+# Insert canny at the beginning
 blocks.sub_blocks.insert("canny", canny_block, 0)
 
 # Check the updated structure: CannyBlock is now listed as first sub-block
 print(blocks)
-# Check the updated doc: notice the pipeline now takes "image" as input
-# even though it's a controlnet pipeline, because canny preprocesses it into control_image
+# Check the updated doc
 print(blocks.doc)
 ```
 ```
@@ -207,7 +209,7 @@ class SequentialPipelineBlocks
       ...
 ```
 
-Now the pipeline takes `image` as input - the canny block will preprocess it into `control_image` automatically.
+Now the pipeline takes `image` as input instead of `control_image`. Because blocks in a sequence share data automatically, the canny block's output (`control_image`) flows to the denoise block that needs it, and the canny block's input (`image`) becomes a pipeline input since no earlier block provides it.
 
 Create a pipeline from the modified blocks and load a ControlNet model.
 ```py
