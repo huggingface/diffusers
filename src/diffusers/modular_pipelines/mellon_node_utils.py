@@ -369,7 +369,7 @@ class MellonParam(metaclass=MellonParamMeta):
         @classmethod
         def checkbox(cls, name: str, default: bool = False) -> "MellonParam":
             """boolean checkbox."""
-            return MellonParam(name=name, label=_name_to_label(name), type="boolean", default=default)
+            return MellonParam(name=name, label=_name_to_label(name), type="boolean", value=default)
 
         @classmethod
         def custom_type(cls, name: str, type: str) -> "MellonParam":

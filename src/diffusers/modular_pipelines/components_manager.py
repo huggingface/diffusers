@@ -842,7 +842,10 @@ class ComponentsManager:
             hf_quantizer = getattr(component, "hf_quantizer", None)
             if hf_quantizer is not None:
                 quant_config = hf_quantizer.quantization_config
-                info["quantization"] = quant_config.to_dict()
+                if hasattr(quant_config, "to_diff_dict"):
+                    info["quantization"] = quant_config.to_diff_dict()
+                else:
+                    info["quantization"] = quant_config.to_dict()
             else:
                 info["quantization"] = None
 
