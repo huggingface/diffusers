@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union, Dict, Any
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -677,33 +677,18 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 nn.GELU(),
             )
 
-    def prepare_inputs(
+    def forward(
         self,
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
-        encoder_hidden_states: Tuple[torch.Tensor | None, torch.Tensor | None] | torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
-        fps: int | None = None,
-        condition_mask: torch.Tensor | None = None,
-        padding_mask: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        r"""
-        Args:
-            hidden_states (`torch.Tensor` of shape `(batch_size, channels, num_frames, height, width)`):
-                Latent inputs to the transformer.
-            timestep (`torch.Tensor`):
-                Current diffusion timestep.
-            encoder_hidden_states (`torch.Tensor`):
-                Conditional text and image/video embeddings.
-            attention_mask (`torch.Tensor`, *optional*):
-                Attention mask applied to cross-attention.
-            fps (`int`, *optional*):
-                Frames per second for rotary embeddings on video inputs.
-            condition_mask (`torch.Tensor`, *optional*):
-                Additional per-pixel conditioning flags.
-            padding_mask (`torch.Tensor`, *optional*):
-                Mask highlighting padded spatial regions.
-        """
+        encoder_hidden_states: torch.Tensor,
+        block_controlnet_hidden_states: Optional[List[torch.Tensor]] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        fps: Optional[int] = None,
+        condition_mask: Optional[torch.Tensor] = None,
+        padding_mask: Optional[torch.Tensor] = None,
+        return_dict: bool = True,
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
         # 1. Concatenate padding mask if needed & prepare attention mask
@@ -711,11 +696,11 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             hidden_states = torch.cat([hidden_states, condition_mask], dim=1)
 
         if self.config.concat_padding_mask:
-            padding_mask = transforms.functional.resize(
+            padding_mask_resized = transforms.functional.resize(
                 padding_mask, list(hidden_states.shape[-2:]), interpolation=transforms.InterpolationMode.NEAREST
             )
             hidden_states = torch.cat(
-                [hidden_states, padding_mask.unsqueeze(2).repeat(batch_size, 1, num_frames, 1, 1)], dim=1
+                [hidden_states, padding_mask_resized.unsqueeze(2).repeat(batch_size, 1, num_frames, 1, 1)], dim=1
             )
 
         if attention_mask is not None:
@@ -753,6 +738,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         else:
             raise ValueError(f"Expected timestep to have shape [B, 1, T, 1, 1] or [T], but got {timestep.shape}")
 
+        # 5. Process encoder hidden states
         text_context, img_context = encoder_hidden_states if isinstance(encoder_hidden_states, tuple) else (encoder_hidden_states, None)
         if self.config.use_crossattn_projection:
             text_context = self.crossattn_proj(text_context)
@@ -760,56 +746,9 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         if img_context is not None and self.config.img_context_dim_in:
             img_context = self.img_context_proj(img_context)
 
-        prepared_inputs = {
-            "hidden_states": hidden_states,
-            "temb": temb,
-            "embedded_timestep": embedded_timestep,
-            "image_rotary_emb": image_rotary_emb,
-            "extra_pos_emb": extra_pos_emb,
-            "attention_mask": attention_mask,
-            "encoder_hidden_states": (text_context, img_context) if isinstance(encoder_hidden_states, tuple) else text_context,
-            "num_frames": num_frames,
-            "post_patch_num_frames": post_patch_num_frames,
-            "post_patch_height": post_patch_height,
-            "post_patch_width": post_patch_width,
-        }
-        return prepared_inputs
+        processed_encoder_hidden_states = (text_context, img_context) if isinstance(encoder_hidden_states, tuple) else text_context
 
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        timestep: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        block_controlnet_hidden_states: Optional[List[torch.Tensor]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        fps: Optional[int] = None,
-        condition_mask: Optional[torch.Tensor] = None,
-        padding_mask: Optional[torch.Tensor] = None,
-        latents: Optional[torch.Tensor] = None,
-        return_dict: bool = True,
-    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
-        prepared_inputs = self.prepare_inputs(
-            hidden_states=hidden_states,
-            timestep=timestep,
-            encoder_hidden_states=encoder_hidden_states,
-            attention_mask=attention_mask,
-            fps=fps,
-            condition_mask=condition_mask,
-            padding_mask=padding_mask,
-        )
-
-        return self._forward(
-            prepared_inputs,
-            block_controlnet_hidden_states=block_controlnet_hidden_states,
-            return_dict=return_dict,
-        )
-
-    def _forward(
-        self,
-        prepared_inputs: Dict[str, Any],
-        block_controlnet_hidden_states: Optional[List[torch.Tensor]] = None,
-        return_dict: bool = True,
-    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
+        # 6. Build controlnet block index map
         controlnet_block_index_map = {}
         if block_controlnet_hidden_states is not None:
             n_blocks = len(self.transformer_blocks)
@@ -818,43 +757,34 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 for idx, block_idx in list(enumerate(range(0, n_blocks, self.config.controlnet_block_every_n)))
             }
 
-        p_t, p_h, p_w = self.config.patch_size
-        post_patch_num_frames = prepared_inputs["post_patch_num_frames"]
-        post_patch_height = prepared_inputs["post_patch_height"]
-        post_patch_width = prepared_inputs["post_patch_width"]
-
-        # 5. Transformer blocks
-        hidden_states = prepared_inputs["hidden_states"]
+        # 7. Transformer blocks
         for block_idx, block in enumerate(self.transformer_blocks):
             controlnet_residual = controlnet_block_index_map.get(block_idx)
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
-                    prepared_inputs["encoder_hidden_states"],
-                    prepared_inputs["embedded_timestep"],
-                    prepared_inputs["temb"],
-                    prepared_inputs["image_rotary_emb"],
-                    prepared_inputs["extra_pos_emb"],
-                    prepared_inputs["attention_mask"],
+                    processed_encoder_hidden_states,
+                    embedded_timestep,
+                    temb,
+                    image_rotary_emb,
+                    extra_pos_emb,
+                    attention_mask,
                     controlnet_residual,
                 )
             else:
                 hidden_states = block(
                     hidden_states,
-                    prepared_inputs["encoder_hidden_states"],
-                    prepared_inputs["embedded_timestep"],
-                    prepared_inputs["temb"],
-                    prepared_inputs["image_rotary_emb"],
-                    prepared_inputs["extra_pos_emb"],
-                    prepared_inputs["attention_mask"],
+                    processed_encoder_hidden_states,
+                    embedded_timestep,
+                    temb,
+                    image_rotary_emb,
+                    extra_pos_emb,
+                    attention_mask,
                     controlnet_residual,
                 )
 
-        temb = prepared_inputs["temb"]
-        embedded_timestep = prepared_inputs["embedded_timestep"]
-
-        # 6. Output norm & projection & unpatchify
+        # 8. Output norm & projection & unpatchify
         hidden_states = self.norm_out(hidden_states, embedded_timestep, temb)
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.unflatten(2, (p_h, p_w, p_t, -1))

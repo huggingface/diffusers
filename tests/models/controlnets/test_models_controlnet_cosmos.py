@@ -17,6 +17,7 @@ import unittest
 import torch
 
 from diffusers import CosmosControlNetModel
+from diffusers.models.controlnets.controlnet_cosmos import CosmosControlNetOutput
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..test_modeling_common import ModelTesterMixin
@@ -42,7 +43,7 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         img_context_dim_in = 32
         img_context_num_tokens = 4
 
-        # Raw latents (not patchified) - the controlnet now computes embeddings internally
+        # Raw latents (not patchified) - the controlnet computes embeddings internally
         controls_latents = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
         latents = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
         timestep = torch.tensor([0.5]).to(torch_device)  # Diffusion timestep
@@ -71,8 +72,11 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def output_shape(self):
-        # Output is a list of control blocks - this property not directly applicable
-        return None
+        # Output is tuple of n_controlnet_blocks tensors, each with shape (batch, num_patches, model_channels)
+        # After stacking by normalize_output: (n_blocks, batch, num_patches, model_channels)
+        # For test config: n_blocks=2, num_patches=64 (1*8*8), model_channels=32
+        # output_shape is used as (batch_size,) + output_shape, so: (2, 64, 32)
+        return (2, 64, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
@@ -96,8 +100,8 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_output_is_list_of_tensors(self):
-        """Test that the model outputs a list of control tensors."""
+    def test_output_format(self):
+        """Test that the model outputs CosmosControlNetOutput with correct structure."""
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -106,10 +110,26 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             output = model(**inputs_dict)
 
-        self.assertIsInstance(output, list)
-        self.assertEqual(len(output), init_dict["n_controlnet_blocks"])
-        for tensor in output:
+        self.assertIsInstance(output, CosmosControlNetOutput)
+        self.assertIsInstance(output.control_block_samples, list)
+        self.assertEqual(len(output.control_block_samples), init_dict["n_controlnet_blocks"])
+        for tensor in output.control_block_samples:
             self.assertIsInstance(tensor, torch.Tensor)
+
+    def test_output_list_format(self):
+        """Test that return_dict=False returns a tuple containing a list."""
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict, return_dict=False)
+
+        self.assertIsInstance(output, tuple)
+        self.assertEqual(len(output), 1)
+        self.assertIsInstance(output[0], list)
+        self.assertEqual(len(output[0]), init_dict["n_controlnet_blocks"])
 
     def test_conditioning_scale_single(self):
         """Test that a single conditioning scale is broadcast to all blocks."""
@@ -123,7 +143,7 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             output = model(**inputs_dict)
 
-        self.assertEqual(len(output), init_dict["n_controlnet_blocks"])
+        self.assertEqual(len(output.control_block_samples), init_dict["n_controlnet_blocks"])
 
     def test_conditioning_scale_list(self):
         """Test that a list of conditioning scales is applied per block."""
@@ -138,7 +158,7 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             output = model(**inputs_dict)
 
-        self.assertEqual(len(output), init_dict["n_controlnet_blocks"])
+        self.assertEqual(len(output.control_block_samples), init_dict["n_controlnet_blocks"])
 
     def test_forward_with_none_img_context(self):
         """Test forward pass when img_context is None."""
@@ -154,8 +174,8 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             output = model(**inputs_dict)
 
-        self.assertIsInstance(output, list)
-        self.assertEqual(len(output), init_dict["n_controlnet_blocks"])
+        self.assertIsInstance(output, CosmosControlNetOutput)
+        self.assertEqual(len(output.control_block_samples), init_dict["n_controlnet_blocks"])
 
     def test_forward_without_img_context_proj(self):
         """Test forward pass when img_context_proj is not configured."""
@@ -173,81 +193,73 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             output = model(**inputs_dict)
 
-        self.assertIsInstance(output, list)
-        self.assertEqual(len(output), init_dict["n_controlnet_blocks"])
+        self.assertIsInstance(output, CosmosControlNetOutput)
+        self.assertEqual(len(output.control_block_samples), init_dict["n_controlnet_blocks"])
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"CosmosControlNetModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard test.")
-    def test_effective_gradient_checkpointing(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard output test.")
-    def test_determinism(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard output test.")
-    def test_outputs_equivalence(self):
-        pass
-
+    # Skip tests that require standard attention processors (this model uses custom ones)
     @unittest.skip("CosmosControlNetModel uses custom attention processor.")
     def test_forward_signature(self):
         pass
 
-    @unittest.skip("CosmosControlNetModel doesn't use standard forward output shape.")
-    def test_forward_with_norm_groups(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with EMA training test.")
-    def test_ema_training(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard variant test.")
-    def test_model_from_pretrained_hub_subfolder(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard variant test.")
-    def test_model_from_pretrained_subfolder(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard output test.")
-    def test_from_save_pretrained(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard output test.")
-    def test_from_save_pretrained_variant(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard output test.")
-    def test_set_xformers_attn_processor_for_determinism(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard output test.")
-    def test_set_default_attn_processor(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard output test.")
+    @unittest.skip("CosmosControlNetModel uses custom attention processor.")
     def test_set_attn_processor_for_determinism(self):
         pass
 
-    @unittest.skip("Layerwise casting test has compatibility issues with this model's output format.")
-    def test_layerwise_casting_inference(self):
+    @unittest.skip("CosmosControlNetModel uses custom attention processor.")
+    def test_set_default_attn_processor(self):
         pass
 
-    @unittest.skip("CosmosControlNetModel outputs a list, output_shape is None.")
-    def test_layerwise_casting_memory(self):
+    @unittest.skip("CosmosControlNetModel uses custom attention processor.")
+    def test_set_xformers_attn_processor_for_determinism(self):
         pass
 
-    @unittest.skip("CosmosControlNetModel outputs a list, output_shape is None.")
-    def test_layerwise_casting_training(self):
+    # Skip tests that don't apply to this architecture
+    @unittest.skip("CosmosControlNetModel doesn't use norm groups.")
+    def test_forward_with_norm_groups(self):
         pass
 
-    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with output shape comparison.")
+    # Skip tests that expect .sample attribute - ControlNets don't have this
+    @unittest.skip("ControlNet output doesn't have .sample attribute")
+    def test_effective_gradient_checkpointing(self):
+        pass
+
+    # Skip tests that compute MSE loss against single tensor output
+    @unittest.skip("ControlNet outputs list of control blocks, not single tensor for MSE loss")
+    def test_ema_training(self):
+        pass
+
+    @unittest.skip("ControlNet outputs list of control blocks, not single tensor for MSE loss")
+    def test_training(self):
+        pass
+
+    # Skip tests where output shape comparison doesn't apply to ControlNets
+    @unittest.skip("ControlNet output shape doesn't match input shape by design")
     def test_output(self):
         pass
 
-    @unittest.skip("CosmosControlNetModel outputs a list, output_shape is None.")
-    def test_training(self):
+    # Skip outputs_equivalence - dict/list comparison logic not compatible
+    @unittest.skip("ControlNet output structure not compatible with recursive dict check")
+    def test_outputs_equivalence(self):
+        pass
+
+    # Skip model parallelism - test doesn't use normalize_output for list outputs
+    @unittest.skip("Test doesn't use normalize_output, incompatible with list output")
+    def test_model_parallelism(self):
+        pass
+
+    # Skip layerwise casting tests - dtype compatibility issues with this model
+    @unittest.skip("Layerwise casting has dtype compatibility issues with this model")
+    def test_layerwise_casting_inference(self):
+        pass
+
+    @unittest.skip("Layerwise casting has dtype compatibility issues with this model")
+    def test_layerwise_casting_memory(self):
+        pass
+
+    @unittest.skip("Layerwise casting has dtype compatibility issues with this model")
+    def test_layerwise_casting_training(self):
         pass
