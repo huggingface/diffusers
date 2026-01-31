@@ -39,32 +39,30 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         width = 16
         text_embed_dim = 32
         sequence_length = 12
-        img_context_dim = 32
+        img_context_dim_in = 32
         img_context_num_tokens = 4
 
+        # Raw latents (not patchified) - the controlnet now computes embeddings internally
         controls_latents = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
-        latents = torch.randn((batch_size, num_frames * (height // 2) * (width // 2), 32)).to(torch_device)  # patchified
+        latents = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
+        timestep = torch.tensor([0.5]).to(torch_device)  # Diffusion timestep
         condition_mask = torch.ones(batch_size, 1, num_frames, height, width).to(torch_device)
         padding_mask = torch.zeros(batch_size, 1, height, width).to(torch_device)
 
         # Text embeddings
         text_context = torch.randn((batch_size, sequence_length, text_embed_dim)).to(torch_device)
         # Image context for Cosmos 2.5
-        img_context = torch.randn((batch_size, img_context_num_tokens, img_context_dim)).to(torch_device)
+        img_context = torch.randn((batch_size, img_context_num_tokens, img_context_dim_in)).to(torch_device)
         encoder_hidden_states = (text_context, img_context)
-
-        temb = torch.randn((batch_size, num_frames * (height // 2) * (width // 2), 32 * 3)).to(torch_device)
-        embedded_timestep = torch.randn((batch_size, num_frames * (height // 2) * (width // 2), 32)).to(torch_device)
 
         return {
             "controls_latents": controls_latents,
             "latents": latents,
+            "timestep": timestep,
+            "encoder_hidden_states": encoder_hidden_states,
             "condition_mask": condition_mask,
             "conditioning_scale": 1.0,
             "padding_mask": padding_mask,
-            "encoder_hidden_states": encoder_hidden_states,
-            "temb": temb,
-            "embedded_timestep": embedded_timestep,
         }
 
     @property
@@ -79,7 +77,8 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
             "n_controlnet_blocks": 2,
-            "in_channels": 16 + 1 + 1,  # latent_channels + condition_mask + padding_mask
+            "in_channels": 16 + 1 + 1,  # control_latent_channels + condition_mask + padding_mask
+            "latent_channels": 16 + 1 + 1,  # base_latent_channels (16) + condition_mask (1) + padding_mask (1) = 18
             "model_channels": 32,
             "num_attention_heads": 2,
             "attention_head_dim": 16,
@@ -89,6 +88,10 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
             "patch_size": (1, 2, 2),
             "max_size": (4, 32, 32),
             "rope_scale": (2.0, 1.0, 1.0),
+            "extra_pos_embed_type": None,
+            "img_context_dim_in": 32,
+            "img_context_dim_out": 32,
+            "use_crossattn_projection": False,  # Test doesn't need this projection
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -154,9 +157,32 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertIsInstance(output, list)
         self.assertEqual(len(output), init_dict["n_controlnet_blocks"])
 
+    def test_forward_without_img_context_proj(self):
+        """Test forward pass when img_context_proj is not configured."""
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        # Disable img_context_proj
+        init_dict["img_context_dim_in"] = None
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        # When img_context is disabled, pass only text context (not a tuple)
+        text_context = inputs_dict["encoder_hidden_states"][0]
+        inputs_dict["encoder_hidden_states"] = text_context
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+        self.assertIsInstance(output, list)
+        self.assertEqual(len(output), init_dict["n_controlnet_blocks"])
+
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"CosmosControlNetModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+    @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard test.")
+    def test_effective_gradient_checkpointing(self):
+        pass
 
     @unittest.skip("CosmosControlNetModel outputs a list, not compatible with standard output test.")
     def test_determinism(self):
