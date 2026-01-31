@@ -15,8 +15,6 @@ specific language governing permissions and limitations under the License.
 
 [ModularPipelineBlocks](./pipeline_block) are the fundamental building blocks of a [`ModularPipeline`]. You can create custom blocks by defining their inputs, outputs, and computation logic. This guide demonstrates how to create and use a custom block.
 
-> [!TIP]
-> Explore the [Modular Diffusers Custom Blocks](https://huggingface.co/collections/diffusers/modular-diffusers-custom-blocks) collection for official custom modular blocks like Nano Banana.
 
 ## Project Structure
 
@@ -30,6 +28,44 @@ Your custom block project should use the following structure:
 
 - `block.py` contains the custom block implementation
 - `modular_config.json` contains the metadata needed to load the block
+
+## Quick Start with Template
+
+The fastest way to create a custom block is to start from our template:
+
+### 1. Download the template
+```python
+from diffusers import ModularPipelineBlocks
+
+model_id = "diffusers/custom-block-template"
+local_dir = model_id.split("/")[-1]
+
+blocks = ModularPipelineBlocks.from_pretrained(
+    model_id, 
+    trust_remote_code=True, 
+    local_dir=local_dir
+)
+```
+
+This saves the template files to `custom-block-template/` locally. Feel free to use a custom `local_dir`.
+
+### 2. Edit locally
+
+Open `block.py` and implement your custom block. The template includes commented examples showing how to define each property. See the [Florence 2 example](#example-florence-2-inpainting-block) below for a complete implementation.
+
+### 3. Test your block
+```python
+from diffusers import ModularPipelineBlocks
+
+blocks = ModularPipelineBlocks.from_pretrained(local_dir, trust_remote_code=True)
+pipeline = blocks.init_pipeline()
+output = pipeline(...)  # your inputs here
+```
+
+### 4. Upload to the Hub
+```python
+pipeline.save_pretrained(local_dir, repo_id="your-username/your-block-name", push_to_hub=True)
+```
 
 ## Example: Florence 2 Inpainting Block
 
@@ -403,56 +439,62 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
 
 ```
 
-Once we have defined our custom block, we can save it to the Hub, using either the CLI or the [`push_to_hub`] method. This will make it easy to share and reuse our custom block with other pipelines.
-
-<hfoptions id="share">
-<hfoption id="hf CLI">
-
-```shell
-# In the folder with the `block.py` file, run:
-diffusers-cli custom_block
-```
-
-Then upload the block to the Hub:
-
-```shell
-hf upload <your repo id> . .
-```
-</hfoption>
-<hfoption id="push_to_hub">
-
-```py
-from block import Florence2ImageAnnotatorBlock
-block = Florence2ImageAnnotatorBlock()
-block.push_to_hub("<your repo id>")
-```
-
-</hfoption>
-</hfoptions>
+Once we have defined our custom block, we can save it to the Hub. This will make it easy to share and reuse our custom block with other pipelines.
 
 ## Using Custom Blocks
 
-Load the custom block with [`~ModularPipelineBlocks.from_pretrained`] and set `trust_remote_code=True`.
+Load the custom block into a pipeline with [`~ModularPipeline.from_pretrained`] and set `trust_remote_code=True`.
 
 ```py
 import torch
-from diffusers.modular_pipelines import ModularPipelineBlocks, SequentialPipelineBlocks
-from diffusers.modular_pipelines.stable_diffusion_xl import INPAINT_BLOCKS
+from diffusers import ModularPipeline
 from diffusers.utils import load_image
 
 # Fetch the Florence2 image annotator block that will create our mask
-image_annotator_block = ModularPipelineBlocks.from_pretrained("diffusers/florence-2-custom-block", trust_remote_code=True)
+image_annotator_node = ModularPipeline.from_pretrained("diffusers/Florence2-image-Annotator", trust_remote_code=True)
+# check the docstring
+print(image_annotator_node.block.doc)
+```
 
-my_blocks = INPAINT_BLOCKS.copy()
-# insert the annotation block before the image encoding step
-my_blocks.insert("image_annotator", image_annotator_block, 1)
+```out
+class Florence2ImageAnnotatorBlock
 
-# Create our initial set of inpainting blocks
-blocks = SequentialPipelineBlocks.from_blocks_dict(my_blocks)
+  Components:
+      image_annotator (`Florence2ForConditionalGeneration`) [pretrained_model_name_or_path=florence-community/Florence-2-base-ft]
+      image_annotator_processor (`AutoProcessor`) [pretrained_model_name_or_path=florence-community/Florence-2-base-ft]
 
-repo_id = "diffusers/modular-stable-diffusion-xl-base-1.0"
-pipe = blocks.init_pipeline(repo_id)
-pipe.load_components(torch_dtype=torch.float16, device_map="cuda", trust_remote_code=True)
+  Inputs:
+      image (`Union[Image, List]`):
+          Image(s) to annotate
+      annotation_task (`Union[str, List]`, *optional*, defaults to <REFERRING_EXPRESSION_SEGMENTATION>):
+          Annotation Task to perform on the image. Supported Tasks: <OD> <REFERRING_EXPRESSION_SEGMENTATION> <CAPTION>
+          <DETAILED_CAPTION> <MORE_DETAILED_CAPTION> <DENSE_REGION_CAPTION> <REGION_PROPOSAL> <CAPTION_TO_PHRASE_GROUNDING>
+          <OPEN_VOCABULARY_DETECTION> <OCR> <OCR_WITH_REGION>
+      annotation_prompt (`Union[str, List]`):
+          Annotation Prompt to provide more context to the task. Can be used to detect or segment out specific elements in
+          the image
+      annotation_output_type (`str`, *optional*, defaults to mask_image):
+          Output type from annotation predictions. Availabe options are annotation: - raw annotation predictions from the
+          model based on task type. mask_image: -black and white mask image for the given image based on the task type
+          mask_overlay: - white mask overlayed on the original image bounding_box: - bounding boxes drawn on the original
+          image
+      annotation_overlay (`bool`):
+          TODO: Add description.
+      fill (`str`, *optional*, defaults to white):
+          TODO: Add description.
+
+  Outputs:
+      annotations (`dict`):
+          Annotations Predictions for input Image(s)
+      images (`PIL.Image`):
+          Annotated input Image(s)
+```
+
+we can use it to generate a mask and then pass to an inpainting pipeline
+
+```py
+image_annotator_node.load_components(torch_dtype=torch.bfloat16)
+image_annotator_node.to("cuda")
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true")
 image = image.resize((1024, 1024))
@@ -460,6 +502,28 @@ image = image.resize((1024, 1024))
 prompt = ["A red car"]
 annotation_task = "<REFERRING_EXPRESSION_SEGMENTATION>"
 annotation_prompt = ["the car"]
+
+mask_image = image_annotator_node(
+    prompt=prompt,
+    image=image,
+    annotation_task=annotation_task,
+    annotation_prompt=annotation_prompt,
+    annotation_output_type="mask_image",
+).images
+mask_image[0].save("florence-mask.png")
+```
+you can use this as an input for a inpaint pipeline; 
+
+or you can take the block, combine it with other blocks to make a new inpaint pipeline, 
+
+```py
+image_annotator_blocks = image_annotator_node.blocks
+
+inpaint_blocks = ModularPipeline.from_pretrained("Qwen/Qwen-Image").blocks.get_workflow("inpainting")
+# insert the annotation block before the image encoding step
+inpaint_blocks.sub_blocks.insert("image_annotator", image_annotator_block, 0)
+pipe = blocks.init_pipeline("Qwen/Qwen-Image")
+pipe.load_components(torch_dtype=torch.float16, device_map="cuda")
 
 output = pipe(
     prompt=prompt,
@@ -477,16 +541,37 @@ output[0].save("florence-inpainting.png")
 
 ## Editing Custom Blocks
 
-By default, custom blocks are saved in your cache directory. Use the `local_dir` argument to download and edit a custom block in a specific folder.
+You can edit any existing custom block by downloading it locally. This follows the same workflow as the [Quick Start with Template](#quick-start-with-template), but starting from an existing block instead of the template.
 
+Use the `local_dir` argument to download and edit a custom block in a specific folder:
 ```py
-import torch
-from diffusers.modular_pipelines import ModularPipelineBlocks, SequentialPipelineBlocks
-from diffusers.modular_pipelines.stable_diffusion_xl import INPAINT_BLOCKS
-from diffusers.utils import load_image
+from diffusers.modular_pipelines import ModularPipelineBlocks
 
-# Fetch the Florence2 image annotator block that will create our mask
-image_annotator_block = ModularPipelineBlocks.from_pretrained("diffusers/florence-2-custom-block", trust_remote_code=True, local_dir="/my-local-folder")
+# Download to a local folder for editing
+image_annotator_block = ModularPipelineBlocks.from_pretrained(
+    "diffusers/Florence2-image-Annotator",
+    trust_remote_code=True,
+    local_dir="./my-florence-block"
+)
 ```
 
-Any changes made to the block files in this folder will be reflected when you load the block again.
+Any changes made to the block files in this folder will be reflected when you load the block again. When you're ready to share your changes, upload to a new repository:
+```python
+pipeline = image_annotator_block.init_pipeline()
+pipeline.save_pretrained("./my-florence-block", repo_id="your-username/my-custom-florence", push_to_hub=True)
+```
+
+## Next Steps
+
+<hfoptions id="next">
+<hfoption id="Use in Mellon">
+
+Make your custom block work with Mellon's visual interface - no UI code required. See the [Mellon Custom Blocks](./mellon_custom_blocks) guide.
+
+</hfoption>
+<hfoption id="Explore existing blocks">
+
+Browse the [Modular Diffusers Custom Blocks](https://huggingface.co/collections/diffusers/modular-diffusers-custom-blocks) collection for inspiration and ready-to-use blocks.
+
+</hfoption>
+</hfoptions>
