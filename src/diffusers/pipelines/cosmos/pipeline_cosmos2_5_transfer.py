@@ -250,11 +250,11 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
     """
 
-    model_cpu_offload_seq = "text_encoder->image_ref_model->transformer->controlnet->vae"
+    model_cpu_offload_seq = "text_encoder->transformer->controlnet->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
     # We mark safety_checker as optional here to get around some test failures, but it is not really optional
     _optional_components = ["safety_checker", "controlnet", "image_ref_model", "image_ref_processor"]
-    _exclude_from_cpu_offload = ["safety_checker"]
+    _exclude_from_cpu_offload = ["safety_checker", "image_ref_model", "image_ref_processor"]
 
     def __init__(
         self,
