@@ -186,13 +186,29 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
                 batch_size = pixel_values.shape[0]
                 return type("Output", (), {"last_hidden_state": torch.randn(batch_size, 4, 32, device=pixel_values.device, dtype=pixel_values.dtype)})()
 
-        class DummyImageRefProcessor:
-            def __call__(self, images, return_tensors="pt", **kwargs):
-                # Return dummy tensors
-                return type("Output", (), {"pixel_values": torch.randn(len(images) if isinstance(images, list) else 1, 3, 32, 32)})()
+        class DummyImageRefProcessor(torch.nn.Module):
+            """A torch.nn.Module-based processor so it responds to pipe.to() calls."""
 
-            def to(self, device):
-                return self
+            def __init__(self):
+                super().__init__()
+                # Use a parameter (not buffer) so tests that check parameters work
+                self._dummy_param = torch.nn.Parameter(torch.zeros(1))
+
+            def forward(self, images, return_tensors="pt", **kwargs):
+                # Return dummy tensors on the correct device and dtype
+                n = len(images) if isinstance(images, list) else 1
+                return type("Output", (), {"pixel_values": torch.randn(n, 3, 32, 32, device=self.device, dtype=self.dtype)})()
+
+            def __call__(self, images, return_tensors="pt", **kwargs):
+                return self.forward(images, return_tensors=return_tensors, **kwargs)
+
+            @property
+            def device(self):
+                return self._dummy_param.device
+
+            @property
+            def dtype(self):
+                return self._dummy_param.dtype
 
         image_ref_model = DummyImageRefModel()
         image_ref_processor = DummyImageRefProcessor()
@@ -360,7 +376,7 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             )
 
     @unittest.skip(
-        "The pipeline has custom components (image_ref_model, image_ref_processor) that can't be properly saved/loaded."
+        "image_ref_model/image_ref_processor don't inherit from ModelMixin - can't be serialized with from_pretrained."
     )
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         pass
@@ -427,72 +443,52 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    # CPU offload tests should now work with the refactored architecture
-    # that uses proper forward() calls on both transformer and controlnet.
-    # However, sequential offload has issues with custom components (image_ref_model).
+    # Serialization tests are skipped because image_ref_model and image_ref_processor are custom components
+    # that don't inherit from ModelMixin/ConfigMixin and thus can't be properly saved/loaded with
+    # from_pretrained/save_pretrained. To enable these tests, image_ref_model would need to:
+    # 1. Inherit from ModelMixin and ConfigMixin
+    # 2. Use @register_to_config decorator
+    # 3. Implement proper config.json handling
+    # Similarly, image_ref_processor would need to follow the processor pattern from transformers.
 
     @unittest.skip(
-        "Sequential CPU offload doesn't properly handle custom image_ref_model component."
-    )
-    def test_sequential_cpu_offload_forward_pass(self):
-        pass
-
-    @unittest.skip(
-        "Sequential CPU offload doesn't properly handle custom image_ref_model component."
-    )
-    def test_sequential_offload_forward_pass_twice(self):
-        pass
-
-    @unittest.skip("Group offloading has compatibility issues with custom components.")
-    def test_group_offloading_inference(self):
-        pass
-
-    @unittest.skip("Group offloading has compatibility issues with custom components.")
-    def test_pipeline_level_group_offloading_inference(self):
-        pass
-
-    @unittest.skip("Layerwise casting has compatibility issues with this pipeline's components.")
-    def test_layerwise_casting_inference(self):
-        pass
-
-    @unittest.skip(
-        "The pipeline has custom components (image_ref_model, image_ref_processor) that can't be properly serialized."
+        "image_ref_model/image_ref_processor don't inherit from ModelMixin - can't be serialized with from_pretrained."
     )
     def test_loading_with_variants(self):
         pass
 
     @unittest.skip(
-        "The pipeline has custom components (image_ref_model, image_ref_processor) that can't be properly serialized."
+        "image_ref_model/image_ref_processor don't inherit from ModelMixin - can't be serialized with from_pretrained."
     )
     def test_save_load_float16(self):
         pass
 
     @unittest.skip(
-        "The pipeline has custom components (image_ref_model, image_ref_processor) that can't be properly serialized."
+        "image_ref_model/image_ref_processor don't inherit from ModelMixin - can't be serialized with from_pretrained."
     )
     def test_save_load_dduf(self):
         pass
 
     @unittest.skip(
-        "The pipeline has custom components (image_ref_model, image_ref_processor) that can't be properly serialized."
+        "image_ref_model/image_ref_processor don't inherit from ModelMixin - can't be serialized with from_pretrained."
     )
     def test_save_load_local(self):
         pass
 
+    # Sequential CPU offload tests are skipped because the real image_ref_model (Siglip2VisionModel)
+    # uses torch.nn.MultiheadAttention which doesn't support sequential CPU offloading.
+    # See: https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip/modeling_siglip.py
+    # The MHA implementation calls torch.nn.functional.multi_head_attention_forward with weights/bias directly,
+    # so the offload hook is never triggered with a forward pass call and weights stay on CPU.
+
     @unittest.skip(
-        "Group offloading sanity checks fail due to custom components."
+        "Siglip2VisionModel uses torch.nn.MultiheadAttention which doesn't support sequential CPU offloading."
     )
-    def test_pipeline_level_group_offloading_sanity_checks(self):
+    def test_sequential_cpu_offload_forward_pass(self):
         pass
 
     @unittest.skip(
-        "The pipeline has custom components (image_ref_model, image_ref_processor) that don't respond to .to() properly."
+        "Siglip2VisionModel uses torch.nn.MultiheadAttention which doesn't support sequential CPU offloading."
     )
-    def test_to_device(self):
-        pass
-
-    @unittest.skip(
-        "The pipeline has custom components (image_ref_model, image_ref_processor) that don't respond to dtype conversion."
-    )
-    def test_to_dtype(self):
+    def test_sequential_offload_forward_pass_twice(self):
         pass
