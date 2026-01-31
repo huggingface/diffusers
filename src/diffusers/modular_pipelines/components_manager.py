@@ -980,7 +980,9 @@ class ComponentsManager:
         output += "\nAdditional Component Info:\n" + "=" * 50 + "\n"
         for name in self.components:
             info = self.get_model_info(name)
-            if info is not None and (info.get("adapters") is not None or info.get("ip_adapter") or info.get("quantization")):
+            if info is not None and (
+                info.get("adapters") is not None or info.get("ip_adapter") or info.get("quantization")
+            ):
                 output += f"\n{name}:\n"
                 if info.get("adapters") is not None:
                     output += f"  Adapters: {info['adapters']}\n"
