@@ -128,6 +128,20 @@ class ModuleGroup:
             if hasattr(torch, "accelerator")
             else torch.cuda
         )
+        self._is_offloaded = self._compute_is_offloaded()
+
+    def _compute_is_offloaded(self) -> bool:
+        tensors = []
+        for group_module in self.modules:
+            tensors.extend(list(group_module.parameters()))
+            tensors.extend(list(group_module.buffers()))
+        tensors.extend(self.parameters)
+        tensors.extend(self.buffers)
+
+        if len(tensors) == 0:
+            return False
+
+        return any(t.device != self.onload_device for t in tensors)
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
@@ -269,6 +283,7 @@ class ModuleGroup:
             self._onload_from_disk()
         else:
             self._onload_from_memory()
+        self._is_offloaded = False
 
     @torch.compiler.disable()
     def offload_(self):
@@ -277,6 +292,7 @@ class ModuleGroup:
             self._offload_to_disk()
         else:
             self._offload_to_memory()
+        self._is_offloaded = True
 
 
 class GroupOffloadingHook(ModelHook):
@@ -295,13 +311,6 @@ class GroupOffloadingHook(ModelHook):
         self.config = config
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
-        # Disk offload only: materialize the safetensor files up front so they exist right after enable_group_offload.
-        # Needed for flows/tests that inspect the offload dir before the first forward
-        #   eg: model.enable_group_offload(..., offload_to_disk_path=tmpdir)
-        #   assert glob.glob(f"{tmpdir}/*.safetensors")
-        # In-memory offload stays lazy to allow adapter loading before the first forward.
-        if self.group.offload_to_disk_path is not None and self.group.offload_leader == module:
-            self.group.offload_()
         return module
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
@@ -310,18 +319,17 @@ class GroupOffloadingHook(ModelHook):
         if self.group.onload_leader is None:
             self.group.onload_leader = module
 
-        should_onload_next_group = self.next_group is not None and not self.next_group.onload_self
-
         if self.group.onload_leader == module:
             # If the current module is the onload_leader of the group, we onload the group if it is supposed
             # to onload itself. In the case of using prefetching with streams, we onload the next group if
             # it is not supposed to onload itself.
             if self.group.pinned:
-                if not self._is_group_on_device():
+                if self.group._is_offloaded:
                     self.group.onload_()
             elif self.group.onload_self:
                 self.group.onload_()
 
+            should_onload_next_group = self.next_group is not None and not self.next_group.onload_self
             if should_onload_next_group:
                 self.next_group.onload_()
 
@@ -364,19 +372,6 @@ class GroupOffloadingHook(ModelHook):
         if self.group.offload_leader == module:
             self.group.offload_()
         return output
-
-    def _is_group_on_device(self) -> bool:
-        tensors = []
-        for group_module in self.group.modules:
-            tensors.extend(list(group_module.parameters()))
-            tensors.extend(list(group_module.buffers()))
-        tensors.extend(self.group.parameters)
-        tensors.extend(self.group.buffers)
-
-        if len(tensors) == 0:
-            return True
-
-        return all(t.device == self.group.onload_device for t in tensors)
 
 
 class LazyPrefetchGroupOffloadingHook(ModelHook):
@@ -474,51 +469,59 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
             group_offloading_hooks[i].next_group = group_offloading_hooks[i + 1].group
             group_offloading_hooks[i].next_group.onload_self = False
 
-        if self.pin_groups is not None and num_executed > 0:
-            param_exec_info = []
-            for idx, ((name, submodule), hook) in enumerate(zip(self.execution_order, group_offloading_hooks)):
-                if hook is None:
-                    continue
-                if next(submodule.parameters(), None) is None and next(submodule.buffers(), None) is None:
-                    continue
-                param_exec_info.append((name, submodule, hook))
-
-            num_param_modules = len(param_exec_info)
-            if num_param_modules > 0:
-                pinned_indices = set()
-                if isinstance(self.pin_groups, str):
-                    if self.pin_groups == "all":
-                        pinned_indices = set(range(num_param_modules))
-                    elif self.pin_groups == "first_last":
-                        pinned_indices.add(0)
-                        pinned_indices.add(num_param_modules - 1)
-                elif callable(self.pin_groups):
-                    for idx, (name, submodule, _) in enumerate(param_exec_info):
-                        should_pin = False
-                        try:
-                            should_pin = bool(self.pin_groups(submodule))
-                        except TypeError:
-                            try:
-                                should_pin = bool(self.pin_groups(name, submodule))
-                            except TypeError:
-                                should_pin = bool(self.pin_groups(name, submodule, idx))
-                        if should_pin:
-                            pinned_indices.add(idx)
-
-                pinned_groups = set()
-                for idx in pinned_indices:
-                    if idx >= num_param_modules:
-                        continue
-                    group = param_exec_info[idx][2].group
-                    if group not in pinned_groups:
-                        group.pinned = True
-                        pinned_groups.add(group)
-
-                for group in pinned_groups:
-                    if group.offload_device != group.onload_device:
-                        group.onload_()
+        if self.pin_groups is not None:
+            self._mark_pinned_groups(group_offloading_hooks)
 
         return output
+
+    def _mark_pinned_groups(self, group_offloading_hooks: List[GroupOffloadingHook]) -> None:
+        if len(self.execution_order) == 0:
+            return
+
+        param_exec_info = []
+        for idx, ((name, submodule), hook) in enumerate(zip(self.execution_order, group_offloading_hooks)):
+            if hook is None:
+                continue
+            if next(submodule.parameters(), None) is None and next(submodule.buffers(), None) is None:
+                continue
+            param_exec_info.append((name, submodule, hook))
+
+        num_param_modules = len(param_exec_info)
+        if num_param_modules == 0:
+            return
+
+        pinned_indices = set()
+        if isinstance(self.pin_groups, str):
+            if self.pin_groups == "all":
+                pinned_indices = set(range(num_param_modules))
+            elif self.pin_groups == "first_last":
+                pinned_indices.add(0)
+                pinned_indices.add(num_param_modules - 1)
+        elif callable(self.pin_groups):
+            for idx, (name, submodule, _) in enumerate(param_exec_info):
+                should_pin = False
+                try:
+                    should_pin = bool(self.pin_groups(submodule))
+                except TypeError:
+                    try:
+                        should_pin = bool(self.pin_groups(name, submodule))
+                    except TypeError:
+                        should_pin = bool(self.pin_groups(name, submodule, idx))
+                if should_pin:
+                    pinned_indices.add(idx)
+
+        pinned_groups = set()
+        for idx in pinned_indices:
+            if idx >= num_param_modules:
+                continue
+            group = param_exec_info[idx][2].group
+            if group not in pinned_groups:
+                group.pinned = True
+                pinned_groups.add(group)
+
+        for group in pinned_groups:
+            if group.offload_device != group.onload_device and group._is_offloaded:
+                group.onload_()
 
 
 class LayerExecutionTrackerHook(ModelHook):
@@ -633,6 +636,7 @@ def apply_group_offloading(
             Optionally keeps selected groups on the onload device permanently. Use `"first_last"` to pin the first and
             last parameter-bearing groups, `"all"` to pin every parameter-bearing group, or pass a callable that
             receives a module (and optionally the module name and index) and returns `True` to pin that group.
+            This option currently requires `use_stream=True`; otherwise it is ignored.
 
     Example:
         ```python
@@ -673,6 +677,9 @@ def apply_group_offloading(
         raise ValueError("`num_blocks_per_group` must be provided when using `offload_type='block_level'.")
 
     pin_groups = _validate_pin_groups(pin_groups)
+    if pin_groups is not None and stream is None:
+        logger.warning("`pin_groups` requires `use_stream=True` and will be ignored when streams are disabled.")
+        pin_groups = None
     _raise_error_if_accelerate_model_or_sequential_hook_present(module)
 
     if block_modules is None:
@@ -732,7 +739,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
 
     for name, submodule in module.named_children():
         # Check if this is an explicitly defined block module
-        if block_modules and name in block_modules:
+        if name in block_modules:
             # Track submodule using a prefix to avoid filename collisions during disk offload.
             # Without this, submodules sharing the same model class would be assigned identical
             # filenames (derived from the class name).
@@ -769,7 +776,6 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
         else:
             # This is an unmatched module
             unmatched_modules.append((name, submodule))
-            modules_with_group_offloading.add(name)
 
     # Apply group offloading hooks to the module groups
     for i, group in enumerate(matched_module_groups):
@@ -807,25 +813,6 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
             _apply_group_offloading_hook(module, unmatched_group, config=config)
         else:
             _apply_lazy_group_offloading_hook(module, unmatched_group, config=config)
-    elif config.stream is None and config.offload_to_disk_path is None:
-        # Ensure the top-level module always has a hook when no unmatched modules/params/buffers,
-        # to satisfy hook presence checks in tests. Using an empty group avoids extra offload files.
-        empty_group = ModuleGroup(
-            modules=[],
-            offload_device=config.offload_device,
-            onload_device=config.onload_device,
-            offload_to_disk_path=None,
-            offload_leader=module,
-            onload_leader=module,
-            parameters=[],
-            buffers=[],
-            non_blocking=False,
-            stream=None,
-            record_stream=False,
-            onload_self=True,
-            group_id=f"{config.module_prefix}{module.__class__.__name__}_empty_group",
-        )
-        _apply_group_offloading_hook(module, empty_group, config=config)
 
 
 def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
@@ -902,28 +889,6 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
             group_id=f"{config.module_prefix}{name}",
         )
         _apply_group_offloading_hook(parent_module, group, config=config)
-
-    # Ensure the top-level module also has a group_offloading hook so hook presence checks pass,
-    # even when it holds no parameters/buffers itself.
-    if config.stream is None:
-        root_registry = HookRegistry.check_if_exists_or_initialize(module)
-        if root_registry.get_hook(_GROUP_OFFLOADING) is None:
-            empty_group = ModuleGroup(
-                modules=[],
-                offload_device=config.offload_device,
-                onload_device=config.onload_device,
-                offload_to_disk_path=None,
-                offload_leader=module,
-                onload_leader=module,
-                parameters=[],
-                buffers=[],
-                non_blocking=False,
-                stream=None,
-                record_stream=False,
-                onload_self=True,
-                group_id=f"{config.module_prefix}{module.__class__.__name__}_empty_group",
-            )
-            root_registry.register_hook(GroupOffloadingHook(empty_group, config=config), _GROUP_OFFLOADING)
 
     if config.stream is not None:
         # When using streams, we need to know the layer execution order for applying prefetching (to overlap data transfer
