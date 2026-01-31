@@ -288,14 +288,12 @@ class BnB8bitBasicTests(Base8bitTests):
         self.assertTrue(linear.weight.__class__ == bnb.nn.Int8Params)
         self.assertTrue(hasattr(linear.weight, "SCB"))
 
+    @require_bitsandbytes_version_greater("0.48.0")
     def test_device_and_dtype_assignment(self):
         r"""
         Test whether trying to cast (or assigning a device to) a model after converting it in 8-bit will throw an error.
         Checks also if other models are casted correctly.
         """
-        with self.assertRaises(ValueError):
-            # Tries with `str`
-            self.model_8bit.to("cpu")
 
         with self.assertRaises(ValueError):
             # Tries with a `dtype``
@@ -303,15 +301,15 @@ class BnB8bitBasicTests(Base8bitTests):
 
         with self.assertRaises(ValueError):
             # Tries with a `device`
-            self.model_8bit.to(torch.device(f"{torch_device}:0"))
-
-        with self.assertRaises(ValueError):
-            # Tries with a `device`
             self.model_8bit.float()
 
         with self.assertRaises(ValueError):
-            # Tries with a `device`
+            # Tries with a `dtype`
             self.model_8bit.half()
+
+        # This should work with 0.48.0
+        self.model_8bit.to("cpu")
+        self.model_8bit.to(torch.device(f"{torch_device}:0"))
 
         # Test if we did not break anything
         self.model_fp16 = self.model_fp16.to(dtype=torch.float32, device=torch_device)
@@ -837,7 +835,7 @@ class BaseBnb8bitSerializationTests(Base8bitTests):
 
 
 @require_torch_version_greater_equal("2.6.0")
-@require_bitsandbytes_version_greater("0.45.5")
+@require_bitsandbytes_version_greater("0.48.0")
 class Bnb8BitCompileTests(QuantCompileTests, unittest.TestCase):
     @property
     def quantization_config(self):
@@ -848,7 +846,7 @@ class Bnb8BitCompileTests(QuantCompileTests, unittest.TestCase):
         )
 
     @pytest.mark.xfail(
-        reason="Test fails because of an offloading problem from Accelerate with confusion in hooks."
+        reason="Test fails because of a type change when recompiling."
         " Test passes without recompilation context manager. Refer to https://github.com/huggingface/diffusers/pull/12002/files#r2240462757 for details."
     )
     def test_torch_compile(self):
@@ -858,6 +856,5 @@ class Bnb8BitCompileTests(QuantCompileTests, unittest.TestCase):
     def test_torch_compile_with_cpu_offload(self):
         super()._test_torch_compile_with_cpu_offload(torch_dtype=torch.float16)
 
-    @pytest.mark.xfail(reason="Test fails because of an offloading problem from Accelerate with confusion in hooks.")
     def test_torch_compile_with_group_offload_leaf(self):
         super()._test_torch_compile_with_group_offload_leaf(torch_dtype=torch.float16, use_stream=True)
