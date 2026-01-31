@@ -13,7 +13,10 @@ specific language governing permissions and limitations under the License.
 
 ## Using Custom Blocks with Mellon
 
-[Mellon](https://github.com/cubiq/Mellon) is a visual workflow interface (similar to ComfyUI) that integrates with Modular Diffusers. This guide shows how to add Mellon support to your custom blocks so they can be used in the Mellon UI.
+[Mellon](https://github.com/cubiq/Mellon) is a visual workflow interface that integrates with Modular Diffusers and is designed for node-based workflows.
+
+> [!WARNING]
+> Mellon is in early development and not yet ready for production use. Consider this a sneak peek of how the integration works! Custom blocks built with Modular Diffusers work with Mellon out of the box - no UI code required - and we'll ensure compatibility as Mellon evolves.
 
 ## Overview
 
