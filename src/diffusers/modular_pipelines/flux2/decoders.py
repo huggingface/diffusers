@@ -29,29 +29,16 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class Flux2DecodeStep(ModularPipelineBlocks):
+class Flux2UnpackLatentsStep(ModularPipelineBlocks):
     model_name = "flux2"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec("vae", AutoencoderKLFlux2),
-            ComponentSpec(
-                "image_processor",
-                Flux2ImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16, "vae_latent_channels": 32}),
-                default_creation_method="from_config",
-            ),
-        ]
-
-    @property
     def description(self) -> str:
-        return "Step that decodes the denoised latents into images using Flux2 VAE with batch norm denormalization"
+        return "Step that unpacks the latents from the denoising step"
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("output_type", default="pil"),
             InputParam(
                 "latents",
                 required=True,
@@ -70,9 +57,9 @@ class Flux2DecodeStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> List[str]:
         return [
             OutputParam(
-                "images",
-                type_hint=Union[List[PIL.Image.Image], torch.Tensor, np.ndarray],
-                description="The generated images, can be a list of PIL.Image.Image, torch.Tensor or a numpy array",
+                "latents",
+                type_hint=torch.Tensor,
+                description="The denoise latents from denoising step, unpacked with position IDs.",
             )
         ]
 
@@ -107,6 +94,62 @@ class Flux2DecodeStep(ModularPipelineBlocks):
 
         return torch.stack(x_list, dim=0)
 
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        latents = block_state.latents
+        latent_ids = block_state.latent_ids
+
+        latents = self._unpack_latents_with_ids(latents, latent_ids)
+
+        block_state.latents = latents
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Flux2DecodeStep(ModularPipelineBlocks):
+    model_name = "flux2"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLFlux2),
+            ComponentSpec(
+                "image_processor",
+                Flux2ImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "vae_latent_channels": 32}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def description(self) -> str:
+        return "Step that decodes the denoised latents into images using Flux2 VAE with batch norm denormalization"
+
+    @property
+    def inputs(self) -> List[Tuple[str, Any]]:
+        return [
+            InputParam("output_type", default="pil"),
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The denoised latents from the denoising step",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[str]:
+        return [
+            OutputParam(
+                "images",
+                type_hint=Union[List[PIL.Image.Image], torch.Tensor, np.ndarray],
+                description="The generated images, can be a list of PIL.Image.Image, torch.Tensor or a numpy array",
+            )
+        ]
+
     @staticmethod
     def _unpatchify_latents(latents):
         """Convert patchified latents back to regular format."""
@@ -121,26 +164,20 @@ class Flux2DecodeStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         vae = components.vae
 
-        if block_state.output_type == "latent":
-            block_state.images = block_state.latents
-        else:
-            latents = block_state.latents
-            latent_ids = block_state.latent_ids
+        latents = block_state.latents
 
-            latents = self._unpack_latents_with_ids(latents, latent_ids)
+        latents_bn_mean = vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)
+        latents_bn_std = torch.sqrt(vae.bn.running_var.view(1, -1, 1, 1) + vae.config.batch_norm_eps).to(
+            latents.device, latents.dtype
+        )
+        latents = latents * latents_bn_std + latents_bn_mean
 
-            latents_bn_mean = vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)
-            latents_bn_std = torch.sqrt(vae.bn.running_var.view(1, -1, 1, 1) + vae.config.batch_norm_eps).to(
-                latents.device, latents.dtype
-            )
-            latents = latents * latents_bn_std + latents_bn_mean
+        latents = self._unpatchify_latents(latents)
 
-            latents = self._unpatchify_latents(latents)
-
-            block_state.images = vae.decode(latents, return_dict=False)[0]
-            block_state.images = components.image_processor.postprocess(
-                block_state.images, output_type=block_state.output_type
-            )
+        block_state.images = vae.decode(latents, return_dict=False)[0]
+        block_state.images = components.image_processor.postprocess(
+            block_state.images, output_type=block_state.output_type
+        )
 
         self.set_block_state(state, block_state)
         return components, state
