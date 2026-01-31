@@ -200,22 +200,9 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         expected_set = {"CosmosControlNetModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    # Skip tests that require standard attention processors (this model uses custom ones)
-    @unittest.skip("CosmosControlNetModel uses custom attention processor.")
-    def test_forward_signature(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel uses custom attention processor.")
-    def test_set_attn_processor_for_determinism(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel uses custom attention processor.")
-    def test_set_default_attn_processor(self):
-        pass
-
-    @unittest.skip("CosmosControlNetModel uses custom attention processor.")
-    def test_set_xformers_attn_processor_for_determinism(self):
-        pass
+    # Note: test_set_attn_processor_for_determinism already handles uses_custom_attn_processor=True
+    # so no explicit skip needed for it
+    # Note: test_forward_signature and test_set_default_attn_processor don't exist in base class
 
     # Skip tests that don't apply to this architecture
     @unittest.skip("CosmosControlNetModel doesn't use norm groups.")
@@ -241,25 +228,28 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
     def test_output(self):
         pass
 
-    # Skip outputs_equivalence - dict/list comparison logic not compatible
+    # Skip outputs_equivalence - dict/list comparison logic not compatible (recursive_check expects dict.values())
     @unittest.skip("ControlNet output structure not compatible with recursive dict check")
     def test_outputs_equivalence(self):
         pass
 
-    # Skip model parallelism - test doesn't use normalize_output for list outputs
-    @unittest.skip("Test doesn't use normalize_output, incompatible with list output")
+    # Skip model parallelism - base test uses torch.allclose(base_output[0], new_output[0]) which fails
+    # because output[0] is the list of control_block_samples, not a tensor
+    @unittest.skip("test_model_parallelism uses torch.allclose on output[0] which is a list, not a tensor")
     def test_model_parallelism(self):
         pass
 
-    # Skip layerwise casting tests - dtype compatibility issues with this model
-    @unittest.skip("Layerwise casting has dtype compatibility issues with this model")
+    # Skip layerwise casting tests - these have two issues:
+    # 1. _inference and _memory: dtype compatibility issues with learnable_pos_embed and float8/bfloat16
+    # 2. _training: same as test_training - mse_loss expects tensor, not list
+    @unittest.skip("Layerwise casting has dtype issues with learnable_pos_embed")
     def test_layerwise_casting_inference(self):
         pass
 
-    @unittest.skip("Layerwise casting has dtype compatibility issues with this model")
+    @unittest.skip("Layerwise casting has dtype issues with learnable_pos_embed")
     def test_layerwise_casting_memory(self):
         pass
 
-    @unittest.skip("Layerwise casting has dtype compatibility issues with this model")
+    @unittest.skip("test_layerwise_casting_training computes mse_loss on list output")
     def test_layerwise_casting_training(self):
         pass
