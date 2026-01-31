@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Quickstart
 
-Modular Diffusers is a framework for quickly building flexible and customizable pipelines. At the core of Modular Diffusers are [`ModularPipelineBlocks`] that can be combined with other blocks to adapt to new workflows. The blocks are converted into a [`ModularPipeline`], a friendly user-facing interface for running generation tasks.
+Modular Diffusers is a framework for quickly building flexible and customizable pipelines. These pipelines can go beyond what standard `DiffusionPipeline`s can do. At the core of Modular Diffusers are [`ModularPipelineBlocks`] that can be combined with other blocks to adapt to new workflows. The blocks are converted into a [`ModularPipeline`], a friendly user-facing interface for running generation tasks.
 
 This guide shows you how to run a modular pipeline, understand its structure, and customize it by modifying the blocks that compose it.
 
@@ -83,7 +83,7 @@ The output returns:
 
 ### Workflows
 
-`QwenImageAutoBlocks` is a [`ConditionalPipelineBlocks`], so this pipeline supports multiple workflows and adapts its behavior based on the inputs you provide. For example, if you pass `image` to the pipeline, it runs an image-to-image workflow instead of text-to-image.
+`QwenImageAutoBlocks` is a [`ConditionalPipelineBlocks`], so this pipeline supports multiple workflows and adapts its behavior based on the inputs you provide. For example, if you pass `image` to the pipeline, it runs an image-to-image workflow instead of text-to-image. Let's see this in action with an example.
 ```py
 from diffusers.utils import load_image
 
@@ -113,7 +113,7 @@ vae_encoder_block = pipe.blocks.sub_blocks["vae_encoder"]
 print(vae_encoder_block.doc)
 ```
 
-This block can be converted to a pipeline and run on its own with [`~ModularPipelineBlocks.init_pipeline`].
+This block can be converted to a pipeline so that it can run on its own with [`~ModularPipelineBlocks.init_pipeline`].
 ```py
 vae_encoder_pipe = vae_encoder_block.init_pipeline()
 
