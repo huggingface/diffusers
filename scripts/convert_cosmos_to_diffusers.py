@@ -434,6 +434,7 @@ CONTROLNET_CONFIGS = {
         "n_controlnet_blocks": 4,
         "model_channels": 2048,
         "in_channels": 130,
+        "latent_channels": 18,  # (16 latent + 1 condition_mask) + 1 padding_mask = 18
         "num_attention_heads": 16,
         "attention_head_dim": 128,
         "mlp_ratio": 4.0,
@@ -441,8 +442,13 @@ CONTROLNET_CONFIGS = {
         "adaln_lora_dim": 256,
         "patch_size": (1, 2, 2),
         "max_size": (128, 240, 240),
-        "patch_size": (1, 2, 2),
         "rope_scale": (1.0, 3.0, 3.0),
+        "extra_pos_embed_type": None,
+        "img_context_dim_in": 1152,
+        "img_context_dim_out": 2048,
+        "use_crossattn_projection": True,
+        "crossattn_proj_in_channels": 100352,
+        "encoder_hidden_states_channels": 1024,
     },
 }
 
@@ -607,50 +613,74 @@ def convert_transformer(
     return transformer
 
 
-def convert_controlnet(transformer_type: str, state_dict: Dict[str, Any], weights_only: bool = True):
+def convert_controlnet(transformer_type: str, control_state_dict: Dict[str, Any], base_state_dict: Dict[str, Any], weights_only: bool = True):
+    """
+    Convert controlnet weights.
+
+    Args:
+        transformer_type: The type of transformer/controlnet
+        control_state_dict: State dict containing controlnet-specific weights
+        base_state_dict: State dict containing base transformer weights (for shared modules)
+        weights_only: Whether to use weights_only loading
+    """
     if transformer_type not in CONTROLNET_CONFIGS:
         raise AssertionError(f"{transformer_type} does not define a ControlNet config")
 
     PREFIX_KEY = "net."
-    old2new = {}
-    new2old = {}
-    for key in list(state_dict.keys()):
+
+    # Process control-specific keys
+    for key in list(control_state_dict.keys()):
         new_key = key[:]
         if new_key.startswith(PREFIX_KEY):
             new_key = new_key.removeprefix(PREFIX_KEY)
         for replace_key, rename_key in CONTROLNET_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
-        old2new[key] = new_key
-        new2old[new_key] = key
-        update_state_dict_(state_dict, key, new_key)
+        update_state_dict_(control_state_dict, key, new_key)
 
-    for key in list(state_dict.keys()):
+    for key in list(control_state_dict.keys()):
         for special_key, handler_fn_inplace in CONTROLNET_SPECIAL_KEYS_REMAP.items():
             if special_key not in key:
                 continue
-            handler_fn_inplace(key, state_dict)
+            handler_fn_inplace(key, control_state_dict)
+
+    # Copy shared weights from base transformer to controlnet
+    # These are the duplicated modules: patch_embed_base, time_embed, learnable_pos_embed, img_context_proj, crossattn_proj
+    shared_module_mappings = {
+        # transformer key prefix -> controlnet key prefix
+        "patch_embed.": "patch_embed_base.",
+        "time_embed.": "time_embed.",
+        "learnable_pos_embed.": "learnable_pos_embed.",
+        "img_context_proj.": "img_context_proj.",
+        "crossattn_proj.": "crossattn_proj.",
+    }
+
+    for key in list(base_state_dict.keys()):
+        for transformer_prefix, controlnet_prefix in shared_module_mappings.items():
+            if key.startswith(transformer_prefix):
+                controlnet_key = controlnet_prefix + key[len(transformer_prefix):]
+                control_state_dict[controlnet_key] = base_state_dict[key].clone()
+                print(f"Copied shared weight: {key} -> {controlnet_key}", flush=True)
+                break
 
     cfg = CONTROLNET_CONFIGS[transformer_type]
     controlnet = CosmosControlNetModel(**cfg)
 
     expected_keys = set(controlnet.state_dict().keys())
-    mapped_keys = set(state_dict.keys())
+    mapped_keys = set(control_state_dict.keys())
     missing_keys = expected_keys - mapped_keys
     unexpected_keys = mapped_keys - expected_keys
     if missing_keys:
         print(f"WARNING: missing controlnet keys ({len(missing_keys)}):", file=sys.stderr, flush=True)
-        for k in missing_keys:
+        for k in sorted(missing_keys):
             print(k, file=sys.stderr)
-        breakpoint()
         sys.exit(3)
     if unexpected_keys:
         print(f"WARNING: unexpected controlnet keys ({len(unexpected_keys)}):", file=sys.stderr, flush=True)
-        for k in unexpected_keys:
+        for k in sorted(unexpected_keys):
             print(k, file=sys.stderr)
-        breakpoint()
         sys.exit(4)
 
-    controlnet.load_state_dict(state_dict, strict=False, assign=True)
+    controlnet.load_state_dict(control_state_dict, strict=True, assign=True)
     return controlnet
 
 
@@ -848,11 +878,16 @@ if __name__ == "__main__":
                     base_state_dict[k] = v
             assert len(base_state_dict.keys() & control_state_dict.keys()) == 0
 
-            controlnet = convert_controlnet(args.transformer_type, control_state_dict, weights_only=weights_only)
-            controlnet = controlnet.to(dtype=dtype)
-
+            # Convert transformer first to get the processed base state dict
             transformer = convert_transformer(args.transformer_type, state_dict=base_state_dict, weights_only=weights_only)
             transformer = transformer.to(dtype=dtype)
+
+            # Get converted transformer state dict to copy shared weights to controlnet
+            converted_base_state_dict = transformer.state_dict()
+
+            # Convert controlnet with both control-specific and shared weights from transformer
+            controlnet = convert_controlnet(args.transformer_type, control_state_dict, converted_base_state_dict, weights_only=weights_only)
+            controlnet = controlnet.to(dtype=dtype)
 
             if not args.save_pipeline:
                 transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")

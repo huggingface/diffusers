@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import PIL.Image
 import numpy as np
@@ -84,31 +84,46 @@ def transfer2_5_forward(
     cond_mask: torch.Tensor,
     padding_mask: torch.Tensor,
 ):
+    """
+    Forward pass for Transfer2.5 pipeline.
+
+    This function calls both transformer and controlnet's forward() methods directly,
+    enabling proper CPU offloading. The controlnet computes its own embeddings internally
+    using duplicated modules (patch_embed_base, time_embed, etc.).
+
+    Args:
+        transformer: The CosmosTransformer3DModel
+        controlnet: The CosmosControlNetModel (can be None)
+        in_latents: Input latents [B, C, T, H, W]
+        controls_latents: Control signal latents [B, C, T, H, W] (can be None)
+        controls_conditioning_scale: Scale factor(s) for control outputs
+        in_timestep: Diffusion timestep tensor
+        encoder_hidden_states: Tuple of (text_context, img_context)
+        cond_mask: Conditioning mask [B, 1, T, H, W]
+        padding_mask: Padding mask [B, 1, H, W]
+
+    Returns:
+        Model output tensor
+    """
     control_blocks = None
-    prepared_inputs = transformer.prepare_inputs(
-        hidden_states=in_latents,
-        condition_mask=cond_mask,
-        timestep=in_timestep,
-        encoder_hidden_states=encoder_hidden_states,
-        padding_mask=padding_mask,
-    )
-    if controls_latents is not None:
+    if controls_latents is not None and controlnet is not None:
         control_blocks = controlnet(
             controls_latents=controls_latents,
-            latents=prepared_inputs["hidden_states"],
-            conditioning_scale=controls_conditioning_scale,
+            latents=in_latents,
+            timestep=in_timestep,
+            encoder_hidden_states=encoder_hidden_states,
             condition_mask=cond_mask,
+            conditioning_scale=controls_conditioning_scale,
             padding_mask=padding_mask,
-            encoder_hidden_states=prepared_inputs["encoder_hidden_states"],
-            temb=prepared_inputs["temb"],
-            embedded_timestep=prepared_inputs["embedded_timestep"],
-            attention_mask=prepared_inputs["attention_mask"],
-            prepared_inputs=prepared_inputs, # TODO: remove
         )
 
-    noise_pred = transformer._forward(
-        prepared_inputs=prepared_inputs,
+    noise_pred = transformer(
+        hidden_states=in_latents,
+        timestep=in_timestep,
+        encoder_hidden_states=encoder_hidden_states,
         block_controlnet_hidden_states=control_blocks,
+        condition_mask=cond_mask,
+        padding_mask=padding_mask,
         return_dict=False,
     )[0]
     return noise_pred
@@ -248,8 +263,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         scheduler: UniPCMultistepScheduler,
         controlnet: CosmosControlNetModel,
         safety_checker: CosmosSafetyChecker = None,
-        image_ref_model: Siglip2VisionModel | None = None,
-        image_ref_processor: Siglip2ImageProcessorFast | None = None,
+        image_ref_model: Optional[Siglip2VisionModel] = None,
+        image_ref_processor: Optional[Siglip2ImageProcessorFast] = None,
     ):
         super().__init__()
 

@@ -99,7 +99,8 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         torch.manual_seed(0)
         controlnet = CosmosControlNetModel(
             n_controlnet_blocks=2,
-            in_channels=16 + 1 + 1,
+            in_channels=16 + 1 + 1,  # control latent channels + condition_mask + padding_mask
+            latent_channels=16 + 1 + 1,  # base latent channels (16) + condition_mask (1) + padding_mask (1) = 18
             model_channels=32,
             num_attention_heads=2,
             attention_head_dim=16,
@@ -109,6 +110,10 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             patch_size=(1, 2, 2),
             max_size=(4, 32, 32),
             rope_scale=(2.0, 1.0, 1.0),
+            extra_pos_embed_type="learnable",  # Match transformer's config
+            img_context_dim_in=32,
+            img_context_dim_out=32,
+            use_crossattn_projection=False,  # Test doesn't need this projection
         )
 
         torch.manual_seed(0)
@@ -165,12 +170,16 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             def __init__(self):
                 super().__init__()
                 self.linear = torch.nn.Linear(32, 32)
-                # Register a buffer to track dtype
+                # Register a buffer to track dtype and device
                 self.register_buffer("_dtype_tracker", torch.zeros(1))
 
             @property
             def dtype(self):
                 return self._dtype_tracker.dtype
+
+            @property
+            def device(self):
+                return self._dtype_tracker.device
 
             def forward(self, pixel_values, **kwargs):
                 # Return a dummy output with last_hidden_state
@@ -418,47 +427,31 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    @unittest.skip(
-        "CPU offload is not compatible with the transfer2_5_forward function architecture. "
-        "The function calls transformer.prepare_inputs and transformer._forward separately, "
-        "which bypasses the CPU offload hooks that trigger on transformer.forward calls."
-    )
-    def test_cpu_offload_forward_pass_twice(self):
-        pass
+    # CPU offload tests should now work with the refactored architecture
+    # that uses proper forward() calls on both transformer and controlnet.
+    # However, sequential offload has issues with custom components (image_ref_model).
 
     @unittest.skip(
-        "CPU offload is not compatible with the transfer2_5_forward function architecture."
+        "Sequential CPU offload doesn't properly handle custom image_ref_model component."
     )
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
     @unittest.skip(
-        "CPU offload is not compatible with the transfer2_5_forward function architecture."
-    )
-    def test_model_cpu_offload_forward_pass(self):
-        pass
-
-    @unittest.skip(
-        "CPU offload is not compatible with the transfer2_5_forward function architecture."
+        "Sequential CPU offload doesn't properly handle custom image_ref_model component."
     )
     def test_sequential_offload_forward_pass_twice(self):
         pass
 
-    @unittest.skip(
-        "Group offloading is not compatible with the transfer2_5_forward function architecture."
-    )
+    @unittest.skip("Group offloading has compatibility issues with custom components.")
     def test_group_offloading_inference(self):
         pass
 
-    @unittest.skip(
-        "Group offloading is not compatible with the transfer2_5_forward function architecture."
-    )
+    @unittest.skip("Group offloading has compatibility issues with custom components.")
     def test_pipeline_level_group_offloading_inference(self):
         pass
 
-    @unittest.skip(
-        "Layerwise casting is not compatible with the transfer2_5_forward function architecture."
-    )
+    @unittest.skip("Layerwise casting has compatibility issues with this pipeline's components.")
     def test_layerwise_casting_inference(self):
         pass
 
