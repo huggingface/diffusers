@@ -426,7 +426,8 @@ class ComponentsManager:
 
         # add component to components manager
         self.components[component_id] = component
-        self.added_time[component_id] = time.time()
+        if is_new_component:
+            self.added_time[component_id] = time.time()
 
         if collection:
             if collection not in self.collections:
