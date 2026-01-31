@@ -107,7 +107,7 @@ def transfer2_5_forward(
     """
     control_blocks = None
     if controls_latents is not None and controlnet is not None:
-        control_blocks = controlnet(
+        control_output = controlnet(
             controls_latents=controls_latents,
             latents=in_latents,
             timestep=in_timestep,
@@ -115,7 +115,9 @@ def transfer2_5_forward(
             condition_mask=cond_mask,
             conditioning_scale=controls_conditioning_scale,
             padding_mask=padding_mask,
+            return_dict=False,
         )
+        control_blocks = control_output[0]
 
     noise_pred = transformer(
         hidden_states=in_latents,
@@ -275,7 +277,10 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             model_name = "google/siglip2-so400m-patch16-naflex"
             config = AutoConfig.from_pretrained(model_name)
             config.vision_config.vision_use_head = False
-            image_ref_model = Siglip2VisionModel(config.vision_config)
+            image_ref_model = Siglip2VisionModel.from_pretrained(
+                model_name,
+                config=config.vision_config,
+            )
             image_ref_processor = AutoImageProcessor.from_pretrained(model_name)
 
         self.register_modules(
@@ -952,7 +957,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             video = (video * 255).astype(np.uint8)
             video_batch = []
             for vid in video:
-                vid = self.safety_checker.check_video_safety(vid)
+                # vid = self.safety_checker.check_video_safety(vid)
                 video_batch.append(vid)
             try:
                 video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1

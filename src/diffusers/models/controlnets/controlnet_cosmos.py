@@ -15,12 +15,24 @@ from ..transformers.transformer_cosmos import (
     CosmosEmbedding,
     CosmosLearnablePositionalEmbed,
 )
-from .controlnet import zero_module
 
 if is_torchvision_available():
     from torchvision import transforms
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@dataclass
+class CosmosControlNetOutput(BaseOutput):
+    """
+    Output of [`CosmosControlNetModel`].
+
+    Args:
+        control_block_samples (`list[torch.Tensor]`):
+            List of control block activations to be injected into transformer blocks.
+    """
+
+    control_block_samples: List[torch.Tensor]
 
 
 class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
@@ -34,6 +46,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embed", "patch_embed_base", "time_embed"]
+    _no_split_modules = ["CosmosTransformerBlock"]
     _keep_in_fp32_modules = ["learnable_pos_embed"]
 
     @register_to_config
@@ -41,7 +54,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         n_controlnet_blocks: int = 4,
         in_channels: int = 130,
-        latent_channels: int = 17,  # base latent channels (latents + condition_mask) + padding_mask
+        latent_channels: int = 18,  # base latent channels (latents + condition_mask) + padding_mask
         model_channels: int = 2048,
         num_attention_heads: int = 32,
         attention_head_dim: int = 128,
@@ -60,11 +73,8 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     ):
         super().__init__()
 
-        # Control signal patch embedding (for control latents)
         self.patch_embed = CosmosPatchEmbed(in_channels, model_channels, patch_size, bias=False)
 
-        # Duplicated modules from transformer for base latent processing
-        # TODO: remove patch_embed_base and use patch_embed instead
         self.patch_embed_base = CosmosPatchEmbed(latent_channels, model_channels, patch_size, bias=False)
         self.time_embed = CosmosEmbedding(model_channels, model_channels)
 
@@ -143,7 +153,8 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         padding_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         fps: Optional[int] = None,
-    ) -> List[torch.Tensor]:
+        return_dict: bool = True,
+    ) -> Union[CosmosControlNetOutput, Tuple[List[torch.Tensor]]]:
         """
         Forward pass for the ControlNet.
 
@@ -157,9 +168,10 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             padding_mask: Padding mask [B, 1, H, W] or None
             attention_mask: Optional attention mask or None
             fps: Frames per second for RoPE or None
+            return_dict: Whether to return a CosmosControlNetOutput or a tuple
 
         Returns:
-            List of control tensors, one per control block
+            CosmosControlNetOutput or tuple of control tensors
         """
         B, C, T, H, W = controls_latents.shape
 
@@ -185,7 +197,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             [control_hidden_states, padding_mask_resized.unsqueeze(2).repeat(B, 1, T, 1, 1)], dim=1
         )
 
-        # 2. Prepare base latents (same processing as transformer.prepare_inputs)
+        # 2. Prepare base latents (same processing as transformer.forward)
         base_hidden_states = latents
         if condition_mask is not None:
             base_hidden_states = torch.cat([base_hidden_states, condition_mask], dim=1)
@@ -291,4 +303,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 )
             result.append(control_proj * scale)
 
-        return result
+        if not return_dict:
+            return (result,)
+
+        return CosmosControlNetOutput(control_block_samples=result)
