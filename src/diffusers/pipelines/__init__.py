@@ -410,11 +410,12 @@ else:
         "Kandinsky5I2IPipeline",
     ]
     _import_structure["z_image"] = [
-        "ZImageImg2ImgPipeline",
-        "ZImagePipeline",
-        "ZImageControlNetPipeline",
         "ZImageControlNetInpaintPipeline",
+        "ZImageControlNetPipeline",
+        "ZImageImg2ImgPipeline",
+        "ZImageInpaintPipeline",
         "ZImageOmniPipeline",
+        "ZImagePipeline",
     ]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
@@ -870,6 +871,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetInpaintPipeline,
             ZImageControlNetPipeline,
             ZImageImg2ImgPipeline,
+            ZImageInpaintPipeline,
             ZImageOmniPipeline,
             ZImagePipeline,
         )
