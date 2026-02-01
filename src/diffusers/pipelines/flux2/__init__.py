@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_flux2"] = ["Flux2Pipeline"]
     _import_structure["pipeline_flux2_klein"] = ["Flux2KleinPipeline"]
+    _import_structure["pipeline_flux2_klein_inpaint"] = ["Flux2KleinInpaintPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -33,6 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_flux2 import Flux2Pipeline
         from .pipeline_flux2_klein import Flux2KleinPipeline
+        from .pipeline_flux2_klein_inpaint import Flux2KleinInpaintPipeline
 else:
     import sys
 
