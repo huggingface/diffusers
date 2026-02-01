@@ -101,7 +101,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
+# Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -239,7 +239,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         self.prompt_template_encode_start_idx = 34
         self.default_sample_size = 128
 
-    # Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.extract_masked_hidden
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.extract_masked_hidden
     def _extract_masked_hidden(self, hidden_states: torch.Tensor, mask: torch.Tensor):
         bool_mask = mask.bool()
         valid_lengths = bool_mask.sum(dim=1)
@@ -248,7 +248,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return split_result
 
-    # Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.get_qwen_prompt_embeds
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.get_qwen_prompt_embeds
     def _get_qwen_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -287,7 +287,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return prompt_embeds, encoder_attention_mask
 
-    # Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.encode_prompt
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
