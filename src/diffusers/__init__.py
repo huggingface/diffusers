@@ -413,6 +413,9 @@ else:
     _import_structure["modular_pipelines"].extend(
         [
             "Flux2AutoBlocks",
+            "Flux2KleinAutoBlocks",
+            "Flux2KleinBaseAutoBlocks",
+            "Flux2KleinModularPipeline",
             "Flux2ModularPipeline",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
@@ -457,6 +460,7 @@ else:
             "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
+            "BriaFiboEditPipeline",
             "BriaFiboPipeline",
             "BriaPipeline",
             "ChromaImg2ImgPipeline",
@@ -1145,6 +1149,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modular_pipelines import (
             Flux2AutoBlocks,
+            Flux2KleinAutoBlocks,
+            Flux2KleinBaseAutoBlocks,
+            Flux2KleinModularPipeline,
             Flux2ModularPipeline,
             FluxAutoBlocks,
             FluxKontextAutoBlocks,
@@ -1185,6 +1192,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             AuraFlowPipeline,
+            BriaFiboEditPipeline,
             BriaFiboPipeline,
             BriaPipeline,
             ChromaImg2ImgPipeline,

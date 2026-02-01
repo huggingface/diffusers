@@ -15,13 +15,15 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
-from transformers import AutoProcessor, Mistral3ForConditionalGeneration
+from transformers import AutoProcessor, Mistral3ForConditionalGeneration, Qwen2TokenizerFast, Qwen3ForCausalLM
 
+from ...configuration_utils import FrozenDict
+from ...guiders import ClassifierFreeGuidance
 from ...models import AutoencoderKLFlux2
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import Flux2ModularPipeline
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
+from .modular_pipeline import Flux2KleinModularPipeline, Flux2ModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -79,10 +81,8 @@ class Flux2TextEncoderStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("prompt"),
-            InputParam("prompt_embeds", type_hint=torch.Tensor, required=False),
             InputParam("max_sequence_length", type_hint=int, default=512, required=False),
             InputParam("text_encoder_out_layers", type_hint=Tuple[int], default=(10, 20, 30), required=False),
-            InputParam("joint_attention_kwargs"),
         ]
 
     @property
@@ -99,14 +99,7 @@ class Flux2TextEncoderStep(ModularPipelineBlocks):
     @staticmethod
     def check_inputs(block_state):
         prompt = block_state.prompt
-        prompt_embeds = getattr(block_state, "prompt_embeds", None)
-
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. "
-                "Please make sure to only forward one of the two."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
     @staticmethod
@@ -165,10 +158,6 @@ class Flux2TextEncoderStep(ModularPipelineBlocks):
 
         block_state.device = components._execution_device
 
-        if block_state.prompt_embeds is not None:
-            self.set_block_state(state, block_state)
-            return components, state
-
         prompt = block_state.prompt
         if prompt is None:
             prompt = ""
@@ -205,7 +194,6 @@ class Flux2RemoteTextEncoderStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("prompt"),
-            InputParam("prompt_embeds", type_hint=torch.Tensor, required=False),
         ]
 
     @property
@@ -222,15 +210,8 @@ class Flux2RemoteTextEncoderStep(ModularPipelineBlocks):
     @staticmethod
     def check_inputs(block_state):
         prompt = block_state.prompt
-        prompt_embeds = getattr(block_state, "prompt_embeds", None)
-
-        if prompt is not None and prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. "
-                "Please make sure to only forward one of the two."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(block_state.prompt)}")
 
     @torch.no_grad()
     def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
@@ -243,10 +224,6 @@ class Flux2RemoteTextEncoderStep(ModularPipelineBlocks):
         self.check_inputs(block_state)
 
         block_state.device = components._execution_device
-
-        if block_state.prompt_embeds is not None:
-            self.set_block_state(state, block_state)
-            return components, state
 
         prompt = block_state.prompt
         if prompt is None:
@@ -265,6 +242,289 @@ class Flux2RemoteTextEncoderStep(ModularPipelineBlocks):
 
         block_state.prompt_embeds = torch.load(io.BytesIO(response.content), weights_only=True)
         block_state.prompt_embeds = block_state.prompt_embeds.to(block_state.device)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
+    model_name = "flux2-klein"
+
+    @property
+    def description(self) -> str:
+        return "Text Encoder step that generates text embeddings using Qwen3 to guide the image generation"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("text_encoder", Qwen3ForCausalLM),
+            ComponentSpec("tokenizer", Qwen2TokenizerFast),
+        ]
+
+    @property
+    def expected_configs(self) -> List[ConfigSpec]:
+        return [
+            ConfigSpec(name="is_distilled", default=True),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("prompt"),
+            InputParam("max_sequence_length", type_hint=int, default=512, required=False),
+            InputParam("text_encoder_out_layers", type_hint=Tuple[int], default=(9, 18, 27), required=False),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                "prompt_embeds",
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="Text embeddings from qwen3 used to guide the image generation",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(block_state):
+        prompt = block_state.prompt
+
+        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+    @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2_klein.Flux2KleinPipeline._get_qwen3_prompt_embeds
+    def _get_qwen3_prompt_embeds(
+        text_encoder: Qwen3ForCausalLM,
+        tokenizer: Qwen2TokenizerFast,
+        prompt: Union[str, List[str]],
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        max_sequence_length: int = 512,
+        hidden_states_layers: List[int] = (9, 18, 27),
+    ):
+        dtype = text_encoder.dtype if dtype is None else dtype
+        device = text_encoder.device if device is None else device
+
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+
+        all_input_ids = []
+        all_attention_masks = []
+
+        for single_prompt in prompt:
+            messages = [{"role": "user", "content": single_prompt}]
+            text = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
+            inputs = tokenizer(
+                text,
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=max_sequence_length,
+            )
+
+            all_input_ids.append(inputs["input_ids"])
+            all_attention_masks.append(inputs["attention_mask"])
+
+        input_ids = torch.cat(all_input_ids, dim=0).to(device)
+        attention_mask = torch.cat(all_attention_masks, dim=0).to(device)
+
+        # Forward pass through the model
+        output = text_encoder(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=True,
+            use_cache=False,
+        )
+
+        # Only use outputs from intermediate layers and stack them
+        out = torch.stack([output.hidden_states[k] for k in hidden_states_layers], dim=1)
+        out = out.to(dtype=dtype, device=device)
+
+        batch_size, num_channels, seq_len, hidden_dim = out.shape
+        prompt_embeds = out.permute(0, 2, 1, 3).reshape(batch_size, seq_len, num_channels * hidden_dim)
+
+        return prompt_embeds
+
+    @torch.no_grad()
+    def __call__(self, components: Flux2KleinModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(block_state)
+
+        device = components._execution_device
+
+        prompt = block_state.prompt
+        if prompt is None:
+            prompt = ""
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+
+        block_state.prompt_embeds = self._get_qwen3_prompt_embeds(
+            text_encoder=components.text_encoder,
+            tokenizer=components.tokenizer,
+            prompt=prompt,
+            device=device,
+            max_sequence_length=block_state.max_sequence_length,
+            hidden_states_layers=block_state.text_encoder_out_layers,
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Flux2KleinBaseTextEncoderStep(ModularPipelineBlocks):
+    model_name = "flux2-klein"
+
+    @property
+    def description(self) -> str:
+        return "Text Encoder step that generates text embeddings using Qwen3 to guide the image generation"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("text_encoder", Qwen3ForCausalLM),
+            ComponentSpec("tokenizer", Qwen2TokenizerFast),
+            ComponentSpec(
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 4.0}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def expected_configs(self) -> List[ConfigSpec]:
+        return [
+            ConfigSpec(name="is_distilled", default=False),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("prompt"),
+            InputParam("max_sequence_length", type_hint=int, default=512, required=False),
+            InputParam("text_encoder_out_layers", type_hint=Tuple[int], default=(9, 18, 27), required=False),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                "prompt_embeds",
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="Text embeddings from qwen3 used to guide the image generation",
+            ),
+            OutputParam(
+                "negative_prompt_embeds",
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="Negative text embeddings from qwen3 used to guide the image generation",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(block_state):
+        prompt = block_state.prompt
+
+        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+    @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2_klein.Flux2KleinPipeline._get_qwen3_prompt_embeds
+    def _get_qwen3_prompt_embeds(
+        text_encoder: Qwen3ForCausalLM,
+        tokenizer: Qwen2TokenizerFast,
+        prompt: Union[str, List[str]],
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        max_sequence_length: int = 512,
+        hidden_states_layers: List[int] = (9, 18, 27),
+    ):
+        dtype = text_encoder.dtype if dtype is None else dtype
+        device = text_encoder.device if device is None else device
+
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+
+        all_input_ids = []
+        all_attention_masks = []
+
+        for single_prompt in prompt:
+            messages = [{"role": "user", "content": single_prompt}]
+            text = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
+            inputs = tokenizer(
+                text,
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=max_sequence_length,
+            )
+
+            all_input_ids.append(inputs["input_ids"])
+            all_attention_masks.append(inputs["attention_mask"])
+
+        input_ids = torch.cat(all_input_ids, dim=0).to(device)
+        attention_mask = torch.cat(all_attention_masks, dim=0).to(device)
+
+        # Forward pass through the model
+        output = text_encoder(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=True,
+            use_cache=False,
+        )
+
+        # Only use outputs from intermediate layers and stack them
+        out = torch.stack([output.hidden_states[k] for k in hidden_states_layers], dim=1)
+        out = out.to(dtype=dtype, device=device)
+
+        batch_size, num_channels, seq_len, hidden_dim = out.shape
+        prompt_embeds = out.permute(0, 2, 1, 3).reshape(batch_size, seq_len, num_channels * hidden_dim)
+
+        return prompt_embeds
+
+    @torch.no_grad()
+    def __call__(self, components: Flux2KleinModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(block_state)
+
+        device = components._execution_device
+
+        prompt = block_state.prompt
+        if prompt is None:
+            prompt = ""
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+
+        block_state.prompt_embeds = self._get_qwen3_prompt_embeds(
+            text_encoder=components.text_encoder,
+            tokenizer=components.tokenizer,
+            prompt=prompt,
+            device=device,
+            max_sequence_length=block_state.max_sequence_length,
+            hidden_states_layers=block_state.text_encoder_out_layers,
+        )
+
+        if components.requires_unconditional_embeds:
+            negative_prompt = [""] * len(prompt)
+            block_state.negative_prompt_embeds = self._get_qwen3_prompt_embeds(
+                text_encoder=components.text_encoder,
+                tokenizer=components.tokenizer,
+                prompt=negative_prompt,
+                device=device,
+                max_sequence_length=block_state.max_sequence_length,
+                hidden_states_layers=block_state.text_encoder_out_layers,
+            )
+        else:
+            block_state.negative_prompt_embeds = None
 
         self.set_block_state(state, block_state)
         return components, state
