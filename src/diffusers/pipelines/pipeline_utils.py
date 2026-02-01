@@ -243,6 +243,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         variant: Optional[str] = None,
         max_shard_size: Optional[Union[int, str]] = None,
         push_to_hub: bool = False,
+        use_flashpack: bool = False,
         **kwargs,
     ):
         """
@@ -268,7 +269,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                Whether or not to use `flashpack` to save the model weights. Requires the `flashpack` library: `pip install
+                flashpack`.
             kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
@@ -340,6 +343,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
             save_method_accept_variant = "variant" in save_method_signature.parameters
             save_method_accept_max_shard_size = "max_shard_size" in save_method_signature.parameters
+            save_method_accept_flashpack = "use_flashpack" in save_method_signature.parameters
 
             save_kwargs = {}
             if save_method_accept_safe:
@@ -349,6 +353,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if save_method_accept_max_shard_size and max_shard_size is not None:
                 # max_shard_size is expected to not be None in ModelMixin
                 save_kwargs["max_shard_size"] = max_shard_size
+            if save_method_accept_flashpack:
+                save_kwargs["use_flashpack"] = use_flashpack
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
@@ -707,6 +713,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                If set to `True`, the model is first loaded from `flashpack` weights if a compatible `.flashpack` file
+                is found. If flashpack is unavailable or the `.flashpack` file cannot be used, automatic fallback to
+                the standard loading path (for example, `safetensors`). Requires the `flashpack` library: `pip install
+                flashpack`.
             use_onnx (`bool`, *optional*, defaults to `None`):
                 If set to `True`, ONNX weights will always be downloaded if present. If set to `False`, ONNX weights
                 will never be downloaded. By default `use_onnx` defaults to the `_is_onnx` class attribute which is
@@ -772,6 +783,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         dduf_file = kwargs.pop("dduf_file", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        use_flashpack = kwargs.pop("use_flashpack", False)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         quantization_config = kwargs.pop("quantization_config", None)
@@ -1061,6 +1073,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                     use_safetensors=use_safetensors,
+                    use_flashpack=use_flashpack,
                     dduf_entries=dduf_entries,
                     provider_options=provider_options,
                     disable_mmap=disable_mmap,

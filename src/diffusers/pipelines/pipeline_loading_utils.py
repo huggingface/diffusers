@@ -756,6 +756,7 @@ def load_sub_model(
     low_cpu_mem_usage: bool,
     cached_folder: Union[str, os.PathLike],
     use_safetensors: bool,
+    use_flashpack: bool,
     dduf_entries: Optional[Dict[str, DDUFEntry]],
     provider_options: Any,
     disable_mmap: bool,
@@ -837,6 +838,9 @@ def load_sub_model(
         loading_kwargs["offload_state_dict"] = offload_state_dict
         loading_kwargs["variant"] = model_variants.pop(name, None)
         loading_kwargs["use_safetensors"] = use_safetensors
+
+        if is_diffusers_model:
+            loading_kwargs["use_flashpack"] = use_flashpack
 
         if from_flax:
             loading_kwargs["from_flax"] = True
