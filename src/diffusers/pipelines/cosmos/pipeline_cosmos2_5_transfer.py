@@ -130,21 +130,26 @@ def transfer2_5_forward(
     )[0]
     return noise_pred
 
+DEFAULT_NEGATIVE_PROMPT = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
 
 EXAMPLE_DOC_STRING = """
     Examples:
         ```python
+        >>> import cv2
+        >>> import numpy as np
         >>> import torch
         >>> from diffusers import Cosmos2_5_TransferPipeline
-        >>> from diffusers.utils import export_to_video, load_image, load_video
+        >>> from diffusers.utils import export_to_video, load_video
 
+        >>> # Load a Transfer2.5 model variant (edge, depth, seg, or blur)
         >>> model_id = "nvidia/Cosmos-Transfer2.5-2B"
         >>> pipe = Cosmos2_5_TransferPipeline.from_pretrained(
-        ...     model_id, revision="diffusers/base/post-trained", torch_dtype=torch.bfloat16
+        ...     model_id, revision="general/edge", torch_dtype=torch.bfloat16
         ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> # Common negative prompt reused across modes.
+        >>> # Video2World with edge control: Generate video guided by edge maps extracted from input video.
+        >>> prompt = "A serene Japanese garden with a koi pond and cherry blossoms gently falling."
         >>> negative_prompt = (
         ...     "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
         ...     "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
@@ -153,78 +158,24 @@ EXAMPLE_DOC_STRING = """
         ...     "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
         ...     "Overall, the video is of poor quality."
         ... )
+        >>> input_video = load_video("input_video.mp4")
+        >>> num_frames = 93
 
-        >>> # Text2World: generate a 93-frame world video from text only.
-        >>> prompt = (
-        ...     "As the red light shifts to green, the red bus at the intersection begins to move forward, its headlights "
-        ...     "cutting through the falling snow. The snowy tire tracks deepen as the vehicle inches ahead, casting fresh "
-        ...     "lines onto the slushy road. Around it, streetlights glow warmer, illuminating the drifting flakes and wet "
-        ...     "reflections on the asphalt. Other cars behind start to edge forward, their beams joining the scene. "
-        ...     "The stillness of the urban street transitions into motion as the quiet snowfall is punctuated by the slow "
-        ...     "advance of traffic through the frosty city corridor."
-        ... )
+        >>> # Extract edge maps from the input video using Canny edge detection
+        >>> edge_maps = [cv2.Canny(np.array(frame), 100, 200) for frame in input_video[:num_frames]]
+        >>> edge_maps = np.stack(edge_maps)[None]  # (T, H, W) -> (1, T, H, W)
+        >>> controls = torch.from_numpy(edge_maps).expand(3, -1, -1, -1)  # (1, T, H, W) -> (3, T, H, W)
+        >>> controls = controls.permute(1, 0, 2, 3)  # (3, T, H, W) -> (T, 3, H, W)
+
         >>> video = pipe(
-        ...     image=None,
-        ...     video=None,
+        ...     video=input_video[:num_frames],
+        ...     controls=controls,
+        ...     controls_conditioning_scale=1.0,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
-        ...     num_frames=93,
-        ...     generator=torch.Generator().manual_seed(1),
+        ...     num_frames=num_frames,
         ... ).frames[0]
-        >>> export_to_video(video, "text2world.mp4", fps=16)
-
-        >>> # Image2World: condition on a single image and generate a 93-frame world video.
-        >>> prompt = (
-        ...     "A high-definition video captures the precision of robotic welding in an industrial setting. "
-        ...     "The first frame showcases a robotic arm, equipped with a welding torch, positioned over a large metal structure. "
-        ...     "The welding process is in full swing, with bright sparks and intense light illuminating the scene, creating a vivid "
-        ...     "display of blue and white hues. A significant amount of smoke billows around the welding area, partially obscuring "
-        ...     "the view but emphasizing the heat and activity. The background reveals parts of the workshop environment, including a "
-        ...     "ventilation system and various pieces of machinery, indicating a busy and functional industrial workspace. As the video "
-        ...     "progresses, the robotic arm maintains its steady position, continuing the welding process and moving to its left. "
-        ...     "The welding torch consistently emits sparks and light, and the smoke continues to rise, diffusing slightly as it moves upward. "
-        ...     "The metal surface beneath the torch shows ongoing signs of heating and melting. The scene retains its industrial ambiance, with "
-        ...     "the welding sparks and smoke dominating the visual field, underscoring the ongoing nature of the welding operation."
-        ... )
-        >>> image = load_image(
-        ...     "https://media.githubusercontent.com/media/nvidia-cosmos/cosmos-predict2.5/refs/heads/main/assets/base/robot_welding.jpg"
-        ... )
-        >>> video = pipe(
-        ...     image=image,
-        ...     video=None,
-        ...     prompt=prompt,
-        ...     negative_prompt=negative_prompt,
-        ...     num_frames=93,
-        ...     generator=torch.Generator().manual_seed(1),
-        ... ).frames[0]
-        >>> export_to_video(video, "image2world.mp4", fps=16)
-
-        >>> # Video2World: condition on an input clip and predict a 93-frame world video.
-        >>> prompt = (
-        ...     "The video opens with an aerial view of a large-scale sand mining construction operation, showcasing extensive piles "
-        ...     "of brown sand meticulously arranged in parallel rows. A central water channel, fed by a water pipe, flows through the "
-        ...     "middle of these sand heaps, creating ripples and movement as it cascades down. The surrounding area features dense green "
-        ...     "vegetation on the left, contrasting with the sandy terrain, while a body of water is visible in the background on the right. "
-        ...     "As the video progresses, a piece of heavy machinery, likely a bulldozer, enters the frame from the right, moving slowly along "
-        ...     "the edge of the sand piles. This machinery's presence indicates ongoing construction work in the operation. The final frame "
-        ...     "captures the same scene, with the water continuing its flow and the bulldozer still in motion, maintaining the dynamic yet "
-        ...     "steady pace of the construction activity."
-        ... )
-        >>> input_video = load_video(
-        ...     "https://github.com/nvidia-cosmos/cosmos-predict2.5/raw/refs/heads/main/assets/base/sand_mining.mp4"
-        ... )
-        >>> video = pipe(
-        ...     image=None,
-        ...     video=input_video,
-        ...     prompt=prompt,
-        ...     negative_prompt=negative_prompt,
-        ...     num_frames=93,
-        ...     generator=torch.Generator().manual_seed(1),
-        ... ).frames[0]
-        >>> export_to_video(video, "video2world.mp4", fps=16)
-
-        >>> # To produce an image instead of a world (video) clip, set num_frames=1 and
-        >>> # save the first frame: pipe(..., num_frames=1).frames[0][0].
+        >>> export_to_video(video, "edge_controlled_video.mp4", fps=31)
         ```
 """
 
@@ -616,7 +567,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         image: PipelineImageInput | None = None,
         video: List[PipelineImageInput] | None = None,
         prompt: Union[str, List[str]] | None = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Union[str, List[str]] = DEFAULT_NEGATIVE_PROMPT,
         height: int = 704,
         width: Optional[int] = None,
         num_frames: int = 93,
