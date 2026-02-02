@@ -442,6 +442,9 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
         else:
             if video is None:
                 raise ValueError("`video` must be provided when `num_frames_in` is greater than 0.")
+            needs_preprocessing = not (isinstance(video, torch.Tensor) and video.ndim == 5 and video.shape[1] == 3)
+            if needs_preprocessing:
+                video = self.video_processor.preprocess_video(video, height, width)
             video = video.to(device=device, dtype=self.vae.dtype)
             if isinstance(generator, list):
                 cond_latents = [
