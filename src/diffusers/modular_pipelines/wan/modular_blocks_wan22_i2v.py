@@ -13,8 +13,7 @@
 # limitations under the License.
 
 from ...utils import logging
-from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict
+from ..modular_pipeline import SequentialPipelineBlocks
 from .before_denoise import (
     WanAdditionalInputsStep,
     WanPrepareLatentsStep,
@@ -23,20 +22,13 @@ from .before_denoise import (
 )
 from .decoders import WanVaeDecoderStep
 from .denoise import (
-    Wan22DenoiseStep,
     Wan22Image2VideoDenoiseStep,
-    WanDenoiseStep,
-    WanImage2VideoDenoiseStep,
 )
 from .encoders import (
-    WanFirstLastFrameImageEncoderStep,
-    WanFirstLastFrameVaeEncoderStep,
-    WanImageCropResizeStep,
-    WanImageEncoderStep,
     WanImageResizeStep,
+    WanPrepareFirstFrameLatentsStep,
     WanTextEncoderStep,
     WanVaeEncoderStep,
-    WanPrepareFirstFrameLatentsStep,
 )
 
 
@@ -46,6 +38,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # ====================
 # 1. VAE ENCODER
 # ====================
+
 
 class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
@@ -60,6 +53,7 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
 # ====================
 # 2. DENOISE
 # ====================
+
 
 # inputs (text + image_condition_latents) -> set_timesteps -> prepare_latents -> denoise (latents)
 class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
@@ -91,9 +85,11 @@ class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
             + " - `Wan22Image2VideoDenoiseStep` is used to denoise the latents in wan2.2\n"
         )
 
+
 # ====================
 # 3. BLOCKS (Wan2.2 Image2Video)
 # ====================
+
 
 class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
     model_name = "wan-i2v"
@@ -119,5 +115,3 @@ class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
             + " - `Wan22Image2VideoCoreDenoiseStep` denoes the latents\n"
             + " - `WanVaeDecoderStep` decodes the latents to video frames\n"
         )
-
-

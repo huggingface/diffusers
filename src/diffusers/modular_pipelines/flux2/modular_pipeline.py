@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional
-
 from ...loaders import Flux2LoraLoaderMixin
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
@@ -67,7 +65,6 @@ class Flux2KleinModularPipeline(Flux2ModularPipeline):
     """
 
     default_blocks_name = "Flux2KleinAutoBlocks"
-
 
     @property
     def requires_unconditional_embeds(self):

@@ -13,10 +13,8 @@
 # limitations under the License.
 
 from ...utils import logging
-from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict
+from ..modular_pipeline import SequentialPipelineBlocks
 from .before_denoise import (
-    WanAdditionalInputsStep,
     WanPrepareLatentsStep,
     WanSetTimestepsStep,
     WanTextInputStep,
@@ -24,23 +22,13 @@ from .before_denoise import (
 from .decoders import WanVaeDecoderStep
 from .denoise import (
     Wan22DenoiseStep,
-    Wan22Image2VideoDenoiseStep,
-    WanDenoiseStep,
-    WanImage2VideoDenoiseStep,
 )
 from .encoders import (
-    WanFirstLastFrameImageEncoderStep,
-    WanFirstLastFrameVaeEncoderStep,
-    WanImageCropResizeStep,
-    WanImageEncoderStep,
-    WanImageResizeStep,
     WanTextEncoderStep,
-    WanVaeEncoderStep,
 )
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
 
 
 # ====================
@@ -48,6 +36,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # ====================
 
 # inputs(text) -> set_timesteps -> prepare_latents -> denoise
+
 
 class Wan22CoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "wan"
@@ -71,10 +60,10 @@ class Wan22CoreDenoiseStep(SequentialPipelineBlocks):
         )
 
 
-
 # ====================
 # 2. BLOCKS (Wan2.2 text2video)
 # ====================
+
 
 class Wan22Blocks(SequentialPipelineBlocks):
     model_name = "wan"
@@ -97,4 +86,3 @@ class Wan22Blocks(SequentialPipelineBlocks):
             + " - `Wan22CoreDenoiseStep` denoes the latents\n"
             + " - `WanVaeDecoderStep` decodes the latents to video frames\n"
         )
-

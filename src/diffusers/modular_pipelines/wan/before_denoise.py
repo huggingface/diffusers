@@ -301,8 +301,8 @@ class WanAdditionalInputsStep(ModularPipelineBlocks):
                 Defaults to [].
 
         Examples:
-            # Configure to process image_condition_latents (default behavior) WanAdditionalInputsStep()
-            # Configure to process image latents and additional batch inputs WanAdditionalInputsStep(
+            # Configure to process image_condition_latents (default behavior) WanAdditionalInputsStep() # Configure to
+            process image latents and additional batch inputs WanAdditionalInputsStep(
                 image_latent_inputs=["image_condition_latents"], additional_batch_inputs=["image_embeds"]
             )
         """

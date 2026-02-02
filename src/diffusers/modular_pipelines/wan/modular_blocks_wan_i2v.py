@@ -14,7 +14,6 @@
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     WanAdditionalInputsStep,
     WanPrepareLatentsStep,
@@ -23,19 +22,16 @@ from .before_denoise import (
 )
 from .decoders import WanVaeDecoderStep
 from .denoise import (
-    Wan22DenoiseStep,
-    Wan22Image2VideoDenoiseStep,
-    WanDenoiseStep,
     WanImage2VideoDenoiseStep,
 )
 from .encoders import (
     WanFirstLastFrameImageEncoderStep,
     WanFirstLastFrameVaeEncoderStep,
-    WanPrepareFirstFrameLatentsStep,
-    WanPrepareFirstLastFrameLatentsStep,
     WanImageCropResizeStep,
     WanImageEncoderStep,
     WanImageResizeStep,
+    WanPrepareFirstFrameLatentsStep,
+    WanPrepareFirstLastFrameLatentsStep,
     WanTextEncoderStep,
     WanVaeEncoderStep,
 )
@@ -47,6 +43,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # 1. IMAGE ENCODER
 # ====================
 
+
 # wan2.1 I2V (first frame only)
 class WanImage2VideoImageEncoderStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
@@ -57,6 +54,7 @@ class WanImage2VideoImageEncoderStep(SequentialPipelineBlocks):
     def description(self):
         return "Image2Video Image Encoder step that resize the image and encode the image to generate the image embeddings"
 
+
 # wan2.1 FLF2V (first and last frame)
 class WanFLF2VImageEncoderStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
@@ -66,6 +64,7 @@ class WanFLF2VImageEncoderStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return "FLF2V Image Encoder step that resize and encode and encode the first and last frame images to generate the image embeddings"
+
 
 # wan2.1 Auto Image Encoder
 class WanAutoImageEncoderStep(AutoPipelineBlocks):
@@ -84,9 +83,11 @@ class WanAutoImageEncoderStep(AutoPipelineBlocks):
             + " - if `last_image` or `image` is not provided, step will be skipped."
         )
 
+
 # ====================
 # 2. VAE ENCODER
 # ====================
+
 
 # wan2.1 I2V (first frame only)
 class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
@@ -102,7 +103,12 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
 # wan2.1 FLF2V (first and last frame)
 class WanFLF2VVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
-    block_classes = [WanImageResizeStep, WanImageCropResizeStep, WanFirstLastFrameVaeEncoderStep, WanPrepareFirstLastFrameLatentsStep]
+    block_classes = [
+        WanImageResizeStep,
+        WanImageCropResizeStep,
+        WanFirstLastFrameVaeEncoderStep,
+        WanPrepareFirstLastFrameLatentsStep,
+    ]
     block_names = ["image_resize", "last_image_resize", "vae_encoder", "prepare_first_last_frame_latents"]
 
     @property
@@ -128,10 +134,10 @@ class WanAutoVaeEncoderStep(AutoPipelineBlocks):
         )
 
 
-
 # ====================
 # 3. DENOISE (inputs -> set_timesteps -> prepare_latents -> denoise)
 # ====================
+
 
 # wan2.1 I2V core denoise (support both I2V and FLF2V)
 # inputs (text + image_condition_latents) -> set_timesteps -> prepare_latents -> denoise (latents)
@@ -169,6 +175,7 @@ class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 # 4. BLOCKS (Wan2.1 Image2Video)
 # ====================
 
+
 # wan2.1 Image2Video Auto Blocks
 class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
     model_name = "wan-i2v"
@@ -194,5 +201,3 @@ class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
             + "- for I2V workflow, all you need to provide is `image`"
             + "- for FLF2V workflow, all you need to provide is `last_image` and `image`"
         )
-
-

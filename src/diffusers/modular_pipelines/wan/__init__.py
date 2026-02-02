@@ -22,10 +22,15 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["modular_blocks_wan"] = ["WanBlocks"]
-    _import_structure["modular_blocks_wan_i2v"] = ["WanImage2VideoAutoBlocks"]
     _import_structure["modular_blocks_wan22"] = ["Wan22Blocks"]
     _import_structure["modular_blocks_wan22_i2v"] = ["Wan22Image2VideoBlocks"]
-    _import_structure["modular_pipeline"] = ["WanModularPipeline", "WanImage2VideoModularPipeline", "Wan22ModularPipeline", "Wan22Image2VideoModularPipeline"]
+    _import_structure["modular_blocks_wan_i2v"] = ["WanImage2VideoAutoBlocks"]
+    _import_structure["modular_pipeline"] = [
+        "Wan22Image2VideoModularPipeline",
+        "Wan22ModularPipeline",
+        "WanImage2VideoModularPipeline",
+        "WanModularPipeline",
+    ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -35,10 +40,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_blocks_wan import WanBlocks
-        from .modular_blocks_wan_i2v import WanImage2VideoAutoBlocks
         from .modular_blocks_wan22 import Wan22Blocks
         from .modular_blocks_wan22_i2v import Wan22Image2VideoBlocks
-        from .modular_pipeline import WanModularPipeline, WanImage2VideoModularPipeline, Wan22ModularPipeline, Wan22Image2VideoModularPipeline
+        from .modular_blocks_wan_i2v import WanImage2VideoAutoBlocks
+        from .modular_pipeline import (
+            Wan22Image2VideoModularPipeline,
+            Wan22ModularPipeline,
+            WanImage2VideoModularPipeline,
+            WanModularPipeline,
+        )
 else:
     import sys
 

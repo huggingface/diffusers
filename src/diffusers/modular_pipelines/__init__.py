@@ -46,10 +46,10 @@ else:
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
     _import_structure["wan"] = [
-        "WanBlocks", 
-        "Wan22Blocks", 
-        "WanImage2VideoAutoBlocks", 
-        "Wan22Image2VideoBlocks", 
+        "WanBlocks",
+        "Wan22Blocks",
+        "WanImage2VideoAutoBlocks",
+        "Wan22Image2VideoBlocks",
         "WanModularPipeline",
         "Wan22ModularPipeline",
         "WanImage2VideoModularPipeline",
@@ -122,7 +122,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageModularPipeline,
         )
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
-        from .wan import WanBlocks, Wan22Blocks, WanImage2VideoAutoBlocks, Wan22Image2VideoBlocks, WanModularPipeline, WanImage2VideoModularPipeline, Wan22ModularPipeline, Wan22Image2VideoModularPipeline
+        from .wan import (
+            Wan22Blocks,
+            Wan22Image2VideoBlocks,
+            Wan22Image2VideoModularPipeline,
+            Wan22ModularPipeline,
+            WanBlocks,
+            WanImage2VideoAutoBlocks,
+            WanImage2VideoModularPipeline,
+            WanModularPipeline,
+        )
         from .z_image import ZImageAutoBlocks, ZImageModularPipeline
 else:
     import sys

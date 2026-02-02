@@ -104,9 +104,9 @@ class WanImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.latent_model_input = torch.cat([block_state.latents, block_state.image_condition_latents], dim=1).to(
-            block_state.dtype
-        )
+        block_state.latent_model_input = torch.cat(
+            [block_state.latents, block_state.image_condition_latents], dim=1
+        ).to(block_state.dtype)
         return components, block_state
 
 

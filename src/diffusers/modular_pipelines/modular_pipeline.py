@@ -53,15 +53,17 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # map regular pipeline to modular pipeline class name
 
+
 def _create_default_map_fn(pipeline_class_name: str):
     """Create a mapping function that always returns the same pipeline class."""
+
     def _map_fn(config_dict):
         return pipeline_class_name
+
     return _map_fn
 
 
 def _flux2_klein_map_fn(config_dict=None):
-
     if config_dict is None:
         return "Flux2KleinModularPipeline"
 
@@ -69,6 +71,7 @@ def _flux2_klein_map_fn(config_dict=None):
         return "Flux2KleinModularPipeline"
     else:
         return "Flux2KleinBaseModularPipeline"
+
 
 def _wan_map_fn(config_dict=None):
     if config_dict is None:
@@ -79,6 +82,7 @@ def _wan_map_fn(config_dict=None):
     else:
         return "WanModularPipeline"
 
+
 def _wan_i2v_map_fn(config_dict=None):
     if config_dict is None:
         return "WanImage2VideoModularPipeline"
@@ -87,6 +91,7 @@ def _wan_i2v_map_fn(config_dict=None):
         return "Wan22Image2VideoModularPipeline"
     else:
         return "WanImage2VideoModularPipeline"
+
 
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [

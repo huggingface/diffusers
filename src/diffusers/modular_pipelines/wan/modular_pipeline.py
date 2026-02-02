@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional
-
 from ...loaders import WanLoraLoaderMixin
 from ...pipelines.pipeline_utils import StableDiffusionMixin
 from ...utils import logging
@@ -111,7 +109,6 @@ class WanModularPipeline(
         if hasattr(self, "scheduler") and self.scheduler is not None:
             num_train_timesteps = self.scheduler.config.num_train_timesteps
         return num_train_timesteps
-
 
 
 class WanImage2VideoModularPipeline(WanModularPipeline):

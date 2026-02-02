@@ -563,6 +563,7 @@ class WanVaeEncoderStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
+
 class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
     model_name = "wan"
 

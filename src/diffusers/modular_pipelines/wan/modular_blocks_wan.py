@@ -13,29 +13,18 @@
 # limitations under the License.
 
 from ...utils import logging
-from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict
+from ..modular_pipeline import SequentialPipelineBlocks
 from .before_denoise import (
-    WanAdditionalInputsStep,
     WanPrepareLatentsStep,
     WanSetTimestepsStep,
     WanTextInputStep,
 )
 from .decoders import WanVaeDecoderStep
 from .denoise import (
-    Wan22DenoiseStep,
-    Wan22Image2VideoDenoiseStep,
     WanDenoiseStep,
-    WanImage2VideoDenoiseStep,
 )
 from .encoders import (
-    WanFirstLastFrameImageEncoderStep,
-    WanFirstLastFrameVaeEncoderStep,
-    WanImageCropResizeStep,
-    WanImageEncoderStep,
-    WanImageResizeStep,
     WanTextEncoderStep,
-    WanVaeEncoderStep,
 )
 
 
@@ -45,6 +34,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # ====================
 # 1. DENOISE
 # ====================
+
 
 # inputs(text) -> set_timesteps -> prepare_latents -> denoise
 class WanCoreDenoiseStep(SequentialPipelineBlocks):
@@ -73,6 +63,7 @@ class WanCoreDenoiseStep(SequentialPipelineBlocks):
 # 2. BLOCKS (Wan2.1 text2video)
 # ====================
 
+
 class WanBlocks(SequentialPipelineBlocks):
     model_name = "wan"
     block_classes = [
@@ -90,4 +81,3 @@ class WanBlocks(SequentialPipelineBlocks):
             + "- `WanCoreDenoiseStep` is used to denoise the latents\n"
             + "- `WanVaeDecoderStep` is used to decode the latents to images"
         )
-
