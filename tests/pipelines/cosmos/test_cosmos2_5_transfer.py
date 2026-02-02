@@ -384,4 +384,3 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
     )
     def test_encode_prompt_works_in_isolation(self):
         pass
-

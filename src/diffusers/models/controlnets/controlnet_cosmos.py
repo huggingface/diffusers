@@ -41,8 +41,8 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     ControlNet for Cosmos Transfer2.5.
 
     This model duplicates the shared embedding modules from the transformer (patch_embed, time_embed,
-    learnable_pos_embed, img_context_proj) to enable proper CPU offloading. The forward() method
-    computes everything internally from raw inputs.
+    learnable_pos_embed, img_context_proj) to enable proper CPU offloading. The forward() method computes everything
+    internally from raw inputs.
     """
 
     _supports_gradient_checkpointing = True
@@ -184,7 +184,9 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             control_hidden_states = torch.cat(
                 [
                     control_hidden_states,
-                    torch.zeros((B, pad_C, T, H, W), dtype=control_hidden_states.dtype, device=control_hidden_states.device),
+                    torch.zeros(
+                        (B, pad_C, T, H, W), dtype=control_hidden_states.dtype, device=control_hidden_states.device
+                    ),
                 ],
                 dim=1,
             )

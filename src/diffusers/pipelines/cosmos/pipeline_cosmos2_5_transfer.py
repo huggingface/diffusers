@@ -53,12 +53,14 @@ else:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 def _maybe_pad_video(video: torch.Tensor, num_frames: int):
     n_pad_frames = num_frames - video.shape[2]
     if n_pad_frames > 0:
         last_frame = video[:, :, -1:, :, :]
         video = torch.cat((video, last_frame.repeat(1, 1, n_pad_frames, 1, 1)), dim=2)
     return video
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
@@ -72,6 +74,7 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
 
 def transfer2_5_forward(
     transformer: CosmosTransformer3DModel,
@@ -87,9 +90,9 @@ def transfer2_5_forward(
     """
     Forward pass for Transfer2.5 pipeline.
 
-    This function calls both transformer and controlnet's forward() methods directly,
-    enabling proper CPU offloading. The controlnet computes its own embeddings internally
-    using duplicated modules (patch_embed_base, time_embed, etc.).
+    This function calls both transformer and controlnet's forward() methods directly, enabling proper CPU offloading.
+    The controlnet computes its own embeddings internally using duplicated modules (patch_embed_base, time_embed,
+    etc.).
 
     Args:
         transformer: The CosmosTransformer3DModel
@@ -129,6 +132,7 @@ def transfer2_5_forward(
         return_dict=False,
     )[0]
     return noise_pred
+
 
 DEFAULT_NEGATIVE_PROMPT = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
 
@@ -501,7 +505,9 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         control_video = _maybe_pad_video(control_video, num_frames)
 
         control_video = control_video.to(device=device, dtype=self.vae.dtype)
-        control_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator=generator) for vid in control_video]
+        control_latents = [
+            retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator=generator) for vid in control_video
+        ]
         control_latents = torch.cat(control_latents, dim=0).to(dtype)
 
         latents_mean = self.latents_mean.to(device=device, dtype=dtype)
@@ -611,7 +617,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             height (`int`, defaults to `704`):
                 The height in pixels of the generated image.
             width (`int`, *optional*):
-                The width in pixels of the generated image. If not provided, this will be determined based on the aspect ratio of the input and the provided height.
+                The width in pixels of the generated image. If not provided, this will be determined based on the
+                aspect ratio of the input and the provided height.
             num_frames (`int`, defaults to `93`):
                 Number of output frames. Use `93` for world (video) generation; set to `1` to return a single frame.
             num_inference_steps (`int`, defaults to `35`):
@@ -684,7 +691,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                     frame = controls[0]
 
             if frame is None:
-                width = int((height + 16) * (1280/720))
+                width = int((height + 16) * (1280 / 720))
             elif isinstance(frame, PIL.Image.Image):
                 width = int((height + 16) * (frame.width / frame.height))
             else:
@@ -839,7 +846,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                     in_timestep=in_timestep,
                     encoder_hidden_states=encoder_hidden_states,
                     cond_mask=cond_mask,
-                    padding_mask=padding_mask
+                    padding_mask=padding_mask,
                 )
                 noise_pred = gt_velocity + noise_pred * (1 - cond_mask)
 
@@ -853,7 +860,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                         in_timestep=in_timestep,
                         encoder_hidden_states=neg_encoder_hidden_states,  # NOTE: negative prompt
                         cond_mask=cond_mask,
-                        padding_mask=padding_mask
+                        padding_mask=padding_mask,
                     )
                     # NOTE: replace velocity (noise_pred_neg) with gt_velocity for conditioning inputs only
                     noise_pred_neg = gt_velocity + noise_pred_neg * (1 - cond_mask)

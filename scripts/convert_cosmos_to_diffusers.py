@@ -159,8 +159,10 @@ from diffusers.pipelines.cosmos.pipeline_cosmos2_5_transfer import Cosmos2_5_Tra
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
     state_dict.pop(key)
 
+
 def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
     state_dict[new_key] = state_dict.pop(old_key)
+
 
 def rename_transformer_blocks_(key: str, state_dict: Dict[str, Any]):
     block_index = int(key.split(".")[1].removeprefix("block"))
@@ -459,9 +461,7 @@ CONTROLNET_KEYS_RENAME_DICT = {
 }
 
 
-CONTROLNET_SPECIAL_KEYS_REMAP = {
-    **TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_2_0
-}
+CONTROLNET_SPECIAL_KEYS_REMAP = {**TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_2_0}
 
 VAE_KEYS_RENAME_DICT = {
     "down.0": "down_blocks.0",
@@ -553,7 +553,9 @@ def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def convert_transformer(
-    transformer_type: str, state_dict: Optional[Dict[str, Any]] = None, weights_only: bool = True,
+    transformer_type: str,
+    state_dict: Optional[Dict[str, Any]] = None,
+    weights_only: bool = True,
 ):
     PREFIX_KEY = "net."
 
@@ -613,7 +615,12 @@ def convert_transformer(
     return transformer
 
 
-def convert_controlnet(transformer_type: str, control_state_dict: Dict[str, Any], base_state_dict: Dict[str, Any], weights_only: bool = True):
+def convert_controlnet(
+    transformer_type: str,
+    control_state_dict: Dict[str, Any],
+    base_state_dict: Dict[str, Any],
+    weights_only: bool = True,
+):
     """
     Convert controlnet weights.
 
@@ -657,7 +664,7 @@ def convert_controlnet(transformer_type: str, control_state_dict: Dict[str, Any]
     for key in list(base_state_dict.keys()):
         for transformer_prefix, controlnet_prefix in shared_module_mappings.items():
             if key.startswith(transformer_prefix):
-                controlnet_key = controlnet_prefix + key[len(transformer_prefix):]
+                controlnet_key = controlnet_prefix + key[len(transformer_prefix) :]
                 control_state_dict[controlnet_key] = base_state_dict[key].clone()
                 print(f"Copied shared weight: {key} -> {controlnet_key}", flush=True)
                 break
@@ -864,7 +871,9 @@ if __name__ == "__main__":
     raw_state_dict = None
     if args.transformer_ckpt_path is not None:
         weights_only = "Cosmos-1.0" in args.transformer_type
-        raw_state_dict = get_state_dict(torch.load(args.transformer_ckpt_path, map_location="cpu", weights_only=weights_only))
+        raw_state_dict = get_state_dict(
+            torch.load(args.transformer_ckpt_path, map_location="cpu", weights_only=weights_only)
+        )
 
     if raw_state_dict is not None:
         if "Transfer" in args.transformer_type:
@@ -879,14 +888,18 @@ if __name__ == "__main__":
             assert len(base_state_dict.keys() & control_state_dict.keys()) == 0
 
             # Convert transformer first to get the processed base state dict
-            transformer = convert_transformer(args.transformer_type, state_dict=base_state_dict, weights_only=weights_only)
+            transformer = convert_transformer(
+                args.transformer_type, state_dict=base_state_dict, weights_only=weights_only
+            )
             transformer = transformer.to(dtype=dtype)
 
             # Get converted transformer state dict to copy shared weights to controlnet
             converted_base_state_dict = transformer.state_dict()
 
             # Convert controlnet with both control-specific and shared weights from transformer
-            controlnet = convert_controlnet(args.transformer_type, control_state_dict, converted_base_state_dict, weights_only=weights_only)
+            controlnet = convert_controlnet(
+                args.transformer_type, control_state_dict, converted_base_state_dict, weights_only=weights_only
+            )
             controlnet = controlnet.to(dtype=dtype)
 
             if not args.save_pipeline:
@@ -895,7 +908,9 @@ if __name__ == "__main__":
                     pathlib.Path(args.output_path) / "controlnet", safe_serialization=True, max_shard_size="5GB"
                 )
         else:
-            transformer = convert_transformer(args.transformer_type, state_dict=raw_state_dict, weights_only=weights_only)
+            transformer = convert_transformer(
+                args.transformer_type, state_dict=raw_state_dict, weights_only=weights_only
+            )
             transformer = transformer.to(dtype=dtype)
             if not args.save_pipeline:
                 transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
