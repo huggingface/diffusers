@@ -57,7 +57,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def _create_default_map_fn(pipeline_class_name: str):
     """Create a mapping function that always returns the same pipeline class."""
 
-    def _map_fn(config_dict):
+    def _map_fn(config_dict=None):
         return pipeline_class_name
 
     return _map_fn
