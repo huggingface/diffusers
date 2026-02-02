@@ -711,7 +711,7 @@ def convert_vae(vae_type: str):
         new_key = key[:]
         for replace_key, rename_key in VAE_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
-        original_state_dict[new_key] = original_state_dict.pop(old_key)
+        update_state_dict_(original_state_dict, key, new_key)
 
     for key in list(original_state_dict.keys()):
         for special_key, handler_fn_inplace in VAE_SPECIAL_KEYS_REMAP.items():

@@ -468,9 +468,8 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
 
             num_cond_latent_frames = (num_frames_in - 1) // self.vae_scale_factor_temporal + 1
             cond_indicator = latents.new_zeros(1, 1, latents.size(2), 1, 1)
-            # cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0  # TODO
-            # cond_mask = cond_indicator * ones_padding + (1 - cond_indicator) * zeros_padding
-            cond_mask = zeros_padding  # TODO removeme
+            cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0
+            cond_mask = cond_indicator * ones_padding + (1 - cond_indicator) * zeros_padding
 
             return (
                 latents,
