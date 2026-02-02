@@ -84,7 +84,7 @@ class WanImage2VideoImageEncoderStep(SequentialPipelineBlocks):
 class WanImage2VideoVaeImageEncoderStep(SequentialPipelineBlocks):
     model_name = "wan"
     block_classes = [WanImageResizeStep, WanVaeImageEncoderStep]
-    block_names = ["image_resize", "vae_image_encoder"]
+    block_names = ["image_resize", "vae_encoder"]
 
     @property
     def description(self):
@@ -142,7 +142,7 @@ class WanFLF2VImageEncoderStep(SequentialPipelineBlocks):
 class WanFLF2VVaeImageEncoderStep(SequentialPipelineBlocks):
     model_name = "wan"
     block_classes = [WanImageResizeStep, WanImageCropResizeStep, WanFirstLastFrameVaeImageEncoderStep]
-    block_names = ["image_resize", "last_image_resize", "vae_image_encoder"]
+    block_names = ["image_resize", "last_image_resize", "vae_encoder"]
 
     @property
     def description(self):
@@ -203,7 +203,7 @@ class WanAutoImageEncoderStep(AutoPipelineBlocks):
 ## vae encoder
 class WanAutoVaeImageEncoderStep(AutoPipelineBlocks):
     block_classes = [WanFLF2VVaeImageEncoderStep, WanImage2VideoVaeImageEncoderStep]
-    block_names = ["flf2v_vae_image_encoder", "image2video_vae_image_encoder"]
+    block_names = ["flf2v_vae_encoder", "image2video_vae_encoder"]
     block_trigger_inputs = ["last_image", "image"]
 
     @property
@@ -251,7 +251,7 @@ class WanAutoBlocks(SequentialPipelineBlocks):
     block_names = [
         "text_encoder",
         "image_encoder",
-        "vae_image_encoder",
+        "vae_encoder",
         "denoise",
         "decode",
     ]
@@ -353,7 +353,7 @@ class Wan22AutoBlocks(SequentialPipelineBlocks):
     ]
     block_names = [
         "text_encoder",
-        "vae_image_encoder",
+        "vae_encoder",
         "denoise",
         "decode",
     ]
@@ -384,7 +384,7 @@ IMAGE2VIDEO_BLOCKS = InsertableDict(
     [
         ("image_resize", WanImageResizeStep),
         ("image_encoder", WanImage2VideoImageEncoderStep),
-        ("vae_image_encoder", WanImage2VideoVaeImageEncoderStep),
+        ("vae_encoder", WanImage2VideoVaeImageEncoderStep),
         ("input", WanTextInputStep),
         ("additional_inputs", WanAdditionalInputsStep(image_latent_inputs=["first_frame_latents"])),
         ("set_timesteps", WanSetTimestepsStep),
@@ -401,7 +401,7 @@ FLF2V_BLOCKS = InsertableDict(
         ("image_resize", WanImageResizeStep),
         ("last_image_resize", WanImageCropResizeStep),
         ("image_encoder", WanFLF2VImageEncoderStep),
-        ("vae_image_encoder", WanFLF2VVaeImageEncoderStep),
+        ("vae_encoder", WanFLF2VVaeImageEncoderStep),
         ("input", WanTextInputStep),
         ("additional_inputs", WanAdditionalInputsStep(image_latent_inputs=["first_last_frame_latents"])),
         ("set_timesteps", WanSetTimestepsStep),
@@ -416,7 +416,7 @@ AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", WanTextEncoderStep),
         ("image_encoder", WanAutoImageEncoderStep),
-        ("vae_image_encoder", WanAutoVaeImageEncoderStep),
+        ("vae_encoder", WanAutoVaeImageEncoderStep),
         ("denoise", WanAutoDenoiseStep),
         ("decode", WanImageVaeDecoderStep),
     ]
@@ -438,7 +438,7 @@ TEXT2VIDEO_BLOCKS_WAN22 = InsertableDict(
 IMAGE2VIDEO_BLOCKS_WAN22 = InsertableDict(
     [
         ("image_resize", WanImageResizeStep),
-        ("vae_image_encoder", WanImage2VideoVaeImageEncoderStep),
+        ("vae_encoder", WanImage2VideoVaeImageEncoderStep),
         ("input", WanTextInputStep),
         ("set_timesteps", WanSetTimestepsStep),
         ("prepare_latents", WanPrepareLatentsStep),
@@ -450,7 +450,7 @@ IMAGE2VIDEO_BLOCKS_WAN22 = InsertableDict(
 AUTO_BLOCKS_WAN22 = InsertableDict(
     [
         ("text_encoder", WanTextEncoderStep),
-        ("vae_image_encoder", WanAutoVaeImageEncoderStep),
+        ("vae_encoder", WanAutoVaeImageEncoderStep),
         ("denoise", Wan22AutoDenoiseStep),
         ("decode", WanImageVaeDecoderStep),
     ]

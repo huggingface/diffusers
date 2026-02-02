@@ -191,6 +191,9 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
+    def test_save_load_dduf(self):
+        super().test_save_load_dduf(atol=1e-3, rtol=1e-3)
+
 
 @slow
 @require_torch_accelerator
