@@ -372,12 +372,10 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
                 )
 
-    @unittest.skip(
-        "The pipeline requires a safety_checker to run per NVIDIA license. The test removes optional components, "
-        "but safety_checker is required even though it's marked as optional (to bypass save/load issues)."
-    )
-    def test_save_load_optional_components(self):
-        pass
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
+        self.pipeline_class._optional_components.remove("safety_checker")
+        super().test_save_load_optional_components(expected_max_difference=expected_max_difference)
+        self.pipeline_class._optional_components.append("safety_checker")
 
     @unittest.skip(
         "The pipeline should not be runnable without a safety checker. The test creates a pipeline without passing in "
