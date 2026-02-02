@@ -893,12 +893,12 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             video = (video * 255).astype(np.uint8)
             video_batch = []
             for vid in video:
-                # vid = self.safety_checker.check_video_safety(vid)
-                video_batch.append(vid)
-            try:
-                video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
-            except:
-                breakpoint()
+                vid = self.safety_checker.check_video_safety(vid)
+                if vid is None:
+                    video_batch.append(np.zeros_like(video[0]))
+                else:
+                    video_batch.append(vid)
+            video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
             video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
