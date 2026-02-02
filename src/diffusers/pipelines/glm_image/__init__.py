@@ -7,12 +7,24 @@ from ...utils import (
     get_objects_from_module,
     is_torch_available,
     is_transformers_available,
+    is_transformers_version,
 )
 
 
 _dummy_objects = {}
 _additional_imports = {}
-_import_structure = {"pipeline_output": ["ChromaPipelineOutput"]}
+_import_structure = {"pipeline_output": ["GlmImagePipelineOutput"]}
+
+# Import transformers components so they can be resolved during pipeline loading
+
+if is_transformers_available() and is_transformers_version(">=", "4.57.4"):
+    try:
+        from transformers import GlmImageForConditionalGeneration, GlmImageProcessor
+
+        _additional_imports["GlmImageForConditionalGeneration"] = GlmImageForConditionalGeneration
+        _additional_imports["GlmImageProcessor"] = GlmImageProcessor
+    except ImportError:
+        pass
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -22,9 +34,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_chroma"] = ["ChromaPipeline"]
-    _import_structure["pipeline_chroma_img2img"] = ["ChromaImg2ImgPipeline"]
-    _import_structure["pipeline_chroma_inpainting"] = ["ChromaInpaintPipeline"]
+    _import_structure["pipeline_glm_image"] = ["GlmImagePipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -32,9 +42,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .pipeline_chroma import ChromaPipeline
-        from .pipeline_chroma_img2img import ChromaImg2ImgPipeline
-        from .pipeline_chroma_inpainting import ChromaInpaintPipeline
+        from .pipeline_glm_image import GlmImagePipeline
 else:
     import sys
 
