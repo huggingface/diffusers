@@ -1113,10 +1113,14 @@ AUTO_BLOCKS = InsertableDict(
 class QwenImageAutoBlocks(SequentialPipelineBlocks):
     """
     Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using QwenImage.
-      - for image-to-image generation, you need to provide `image`
-      - for inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop`.
-      - to run the controlnet workflow, you need to provide `control_image`
-      - for text-to-image generation, all you need to provide is `prompt`
+
+      Supported workflows:
+        - `text2image`: requires `prompt`
+        - `image2image`: requires `prompt`, `image`
+        - `inpainting`: requires `prompt`, `mask_image`, `image`
+        - `controlnet_text2image`: requires `prompt`, `control_image`
+        - `controlnet_image2image`: requires `prompt`, `image`, `control_image`
+        - `controlnet_inpainting`: requires `prompt`, `mask_image`, `image`, `control_image`
 
       Components:
           text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use tokenizer (`Qwen2Tokenizer`):
@@ -1197,15 +1201,24 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
     block_classes = AUTO_BLOCKS.values()
     block_names = AUTO_BLOCKS.keys()
 
+    # Workflow map defines the trigger conditions for each workflow.
+    # How to define:
+    #   - Only include required inputs and trigger inputs (inputs that determine which blocks run)
+    #   - `True` means the workflow triggers when the input is not None (most common case)
+    #   - Use specific values (e.g., `{"strength": 0.5}`) if your `select_block` logic depends on the value
+
+    _workflow_map = {
+        "text2image": {"prompt": True},
+        "image2image": {"prompt": True, "image": True},
+        "inpainting": {"prompt": True, "mask_image": True, "image": True},
+        "controlnet_text2image": {"prompt": True, "control_image": True},
+        "controlnet_image2image": {"prompt": True, "image": True, "control_image": True},
+        "controlnet_inpainting": {"prompt": True, "mask_image": True, "image": True, "control_image": True},
+    }
+
     @property
     def description(self):
-        return (
-            "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using QwenImage.\n"
-            + "- for image-to-image generation, you need to provide `image`\n"
-            + "- for inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop`.\n"
-            + "- to run the controlnet workflow, you need to provide `control_image`\n"
-            + "- for text-to-image generation, all you need to provide is `prompt`"
-        )
+        return "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using QwenImage."
 
     @property
     def outputs(self):
