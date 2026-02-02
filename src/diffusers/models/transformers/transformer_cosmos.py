@@ -225,13 +225,11 @@ class CosmosAttnProcessor2_0:
 
         return hidden_states
 
+
 class CosmosAttnProcessor2_5(CosmosAttnProcessor2_0):
     def __init__(self):
         if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
-            raise ImportError(
-                "CosmosAttnProcessor2_5 requires PyTorch 2.0. "
-                "Please upgrade PyTorch to 2.0 or newer."
-            )
+            raise ImportError("CosmosAttnProcessor2_5 requires PyTorch 2.0. Please upgrade PyTorch to 2.0 or newer.")
 
     def compute_attn_i2v(
         self,
@@ -301,6 +299,7 @@ class CosmosAttnProcessor2_5(CosmosAttnProcessor2_0):
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
+
 
 class CosmosAttention(Attention):
     def __init__(self, *args, **kwargs):
@@ -400,7 +399,9 @@ class CosmosTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Union[Optional[torch.Tensor], Optional[Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]]],
+        encoder_hidden_states: Union[
+            Optional[torch.Tensor], Optional[Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]]
+        ],
         embedded_timestep: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
@@ -581,11 +582,11 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         img_context_dim_in (`int`, *optional*):
             The dimension of the input image context feature vector, i.e. it is the D in [B, N, D].
         img_context_num_tokens (`int`):
-            The number of tokens in the image context feature vector, i.e. it is
-            the N in [B, N, D]. If `img_context_dim_in` is not provided, then this parameter is ignored.
-        img_context_dim_out (`int`):
-            The output dimension of the image context projection layer. If
+            The number of tokens in the image context feature vector, i.e. it is the N in [B, N, D]. If
             `img_context_dim_in` is not provided, then this parameter is ignored.
+        img_context_dim_out (`int`):
+            The output dimension of the image context projection layer. If `img_context_dim_in` is not provided, then
+            this parameter is ignored.
     """
 
     _supports_gradient_checkpointing = True
@@ -739,14 +740,18 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             raise ValueError(f"Expected timestep to have shape [B, 1, T, 1, 1] or [T], but got {timestep.shape}")
 
         # 5. Process encoder hidden states
-        text_context, img_context = encoder_hidden_states if isinstance(encoder_hidden_states, tuple) else (encoder_hidden_states, None)
+        text_context, img_context = (
+            encoder_hidden_states if isinstance(encoder_hidden_states, tuple) else (encoder_hidden_states, None)
+        )
         if self.config.use_crossattn_projection:
             text_context = self.crossattn_proj(text_context)
 
         if img_context is not None and self.config.img_context_dim_in:
             img_context = self.img_context_proj(img_context)
 
-        processed_encoder_hidden_states = (text_context, img_context) if isinstance(encoder_hidden_states, tuple) else text_context
+        processed_encoder_hidden_states = (
+            (text_context, img_context) if isinstance(encoder_hidden_states, tuple) else text_context
+        )
 
         # 6. Build controlnet block index map
         controlnet_block_index_map = {}
