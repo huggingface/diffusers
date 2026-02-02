@@ -346,6 +346,8 @@
         title: Flux2Transformer2DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
+      - local: api/models/glm_image_transformer2d
+        title: GlmImageTransformer2DModel
       - local: api/models/hidream_image_transformer
         title: HiDreamImageTransformer2DModel
       - local: api/models/hunyuan_transformer2d
@@ -494,6 +496,8 @@
         title: Bria 3.2
       - local: api/pipelines/bria_fibo
         title: Bria Fibo
+      - local: api/pipelines/bria_fibo_edit
+        title: Bria Fibo Edit
       - local: api/pipelines/chroma
         title: Chroma
       - local: api/pipelines/cogview3
@@ -540,6 +544,8 @@
         title: Flux2
       - local: api/pipelines/control_flux_inpaint
         title: FluxControlInpaint
+      - local: api/pipelines/glm_image
+        title: GLM-Image
       - local: api/pipelines/hidream
         title: HiDream-I1
       - local: api/pipelines/hunyuandit
