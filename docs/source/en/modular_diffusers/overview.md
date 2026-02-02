@@ -24,7 +24,7 @@ The Modular Diffusers docs are organized as shown below.
 
 ## Quickstart
 
-- A [quickstart](./quickstart) demonstrating how to implement an example workflow with Modular Diffusers.
+- The [quickstart](./quickstart) shows you how to run a modular pipeline, understand its structure, and customize it by modifying the blocks that compose it.
 
 ## ModularPipelineBlocks
 
