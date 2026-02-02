@@ -154,7 +154,7 @@ class CosmosAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("CosmosAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
-    
+
     def compute_attn(
         self,
         attn: Attention,
@@ -388,7 +388,7 @@ class CosmosTransformerBlock(nn.Module):
         self.norm3 = CosmosAdaLayerNormZero(in_features=hidden_size, hidden_features=adaln_lora_dim)
         self.ff = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu", bias=out_bias)
 
-        # NOTE: zero conv for CosmosControlNet 
+        # NOTE: zero conv for CosmosControlNet
         self.before_proj = None
         self.after_proj = None
         if before_proj:

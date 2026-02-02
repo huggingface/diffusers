@@ -159,60 +159,6 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         text_encoder = Qwen2_5_VLForConditionalGeneration(config)
         tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
-        # Create dummy image reference model and processor
-        # For testing, we'll use None and let the pipeline create dummy versions
-        # But we need to provide None explicitly since the pipeline will try to download
-        # the real model otherwise - we'll mock this
-        torch.manual_seed(0)
-
-        # Create a simple dummy image ref model for testing
-        class DummyImageRefModel(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.linear = torch.nn.Linear(32, 32)
-                # Register a buffer to track dtype and device
-                self.register_buffer("_dtype_tracker", torch.zeros(1))
-
-            @property
-            def dtype(self):
-                return self._dtype_tracker.dtype
-
-            @property
-            def device(self):
-                return self._dtype_tracker.device
-
-            def forward(self, pixel_values, **kwargs):
-                # Return a dummy output with last_hidden_state
-                batch_size = pixel_values.shape[0]
-                return type("Output", (), {"last_hidden_state": torch.randn(batch_size, 4, 32, device=pixel_values.device, dtype=pixel_values.dtype)})()
-
-        class DummyImageRefProcessor(torch.nn.Module):
-            """A torch.nn.Module-based processor so it responds to pipe.to() calls."""
-
-            def __init__(self):
-                super().__init__()
-                # Use a parameter (not buffer) so tests that check parameters work
-                self._dummy_param = torch.nn.Parameter(torch.zeros(1))
-
-            def forward(self, images, return_tensors="pt", **kwargs):
-                # Return dummy tensors on the correct device and dtype
-                n = len(images) if isinstance(images, list) else 1
-                return type("Output", (), {"pixel_values": torch.randn(n, 3, 32, 32, device=self.device, dtype=self.dtype)})()
-
-            def __call__(self, images, return_tensors="pt", **kwargs):
-                return self.forward(images, return_tensors=return_tensors, **kwargs)
-
-            @property
-            def device(self):
-                return self._dummy_param.device
-
-            @property
-            def dtype(self):
-                return self._dummy_param.dtype
-
-        image_ref_model = DummyImageRefModel()
-        image_ref_processor = DummyImageRefProcessor()
-
         components = {
             "transformer": transformer,
             "controlnet": controlnet,
@@ -221,8 +167,6 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "safety_checker": DummyCosmosSafetyChecker(),
-            "image_ref_model": image_ref_model,
-            "image_ref_processor": image_ref_processor,
         }
         return components
 
@@ -375,12 +319,6 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
                 "Attention slicing should not affect the inference results",
             )
 
-    @unittest.skip(
-        "image_ref_model/image_ref_processor don't inherit from ModelMixin - can't be serialized with from_pretrained."
-    )
-    def test_save_load_optional_components(self, expected_max_difference=1e-4):
-        pass
-
     def test_serialization_with_variants(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -390,9 +328,8 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             if isinstance(component, torch.nn.Module)
         ]
         # Remove components that aren't saved as standard diffusers models
-        for comp_name in ("safety_checker", "image_ref_model"):
-            if comp_name in model_components:
-                model_components.remove(comp_name)
+        if "safety_checker" in model_components:
+            model_components.remove("safety_checker")
         variant = "fp16"
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -425,7 +362,7 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         for name, component in loaded_pipe.components.items():
             # Skip components that are not loaded from disk or have special handling
-            if name in ("safety_checker", "image_ref_processor", "image_ref_model"):
+            if name == "safety_checker":
                 continue
             if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
                 expected_dtype = torch_dtype_dict.get(name, torch_dtype_dict.get("default", torch.float32))
@@ -436,6 +373,13 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
                 )
 
     @unittest.skip(
+        "The pipeline requires a safety_checker to run per NVIDIA license. The test removes optional components, "
+        "but safety_checker is required even though it's marked as optional (to bypass save/load issues)."
+    )
+    def test_save_load_optional_components(self):
+        pass
+
+    @unittest.skip(
         "The pipeline should not be runnable without a safety checker. The test creates a pipeline without passing in "
         "a safety checker, which makes the pipeline default to the actual Cosmos Guardrail. The Cosmos Guardrail is "
         "too large and slow to run on CI."
@@ -443,52 +387,3 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    # Serialization tests are skipped because image_ref_model and image_ref_processor are custom components
-    # that don't inherit from ModelMixin/ConfigMixin and thus can't be properly saved/loaded with
-    # from_pretrained/save_pretrained. To enable these tests, image_ref_model would need to:
-    # 1. Inherit from ModelMixin and ConfigMixin
-    # 2. Use @register_to_config decorator
-    # 3. Implement proper config.json handling
-    # Similarly, image_ref_processor would need to follow the processor pattern from transformers.
-
-    @unittest.skip(
-        "image_ref_model/image_ref_processor don't inherit from ModelMixin - can't be serialized with from_pretrained."
-    )
-    def test_loading_with_variants(self):
-        pass
-
-    @unittest.skip(
-        "image_ref_model/image_ref_processor don't inherit from ModelMixin - can't be serialized with from_pretrained."
-    )
-    def test_save_load_float16(self):
-        pass
-
-    @unittest.skip(
-        "image_ref_model/image_ref_processor don't inherit from ModelMixin - can't be serialized with from_pretrained."
-    )
-    def test_save_load_dduf(self):
-        pass
-
-    @unittest.skip(
-        "image_ref_model/image_ref_processor don't inherit from ModelMixin - can't be serialized with from_pretrained."
-    )
-    def test_save_load_local(self):
-        pass
-
-    # Sequential CPU offload tests are skipped because the real image_ref_model (Siglip2VisionModel)
-    # uses torch.nn.MultiheadAttention which doesn't support sequential CPU offloading.
-    # See: https://github.com/huggingface/transformers/blob/main/src/transformers/models/siglip/modeling_siglip.py
-    # The MHA implementation calls torch.nn.functional.multi_head_attention_forward with weights/bias directly,
-    # so the offload hook is never triggered with a forward pass call and weights stay on CPU.
-
-    @unittest.skip(
-        "Siglip2VisionModel uses torch.nn.MultiheadAttention which doesn't support sequential CPU offloading."
-    )
-    def test_sequential_cpu_offload_forward_pass(self):
-        pass
-
-    @unittest.skip(
-        "Siglip2VisionModel uses torch.nn.MultiheadAttention which doesn't support sequential CPU offloading."
-    )
-    def test_sequential_offload_forward_pass_twice(self):
-        pass
