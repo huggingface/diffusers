@@ -27,8 +27,7 @@ class DummyCosmosSafetyChecker(ModelMixin, ConfigMixin):
     def __init__(self) -> None:
         super().__init__()
 
-        # Use a parameter so tests that iterate over parameters work
-        self._dummy_param = torch.nn.Parameter(torch.zeros(1, dtype=torch.float32), requires_grad=False)
+        self.register_buffer("_device_tracker", torch.zeros(1, dtype=torch.float32), persistent=False)
 
     def check_text_safety(self, prompt: str) -> bool:
         return True
@@ -42,8 +41,8 @@ class DummyCosmosSafetyChecker(ModelMixin, ConfigMixin):
 
     @property
     def device(self) -> torch.device:
-        return self._dummy_param.device
+        return self._device_tracker.device
 
     @property
     def dtype(self) -> torch.dtype:
-        return self._dummy_param.dtype
+        return self._device_tracker.dtype
