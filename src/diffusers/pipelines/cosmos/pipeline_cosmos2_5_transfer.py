@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Union
 
-import PIL.Image
 import numpy as np
+import PIL.Image
 import torch
 import torchvision
 import torchvision.transforms
 import torchvision.transforms.functional
-from transformers import AutoConfig, AutoImageProcessor, AutoTokenizer, Qwen2_5_VLForConditionalGeneration, Siglip2ImageProcessorFast, Siglip2VisionModel
+from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -253,8 +253,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
     model_cpu_offload_seq = "text_encoder->transformer->controlnet->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
     # We mark safety_checker as optional here to get around some test failures, but it is not really optional
-    _optional_components = ["safety_checker", "controlnet", "image_ref_model", "image_ref_processor"]
-    _exclude_from_cpu_offload = ["safety_checker", "image_ref_model", "image_ref_processor"]
+    _optional_components = ["safety_checker", "controlnet"]
+    _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
         self,
@@ -265,23 +265,11 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         scheduler: UniPCMultistepScheduler,
         controlnet: CosmosControlNetModel,
         safety_checker: CosmosSafetyChecker = None,
-        image_ref_model: Optional[Siglip2VisionModel] = None,
-        image_ref_processor: Optional[Siglip2ImageProcessorFast] = None,
     ):
         super().__init__()
 
         if safety_checker is None:
             safety_checker = CosmosSafetyChecker()
-        
-        if image_ref_model is None and image_ref_processor is None:
-            model_name = "google/siglip2-so400m-patch16-naflex"
-            config = AutoConfig.from_pretrained(model_name)
-            config.vision_config.vision_use_head = False
-            image_ref_model = Siglip2VisionModel.from_pretrained(
-                model_name,
-                config=config.vision_config,
-            )
-            image_ref_processor = AutoImageProcessor.from_pretrained(model_name)
 
         self.register_modules(
             vae=vae,
@@ -291,8 +279,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             controlnet=controlnet,
             scheduler=scheduler,
             safety_checker=safety_checker,
-            image_ref_model=image_ref_model,
-            image_ref_processor=image_ref_processor,
         )
 
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
@@ -628,7 +614,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: PipelineImageInput | None = None,
-        image_ref: PipelineImageInput | None = None,
         video: List[PipelineImageInput] | None = None,
         prompt: Union[str, List[str]] | None = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -800,15 +785,15 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
 
-        if image_ref is not None:
-            image_ref_inputs = self.image_ref_processor(images=[image_ref], return_tensors="pt").to(self.image_ref_model.device)
-            img_context_ref = self.image_ref_model(**image_ref_inputs).last_hidden_state.to(device=prompt_embeds.device, dtype=transformer_dtype)
-        else:
-            img_context_ref = torch.zeros(batch_size, self.transformer.config.img_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
-
-        no_img_context_ref = torch.zeros(batch_size, self.transformer.config.img_context_num_tokens, self.transformer.config.img_context_dim_in).to(device=prompt_embeds.device, dtype=transformer_dtype)
-        encoder_hidden_states = (prompt_embeds, img_context_ref)
-        neg_encoder_hidden_states = (negative_prompt_embeds, no_img_context_ref)
+        img_context = torch.zeros(
+            batch_size,
+            self.transformer.config.img_context_num_tokens,
+            self.transformer.config.img_context_dim_in,
+            device=prompt_embeds.device,
+            dtype=transformer_dtype,
+        )
+        encoder_hidden_states = (prompt_embeds, img_context)
+        neg_encoder_hidden_states = (negative_prompt_embeds, img_context)
 
         num_frames_in = None
         if image is not None:
@@ -975,7 +960,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             return (video,)
 
         return CosmosPipelineOutput(frames=video)
-    
+
     def _match_num_frames(self, video: torch.Tensor, target_num_frames: int) -> torch.Tensor:
         if target_num_frames <= 0 or video.shape[2] == target_num_frames:
             return video
