@@ -52,19 +52,46 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # map regular pipeline to modular pipeline class name
+
+def _create_default_map_fn(pipeline_class_name: str):
+    """Create a mapping function that always returns the same pipeline class."""
+    def _map_fn(config_dict):
+        return pipeline_class_name
+    return _map_fn
+
+
+def _flux2_klein_map_fn(config_dict):
+    if "is_distilled" in config_dict and config_dict["is_distilled"]:
+        return "Flux2KleinModularPipeline"
+    else:
+        return "Flux2KleinBaseModularPipeline"
+
+def _wan_map_fn(config_dict):
+    if "boundary_ratio" in config_dict and config_dict["boundary_ratio"] is not None:
+        return "Wan22ModularPipeline"
+    else:
+        return "WanModularPipeline"
+
+def _wan_i2v_map_fn(config_dict):
+    if "boundary_ratio" in config_dict and config_dict["boundary_ratio"] is not None:
+        return "Wan22Image2VideoModularPipeline"
+    else:
+        return "WanImage2VideoModularPipeline"
+
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
-        ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
-        ("wan", "WanModularPipeline"),
-        ("flux", "FluxModularPipeline"),
-        ("flux-kontext", "FluxKontextModularPipeline"),
-        ("flux2", "Flux2ModularPipeline"),
-        ("flux2-klein", "Flux2KleinModularPipeline"),
-        ("qwenimage", "QwenImageModularPipeline"),
-        ("qwenimage-edit", "QwenImageEditModularPipeline"),
-        ("qwenimage-edit-plus", "QwenImageEditPlusModularPipeline"),
-        ("qwenimage-layered", "QwenImageLayeredModularPipeline"),
-        ("z-image", "ZImageModularPipeline"),
+        ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
+        ("wan", _wan_map_fn),
+        ("wan-i2v", _wan_i2v_map_fn),
+        ("flux", _create_default_map_fn("FluxModularPipeline")),
+        ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),
+        ("flux2", _create_default_map_fn("Flux2ModularPipeline")),
+        ("flux2-klein", _flux2_klein_map_fn),
+        ("qwenimage", _create_default_map_fn("QwenImageModularPipeline")),
+        ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
+        ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
+        ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
+        ("z-image", _create_default_map_fn("ZImageModularPipeline")),
     ]
 )
 
@@ -1715,7 +1742,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             logger.debug(" try to determine the modular pipeline class from model_index.json")
             standard_pipeline_class = _get_pipeline_class(cls, config=config_dict)
             model_name = _get_model(standard_pipeline_class.__name__)
-            pipeline_class_name = MODULAR_PIPELINE_MAPPING.get(model_name, ModularPipeline.__name__)
+            map_fn = MODULAR_PIPELINE_MAPPING.get(model_name, _create_default_map_fn("ModularPipeline"))
+            pipeline_class_name = map_fn(config_dict)
             diffusers_module = importlib.import_module("diffusers")
             pipeline_class = getattr(diffusers_module, pipeline_class_name)
         else:

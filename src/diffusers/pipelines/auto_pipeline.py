@@ -246,7 +246,7 @@ AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
 
 AUTO_IMAGE2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
-        ("wan", WanImageToVideoPipeline),
+        ("wan-i2v", WanImageToVideoPipeline),
     ]
 )
 
