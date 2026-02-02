@@ -98,6 +98,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2AutoBlocks,
             Flux2KleinAutoBlocks,
             Flux2KleinBaseAutoBlocks,
+            Flux2KleinBaseModularPipeline,
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
         )
