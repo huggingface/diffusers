@@ -36,6 +36,7 @@ from .encoders import (
     WanImageResizeStep,
     WanTextEncoderStep,
     WanVaeEncoderStep,
+    WanPrepareFirstFrameLatentsStep,
 )
 
 
@@ -48,8 +49,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
-    block_classes = [WanImageResizeStep, WanVaeEncoderStep]
-    block_names = ["image_resize", "vae_encoder"]
+    block_classes = [WanImageResizeStep, WanVaeEncoderStep, WanPrepareFirstFrameLatentsStep]
+    block_names = ["image_resize", "vae_encoder", "prepare_first_frame_latents"]
 
     @property
     def description(self):

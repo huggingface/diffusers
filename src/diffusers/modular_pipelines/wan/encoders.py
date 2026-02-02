@@ -493,7 +493,7 @@ class WanVaeEncoderStep(ModularPipelineBlocks):
             InputParam("resized_image", type_hint=PIL.Image.Image, required=True),
             InputParam("height"),
             InputParam("width"),
-            InputParam("num_frames"),
+            InputParam("num_frames", type_hint=int, default=81),
             InputParam("generator"),
         ]
 
@@ -574,7 +574,7 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("first_frame_latents", type_hint=Optional[torch.Tensor]),
-            InputParam("num_frames", type_hint=int),
+            InputParam("num_frames", required=True),
         ]
 
     @property
@@ -633,7 +633,7 @@ class WanFirstLastFrameVaeEncoderStep(ModularPipelineBlocks):
             InputParam("resized_last_image", type_hint=PIL.Image.Image, required=True),
             InputParam("height"),
             InputParam("width"),
-            InputParam("num_frames"),
+            InputParam("num_frames", type_hint=int, default=81),
             InputParam("generator"),
         ]
 
@@ -723,7 +723,7 @@ class WanPrepareFirstLastFrameLatentsStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("first_last_frame_latents", type_hint=Optional[torch.Tensor]),
-            InputParam("num_frames", type_hint=int),
+            InputParam("num_frames", type_hint=int, required=True),
         ]
 
     @property

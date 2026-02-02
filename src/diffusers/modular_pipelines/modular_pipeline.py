@@ -60,19 +60,29 @@ def _create_default_map_fn(pipeline_class_name: str):
     return _map_fn
 
 
-def _flux2_klein_map_fn(config_dict):
+def _flux2_klein_map_fn(config_dict=None):
+
+    if config_dict is None:
+        return "Flux2KleinModularPipeline"
+
     if "is_distilled" in config_dict and config_dict["is_distilled"]:
         return "Flux2KleinModularPipeline"
     else:
         return "Flux2KleinBaseModularPipeline"
 
-def _wan_map_fn(config_dict):
+def _wan_map_fn(config_dict=None):
+    if config_dict is None:
+        return "WanModularPipeline"
+
     if "boundary_ratio" in config_dict and config_dict["boundary_ratio"] is not None:
         return "Wan22ModularPipeline"
     else:
         return "WanModularPipeline"
 
-def _wan_i2v_map_fn(config_dict):
+def _wan_i2v_map_fn(config_dict=None):
+    if config_dict is None:
+        return "WanImage2VideoModularPipeline"
+
     if "boundary_ratio" in config_dict and config_dict["boundary_ratio"] is not None:
         return "Wan22Image2VideoModularPipeline"
     else:
@@ -393,7 +403,8 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         """
         create a ModularPipeline, optionally accept pretrained_model_name_or_path to load from hub.
         """
-        pipeline_class_name = MODULAR_PIPELINE_MAPPING.get(self.model_name, ModularPipeline.__name__)
+        map_fn = MODULAR_PIPELINE_MAPPING.get(self.model_name, _create_default_map_fn("ModularPipeline"))
+        pipeline_class_name = map_fn()
         diffusers_module = importlib.import_module("diffusers")
         pipeline_class = getattr(diffusers_module, pipeline_class_name)
 
@@ -1572,7 +1583,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             if modular_config_dict is not None:
                 blocks_class_name = modular_config_dict.get("_blocks_class_name")
             else:
-                blocks_class_name = self.get_default_blocks_name(config_dict)
+                blocks_class_name = self.default_blocks_name
             if blocks_class_name is not None:
                 diffusers_module = importlib.import_module("diffusers")
                 blocks_class = getattr(diffusers_module, blocks_class_name)
@@ -1643,9 +1654,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         for input_param in self.blocks.inputs:
             params[input_param.name] = input_param.default
         return params
-
-    def get_default_blocks_name(self, config_dict: Optional[Dict[str, Any]]) -> Optional[str]:
-        return self.default_blocks_name
 
     @classmethod
     def _load_pipeline_config(
