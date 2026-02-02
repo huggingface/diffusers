@@ -213,7 +213,7 @@ class BaseModelTesterConfig:
     @property
     def model_split_percents(self) -> list:
         """Percentages for model parallelism tests."""
-        return [0.5, 0.7]
+        return [0.9]
 
     # ==================== Required Methods ====================
 

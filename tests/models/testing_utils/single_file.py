@@ -21,7 +21,6 @@ from huggingface_hub import hf_hub_download, snapshot_download
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 
 from ...testing_utils import (
-    assert_tensors_close,
     backend_empty_cache,
     is_single_file,
     nightly,
@@ -127,19 +126,27 @@ class SingleFileTesterMixin:
                 f"pretrained={model.config[param_name]}, single_file={param_value}"
             )
 
-    def test_single_file_model_parameters(self, atol=1e-5, rtol=1e-5):
-        pretrained_kwargs = {"device": torch_device, **self.pretrained_model_kwargs}
+    def test_single_file_model_parameters(self):
+        pretrained_kwargs = {"device_map": str(torch_device), **self.pretrained_model_kwargs}
         single_file_kwargs = {"device": torch_device}
 
         if self.torch_dtype:
             pretrained_kwargs["torch_dtype"] = self.torch_dtype
             single_file_kwargs["torch_dtype"] = self.torch_dtype
 
+        # Load pretrained model, get state dict on CPU, then free GPU memory
         model = self.model_class.from_pretrained(self.pretrained_model_name_or_path, **pretrained_kwargs)
-        model_single_file = self.model_class.from_single_file(self.ckpt_path, **single_file_kwargs)
+        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        del model
+        gc.collect()
+        backend_empty_cache(torch_device)
 
-        state_dict = model.state_dict()
-        state_dict_single_file = model_single_file.state_dict()
+        # Load single file model, get state dict on CPU
+        model_single_file = self.model_class.from_single_file(self.ckpt_path, **single_file_kwargs)
+        state_dict_single_file = {k: v.cpu() for k, v in model_single_file.state_dict().items()}
+        del model_single_file
+        gc.collect()
+        backend_empty_cache(torch_device)
 
         assert set(state_dict.keys()) == set(state_dict_single_file.keys()), (
             "Model parameters keys differ between pretrained and single file loading. "
@@ -156,9 +163,7 @@ class SingleFileTesterMixin:
                 f"pretrained {param.shape} vs single file {param_single_file.shape}"
             )
 
-            assert_tensors_close(
-                param, param_single_file, atol=atol, rtol=rtol, msg=f"Parameter values differ for {key}"
-            )
+            assert torch.equal(param, param_single_file), f"Parameter values differ for {key}"
 
     def test_single_file_loading_local_files_only(self, tmp_path):
         single_file_kwargs = {}
@@ -180,6 +185,7 @@ class SingleFileTesterMixin:
 
         if self.torch_dtype:
             single_file_kwargs["torch_dtype"] = self.torch_dtype
+        single_file_kwargs.update(self.pretrained_model_kwargs)
 
         # Load with config parameter
         model_single_file = self.model_class.from_single_file(
@@ -207,6 +213,7 @@ class SingleFileTesterMixin:
 
         if self.torch_dtype:
             single_file_kwargs["torch_dtype"] = self.torch_dtype
+        single_file_kwargs.update(self.pretrained_model_kwargs)
 
         pretrained_model_name_or_path, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
         local_ckpt_path = download_single_file_checkpoint(pretrained_model_name_or_path, weight_name, str(tmp_path))

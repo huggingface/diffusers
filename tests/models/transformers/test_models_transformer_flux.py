@@ -15,6 +15,7 @@
 
 from typing import Any
 
+import pytest
 import torch
 
 from diffusers import FluxTransformer2DModel
@@ -123,6 +124,14 @@ class FluxTransformerTesterConfig(BaseModelTesterConfig):
     @property
     def input_shape(self) -> tuple[int, int]:
         return (16, 4)
+
+    @property
+    def model_split_percents(self) -> list:
+        return [0.9]
+
+    @property
+    def main_input_name(self) -> str:
+        return "hidden_states"
 
     @property
     def generator(self):
@@ -257,7 +266,7 @@ class TestFluxTransformerLoRAHotSwap(FluxTransformerTesterConfig, LoraHotSwappin
         num_latent_channels = 4
         num_image_channels = 3
         sequence_length = 24
-        embedding_dim = 8
+        embedding_dim = 32
 
         return {
             "hidden_states": randn_tensor((batch_size, height * width, num_latent_channels), device=torch_device),
@@ -280,7 +289,7 @@ class TestFluxTransformerCompile(FluxTransformerTesterConfig, TorchCompileTester
         num_latent_channels = 4
         num_image_channels = 3
         sequence_length = 24
-        embedding_dim = 8
+        embedding_dim = 32
 
         return {
             "hidden_states": randn_tensor((batch_size, height * width, num_latent_channels), device=torch_device),
@@ -307,141 +316,100 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
 
 
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        return {
-            "hidden_states": randn_tensor((1, 4096, 64), device=torch_device),
-            "encoder_hidden_states": randn_tensor((1, 512, 4096), device=torch_device),
-            "pooled_projections": randn_tensor((1, 768), device=torch_device),
-            "timestep": torch.tensor([1.0]).to(torch_device),
-            "img_ids": randn_tensor((4096, 3), device=torch_device),
-            "txt_ids": randn_tensor((512, 3), device=torch_device),
-            "guidance": torch.tensor([3.5]).to(torch_device),
-        }
+    """BitsAndBytes quantization tests for Flux Transformer."""
 
 
 class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        return {
-            "hidden_states": randn_tensor((1, 4096, 64), device=torch_device),
-            "encoder_hidden_states": randn_tensor((1, 512, 4096), device=torch_device),
-            "pooled_projections": randn_tensor((1, 768), device=torch_device),
-            "timestep": torch.tensor([1.0]).to(torch_device),
-            "img_ids": randn_tensor((4096, 3), device=torch_device),
-            "txt_ids": randn_tensor((512, 3), device=torch_device),
-            "guidance": torch.tensor([3.5]).to(torch_device),
-        }
+    """Quanto quantization tests for Flux Transformer."""
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-flux-transformer"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {}
 
 
 class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        return {
-            "hidden_states": randn_tensor((1, 4096, 64), device=torch_device),
-            "encoder_hidden_states": randn_tensor((1, 512, 4096), device=torch_device),
-            "pooled_projections": randn_tensor((1, 768), device=torch_device),
-            "timestep": torch.tensor([1.0]).to(torch_device),
-            "img_ids": randn_tensor((4096, 3), device=torch_device),
-            "txt_ids": randn_tensor((512, 3), device=torch_device),
-            "guidance": torch.tensor([3.5]).to(torch_device),
-        }
+    """TorchAO quantization tests for Flux Transformer."""
 
 
 class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
     @property
     def gguf_filename(self):
-        return "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q8_0.gguf"
+        return "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
 
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the real FLUX model dimensions."""
         return {
-            "hidden_states": randn_tensor((1, 4096, 64), device=torch_device),
-            "encoder_hidden_states": randn_tensor((1, 512, 4096), device=torch_device),
-            "pooled_projections": randn_tensor((1, 768), device=torch_device),
-            "timestep": torch.tensor([1.0]).to(torch_device),
-            "img_ids": randn_tensor((4096, 3), device=torch_device),
-            "txt_ids": randn_tensor((512, 3), device=torch_device),
-            "guidance": torch.tensor([3.5]).to(torch_device),
-        }
-
-
-class TestFluxTransformerModelOpt(FluxTransformerTesterConfig, ModelOptTesterMixin):
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        return {
-            "hidden_states": randn_tensor((1, 4096, 64), device=torch_device),
-            "encoder_hidden_states": randn_tensor((1, 512, 4096), device=torch_device),
-            "pooled_projections": randn_tensor((1, 768), device=torch_device),
-            "timestep": torch.tensor([1.0]).to(torch_device),
-            "img_ids": randn_tensor((4096, 3), device=torch_device),
-            "txt_ids": randn_tensor((512, 3), device=torch_device),
-            "guidance": torch.tensor([3.5]).to(torch_device),
-        }
-
-
-class TestFluxTransformerBitsAndBytesCompile(FluxTransformerTesterConfig, BitsAndBytesCompileTesterMixin):
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        return {
-            "hidden_states": randn_tensor((1, 4096, 64), device=torch_device),
-            "encoder_hidden_states": randn_tensor((1, 512, 4096), device=torch_device),
-            "pooled_projections": randn_tensor((1, 768), device=torch_device),
-            "timestep": torch.tensor([1.0]).to(torch_device),
-            "img_ids": randn_tensor((4096, 3), device=torch_device),
-            "txt_ids": randn_tensor((512, 3), device=torch_device),
-            "guidance": torch.tensor([3.5]).to(torch_device),
+            "hidden_states": randn_tensor(
+                (1, 4096, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "pooled_projections": randn_tensor(
+                (1, 768), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+            "img_ids": randn_tensor((4096, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
+            "txt_ids": randn_tensor((512, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
+            "guidance": torch.tensor([3.5]).to(torch_device, self.torch_dtype),
         }
 
 
 class TestFluxTransformerQuantoCompile(FluxTransformerTesterConfig, QuantoCompileTesterMixin):
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        return {
-            "hidden_states": randn_tensor((1, 4096, 64), device=torch_device),
-            "encoder_hidden_states": randn_tensor((1, 512, 4096), device=torch_device),
-            "pooled_projections": randn_tensor((1, 768), device=torch_device),
-            "timestep": torch.tensor([1.0]).to(torch_device),
-            "img_ids": randn_tensor((4096, 3), device=torch_device),
-            "txt_ids": randn_tensor((512, 3), device=torch_device),
-            "guidance": torch.tensor([3.5]).to(torch_device),
-        }
+    """Quanto + compile tests for Flux Transformer."""
 
 
 class TestFluxTransformerTorchAoCompile(FluxTransformerTesterConfig, TorchAoCompileTesterMixin):
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        return {
-            "hidden_states": randn_tensor((1, 4096, 64), device=torch_device),
-            "encoder_hidden_states": randn_tensor((1, 512, 4096), device=torch_device),
-            "pooled_projections": randn_tensor((1, 768), device=torch_device),
-            "timestep": torch.tensor([1.0]).to(torch_device),
-            "img_ids": randn_tensor((4096, 3), device=torch_device),
-            "txt_ids": randn_tensor((512, 3), device=torch_device),
-            "guidance": torch.tensor([3.5]).to(torch_device),
-        }
+    """TorchAO + compile tests for Flux Transformer."""
 
 
 class TestFluxTransformerGGUFCompile(FluxTransformerTesterConfig, GGUFCompileTesterMixin):
     @property
     def gguf_filename(self):
-        return "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q8_0.gguf"
+        return "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
 
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the real FLUX model dimensions."""
         return {
-            "hidden_states": randn_tensor((1, 4096, 64), device=torch_device),
-            "encoder_hidden_states": randn_tensor((1, 512, 4096), device=torch_device),
-            "pooled_projections": randn_tensor((1, 768), device=torch_device),
-            "timestep": torch.tensor([1.0]).to(torch_device),
-            "img_ids": randn_tensor((4096, 3), device=torch_device),
-            "txt_ids": randn_tensor((512, 3), device=torch_device),
-            "guidance": torch.tensor([3.5]).to(torch_device),
+            "hidden_states": randn_tensor(
+                (1, 4096, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "pooled_projections": randn_tensor(
+                (1, 768), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+            "img_ids": randn_tensor((4096, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
+            "txt_ids": randn_tensor((512, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
+            "guidance": torch.tensor([3.5]).to(torch_device, self.torch_dtype),
         }
+
+
+class TestFluxTransformerModelOpt(FluxTransformerTesterConfig, ModelOptTesterMixin):
+    """ModelOpt quantization tests for Flux Transformer."""
 
 
 class TestFluxTransformerModelOptCompile(FluxTransformerTesterConfig, ModelOptCompileTesterMixin):
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        return {
-            "hidden_states": randn_tensor((1, 4096, 64), device=torch_device),
-            "encoder_hidden_states": randn_tensor((1, 512, 4096), device=torch_device),
-            "pooled_projections": randn_tensor((1, 768), device=torch_device),
-            "timestep": torch.tensor([1.0]).to(torch_device),
-            "img_ids": randn_tensor((4096, 3), device=torch_device),
-            "txt_ids": randn_tensor((512, 3), device=torch_device),
-            "guidance": torch.tensor([3.5]).to(torch_device),
-        }
+    """ModelOpt + compile tests for Flux Transformer."""
+
+
+@pytest.mark.skip(reason="torch.compile is not supported by BitsAndBytes")
+class TestFluxTransformerBitsAndBytesCompile(FluxTransformerTesterConfig, BitsAndBytesCompileTesterMixin):
+    """BitsAndBytes + compile tests for Flux Transformer."""
 
 
 class TestFluxTransformerPABCache(FluxTransformerTesterConfig, PyramidAttentionBroadcastTesterMixin):

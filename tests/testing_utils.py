@@ -38,7 +38,7 @@ from diffusers.utils.import_utils import (
     is_gguf_available,
     is_kernels_available,
     is_note_seq_available,
-    is_nvidia_modelopt_available,
+    is_nvidia_modelopt_version,
     is_onnx_available,
     is_opencv_available,
     is_optimum_quanto_available,
@@ -848,11 +848,8 @@ def require_kernels_version_greater_or_equal(kernels_version):
 
 def require_modelopt_version_greater_or_equal(modelopt_version):
     def decorator(test_case):
-        correct_nvidia_modelopt_version = is_nvidia_modelopt_available() and version.parse(
-            version.parse(importlib.metadata.version("modelopt")).base_version
-        ) >= version.parse(modelopt_version)
         return pytest.mark.skipif(
-            not correct_nvidia_modelopt_version,
+            not is_nvidia_modelopt_version(">=", modelopt_version),
             reason=f"Test requires modelopt with version greater than {modelopt_version}.",
         )(test_case)
 

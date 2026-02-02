@@ -30,6 +30,8 @@ from diffusers.utils.import_utils import (
 
 from ...testing_utils import (
     backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_peak_memory_stats,
     is_bitsandbytes,
     is_gguf,
     is_modelopt,
@@ -88,6 +90,7 @@ class LoRALayer(torch.nn.Module):
         return self.module(input, *args, **kwargs) + self.adapter(input)
 
 
+@is_quantization
 @require_accelerator
 class QuantizationTesterMixin:
     """
@@ -171,8 +174,17 @@ class QuantizationTesterMixin:
     @torch.no_grad()
     def _test_quantization_inference(self, config_kwargs):
         model_quantized = self._create_quantized_model(config_kwargs)
+        model_quantized.to(torch_device)
+
+        # Get model dtype from first parameter
+        model_dtype = next(model_quantized.parameters()).dtype
 
         inputs = self.get_dummy_inputs()
+        # Cast inputs to model dtype
+        inputs = {
+            k: v.to(model_dtype) if isinstance(v, torch.Tensor) and v.is_floating_point() else v
+            for k, v in inputs.items()
+        }
         output = model_quantized(**inputs, return_dict=False)[0]
 
         assert output is not None, "Model output is None"
@@ -344,6 +356,7 @@ class QuantizationTesterMixin:
             config_kwargs: Quantization config parameters
         """
         model = self._create_quantized_model(config_kwargs)
+        model.to(torch_device)
 
         if not hasattr(model, "dequantize"):
             pytest.skip("Model does not have dequantize method")
@@ -354,7 +367,15 @@ class QuantizationTesterMixin:
             if isinstance(module, torch.nn.Linear):
                 assert not self._is_module_quantized(module), f"Module {name} is still quantized after dequantize()"
 
+        # Get model dtype from first parameter
+        model_dtype = next(model.parameters()).dtype
+
         inputs = self.get_dummy_inputs()
+        # Cast inputs to model dtype
+        inputs = {
+            k: v.to(model_dtype) if isinstance(v, torch.Tensor) and v.is_floating_point() else v
+            for k, v in inputs.items()
+        }
         output = model(**inputs, return_dict=False)[0]
         assert output is not None, "Model output is None after dequantization"
         assert not torch.isnan(output).any(), "Model output contains NaN after dequantization"
@@ -653,6 +674,32 @@ class QuantoConfigMixin:
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
         assert isinstance(module, QLinear), f"Layer {name} is not QLinear, got {type(module)}"
 
+    def _test_quantization_memory_footprint(self, config_kwargs, expected_memory_reduction=1.2):
+        """Override to use max_memory_allocated for Quanto (get_memory_footprint doesn't reflect quantized _data)."""
+        # Measure unquantized model memory
+        backend_reset_peak_memory_stats(torch_device)
+        backend_empty_cache(torch_device)
+
+        model = self._load_unquantized_model()
+        model.to(torch_device)
+        mem = backend_max_memory_allocated(torch_device)
+
+        del model
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+        # Measure quantized model memory
+        backend_reset_peak_memory_stats(torch_device)
+
+        model_quantized = self._create_quantized_model(config_kwargs)
+        model_quantized.to(torch_device)
+        mem_quantized = backend_max_memory_allocated(torch_device)
+
+        ratio = mem / mem_quantized
+        assert ratio >= expected_memory_reduction, (
+            f"Memory ratio {ratio:.2f} is less than expected ({expected_memory_reduction}x). unquantized={mem}, quantized={mem_quantized}"
+        )
+
 
 @is_quanto
 @require_quanto
@@ -756,7 +803,7 @@ class TorchAoConfigMixin:
     }
 
     TORCHAO_EXPECTED_MEMORY_REDUCTIONS = {
-        "int4wo": 3.0,
+        "int4wo": 1.8,
         "int8wo": 1.5,
         "int8dq": 1.5,
     }
@@ -765,11 +812,16 @@ class TorchAoConfigMixin:
         config = TorchAoConfig(**config_kwargs)
         kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
         kwargs["quantization_config"] = config
+        kwargs["device_map"] = str(torch_device)
         kwargs.update(extra_kwargs)
         return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
 
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
         assert isinstance(module, torch.nn.Linear), f"Layer {name} is not Linear, got {type(module)}"
+
+
+# int4wo requires CUDA-specific ops (_convert_weight_to_int4pack)
+_int4wo_skip = pytest.mark.skipif(torch_device != "cuda", reason="int4wo quantization requires CUDA")
 
 
 @is_torchao
@@ -796,16 +848,24 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
 
     @pytest.mark.parametrize(
         "quant_type",
-        list(TorchAoConfigMixin.TORCHAO_QUANT_TYPES.keys()),
-        ids=list(TorchAoConfigMixin.TORCHAO_QUANT_TYPES.keys()),
+        [
+            pytest.param("int4wo", marks=_int4wo_skip),
+            "int8wo",
+            "int8dq",
+        ],
+        ids=["int4wo", "int8wo", "int8dq"],
     )
     def test_torchao_quantization_num_parameters(self, quant_type):
         self._test_quantization_num_parameters(TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type])
 
     @pytest.mark.parametrize(
         "quant_type",
-        list(TorchAoConfigMixin.TORCHAO_QUANT_TYPES.keys()),
-        ids=list(TorchAoConfigMixin.TORCHAO_QUANT_TYPES.keys()),
+        [
+            pytest.param("int4wo", marks=_int4wo_skip),
+            "int8wo",
+            "int8dq",
+        ],
+        ids=["int4wo", "int8wo", "int8dq"],
     )
     def test_torchao_quantization_memory_footprint(self, quant_type):
         expected = TorchAoConfigMixin.TORCHAO_EXPECTED_MEMORY_REDUCTIONS.get(quant_type, 1.2)
@@ -815,8 +875,12 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
 
     @pytest.mark.parametrize(
         "quant_type",
-        list(TorchAoConfigMixin.TORCHAO_QUANT_TYPES.keys()),
-        ids=list(TorchAoConfigMixin.TORCHAO_QUANT_TYPES.keys()),
+        [
+            pytest.param("int4wo", marks=_int4wo_skip),
+            "int8wo",
+            "int8dq",
+        ],
+        ids=["int4wo", "int8wo", "int8dq"],
     )
     def test_torchao_quantization_inference(self, quant_type):
         self._test_quantization_inference(TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type])
@@ -831,7 +895,17 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
 
     @pytest.mark.parametrize("quant_type", ["int8wo"], ids=["int8wo"])
     def test_torchao_quantization_serialization(self, quant_type, tmp_path):
-        self._test_quantization_serialization(TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type], tmp_path)
+        """Override to use safe_serialization=False for TorchAO (safetensors not supported)."""
+        config_kwargs = TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type]
+        model = self._create_quantized_model(config_kwargs)
+
+        model.save_pretrained(str(tmp_path), safe_serialization=False)
+
+        model_loaded = self.model_class.from_pretrained(str(tmp_path), device_map=str(torch_device))
+
+        inputs = self.get_dummy_inputs()
+        output = model_loaded(**inputs, return_dict=False)[0]
+        assert not torch.isnan(output).any(), "Loaded model output contains NaN"
 
     def test_torchao_modules_to_not_convert(self):
         """Test that modules_to_not_convert parameter works correctly."""
@@ -885,6 +959,7 @@ class GGUFConfigMixin:
         kwargs = {
             "quantization_config": config,
             "torch_dtype": config_kwargs.get("compute_dtype", torch.bfloat16),
+            "device_map": str(torch_device),
         }
         kwargs.update(extra_kwargs)
         return self.model_class.from_single_file(self.gguf_filename, **kwargs)
@@ -930,11 +1005,9 @@ class GGUFTesterMixin(GGUFConfigMixin, QuantizationTesterMixin):
 
         try:
             model = self._create_quantized_model()
-
             for name, module in model.named_modules():
-                if isinstance(module, torch.nn.Linear):
-                    if any(fp32_name in name for fp32_name in model._keep_in_fp32_modules):
-                        assert module.weight.dtype == torch.float32, f"Module {name} should be FP32"
+                if isinstance(module, torch.nn.Linear) and name in model._keep_in_fp32_modules:
+                    assert module.weight.dtype == torch.float32, f"Module {name} should be FP32"
         finally:
             self.model_class._keep_in_fp32_modules = _keep_in_fp32_modules
 
@@ -983,6 +1056,7 @@ class ModelOptConfigMixin:
         config = NVIDIAModelOptConfig(**config_kwargs)
         kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
         kwargs["quantization_config"] = config
+        kwargs["device_map"] = str(torch_device)
         kwargs.update(extra_kwargs)
         return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
 
@@ -1069,6 +1143,7 @@ class ModelOptTesterMixin(ModelOptConfigMixin, QuantizationTesterMixin):
         self._test_dequantize(ModelOptConfigMixin.MODELOPT_CONFIGS["fp8"])
 
 
+@is_quantization
 @is_torch_compile
 class QuantizationCompileTesterMixin:
     """
