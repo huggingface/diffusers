@@ -1569,7 +1569,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         mesh = None
         if config.context_parallel_config is not None:
             cp_config = config.context_parallel_config
-            mesh = torch.distributed.device_mesh.init_device_mesh(
+            mesh = cp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
                 device_type=device_type,
                 mesh_shape=cp_config.mesh_shape,
                 mesh_dim_names=cp_config.mesh_dim_names,
