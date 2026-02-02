@@ -2325,9 +2325,9 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
     num_single_layers = 0
     for key in original_state_dict.keys():
         if key.startswith("single_blocks."):
-            num_single_layers = max(num_single_layers, int(key.split('.')[1])+1)
+            num_single_layers = max(num_single_layers, int(key.split(".")[1]) + 1)
         elif key.startswith("double_blocks."):
-            num_double_layers = max(num_double_layers, int(key.split('.')[1])+1)
+            num_double_layers = max(num_double_layers, int(key.split(".")[1]) + 1)
 
     lora_keys = ("lora_A", "lora_B")
     attn_types = ("img_attn", "txt_attn")
