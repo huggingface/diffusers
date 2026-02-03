@@ -418,17 +418,23 @@ def input_param_to_mellon_param(input_param: "InputParam") -> MellonParam:
     Convert an InputParam to a MellonParam using metadata.
 
     Args:
-        input_param: An InputParam with optional metadata={"mellon": "<type>"} where type is one of:
-            image, video, text, textbox, checkbox, number, slider, dropdown, seed, model. If metadata is None or
-            unknown, maps to "custom".
+        input_param: An InputParam with optional metadata containing either:
+            - {"mellon": "<type>"} for simple types (image, textbox, slider, etc.)
+            - {"mellon": MellonParam(...)} for full control over UI configuration
 
     Returns:
         MellonParam instance
     """
     name = input_param.name
     metadata = input_param.metadata
-    mellon_type = metadata.get("mellon") if metadata else None
+    mellon_value = metadata.get("mellon") if metadata else None
     default = input_param.default
+
+    # If it's already a MellonParam, return it directly
+    if isinstance(mellon_value, MellonParam):
+        return mellon_value
+
+    mellon_type = mellon_value
 
     if mellon_type == "image":
         return MellonParam.Input.image(name)

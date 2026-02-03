@@ -19,11 +19,25 @@ specific language governing permissions and limitations under the License.
 > Mellon is in early development and not ready for production use yet. Consider this a sneak peek of how the integration works!
 
 
-Create a `mellon_pipeline_config.json` file to define how a custom block's parameters map to Mellon UI components.
+Custom blocks work in Mellon out of the box - just need to add a `mellon_pipeline_config.json` to your repository. This config file tells Mellon how to render your block's parameters as UI components.
 
-1. **Add a "Mellon type" to your block's parameters** - Each `InputParam`/`OutputParam` needs a type that tells Mellon what UI component to render (e.g., `"textbox"`, `"dropdown"`, `"image"`). Specify types via metadata in your block definitions, or pass them when generating the config.
-2. **Generate `mellon_pipeline_config.json`** - Use our utility to generate a default template and push it to your Hub repository.
-3. **(Optional) Manually adjust the template** - Fine-tune the generated config for your specific needs.
+Here's what it looks like in action with the [Gemini Prompt Expander](https://huggingface.co/diffusers/gemini-prompt-expander-mellon) block:
+
+<!-- TODO: add video here -->
+
+To use a modular diffusers custom block in Mellon:
+1. Drag a **Dynamic Block Node** from the ModularDiffusers section
+2. Enter the `repo_id` (e.g., `diffusers/gemini-prompt-expander-mellon`)
+3. Click **Load Custom Block**
+4. The node transforms to show your block's inputs and outputs
+
+Now let's walk through how to create this config for your own custom block.
+
+## Steps to create a Mellon config
+
+1. **Specify Mellon types for your parameters** - Each `InputParam`/`OutputParam` needs a type that tells Mellon what UI component to render (e.g., `"textbox"`, `"dropdown"`, `"image"`).
+2. **Generate `mellon_pipeline_config.json`** - Use our utility to generate a config template and push it to your Hub repository.
+3. **(Optional) Manually adjust the config** - Fine-tune the generated config for your specific needs.
 
 ## Specify Mellon types for parameters
 
@@ -41,11 +55,29 @@ Mellon types determine how each parameter renders in the UI. If you don't specif
 | `number` | Input | Numeric input |
 | `checkbox` | Input | Boolean toggle |
 
+For parameters that need more configuration (like dropdowns with options, or sliders with min/max values), pass a `MellonParam` instance directly instead of a string. You can use one of the class methods below, or create a fully custom one with `MellonParam(name, label, type, ...)`.
+
+| Method | Description |
+|--------|-------------|
+| `MellonParam.Input.image(name)` | Image input |
+| `MellonParam.Input.textbox(name, default)` | Text input as textarea |
+| `MellonParam.Input.dropdown(name, options, default)` | Dropdown selection |
+| `MellonParam.Input.slider(name, default, min, max, step)` | Slider for numeric values |
+| `MellonParam.Input.number(name, default, min, max, step)` | Numeric input (no slider) |
+| `MellonParam.Input.seed(name, default)` | Seed input with randomize button |
+| `MellonParam.Input.checkbox(name, default)` | Boolean checkbox |
+| `MellonParam.Input.model(name)` | Model input for diffusers components |
+| `MellonParam.Output.image(name)` | Image output |
+| `MellonParam.Output.video(name)` | Video output |
+| `MellonParam.Output.text(name)` | Text output |
+| `MellonParam.Output.model(name)` | Model output for diffusers components |
+
 Choose one of the methods below to specify a Mellon type.
 
 ### Using `metadata` in block definitions
 
-If you're defining a custom block from scratch, add `metadata={"mellon": "<type>"}` directly to your `InputParam` and `OutputParam` definitions:
+If you're defining a custom block from scratch, add `metadata={"mellon": "<type>"}` directly to your `InputParam` and `OutputParam` definitions. If you're editing an existing custom block from the Hub, see [Editing custom blocks](./custom_blocks#editing-custom-blocks) for how to download it locally.
+
 ```python
 class GeminiPromptExpander(ModularPipelineBlocks):
     
@@ -77,6 +109,18 @@ class GeminiPromptExpander(ModularPipelineBlocks):
                 # No metadata - we don't want to render this in UI
             )
         ]
+```
+
+For full control over UI configuration, pass a `MellonParam` instance directly:
+```python
+from diffusers.modular_pipelines.mellon_node_utils import MellonParam
+
+InputParam(
+    "mode",
+    type_hint=str,
+    default="balanced",
+    metadata={"mellon": MellonParam.Input.dropdown("mode", options=["fast", "balanced", "quality"])},
+)
 ```
 
 ### Using `input_types` and `output_types` when Generating Config
@@ -223,14 +267,4 @@ Remove `old_prompt` from both `params` and `output_names` because you won't need
 }
 ```
 
-See the final config at [YiYiXu/gemini-prompt-expander](https://huggingface.co/YiYiXu/gemini-prompt-expander).
-
-## Use in Mellon
-
-1. Start Mellon (see [Mellon installation guide](https://github.com/cubiq/Mellon))
-
-2. In Mellon:
-   - Drag a **Dynamic Block Node** from the ModularDiffusers section
-   - Enter your `repo_id` (e.g., `YiYiXu/gemini-prompt-expander`)
-   - Click **Load Custom Block**
-   - The node will transform to show your block's inputs and outputs
+See the final config at [diffusers/gemini-prompt-expander-mellon](https://huggingface.co/diffusers/gemini-prompt-expander-mellon).
