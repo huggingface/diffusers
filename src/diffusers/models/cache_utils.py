@@ -109,7 +109,7 @@ class CacheMixin:
         )
         from ..hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
         from ..hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
-        from ..hooks.mag_cache import _MAG_CACHE_LEADER_BLOCK_HOOK
+        from ..hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
         from ..hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
 
@@ -126,6 +126,7 @@ class CacheMixin:
             registry.remove_hook(_FBC_BLOCK_HOOK, recurse=True)
         elif isinstance(self._cache_config, MagCacheConfig):
             registry.remove_hook(_MAG_CACHE_LEADER_BLOCK_HOOK, recurse=True)
+            registry.remove_hook(_MAG_CACHE_BLOCK_HOOK, recurse=True)
         elif isinstance(self._cache_config, PyramidAttentionBroadcastConfig):
             registry.remove_hook(_PYRAMID_ATTENTION_BROADCAST_HOOK, recurse=True)
         elif isinstance(self._cache_config, TaylorSeerCacheConfig):
