@@ -29,7 +29,6 @@ Create a `mellon_pipeline_config.json` file to define how a custom block's param
 
 Mellon types determine how each parameter renders in the UI. If you don't specify a type for a parameter, it will default to `"custom"`, which renders as a simple connection dot. You can always adjust this later in the generated config.
 
-### Supported Mellon Types
 
 | Type | Input/Output | Description |
 |------|--------------|-------------|
