@@ -1916,6 +1916,7 @@ This pipeline uses a {block_count}-block architecture that can be customized and
                 token=token,
                 is_pipeline=True,
                 model_description=MODULAR_MODEL_CARD_TEMPLATE.format(**card_content),
+                is_modular=True,
             )
             model_card = populate_model_card(model_card, tags=card_content["tags"])
 
