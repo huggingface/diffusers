@@ -33,9 +33,9 @@ Your custom block project should use the following structure:
 
 ## Quick Start with Template
 
-The fastest way to create a custom block is to start from our template:
+The fastest way to create a custom block is to start from our template.
 
-### 1. Download the template
+### Download the template
 
 ```python
 from diffusers import ModularPipelineBlocks
@@ -50,13 +50,13 @@ blocks = ModularPipelineBlocks.from_pretrained(
 )
 ```
 
-This saves the template files to `custom-block-template/` locally. Feel free to use a custom `local_dir`.
+This saves the template files to `custom-block-template/` locally or you could use `local_dir` to save to a specific location.
 
-### 2. Edit locally
+### Edit locally
 
 Open `block.py` and implement your custom block. The template includes commented examples showing how to define each property. See the [Florence-2 example](#example-florence-2-image-annotator) below for a complete implementation.
 
-### 3. Test your block
+### Test your block
 
 ```python
 from diffusers import ModularPipelineBlocks
@@ -66,7 +66,7 @@ pipeline = blocks.init_pipeline()
 output = pipeline(...)  # your inputs here
 ```
 
-### 4. Upload to the Hub
+### Upload to the Hub
 
 ```python
 pipeline.save_pretrained(local_dir, repo_id="your-username/your-block-name", push_to_hub=True)
@@ -74,11 +74,11 @@ pipeline.save_pretrained(local_dir, repo_id="your-username/your-block-name", pus
 
 ## Example: Florence-2 Image Annotator
 
-This example creates a custom block that uses [Florence-2](https://huggingface.co/docs/transformers/model_doc/florence2) to process an input image and generate a mask for inpainting.
+This example creates a custom block with [Florence-2](https://huggingface.co/docs/transformers/model_doc/florence2) to process an input image and generate a mask for inpainting.
 
 ### Define components
 
-First, define the components the block needs. Here we use `Florence2ForConditionalGeneration` and its processor. When defining components, specify the `name` (how you'll access it in code), `type_hint` (the model class), and `pretrained_model_name_or_path` (where to load weights from).
+Define the components the block needs, `Florence2ForConditionalGeneration` and its processor. When defining components, specify the `name` (how you'll access it in code), `type_hint` (the model class), and `pretrained_model_name_or_path` (where to load weights from).
 
 ```python
 # Inside block.py
@@ -106,7 +106,7 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
 
 ### Define inputs and outputs
 
-Next, define the block's interface. Inputs include the image, annotation task, and prompt. Outputs include the generated mask and annotations.
+Inputs include the image, annotation task, and prompt. Outputs include the generated mask and annotations.
 
 ```python
 from typing import List, Union
@@ -257,7 +257,7 @@ mask_image = image_annotator_node(
 mask_image[0].save("car-mask.png")
 ```
 
-You can also compose it with other blocks to create a new pipeline:
+Compose it with other blocks to create a new pipeline:
 
 ```python
 # Get the annotator block
@@ -286,9 +286,9 @@ output = pipe(
 output[0].save("florence-inpainting.png")
 ```
 
-## Editing Custom Blocks
+## Editing custom blocks
 
-You can edit any existing custom block by downloading it locally. This follows the same workflow as the [Quick Start with Template](#quick-start-with-template), but starting from an existing block instead of the template.
+Edit custom blocks by downloading it locally. This is the same workflow as the [Quick Start with Template](#quick-start-with-template), but starting from an existing block instead of the template.
 
 Use the `local_dir` argument to download a custom block to a specific folder:
 

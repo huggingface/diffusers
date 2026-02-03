@@ -115,7 +115,7 @@
   - local: modular_diffusers/custom_blocks
     title: Building Custom Blocks
   - local: modular_diffusers/mellon
-    title: Mellon Guide
+    title: Using Custom Blocks with Mellon
   title: Modular Diffusers
 - isExpanded: false
   sections:

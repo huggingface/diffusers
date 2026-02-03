@@ -16,17 +16,17 @@ specific language governing permissions and limitations under the License.
 [Mellon](https://github.com/cubiq/Mellon) is a visual workflow interface that integrates with Modular Diffusers and is designed for node-based workflows.
 
 > [!WARNING]
-> Mellon is in early development and not yet ready for production use. Consider this a sneak peek of how the integration works! Custom blocks built with Modular Diffusers work with Mellon out of the box - no UI code required - and we'll ensure compatibility as Mellon evolves.
+> Mellon is in early development and not ready for production use yet. Consider this a sneak peek of how the integration works!
 
 ## Overview
 
-To use a custom block in Mellon, you need a `mellon_pipeline_config.json` file that defines how your block's parameters map to Mellon UI components. Here's how to create one:
+Create a `mellon_pipeline_config.json` file to define how a custom block's parameters map to Mellon UI components.
 
-1. **Add a "Mellon type" to your block's parameters** - Each `InputParam`/`OutputParam` needs a type that tells Mellon what UI component to render (e.g., `"textbox"`, `"dropdown"`, `"image"`). You can specify types via metadata in your block definitions, or pass them when generating the config.
-2. **Generate `mellon_pipeline_config.json`** - Use our utility to generate a default template and push it to your Hub repository
-3. **(Optional) Manually adjust the template** - Fine-tune the generated config for your specific needs
+1. **Add a "Mellon type" to your block's parameters** - Each `InputParam`/`OutputParam` needs a type that tells Mellon what UI component to render (e.g., `"textbox"`, `"dropdown"`, `"image"`). Specify types via metadata in your block definitions, or pass them when generating the config.
+2. **Generate `mellon_pipeline_config.json`** - Use our utility to generate a default template and push it to your Hub repository.
+3. **(Optional) Manually adjust the template** - Fine-tune the generated config for your specific needs.
 
-## Step 1: Specify Mellon Types for Parameters
+## Specify Mellon types for parameters
 
 Mellon types determine how each parameter renders in the UI. If you don't specify a type for a parameter, it will default to `"custom"`, which renders as a simple connection dot. You can always adjust this later in the generated config.
 
@@ -43,9 +43,11 @@ Mellon types determine how each parameter renders in the UI. If you don't specif
 | `number` | Input | Numeric input |
 | `checkbox` | Input | Boolean toggle |
 
-### Method 1: Using `metadata` in Block Definitions
+Choose one of the methods below to specify a Mellon type.
 
-If you're defining a custom block from scratch, you can add `metadata={"mellon": "<type>"}` directly to your `InputParam` and `OutputParam` definitions:
+### Using `metadata` in block definitions
+
+If you're defining a custom block from scratch, add `metadata={"mellon": "<type>"}` directly to your `InputParam` and `OutputParam` definitions:
 ```python
 class GeminiPromptExpander(ModularPipelineBlocks):
     
@@ -79,9 +81,9 @@ class GeminiPromptExpander(ModularPipelineBlocks):
         ]
 ```
 
-### Method 2: Using `input_types` and `output_types` When Generating Config
+### Using `input_types` and `output_types` when Generating Config
 
-If you're working with an existing pipeline or prefer to keep your block definitions clean, you can specify types when generating the config using the `input_types/output_types` argument:
+If you're working with an existing pipeline or prefer to keep your block definitions clean, specify types when generating the config using the `input_types/output_types` argument:
 ```python
 from diffusers.modular_pipelines.mellon_node_utils import MellonPipelineConfig
 
@@ -93,9 +95,9 @@ mellon_config = MellonPipelineConfig.from_custom_block(
 ```
 
 > [!NOTE]
-> If you specify both `metadata` and `input_types`/`output_types`, the arguments take precedence, allowing you to override metadata when needed.
+> When both `metadata` and `input_types`/`output_types` are specified, the arguments overrides `metadata`.
 
-## Step 2: Generate and Push the Mellon Config
+## Generate and push the Mellon config
 
 After adding metadata to your block, generate the default Mellon configuration template and push it to the Hub:
 
@@ -118,7 +120,7 @@ mellon_config.save(
 
 This creates a `mellon_pipeline_config.json` file in your repository.
 
-## Step 3: Review and Adjust the Config (Optional)
+## Review and adjust the config
 
 The generated template is a starting point - you may want to adjust it for your needs. Let's walk through the generated config for the Gemini Prompt Expander:
 
@@ -162,7 +164,7 @@ The generated template is a starting point - you may want to adjust it for your 
 }
 ```
 
-### Understanding the Structure
+### Understanding the structure
 
 The `params` dict defines how each UI element renders. The `input_names`, `model_input_names`, and `output_names` lists map these UI elements to the underlying [`ModularPipelineBlocks`]'s I/O interface:
 
@@ -172,7 +174,7 @@ The `params` dict defines how each UI element renders. The `input_names`, `model
 | `model_input_names` | `expected_components` property |
 | `output_names` | `intermediate_outputs` property |
 
-In this example: `prompt` is the only input, there are no model components, and outputs include `out_prompt`, `old_prompt`, and `doc`.
+In this example, `prompt` is the only input. There are no model components, and outputs include `out_prompt`, `old_prompt`, and `doc`.
 
 Now let's look at the `params` dict:
 
@@ -184,9 +186,9 @@ Now let's look at the `params` dict:
 
 **`doc`** is the documentation output, automatically added to all custom blocks.
 
-### Making Adjustments
+### Making adjustments
 
-For the Gemini Prompt Expander, we don't need `old_prompt` in the UI. Remove it from both `params` and `output_names`:
+Remove `old_prompt` from both `params` and `output_names` because you won't need to use it.
 
 ```json
 {
