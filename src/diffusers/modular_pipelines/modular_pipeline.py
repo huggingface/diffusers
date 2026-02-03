@@ -34,6 +34,7 @@ from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve
 from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
+    MODULAR_MODEL_CARD_TEMPLATE,
     ComponentSpec,
     ConfigSpec,
     InputParam,
@@ -1734,6 +1735,186 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         )
         return pipeline
 
+    def _generate_modular_model_card_content(self) -> Dict[str, Any]:
+        from .modular_pipeline_utils import format_components, format_configs
+
+        blocks_class_name = self.blocks.__class__.__name__
+        pipeline_name = blocks_class_name.replace("Blocks", " Pipeline")
+        description = self.blocks.description or "A modular diffusion pipeline."
+
+        # generate blocks architecture description
+        blocks_desc_parts = []
+        for i, (name, block) in enumerate(self.blocks.sub_blocks.items()):
+            block_class = block.__class__.__name__
+            block_desc = block.description.split("\n")[0] if block.description else ""
+            blocks_desc_parts.append(f"{i + 1}. **{name}** (`{block_class}`)")
+            if block_desc:
+                blocks_desc_parts.append(f"   - {block_desc}")
+
+            # add sub-blocks if any
+            if hasattr(block, "sub_blocks") and block.sub_blocks:
+                for sub_name, sub_block in block.sub_blocks.items():
+                    sub_class = sub_block.__class__.__name__
+                    sub_desc = sub_block.description.split("\n")[0] if sub_block.description else ""
+                    blocks_desc_parts.append(f"   - *{sub_name}*: `{sub_class}`")
+                    if sub_desc:
+                        blocks_desc_parts.append(f"     - {sub_desc}")
+
+        blocks_description = "\n".join(blocks_desc_parts) if blocks_desc_parts else "No blocks defined."
+
+        components = self.blocks.expected_components
+        if components:
+            components_str = format_components(components, indent_level=0, add_empty_lines=False)
+            # remove the "Components:" header since template has its own
+            components_description = components_str.replace("Components:\n", "").strip()
+            if not components_description:
+                components_description = "No specific components required."
+        else:
+            components_description = "No specific components required. Components can be loaded dynamically."
+
+        configs = self.blocks.expected_configs
+        configs_section = ""
+        if configs:
+            configs_str = format_configs(configs, indent_level=0, add_empty_lines=False)
+            configs_description = configs_str.replace("Configs:\n", "").strip()
+            if configs_description:
+                configs_section = f"\n\n## Configuration Parameters\n\n{configs_description}"
+
+        inputs = self.blocks.inputs
+        outputs = self.blocks.outputs
+
+        # format inputs as markdown list
+        inputs_parts = []
+        required_inputs = [inp for inp in inputs if inp.required]
+        optional_inputs = [inp for inp in inputs if not inp.required]
+
+        if required_inputs:
+            inputs_parts.append("**Required:**\n")
+            for inp in required_inputs:
+                # Handle type hint formatting
+                if hasattr(inp.type_hint, "__name__"):
+                    type_str = inp.type_hint.__name__
+                elif inp.type_hint is not None:
+                    type_str = str(inp.type_hint).replace("typing.", "")
+                else:
+                    type_str = "Any"
+                desc = inp.description or "No description provided"
+                inputs_parts.append(f"- `{inp.name}` (`{type_str}`): {desc}")
+
+        if optional_inputs:
+            if required_inputs:
+                inputs_parts.append("")
+            inputs_parts.append("**Optional:**\n")
+            for inp in optional_inputs:
+                # Handle type hint formatting
+                if hasattr(inp.type_hint, "__name__"):
+                    type_str = inp.type_hint.__name__
+                elif inp.type_hint is not None:
+                    type_str = str(inp.type_hint).replace("typing.", "")
+                else:
+                    type_str = "Any"
+                desc = inp.description or "No description provided"
+                default_str = f", default: `{inp.default}`" if inp.default is not None else ""
+                inputs_parts.append(f"- `{inp.name}` (`{type_str}`){default_str}: {desc}")
+
+        inputs_description = "\n".join(inputs_parts) if inputs_parts else "No specific inputs defined."
+
+        # format outputs as markdown list
+        outputs_parts = []
+        for out in outputs:
+            # Handle type hint formatting
+            if hasattr(out.type_hint, "__name__"):
+                type_str = out.type_hint.__name__
+            elif out.type_hint is not None:
+                type_str = str(out.type_hint).replace("typing.", "")
+            else:
+                type_str = "Any"
+            desc = out.description or "No description provided"
+            outputs_parts.append(f"- `{out.name}` (`{type_str}`): {desc}")
+
+        outputs_description = "\n".join(outputs_parts) if outputs_parts else "Standard pipeline outputs."
+
+        trigger_inputs_section = ""
+        if hasattr(self.blocks, "trigger_inputs") and self.blocks.trigger_inputs:
+            trigger_inputs_list = sorted([t for t in self.blocks.trigger_inputs if t is not None])
+            if trigger_inputs_list:
+                trigger_inputs_str = ", ".join(f"`{t}`" for t in trigger_inputs_list)
+                trigger_inputs_section = f"""
+### Conditional Execution
+
+This pipeline contains blocks that are selected at runtime based on inputs:
+- **Trigger Inputs**: {trigger_inputs_str}
+"""
+
+        # generate usage example
+        example_inputs = []
+        for inp in inputs:
+            if inp.required:
+                if inp.name == "prompt":
+                    example_inputs.append('prompt="A beautiful landscape"')
+                    break
+                elif inp.name in ["image", "mask_image"]:
+                    example_inputs.append(f"{inp.name}=image  # Load your PIL.Image")
+                else:
+                    example_inputs.append(f'{inp.name}="..."  # TODO: provide value')
+
+        if not example_inputs:
+            example_input_str = "# TODO: provide required inputs"
+        else:
+            example_input_str = example_inputs[0]
+
+        usage_example = f"""from diffusers import ModularPipeline
+
+# Load the modular pipeline pipeline = ModularPipeline.from_pretrained("your-username/your-model-name")
+
+# Run inference output = pipeline({example_input_str}) images = output.images"""
+
+        # 8. Generate tags based on pipeline characteristics
+        tags = ["modular-diffusers", "diffusers"]
+
+        # Add pipeline type tag from model_name
+        if hasattr(self.blocks, "model_name") and self.blocks.model_name:
+            tags.append(self.blocks.model_name)
+
+        # Derive task tags from trigger inputs
+        if hasattr(self.blocks, "trigger_inputs") and self.blocks.trigger_inputs:
+            triggers = self.blocks.trigger_inputs
+            if any(t in triggers for t in ["mask", "mask_image"]):
+                tags.append("inpainting")
+            if any(t in triggers for t in ["image", "image_latents"]):
+                tags.append("image-to-image")
+            if any(t in triggers for t in ["control_image", "controlnet_cond"]):
+                tags.append("controlnet")
+            # If no image/mask triggers, likely text2img
+            if not any(t in triggers for t in ["image", "mask", "image_latents", "mask_image"]):
+                tags.append("text-to-image")
+        else:
+            # Default assumption
+            tags.append("text-to-image")
+
+        # 9. Compose model description
+        block_count = len(self.blocks.sub_blocks)
+        model_description = f"""This is a modular diffusion pipeline built with 🧨 Diffusers' modular pipeline framework.
+
+**Pipeline Type**: {blocks_class_name}
+
+**Description**: {description}
+
+This pipeline uses a {block_count}-block architecture that can be customized and extended."""
+
+        return {
+            "pipeline_name": pipeline_name,
+            "model_description": model_description,
+            "blocks_description": blocks_description,
+            "components_description": components_description,
+            "configs_section": configs_section,
+            "inputs_description": inputs_description,
+            "outputs_description": outputs_description,
+            "trigger_inputs_section": trigger_inputs_section,
+            "usage_example": usage_example,
+            "tags": tags,
+        }
+
     def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
         Save the pipeline to a directory. It does not save components, you need to save them separately.
@@ -1753,9 +1934,24 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
+            # Generate modular pipeline card content
+            card_content = self._generate_modular_model_card_content()
+
             # Create a new empty model card and eventually tag it
-            model_card = load_or_create_model_card(repo_id, token=token, is_pipeline=True)
-            model_card = populate_model_card(model_card)
+            model_card = load_or_create_model_card(
+                repo_id,
+                token=token,
+                is_pipeline=True,
+                model_description=MODULAR_MODEL_CARD_TEMPLATE.format(**card_content),
+            )
+            model_card = populate_model_card(model_card, tags=card_content["tags"])
+
+            # Replace usage example placeholder in the template
+            model_card.text = model_card.text.replace(
+                "# TODO: add an example code snippet for running this diffusion pipeline",
+                card_content["usage_example"],
+            )
+
             model_card.save(os.path.join(save_directory, "README.md"))
 
         # YiYi TODO: maybe order the json file to make it more readable: configs first, then components

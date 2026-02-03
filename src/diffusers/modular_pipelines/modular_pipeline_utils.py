@@ -31,6 +31,26 @@ if is_torch_available():
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+# Template for modular pipeline model card description with placeholders
+MODULAR_MODEL_CARD_TEMPLATE = """{model_description}
+
+## Pipeline Architecture
+
+This modular pipeline is composed of the following blocks:
+
+{blocks_description} {trigger_inputs_section}
+
+## Model Components
+
+{components_description} {configs_section}
+
+## Input/Output Specification
+
+### Inputs {inputs_description}
+
+### Outputs {outputs_description}
+"""
+
 
 class InsertableDict(OrderedDict):
     def insert(self, key, value, index):
