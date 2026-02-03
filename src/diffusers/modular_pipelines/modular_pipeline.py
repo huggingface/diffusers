@@ -1791,7 +1791,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         if required_inputs:
             inputs_parts.append("**Required:**\n")
             for inp in required_inputs:
-                # Handle type hint formatting
                 if hasattr(inp.type_hint, "__name__"):
                     type_str = inp.type_hint.__name__
                 elif inp.type_hint is not None:
@@ -1806,7 +1805,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 inputs_parts.append("")
             inputs_parts.append("**Optional:**\n")
             for inp in optional_inputs:
-                # Handle type hint formatting
                 if hasattr(inp.type_hint, "__name__"):
                     type_str = inp.type_hint.__name__
                 elif inp.type_hint is not None:
@@ -1822,7 +1820,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         # format outputs as markdown list
         outputs_parts = []
         for out in outputs:
-            # Handle type hint formatting
             if hasattr(out.type_hint, "__name__"):
                 type_str = out.type_hint.__name__
             elif out.type_hint is not None:
@@ -1846,37 +1843,12 @@ This pipeline contains blocks that are selected at runtime based on inputs:
 - **Trigger Inputs**: {trigger_inputs_str}
 """
 
-        # generate usage example
-        example_inputs = []
-        for inp in inputs:
-            if inp.required:
-                if inp.name == "prompt":
-                    example_inputs.append('prompt="A beautiful landscape"')
-                    break
-                elif inp.name in ["image", "mask_image"]:
-                    example_inputs.append(f"{inp.name}=image  # Load your PIL.Image")
-                else:
-                    example_inputs.append(f'{inp.name}="..."  # TODO: provide value')
-
-        if not example_inputs:
-            example_input_str = "# TODO: provide required inputs"
-        else:
-            example_input_str = example_inputs[0]
-
-        usage_example = f"""from diffusers import ModularPipeline
-
-# Load the modular pipeline pipeline = ModularPipeline.from_pretrained("your-username/your-model-name")
-
-# Run inference output = pipeline({example_input_str}) images = output.images"""
-
-        # 8. Generate tags based on pipeline characteristics
+        # generate tags based on pipeline characteristics
         tags = ["modular-diffusers", "diffusers"]
 
-        # Add pipeline type tag from model_name
         if hasattr(self.blocks, "model_name") and self.blocks.model_name:
             tags.append(self.blocks.model_name)
 
-        # Derive task tags from trigger inputs
         if hasattr(self.blocks, "trigger_inputs") and self.blocks.trigger_inputs:
             triggers = self.blocks.trigger_inputs
             if any(t in triggers for t in ["mask", "mask_image"]):
@@ -1885,14 +1857,11 @@ This pipeline contains blocks that are selected at runtime based on inputs:
                 tags.append("image-to-image")
             if any(t in triggers for t in ["control_image", "controlnet_cond"]):
                 tags.append("controlnet")
-            # If no image/mask triggers, likely text2img
             if not any(t in triggers for t in ["image", "mask", "image_latents", "mask_image"]):
                 tags.append("text-to-image")
         else:
-            # Default assumption
             tags.append("text-to-image")
 
-        # 9. Compose model description
         block_count = len(self.blocks.sub_blocks)
         model_description = f"""This is a modular diffusion pipeline built with 🧨 Diffusers' modular pipeline framework.
 
@@ -1911,7 +1880,6 @@ This pipeline uses a {block_count}-block architecture that can be customized and
             "inputs_description": inputs_description,
             "outputs_description": outputs_description,
             "trigger_inputs_section": trigger_inputs_section,
-            "usage_example": usage_example,
             "tags": tags,
         }
 
@@ -1945,12 +1913,6 @@ This pipeline uses a {block_count}-block architecture that can be customized and
                 model_description=MODULAR_MODEL_CARD_TEMPLATE.format(**card_content),
             )
             model_card = populate_model_card(model_card, tags=card_content["tags"])
-
-            # Replace usage example placeholder in the template
-            model_card.text = model_card.text.replace(
-                "# TODO: add an example code snippet for running this diffusion pipeline",
-                card_content["usage_example"],
-            )
 
             model_card.save(os.path.join(save_directory, "README.md"))
 

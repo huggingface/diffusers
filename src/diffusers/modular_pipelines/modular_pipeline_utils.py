@@ -49,6 +49,10 @@ This modular pipeline is composed of the following blocks:
 ### Inputs {inputs_description}
 
 ### Outputs {outputs_description}
+
+## Example Usage
+
+[TODO]
 """
 
 
