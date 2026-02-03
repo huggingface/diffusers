@@ -293,7 +293,8 @@ else:
     ]
     _import_structure["ltx2"] = [
         "LTX2Pipeline",
-        "LTX2ConditionPipelineLTX2ImageToVideoPipeline",
+        "LTX2ConditionPipeline",
+        "LTX2ImageToVideoPipeline",
         "LTX2LatentUpsamplePipeline",
     ]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
