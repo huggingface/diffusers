@@ -34,6 +34,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Template for modular pipeline model card description with placeholders
 MODULAR_MODEL_CARD_TEMPLATE = """{model_description}
 
+## Example Usage
+
+[TODO]
+
 ## Pipeline Architecture
 
 This modular pipeline is composed of the following blocks:
@@ -49,10 +53,6 @@ This modular pipeline is composed of the following blocks:
 ### Inputs {inputs_description}
 
 ### Outputs {outputs_description}
-
-## Example Usage
-
-[TODO]
 """
 
 

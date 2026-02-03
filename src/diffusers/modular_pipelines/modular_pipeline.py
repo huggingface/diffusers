@@ -1767,7 +1767,12 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             components_str = format_components(components, indent_level=0, add_empty_lines=False)
             # remove the "Components:" header since template has its own
             components_description = components_str.replace("Components:\n", "").strip()
-            if not components_description:
+            if components_description:
+                # Convert to enumerated list
+                lines = [line.strip() for line in components_description.split("\n") if line.strip()]
+                enumerated_lines = [f"{i + 1}. {line}" for i, line in enumerate(lines)]
+                components_description = "\n".join(enumerated_lines)
+            else:
                 components_description = "No specific components required."
         else:
             components_description = "No specific components required. Components can be loaded dynamically."
