@@ -23,7 +23,7 @@ Custom blocks work in Mellon out of the box - just need to add a `mellon_pipelin
 
 Here's what it looks like in action with the [Gemini Prompt Expander](https://huggingface.co/diffusers/gemini-prompt-expander-mellon) block:
 
-<!-- TODO: add video here -->
+![Mellon custom block demo](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/modular_demo_dynamic.gif)
 
 To use a modular diffusers custom block in Mellon:
 1. Drag a **Dynamic Block Node** from the ModularDiffusers section
