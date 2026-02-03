@@ -25,6 +25,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
     ContextParallelTesterMixin,
+    LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
@@ -146,15 +147,15 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         # Test 3: Different mask pattern (padding at beginning)
         encoder_hidden_states_mask2 = inputs["encoder_hidden_states_mask"].clone()
         encoder_hidden_states_mask2[:, :3] = 0  # First 3 tokens are padding
-        encoder_hidden_states_mask2[:, 3:] = 1  # Last 4 tokens are valid
+        encoder_hidden_states_mask2[:, 3:] = 1  # Last 5 tokens are valid (seq_len=8)
 
         rope_text_seq_len2, per_sample_len2, normalized_mask2 = compute_text_seq_len_from_mask(
             inputs["encoder_hidden_states"], encoder_hidden_states_mask2
         )
 
-        # Max valid position is 6 (last token), so per_sample_len should be 7
-        assert int(per_sample_len2.max().item()) == 7
-        assert normalized_mask2.sum().item() == 4  # 4 True values
+        # Max valid position is 7 (last token), so per_sample_len should be 8
+        assert int(per_sample_len2.max().item()) == 8
+        assert normalized_mask2.sum().item() == 5  # 5 True values
 
         # Test 4: No mask provided (None case)
         rope_text_seq_len_none, per_sample_len_none, normalized_mask_none = compute_text_seq_len_from_mask(
@@ -166,14 +167,14 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         assert normalized_mask_none is None
 
     def test_non_contiguous_attention_mask(self):
-        """Test that non-contiguous masks work correctly (e.g., [1, 0, 1, 0, 1, 0, 0])"""
+        """Test that non-contiguous masks work correctly (e.g., [1, 0, 1, 0, 1, 0, 0, 0])"""
         init_dict = self.get_init_dict()
         inputs = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
 
         # Create a non-contiguous mask pattern: valid, padding, valid, padding, etc.
         encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
-        # Pattern: [True, False, True, False, True, False, False]
+        # Pattern: [True, False, True, False, True, False, False, False] (seq_len=8)
         encoder_hidden_states_mask[:, 1] = 0
         encoder_hidden_states_mask[:, 3] = 0
         encoder_hidden_states_mask[:, 5:] = 0
@@ -315,6 +316,41 @@ class TestQwenImageTransformerContextParallel(QwenImageTransformerTesterConfig, 
 
 class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for QwenImage Transformer."""
+
+
+class TestQwenImageTransformerLoRAHotSwap(QwenImageTransformerTesterConfig, LoraHotSwappingForModelTesterMixin):
+    """LoRA hot-swapping tests for QwenImage Transformer."""
+
+    @property
+    def different_shapes_for_compilation(self):
+        return [(4, 4), (4, 8), (8, 8)]
+
+    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
+        """Override to support dynamic height/width for LoRA hotswap tests."""
+        batch_size = 1
+        num_latent_channels = embedding_dim = 16
+        sequence_length = 8
+        vae_scale_factor = 4
+
+        hidden_states = randn_tensor(
+            (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
+        )
+        encoder_hidden_states = randn_tensor(
+            (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+        )
+        encoder_hidden_states_mask = torch.ones((batch_size, sequence_length)).to(torch_device, torch.long)
+        timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
+        orig_height = height * 2 * vae_scale_factor
+        orig_width = width * 2 * vae_scale_factor
+        img_shapes = [(1, orig_height // vae_scale_factor // 2, orig_width // vae_scale_factor // 2)] * batch_size
+
+        return {
+            "hidden_states": hidden_states,
+            "encoder_hidden_states": encoder_hidden_states,
+            "encoder_hidden_states_mask": encoder_hidden_states_mask,
+            "timestep": timestep,
+            "img_shapes": img_shapes,
+        }
 
 
 class TestQwenImageTransformerCompile(QwenImageTransformerTesterConfig, TorchCompileTesterMixin):
