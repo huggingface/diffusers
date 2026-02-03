@@ -176,13 +176,13 @@ In this example: `prompt` is the only input. There are no model components, and 
 
 Now let's look at the `params` dict:
 
-**`prompt`** is an input parameter. It has `display: "textarea"` which renders as a text input box, `label: "Prompt"` shown in the UI, and `default: ""` so it starts empty. The `type: "string"` field is important in Mellon because it determines which nodes can connect together - only matching types can be linked with "noodles".
+- **`prompt`**: An input parameter with `display: "textarea"` (renders as a text input box), `label: "Prompt"` (shown in the UI), and `default: ""` (starts empty). The `type: "string"` field is important in Mellon because it determines which nodes can connect together - only matching types can be linked with "noodles".
 
-**`out_prompt`** is the expanded prompt output. The `out_` prefix was automatically added because the input and output share the same name (`prompt`), avoiding naming conflicts in the config. It has `display: "output"` which renders as an output socket.
+- **`out_prompt`**: The expanded prompt output. The `out_` prefix was automatically added because the input and output share the same name (`prompt`), avoiding naming conflicts in the config. It has `display: "output"` which renders as an output socket.
 
-**`old_prompt`** has `type: "custom"` because we didn't specify metadata. This renders as a simple dot in the UI. Since we don't actually want to expose this in the UI, we can remove it.
+- **`old_prompt`**: Has `type: "custom"` because we didn't specify metadata. This renders as a simple dot in the UI. Since we don't actually want to expose this in the UI, we can remove it.
 
-**`doc`** is the documentation output, automatically added to all custom blocks.
+- **`doc`**: The documentation output, automatically added to all custom blocks.
 
 ### Making Adjustments
 
