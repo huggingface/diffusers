@@ -136,7 +136,7 @@ class ModelHook:
         return module
 
     def _set_context(self, module: torch.nn.Module, name: str) -> None:
-        """Set context on all StateManager attributes of this hook."""
+        # Iterate over all attributes of the hook to see if any of them have the type `StateManager`. If so, call `set_context` on them.
         for attr_name in dir(self):
             attr = getattr(self, attr_name)
             if isinstance(attr, StateManager):
@@ -145,12 +145,22 @@ class ModelHook:
 
 
 class HookFunctionReference:
-    """Mutable container for forward pass function references in a hook chain.
-
-    Enables dynamic modification of the execution chain without rebuilding.
-    """
-
     def __init__(self) -> None:
+        """A container class that maintains mutable references to forward pass functions in a hook chain.
+
+        Its mutable nature allows the hook system to modify the execution chain dynamically without rebuilding the
+        entire forward pass structure.
+
+        Attributes:
+            pre_forward: A callable that processes inputs before the main forward pass.
+            post_forward: A callable that processes outputs after the main forward pass.
+            forward: The current forward function in the hook chain.
+            original_forward: The original forward function, stored when a hook provides a custom new_forward.
+
+        The class enables hook removal by allowing updates to the forward chain through reference modification rather
+        than requiring reconstruction of the entire chain. When a hook is removed, only the relevant references need to
+        be updated, preserving the execution order of the remaining hooks.
+        """
         self.pre_forward = None
         self.post_forward = None
         self.forward = None
