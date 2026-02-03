@@ -162,7 +162,7 @@ The generated template is a starting point - you may want to adjust it for your 
 }
 ```
 
-### Understanding the structure
+### Understanding the Structure
 
 The `params` dict defines how each UI element renders. The `input_names`, `model_input_names`, and `output_names` lists map these UI elements to the underlying [`ModularPipelineBlocks`]'s I/O interface:
 
@@ -172,7 +172,7 @@ The `params` dict defines how each UI element renders. The `input_names`, `model
 | `model_input_names` | `expected_components` property |
 | `output_names` | `intermediate_outputs` property |
 
-In this example, `prompt` is the only input. There are no model components, and outputs include `out_prompt`, `old_prompt`, and `doc`.
+In this example: `prompt` is the only input. There are no model components, and outputs include `out_prompt`, `old_prompt`, and `doc`.
 
 Now let's look at the `params` dict:
 
@@ -184,7 +184,7 @@ Now let's look at the `params` dict:
 
 **`doc`** is the documentation output, automatically added to all custom blocks.
 
-### Making adjustments
+### Making Adjustments
 
 Remove `old_prompt` from both `params` and `output_names` because you won't need to use it.
 
