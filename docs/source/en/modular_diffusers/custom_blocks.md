@@ -33,7 +33,7 @@ Your custom block project should use the following structure:
 
 ## Quick Start with Template
 
-The fastest way to create a custom block is to start from our template.
+The fastest way to create a custom block is to start from our template. The template provides a pre-configured project structure with `block.py` and `modular_config.json` files, plus commented examples showing how to define components, inputs, outputs, and the `__call__` method—so you can focus on your custom logic instead of boilerplate setup.
 
 ### Download the template
 
@@ -313,9 +313,18 @@ pipeline.save_pretrained("./my-florence-block", repo_id="your-username/my-custom
 ## Next Steps
 
 <hfoptions id="next">
+<hfoption id="Learn block types">
+
+This guide covered creating a single custom block. Learn how to compose multiple blocks together:
+
+- [SequentialPipelineBlocks](./sequential_pipeline_blocks): Chain blocks to execute in sequence
+- [ConditionalPipelineBlocks](./auto_pipeline_blocks): Create conditional blocks that select different execution paths
+- [LoopSequentialPipelineBlocks](./loop_sequential_pipeline_blocks): Define an iterative workflows like the denoising loop
+
+</hfoption>
 <hfoption id="Use in Mellon">
 
-Make your custom block work with Mellon's visual interface - no UI code required. See the [Mellon Custom Blocks](./mellon_custom_blocks) guide.
+Make your custom block work with Mellon's visual interface. See the [Mellon Custom Blocks](./mellon) guide.
 
 </hfoption>
 <hfoption id="Explore existing blocks">
