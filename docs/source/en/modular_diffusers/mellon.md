@@ -18,7 +18,6 @@ specific language governing permissions and limitations under the License.
 > [!WARNING]
 > Mellon is in early development and not ready for production use yet. Consider this a sneak peek of how the integration works!
 
-## Overview
 
 Create a `mellon_pipeline_config.json` file to define how a custom block's parameters map to Mellon UI components.
 
