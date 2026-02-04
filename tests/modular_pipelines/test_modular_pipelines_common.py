@@ -37,6 +37,8 @@ class ModularPipelineTesterMixin:
     optional_params = frozenset(["num_inference_steps", "num_images_per_prompt", "latents", "output_type"])
     # this is modular specific: generator needs to be a intermediate input because it's mutable
     intermediate_params = frozenset(["generator"])
+    # prompt is required for most pipeline, with exceptions like qwen-image layer
+    required_params = frozenset(["prompt"])
 
     def get_generator(self, seed=0):
         generator = torch.Generator("cpu").manual_seed(seed)
@@ -154,6 +156,7 @@ class ModularPipelineTesterMixin:
         pipe = self.get_pipeline()
         input_parameters = pipe.blocks.input_names
         optional_parameters = pipe.default_call_parameters
+        required_parameters = pipe.blocks.required_inputs
 
         def _check_for_parameters(parameters, expected_parameters, param_type):
             remaining_parameters = {param for param in parameters if param not in expected_parameters}
@@ -163,6 +166,7 @@ class ModularPipelineTesterMixin:
 
         _check_for_parameters(self.params, input_parameters, "input")
         _check_for_parameters(self.optional_params, optional_parameters, "optional")
+        _check_for_parameters(self.required_params, required_parameters, "required")
 
     def test_loading_from_default_repo(self):
         if self.default_repo_id is None:

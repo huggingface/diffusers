@@ -149,7 +149,7 @@ class ZImageTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("prompt"),
+            InputParam("prompt", required=True),
             InputParam("negative_prompt"),
             InputParam("max_sequence_length", default=512),
         ]
