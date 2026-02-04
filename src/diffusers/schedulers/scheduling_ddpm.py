@@ -281,7 +281,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
-            num_inference_steps (`int`):
+            num_inference_steps (`int`, *optional*):
                 The number of diffusion steps used when generating samples with a pre-trained model. If used,
                 `timesteps` must be `None`.
             device (`str` or `torch.device`, *optional*):
@@ -646,7 +646,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
     def __len__(self) -> int:
         return self.config.num_train_timesteps
 
-    def previous_timestep(self, timestep: int) -> int:
+    def previous_timestep(self, timestep: int) -> Union[int, torch.Tensor]:
         """
         Compute the previous timestep in the diffusion chain.
 
@@ -655,7 +655,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 The current timestep.
 
         Returns:
-            `int`:
+            `int` or `torch.Tensor`:
                 The previous timestep.
         """
         if self.custom_timesteps or self.num_inference_steps:
