@@ -43,7 +43,7 @@ class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
     batch_params = frozenset(["prompt"])
     # should choose from the dict returned by `get_dummy_inputs`
     text_encoder_block_params = frozenset(["prompt", "max_sequence_length"])
-    decode_block_params = frozenset(["output_type"])
+    decode_block_params = frozenset(["output_type", "height", "width"])
     vae_encoder_block_params = None  # None if vae_encoder is not supported
 
     def get_dummy_inputs(self, seed=0):
@@ -80,7 +80,7 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
             "max_sequence_length",
         ]
     )
-    decode_block_params = frozenset(["output_type"])
+    decode_block_params = frozenset(["output_type", "height", "width"])
     vae_encoder_block_params = frozenset(["image", "height", "width"])
 
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
