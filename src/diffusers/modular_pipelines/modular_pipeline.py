@@ -2307,6 +2307,8 @@ This pipeline uses a {block_count}-block architecture that can be customized and
                 name
                 for name in self._component_specs.keys()
                 if self._component_specs[name].default_creation_method == "from_pretrained"
+                and self._component_specs[name].pretrained_model_name_or_path is not None
+                and getattr(self, name, None) is None
             ]
         elif isinstance(names, str):
             names = [names]
