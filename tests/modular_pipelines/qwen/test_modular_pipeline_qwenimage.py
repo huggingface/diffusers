@@ -72,9 +72,9 @@ class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGu
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
 
     # should choose from the dict returned by `get_dummy_inputs`
-    text_encoder_block_params = frozenset(["prompt", "negative_prompt", "max_sequence_length"])
+    text_encoder_block_params = frozenset(["image", "prompt", "negative_prompt"])
     decode_block_params = frozenset(["output_type"])
-    vae_encoder_block_params = frozenset(["image", "height", "width"])
+    vae_encoder_block_params = frozenset(["image", "generator"])
 
     def get_dummy_inputs(self):
         generator = self.get_generator()
@@ -103,6 +103,11 @@ class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, Modul
     # No `mask_image` yet.
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
+
+    # should choose from the dict returned by `get_dummy_inputs`
+    text_encoder_block_params = frozenset(["image", "prompt", "negative_prompt"])
+    decode_block_params = frozenset(["output_type"])
+    vae_encoder_block_params = frozenset(["image", "generator"])
 
     def get_dummy_inputs(self):
         generator = self.get_generator()

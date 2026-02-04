@@ -103,6 +103,7 @@ class ModularPipelineTesterMixin:
             "See existing pipeline tests for reference."
         )
 
+    @property
     def text_encoder_block_params(self) -> frozenset:
         raise NotImplementedError(
             "You need to set the attribute `text_encoder_block_params` in the child test class. "
@@ -111,6 +112,7 @@ class ModularPipelineTesterMixin:
             "See existing pipeline tests for reference."
         )
 
+    @property
     def decode_block_params(self) -> frozenset:
         raise NotImplementedError(
             "You need to set the attribute `decode_block_params` in the child test class. "
@@ -119,6 +121,7 @@ class ModularPipelineTesterMixin:
             "See existing pipeline tests for reference."
         )
 
+    @property
     def vae_encoder_block_params(self) -> frozenset:
         raise NotImplementedError(
             "You need to set the attribute `vae_encoder_block_params` in the child test class. "
@@ -196,6 +199,7 @@ class ModularPipelineTesterMixin:
                 if not hasattr(sub_pipe, n):
                     setattr(sub_pipe, n, comp)
 
+        # Initialize all nodes
         text_node = blocks.sub_blocks["text_encoder"].init_pipeline(self.pretrained_model_name_or_path)
         text_node.load_components(torch_dtype=torch.float32)
         text_node.to(torch_device)
@@ -219,33 +223,36 @@ class ModularPipelineTesterMixin:
         else:
             vae_encoder_node = None
 
+        def filter_inputs(available: dict, expected_keys) -> dict:
+            return {k: v for k, v in available.items() if k in expected_keys}
+
         # prepare inputs for each node
         inputs = self.get_dummy_inputs()
 
-        def get_block_inputs(inputs: dict, block_params: frozenset) -> tuple[dict, dict]:
-            block_inputs = {}
-            for name in block_params:
-                if name in inputs:
-                    block_inputs[name] = inputs.pop(name)
-            return block_inputs, inputs
+        # 1. Text encoder: takes from inputs
+        text_inputs = filter_inputs(inputs, self.text_encoder_block_params)
+        text_output = text_node(**text_inputs)
+        text_output_dict = text_output.get_by_kwargs("denoiser_input_fields")
 
-        text_inputs, inputs = get_block_inputs(inputs, self.text_encoder_block_params)
-        decoder_inputs, inputs = get_block_inputs(inputs, self.decode_block_params)
+        # 2. VAE encoder (optional): takes from inputs + text_output
         if vae_encoder_node is not None:
-            vae_encoder_inputs, inputs = get_block_inputs(inputs, self.vae_encoder_block_params)
-
-        # this is also to make sure pipelines mark text outputs as denoiser_input_fields
-        text_output = text_node(**text_inputs).get_by_kwargs("denoiser_input_fields")
-        if vae_encoder_node is not None:
-            vae_encoder_output = vae_encoder_node(**vae_encoder_inputs).values
-            denoise_inputs = {**text_output, **vae_encoder_output, **inputs}
+            vae_available = {**inputs, **text_output_dict}
+            vae_encoder_inputs = filter_inputs(vae_available, vae_encoder_node.blocks.input_names)
+            vae_encoder_output = vae_encoder_node(**vae_encoder_inputs)
+            vae_output_dict = vae_encoder_output.values
         else:
-            denoise_inputs = {**text_output, **inputs}
+            vae_output_dict = {}
 
-        # denoise node output should be "latents"
-        latents = denoise_node(**denoise_inputs).latents
-        # denoder node input should be "latents" and output should be "images"
-        modular_output = decoder_node(**decoder_inputs, latents=latents).images
+        # 3. Denoise: takes from inputs + text_output + vae_output
+        denoise_available = {**inputs, **text_output_dict, **vae_output_dict}
+        denoise_inputs = filter_inputs(denoise_available, denoise_node.blocks.input_names)
+        denoise_output = denoise_node(**denoise_inputs)
+        latents = denoise_output.latents
+
+        # 4. Decoder: takes from inputs + denoise_output
+        decode_available = {**inputs, "latents": latents}
+        decode_inputs = filter_inputs(decode_available, decoder_node.blocks.input_names)
+        modular_output = decoder_node(**decode_inputs).images
 
         assert modular_output.shape == standard_output.shape, (
             f"Modular output should have same shape as standard output {standard_output.shape}, but got {modular_output.shape}"
