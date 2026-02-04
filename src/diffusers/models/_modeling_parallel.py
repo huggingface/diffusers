@@ -22,6 +22,7 @@ import torch
 import torch.distributed as dist
 
 from ..utils import get_logger
+from ..utils.torch_utils import get_device
 
 
 if TYPE_CHECKING:
@@ -292,12 +293,15 @@ def gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
     # NOTE: e.g., dist.init_process_group(backend="cpu:gloo,cuda:nccl")
     if "cpu" in comm_backends:
         gather_device = "cpu"
-    elif hasattr(torch, "accelerator"):
-        acc = torch.accelerator.current_accelerator()
-        # Fall back to CUDA when no accelerator is returned.
-        gather_device = acc if acc is not None else torch.device("cuda")
     else:
-        gather_device = torch.device("cuda")
+        gather_device = get_device()
+
+        if gather_device == "cpu":
+            raise RuntimeError(
+                "Ulysses Anything Attention (UAA) requires an accelerator "
+                "(CUDA, NPU, XPU, etc.) to perform distributed gathering, "
+                "but only CPU was detected."
+            )
 
     gathered_sizes = [torch.empty((1,), device=gather_device, dtype=torch.int64) for _ in range(world_size)]
     dist.all_gather(
