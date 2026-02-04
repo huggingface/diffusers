@@ -34,6 +34,7 @@ from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve
 from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
+    MODULAR_MODEL_CARD_TEMPLATE,
     ComponentSpec,
     ConfigSpec,
     InputParam,
@@ -41,6 +42,7 @@ from .modular_pipeline_utils import (
     OutputParam,
     format_components,
     format_configs,
+    generate_modular_model_card_content,
     make_doc_string,
 )
 
@@ -1753,9 +1755,19 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
+            # Generate modular pipeline card content
+            card_content = generate_modular_model_card_content(self.blocks)
+
             # Create a new empty model card and eventually tag it
-            model_card = load_or_create_model_card(repo_id, token=token, is_pipeline=True)
-            model_card = populate_model_card(model_card)
+            model_card = load_or_create_model_card(
+                repo_id,
+                token=token,
+                is_pipeline=True,
+                model_description=MODULAR_MODEL_CARD_TEMPLATE.format(**card_content),
+                is_modular=True,
+            )
+            model_card = populate_model_card(model_card, tags=card_content["tags"])
+
             model_card.save(os.path.join(save_directory, "README.md"))
 
         # YiYi TODO: maybe order the json file to make it more readable: configs first, then components
@@ -2143,6 +2155,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 name
                 for name in self._component_specs.keys()
                 if self._component_specs[name].default_creation_method == "from_pretrained"
+                and self._component_specs[name].pretrained_model_name_or_path is not None
+                and getattr(self, name, None) is None
             ]
         elif isinstance(names, str):
             names = [names]
