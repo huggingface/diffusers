@@ -819,7 +819,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
                 continue
 
             cond_num_frames = condition_pixels.size(2)
-            start_idx = (latent_start_idx - 1) * frame_scale_factor + 1
+            start_idx = max((latent_start_idx - 1) * frame_scale_factor + 1, 0)
             truncated_cond_frames = self.trim_conditioning_sequence(start_idx, cond_num_frames, num_frames)
             condition_pixels = condition_pixels[:, :, :truncated_cond_frames]
 
@@ -905,11 +905,11 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
             # will sample from the prior later once we have calculated the conditioning mask
             latents = torch.zeros(shape, device=device, dtype=dtype)
 
+        conditioning_mask = latents.new_zeros(mask_shape)
         if latents.ndim == 5:
             latents = self._pack_latents(
                 latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
             )
-        conditioning_mask = latents.new_zeros(mask_shape)
         conditioning_mask = self._pack_latents(
             conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
         )  # [B, seq_len, 1]
@@ -1447,17 +1447,22 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
                             noise_pred_audio, noise_pred_audio_text, guidance_rescale=self.guidance_rescale
                         )
 
-                # Apply the (packed) conditioning mask to the denoising model output, which will blend the conditions
-                # with the denoised output according to the conditioning strength (a strength of 1.0 means we fully
-                # overwrite the denoised output with the condition)
                 # NOTE: use only the first chunk of conditioning mask in case it is duplicated for CFG
                 bsz = noise_pred_video.size(0)
-                denoised_latents_with_cond = (
-                    noise_pred_video * (1 - conditioning_mask[:bsz]) + clean_latents.float() * conditioning_mask[:bsz]
+                sigma = self.scheduler.sigmas[i]
+                # Convert the noise_pred_video velocity model prediction into a sample (x0) prediction
+                denoised_sample = latents - noise_pred_video * sigma
+                # Apply the (packed) conditioning mask to the denoised (x0) sample, which will blend the conditions
+                # with the denoised sample according to the conditioning strength (a strength of 1.0 means we fully
+                # overwrite the denoised sample with the condition)
+                denoised_sample_cond = (
+                    denoised_sample * (1 - conditioning_mask[:bsz]) + clean_latents.float() * conditioning_mask[:bsz]
                 ).to(noise_pred_video.dtype)
+                # Convert the denoised (x0) sample back to a velocity for the scheduler
+                denoised_latents_cond = ((latents - denoised_sample_cond) / sigma).to(noise_pred_video.dtype)
 
                 # Compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(denoised_latents_with_cond, t, latents, return_dict=False)[0]
+                latents = self.scheduler.step(denoised_latents_cond, t, latents, return_dict=False)[0]
 
                 # NOTE: for now duplicate scheduler for audio latents in case self.scheduler sets internal state in
                 # the step method (such as _step_index)
