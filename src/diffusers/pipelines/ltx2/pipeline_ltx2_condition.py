@@ -744,9 +744,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
         if index_type == "latent":
             latent_idx = frame_idx
         else:
-            raise ValueError(
-                f"Got unsupported `index_type` {index_type}. Supported index types are `latent`."
-            )
+            raise ValueError(f"Got unsupported `index_type` {index_type}. Supported index types are `latent`.")
         return latent_idx
 
     def preprocess_conditions(
@@ -846,10 +844,9 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
             latents (`torch.Tensor`):
                 Initial packed (patchified) latents of shape [batch_size, patch_seq_len, hidden_dim].
             conditioning_mask (`torch.Tensor`, *optional*):
-                Initial packed (patchified) conditioning mask of shape [batch_size, patch_seq_len, 1] with
-                values in [0, 1] where 0 means that the denoising model output will be fully used and 1 means that the
-                condition will be fully used (with intermediate values specifying a blend of the denoised and latent
-                values).
+                Initial packed (patchified) conditioning mask of shape [batch_size, patch_seq_len, 1] with values in
+                [0, 1] where 0 means that the denoising model output will be fully used and 1 means that the condition
+                will be fully used (with intermediate values specifying a blend of the denoised and latent values).
 
         Returns:
             `Tuple[torch.Tensor, torch.Tensor, torch.Tensor]`:
