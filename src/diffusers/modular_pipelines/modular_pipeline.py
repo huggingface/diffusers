@@ -59,6 +59,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("flux", "FluxModularPipeline"),
         ("flux-kontext", "FluxKontextModularPipeline"),
         ("flux2", "Flux2ModularPipeline"),
+        ("flux2-klein", "Flux2KleinModularPipeline"),
         ("qwenimage", "QwenImageModularPipeline"),
         ("qwenimage-edit", "QwenImageEditModularPipeline"),
         ("qwenimage-edit-plus", "QwenImageEditPlusModularPipeline"),
@@ -2142,6 +2143,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 name
                 for name in self._component_specs.keys()
                 if self._component_specs[name].default_creation_method == "from_pretrained"
+                and self._component_specs[name].pretrained_model_name_or_path is not None
+                and getattr(self, name, None) is None
             ]
         elif isinstance(names, str):
             names = [names]

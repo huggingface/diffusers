@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Union
+from typing import Any, Dict, List
 
-import numpy as np
-import PIL
 import torch
 
 from ...configuration_utils import FrozenDict
@@ -31,7 +29,30 @@ logger = logging.get_logger(__name__)
 
 
 # after denoising loop (unpack latents)
+
+
+# auto_docstring
 class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
+    """
+    Step that unpack the latents from 3D tensor (batch_size, sequence_length, channels) into 5D tensor (batch_size,
+    channels, 1, height, width)
+
+      Components:
+          pachifier (`QwenImagePachifier`)
+
+      Inputs:
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          latents (`Tensor`):
+              The latents to decode, can be generated in the denoise step.
+
+      Outputs:
+          latents (`Tensor`):
+              The denoisedlatents unpacked to B, C, 1, H, W
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -49,13 +70,21 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="height", required=True),
-            InputParam(name="width", required=True),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
             InputParam(
                 name="latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The latents to decode, can be generated in the denoise step",
+                description="The latents to decode, can be generated in the denoise step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                name="latents", type_hint=torch.Tensor, description="The denoisedlatents unpacked to B, C, 1, H, W"
             ),
         ]
 
@@ -72,7 +101,29 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
+    """
+    Unpack latents from (B, seq, C*4) to (B, C, layers+1, H, W) after denoising.
+
+      Components:
+          pachifier (`QwenImageLayeredPachifier`)
+
+      Inputs:
+          latents (`Tensor`):
+              The denoised latents to decode, can be generated in the denoise step.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+          layers (`int`, *optional*, defaults to 4):
+              Number of layers to extract from the image
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents. (unpacked to B, C, layers+1, H, W)
+    """
+
     model_name = "qwenimage-layered"
 
     @property
@@ -88,10 +139,21 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("height", required=True, type_hint=int),
-            InputParam("width", required=True, type_hint=int),
-            InputParam("layers", required=True, type_hint=int),
+            InputParam(
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The denoised latents to decode, can be generated in the denoise step.",
+            ),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+            InputParam.template("layers"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam.template("latents", note="unpacked to B, C, layers+1, H, W"),
         ]
 
     @torch.no_grad()
@@ -112,7 +174,26 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
 
 
 # decode step
+
+
+# auto_docstring
 class QwenImageDecoderStep(ModularPipelineBlocks):
+    """
+    Step that decodes the latents to images
+
+      Components:
+          vae (`AutoencoderKLQwenImage`)
+
+      Inputs:
+          latents (`Tensor`):
+              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise
+              step.
+
+      Outputs:
+          images (`List`):
+              Generated images. (tensor output of the vae decoder.)
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -134,19 +215,13 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
                 name="latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The latents to decode, can be generated in the denoise step",
+                description="The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise step.",
             ),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
-        return [
-            OutputParam(
-                "images",
-                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
-                description="The generated images, can be a PIL.Image.Image, torch.Tensor or a numpy array",
-            )
-        ]
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam.template("images", note="tensor output of the vae decoder.")]
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -176,7 +251,26 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
+    """
+    Decode unpacked latents (B, C, layers+1, H, W) into layer images.
+
+      Components:
+          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+
+      Inputs:
+          latents (`Tensor`):
+              The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise
+              step.
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+
+      Outputs:
+          images (`List`):
+              Generated images.
+    """
+
     model_name = "qwenimage-layered"
 
     @property
@@ -198,14 +292,19 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("output_type", default="pil", type_hint=str),
+            InputParam(
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The denoised latents to decode, can be generated in the denoise step and unpacked in the after denoise step.",
+            ),
+            InputParam.template("output_type"),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="images", type_hint=List[List[PIL.Image.Image]]),
+            OutputParam.template("images"),
         ]
 
     @torch.no_grad()
@@ -251,7 +350,27 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
 
 
 # postprocess the decoded images
+
+
+# auto_docstring
 class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
+    """
+    postprocess the generated image
+
+      Components:
+          image_processor (`VaeImageProcessor`)
+
+      Inputs:
+          images (`Tensor`):
+              the generated image tensor from decoders step
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+
+      Outputs:
+          images (`List`):
+              Generated images.
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -272,14 +391,18 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("images", required=True, description="the generated image from decoders step"),
             InputParam(
-                name="output_type",
-                default="pil",
-                type_hint=str,
-                description="The type of the output images, can be 'pil', 'np', 'pt'",
+                name="images",
+                required=True,
+                type_hint=torch.Tensor,
+                description="the generated image tensor from decoders step",
             ),
+            InputParam.template("output_type"),
         ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam.template("images")]
 
     @staticmethod
     def check_inputs(output_type):
@@ -301,7 +424,28 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
+    """
+    postprocess the generated image, optional apply the mask overally to the original image..
+
+      Components:
+          image_mask_processor (`InpaintProcessor`)
+
+      Inputs:
+          images (`Tensor`):
+              the generated image tensor from decoders step
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+          mask_overlay_kwargs (`Dict`, *optional*):
+              The kwargs for the postprocess step to apply the mask overlay. generated in
+              InpaintProcessImagesInputStep.
+
+      Outputs:
+          images (`List`):
+              Generated images.
+    """
+
     model_name = "qwenimage"
 
     @property
@@ -322,15 +466,23 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("images", required=True, description="the generated image from decoders step"),
             InputParam(
-                name="output_type",
-                default="pil",
-                type_hint=str,
-                description="The type of the output images, can be 'pil', 'np', 'pt'",
+                name="images",
+                required=True,
+                type_hint=torch.Tensor,
+                description="the generated image tensor from decoders step",
             ),
-            InputParam("mask_overlay_kwargs"),
+            InputParam.template("output_type"),
+            InputParam(
+                name="mask_overlay_kwargs",
+                type_hint=Dict[str, Any],
+                description="The kwargs for the postprocess step to apply the mask overlay. generated in InpaintProcessImagesInputStep.",
+            ),
         ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam.template("images")]
 
     @staticmethod
     def check_inputs(output_type, mask_overlay_kwargs):
