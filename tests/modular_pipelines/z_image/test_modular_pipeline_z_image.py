@@ -41,6 +41,5 @@ class TestZImageModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
-    @pytest.mark.skip(reason="Z-Image tiny model produces variable results for batched vs single inference")
     def test_inference_batch_single_identical(self):
-        pass
+        super().test_inference_batch_single_identical(expected_max_diff=5e-3)
