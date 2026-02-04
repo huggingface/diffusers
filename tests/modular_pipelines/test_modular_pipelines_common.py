@@ -276,7 +276,9 @@ class ModularPipelineTesterMixin:
         if torch.isnan(output_tensor).any() or torch.isnan(output_fp16_tensor).any():
             pytest.skip("FP16 inference produces NaN values - this is a known issue with tiny models")
 
-        max_diff = numpy_cosine_similarity_distance(output_tensor.flatten().numpy(), output_fp16_tensor.flatten().numpy())
+        max_diff = numpy_cosine_similarity_distance(
+            output_tensor.flatten().numpy(), output_fp16_tensor.flatten().numpy()
+        )
 
         # Check if cosine similarity is NaN (which can happen if vectors are zero or very small)
         if torch.isnan(torch.tensor(max_diff)):

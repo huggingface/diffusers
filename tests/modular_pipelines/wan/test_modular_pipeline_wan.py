@@ -80,8 +80,8 @@ class TestWanModularPipelineFast(ModularPipelineTesterMixin):
         assert self._get_batch_size_from_output(output_batch) == batch_size
 
         # For video outputs, compare the first item of the batch to the single output
-        output_tensor = torch.from_numpy(output[0]) if isinstance(output, list) else self._convert_output_to_tensor(
-            output
+        output_tensor = (
+            torch.from_numpy(output[0]) if isinstance(output, list) else self._convert_output_to_tensor(output)
         )
         output_batch_tensor = torch.from_numpy(output_batch[0])
 
