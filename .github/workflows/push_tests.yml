@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 2
       - name: Install dependencies
         run: |
-          uv pip install -e ".[quality]"
+          uv pip install --prerelease=allow -e ".[quality]"
       - name: Environment
         run: |
           python utils/print_env.py
@@ -74,10 +74,10 @@ jobs:
           nvidia-smi
       - name: Install dependencies
         run: |
-          uv pip install -e ".[quality]"
-          uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
+          uv pip install --prerelease=allow -e ".[quality]"
+          uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git
+          #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease=allow --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease=allow transformers==4.57.1
       - name: Environment
         run: |
           python utils/print_env.py
@@ -126,11 +126,11 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality]"
-        uv pip install peft@git+https://github.com/huggingface/peft.git
-        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
+        uv pip install --prerelease=allow -e ".[quality]"
+        uv pip install --prerelease=allow peft@git+https://github.com/huggingface/peft.git
+        uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git
+        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease=allow --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease=allow transformers==4.57.1
 
     - name: Environment
       run: |
@@ -181,9 +181,9 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality,training]"
-        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
+        uv pip install --prerelease=allow -e ".[quality,training]"
+        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease=allow --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease=allow transformers==4.57.1
     - name: Environment
       run: |
         python utils/print_env.py
@@ -225,7 +225,7 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality,training]"
+        uv pip install --prerelease=allow -e ".[quality,training]"
     - name: Environment
       run: |
         python utils/print_env.py
@@ -265,7 +265,7 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality,training]"
+        uv pip install --prerelease=allow -e ".[quality,training]"
 
     - name: Environment
       run: |
@@ -275,7 +275,7 @@ jobs:
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
-        uv pip install ".[training]"
+        uv pip install --prerelease=allow ".[training]"
         pytest -n 1 --max-worker-restart=0 --dist=loadfile --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports
