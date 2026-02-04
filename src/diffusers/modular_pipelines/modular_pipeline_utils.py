@@ -972,7 +972,7 @@ def generate_modular_model_card_content(blocks) -> Dict[str, Any]:
     blocks_desc_parts = []
     sub_blocks = getattr(blocks, "sub_blocks", None) or {}
     if sub_blocks:
-        for i, (name, block) in enumerate(sub_blocks):
+        for i, (name, block) in enumerate(sub_blocks.items()):
             block_class = block.__class__.__name__
             block_desc = block.description.split("\n")[0] if getattr(block, "description", "") else ""
             blocks_desc_parts.append(f"{i + 1}. **{name}** (`{block_class}`)")
