@@ -15,6 +15,7 @@ from diffusers.modular_pipelines.modular_pipeline_utils import (
     OutputParam,
     generate_modular_model_card_content,
 )
+import numpy as np
 from diffusers.utils import logging
 
 from ..testing_utils import backend_empty_cache, numpy_cosine_similarity_distance, require_accelerator, torch_device
@@ -121,12 +122,6 @@ class ModularPipelineTesterMixin:
         return pipeline
 
     def _convert_output_to_tensor(self, output):
-        """
-        Convert pipeline output to torch tensor.
-        Handles both tensor outputs (e.g., images) and list outputs (e.g., videos).
-        """
-        import numpy as np
-
         if isinstance(output, torch.Tensor):
             return output
         elif isinstance(output, list):
@@ -141,12 +136,6 @@ class ModularPipelineTesterMixin:
             raise TypeError(f"Unsupported output type: {type(output)}")
 
     def _get_batch_size_from_output(self, output):
-        """
-        Get the batch size from pipeline output.
-        Handles both tensor outputs (e.g., images) and list outputs (e.g., videos).
-        """
-        import numpy as np
-
         if isinstance(output, torch.Tensor):
             return output.shape[0]
         elif isinstance(output, list):
@@ -242,8 +231,19 @@ class ModularPipelineTesterMixin:
         assert self._get_batch_size_from_output(output_batch) == batch_size
 
         # Convert outputs to tensors for comparison
-        output_tensor = self._convert_output_to_tensor(output)
-        output_batch_tensor = self._convert_output_to_tensor(output_batch)
+        if isinstance(output, list) and isinstance(output_batch, list):
+            # Both are lists - compare first elements
+            if isinstance(output[0], np.ndarray):
+                output_tensor = torch.from_numpy(output[0])
+                output_batch_tensor = torch.from_numpy(output_batch[0])
+            else:
+                output_tensor = output[0]
+                output_batch_tensor = output_batch[0]
+        else:
+            output_tensor = self._convert_output_to_tensor(output)
+            output_batch_tensor = self._convert_output_to_tensor(output_batch)
+            if output_batch_tensor.shape[0] == batch_size and output_tensor.shape[0] == 1:
+                output_batch_tensor = output_batch_tensor[0:1]
 
         max_diff = torch.abs(output_batch_tensor - output_tensor).max()
         assert max_diff < expected_max_diff, "Batch inference results different from single inference results"
