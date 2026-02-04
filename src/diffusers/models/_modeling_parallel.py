@@ -294,14 +294,10 @@ def gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
     if "cpu" in comm_backends:
         gather_device = "cpu"
     else:
-        gather_device = get_device()
+        gather_device = torch.device(get_device())
 
-        if gather_device == "cpu":
-            raise RuntimeError(
-                "Ulysses Anything Attention (UAA) requires an accelerator "
-                "(CUDA, NPU, XPU, etc.) to perform distributed gathering, "
-                "but only CPU was detected."
-            )
+        if gather_device.type == "cpu":
+            raise RuntimeError("No suitable accelerator found.")
 
     gathered_sizes = [torch.empty((1,), device=gather_device, dtype=torch.int64) for _ in range(world_size)]
     dist.all_gather(
