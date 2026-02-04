@@ -27,6 +27,7 @@ from ..test_pipelines_common import (
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
     FluxIPAdapterTesterMixin,
+    MagCacheTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
     TaylorSeerCacheTesterMixin,
@@ -41,6 +42,7 @@ class FluxPipelineFastTests(
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
     TaylorSeerCacheTesterMixin,
+    MagCacheTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = FluxPipeline

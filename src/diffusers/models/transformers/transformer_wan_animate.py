@@ -166,9 +166,11 @@ class MotionConv2d(nn.Module):
             # NOTE: the original implementation uses a 2D upfirdn operation with the upsampling and downsampling rates
             # set to 1, which should be equivalent to a 2D convolution
             expanded_kernel = self.blur_kernel[None, None, :, :].expand(self.in_channels, 1, -1, -1)
+            x = x.to(expanded_kernel.dtype)
             x = F.conv2d(x, expanded_kernel, padding=self.blur_padding, groups=self.in_channels)
 
         # Main Conv2D with scaling
+        x = x.to(self.weight.dtype)
         x = F.conv2d(x, self.weight * self.scale, bias=self.bias, stride=self.stride, padding=self.padding)
 
         # Activation with fused bias, if using
@@ -769,7 +771,7 @@ class WanImageEmbedding(torch.nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.transformers.transformer_wan.WanTimeTextImageEmbedding
+# Modified from diffusers.models.transformers.transformer_wan.WanTimeTextImageEmbedding
 class WanTimeTextImageEmbedding(nn.Module):
     def __init__(
         self,
@@ -803,10 +805,12 @@ class WanTimeTextImageEmbedding(nn.Module):
         if timestep_seq_len is not None:
             timestep = timestep.unflatten(0, (-1, timestep_seq_len))
 
-        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
-        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
-            timestep = timestep.to(time_embedder_dtype)
-        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
+        if self.time_embedder.linear_1.weight.dtype.is_floating_point:
+            time_embedder_dtype = self.time_embedder.linear_1.weight.dtype
+        else:
+            time_embedder_dtype = encoder_hidden_states.dtype
+
+        temb = self.time_embedder(timestep.to(time_embedder_dtype)).type_as(encoder_hidden_states)
         timestep_proj = self.time_proj(self.act_fn(temb))
 
         encoder_hidden_states = self.text_embedder(encoder_hidden_states)

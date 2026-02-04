@@ -168,12 +168,14 @@ else:
             "FirstBlockCacheConfig",
             "HookRegistry",
             "LayerSkipConfig",
+            "MagCacheConfig",
             "PyramidAttentionBroadcastConfig",
             "SmoothedEnergyGuidanceConfig",
             "TaylorSeerCacheConfig",
             "apply_faster_cache",
             "apply_first_block_cache",
             "apply_layer_skip",
+            "apply_mag_cache",
             "apply_pyramid_attention_broadcast",
             "apply_taylorseer_cache",
         ]
@@ -432,6 +434,9 @@ else:
     _import_structure["modular_pipelines"].extend(
         [
             "Flux2AutoBlocks",
+            "Flux2KleinAutoBlocks",
+            "Flux2KleinBaseAutoBlocks",
+            "Flux2KleinModularPipeline",
             "Flux2ModularPipeline",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
@@ -954,12 +959,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FirstBlockCacheConfig,
             HookRegistry,
             LayerSkipConfig,
+            MagCacheConfig,
             PyramidAttentionBroadcastConfig,
             SmoothedEnergyGuidanceConfig,
             TaylorSeerCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_layer_skip,
+            apply_mag_cache,
             apply_pyramid_attention_broadcast,
             apply_taylorseer_cache,
         )
@@ -1186,6 +1193,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modular_pipelines import (
             Flux2AutoBlocks,
+            Flux2KleinAutoBlocks,
+            Flux2KleinBaseAutoBlocks,
+            Flux2KleinModularPipeline,
             Flux2ModularPipeline,
             FluxAutoBlocks,
             FluxKontextAutoBlocks,
