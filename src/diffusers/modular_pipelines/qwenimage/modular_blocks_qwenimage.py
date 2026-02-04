@@ -55,7 +55,6 @@ from .inputs import (
 logger = logging.get_logger(__name__)
 
 
-
 # ====================
 # 1. VAE ENCODER
 # ====================
