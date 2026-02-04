@@ -715,7 +715,7 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam.template("prompt", required=True),
+            InputParam.template("prompt"),
             InputParam.template("negative_prompt"),
             InputParam.template("max_sequence_length", default=1024),
         ]
@@ -844,7 +844,7 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam.template("prompt", required=True),
+            InputParam.template("prompt"),
             InputParam.template("negative_prompt"),
             InputParam(
                 name="resized_image",
