@@ -43,6 +43,6 @@ class TestWanModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
-    @pytest.mark.skip(reason="Video pipelines use num_videos_per_prompt instead of num_images_per_prompt")
+    @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass

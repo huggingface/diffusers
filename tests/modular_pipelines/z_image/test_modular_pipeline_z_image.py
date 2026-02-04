@@ -15,10 +15,7 @@
 
 import pytest
 
-from diffusers.modular_pipelines import (
-    ZImageAutoBlocks,
-    ZImageModularPipeline,
-)
+from diffusers.modular_pipelines import ZImageAutoBlocks, ZImageModularPipeline
 
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
@@ -40,7 +37,7 @@ class TestZImageModularPipelineFast(ModularPipelineTesterMixin):
             "height": 32,
             "width": 32,
             "max_sequence_length": 16,
-            "output_type": "pt",  # Request tensor output for easier testing
+            "output_type": "pt",
         }
         return inputs
 

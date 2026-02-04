@@ -2,6 +2,7 @@ import gc
 import tempfile
 from typing import Callable, Union
 
+import numpy as np
 import pytest
 import torch
 
@@ -15,7 +16,6 @@ from diffusers.modular_pipelines.modular_pipeline_utils import (
     OutputParam,
     generate_modular_model_card_content,
 )
-import numpy as np
 from diffusers.utils import logging
 
 from ..testing_utils import backend_empty_cache, numpy_cosine_similarity_distance, require_accelerator, torch_device
