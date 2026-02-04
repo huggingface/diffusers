@@ -324,6 +324,7 @@ class ComponentsManager:
         "has_hook",
         "execution_device",
         "ip_adapter",
+        "quantization",
     ]
 
     def __init__(self):
@@ -356,7 +357,9 @@ class ComponentsManager:
                     ids_by_name.add(component_id)
         else:
             ids_by_name = set(components.keys())
-        if collection:
+        if collection and collection not in self.collections:
+            return set()
+        elif collection and collection in self.collections:
             ids_by_collection = set()
             for component_id, component in components.items():
                 if component_id in self.collections[collection]:
@@ -423,7 +426,8 @@ class ComponentsManager:
 
         # add component to components manager
         self.components[component_id] = component
-        self.added_time[component_id] = time.time()
+        if is_new_component:
+            self.added_time[component_id] = time.time()
 
         if collection:
             if collection not in self.collections:
@@ -760,7 +764,6 @@ class ComponentsManager:
         self.model_hooks = None
         self._auto_offload_enabled = False
 
-    # YiYi TODO: (1) add quantization info
     def get_model_info(
         self,
         component_id: str,
@@ -835,6 +838,17 @@ class ComponentsManager:
                     }
                     if scales:
                         info["ip_adapter"] = summarize_dict_by_value_and_parts(scales)
+
+            # Check for quantization
+            hf_quantizer = getattr(component, "hf_quantizer", None)
+            if hf_quantizer is not None:
+                quant_config = hf_quantizer.quantization_config
+                if hasattr(quant_config, "to_diff_dict"):
+                    info["quantization"] = quant_config.to_diff_dict()
+                else:
+                    info["quantization"] = quant_config.to_dict()
+            else:
+                info["quantization"] = None
 
         # If fields specified, filter info
         if fields is not None:
@@ -966,12 +980,16 @@ class ComponentsManager:
         output += "\nAdditional Component Info:\n" + "=" * 50 + "\n"
         for name in self.components:
             info = self.get_model_info(name)
-            if info is not None and (info.get("adapters") is not None or info.get("ip_adapter")):
+            if info is not None and (
+                info.get("adapters") is not None or info.get("ip_adapter") or info.get("quantization")
+            ):
                 output += f"\n{name}:\n"
                 if info.get("adapters") is not None:
                     output += f"  Adapters: {info['adapters']}\n"
                 if info.get("ip_adapter"):
                     output += "  IP-Adapter: Enabled\n"
+                if info.get("quantization"):
+                    output += f"  Quantization: {info['quantization']}\n"
 
         return output
 

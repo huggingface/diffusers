@@ -344,7 +344,6 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             from torchao.core.config import AOBaseConfig
 
             quant_type = self.quantization_config.quant_type
-            # For autoquant case, it will be treated in the string implementation below in map_to_target_dtype
             if isinstance(quant_type, AOBaseConfig):
                 # Extract size digit using fuzzy match on the class name
                 config_name = quant_type.__class__.__name__

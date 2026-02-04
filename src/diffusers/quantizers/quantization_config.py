@@ -623,7 +623,7 @@ class TorchAoConfig(QuantizationConfigMixin):
         """
 
         if is_torchao_available():
-            # TODO(aryan): Support autoquant and sparsify
+            # TODO(aryan): Support sparsify
             from torchao.quantization import (
                 float8_dynamic_activation_float8_weight,
                 float8_static_activation_float8_weight,
