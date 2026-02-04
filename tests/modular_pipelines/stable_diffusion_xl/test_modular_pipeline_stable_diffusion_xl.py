@@ -279,7 +279,7 @@ class TestSDXLModularPipelineFast(
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
-    default_repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
+    default_repo_id = "hf-internal-testing/tiny-sdxl-pipe"
 
     params = frozenset(
         [
@@ -333,6 +333,7 @@ class TestSDXLImg2ImgModularPipelineFast(
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
+    default_repo_id = "hf-internal-testing/tiny-sdxl-pipe"
     params = frozenset(
         [
             "prompt",
@@ -391,6 +392,7 @@ class SDXLInpaintingModularPipelineFastTests(
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
+    default_repo_id = "hf-internal-testing/tiny-sdxl-pipe"
     params = frozenset(
         [
             "prompt",

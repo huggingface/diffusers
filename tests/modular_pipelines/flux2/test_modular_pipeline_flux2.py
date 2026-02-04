@@ -33,6 +33,7 @@ class TestFlux2ModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_blocks_class = Flux2AutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-modular"
     default_repo_id = "black-forest-labs/FLUX.2-dev"
+    default_repo_id = "hf-internal-testing/tiny-flux2"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_params = frozenset(["prompt"])
@@ -65,6 +66,7 @@ class TestFlux2ImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Flux2ModularPipeline
     pipeline_blocks_class = Flux2AutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-modular"
+    default_repo_id = "hf-internal-testing/tiny-flux2"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
