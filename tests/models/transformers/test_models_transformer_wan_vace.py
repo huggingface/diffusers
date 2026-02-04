@@ -14,7 +14,7 @@
 
 import torch
 
-from diffusers import WanTransformer3DModel
+from diffusers import WanVACETransformer3DModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -35,18 +35,18 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-class WanTransformer3DTesterConfig(BaseModelTesterConfig):
+class WanVACETransformer3DTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
-        return WanTransformer3DModel
+        return WanVACETransformer3DModel
 
     @property
     def output_shape(self) -> tuple[int, ...]:
-        return (4, 2, 16, 16)
+        return (16, 2, 16, 16)
 
     @property
     def input_shape(self) -> tuple[int, ...]:
-        return (4, 2, 16, 16)
+        return (16, 2, 16, 16)
 
     @property
     def main_input_name(self) -> str:
@@ -56,30 +56,35 @@ class WanTransformer3DTesterConfig(BaseModelTesterConfig):
     def generator(self):
         return torch.Generator("cpu").manual_seed(0)
 
-    def get_init_dict(self) -> dict[str, int | list[int] | tuple | str | bool]:
+    def get_init_dict(self) -> dict[str, int | list[int] | tuple | str | bool | None]:
         return {
             "patch_size": (1, 2, 2),
             "num_attention_heads": 2,
             "attention_head_dim": 12,
-            "in_channels": 4,
-            "out_channels": 4,
-            "text_dim": 16,
+            "in_channels": 16,
+            "out_channels": 16,
+            "text_dim": 32,
             "freq_dim": 256,
             "ffn_dim": 32,
-            "num_layers": 2,
+            "num_layers": 4,
             "cross_attn_norm": True,
             "qk_norm": "rms_norm_across_heads",
             "rope_max_seq_len": 32,
+            "vace_layers": [0, 2],
+            "vace_in_channels": 48,  # 3 * in_channels = 3 * 16 = 48
         }
 
     def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         batch_size = 1
-        num_channels = 4
+        num_channels = 16
         num_frames = 2
         height = 16
         width = 16
-        text_encoder_embedding_dim = 16
+        text_encoder_embedding_dim = 32
         sequence_length = 12
+
+        # VACE requires control_hidden_states with vace_in_channels (3 * in_channels)
+        vace_in_channels = 48
 
         return {
             "hidden_states": randn_tensor(
@@ -92,97 +97,102 @@ class WanTransformer3DTesterConfig(BaseModelTesterConfig):
                 generator=self.generator,
                 device=torch_device,
             ),
+            "control_hidden_states": randn_tensor(
+                (batch_size, vace_in_channels, num_frames, height, width),
+                generator=self.generator,
+                device=torch_device,
+            ),
             "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
         }
 
 
-class TestWanTransformer3D(WanTransformer3DTesterConfig, ModelTesterMixin):
-    """Core model tests for Wan Transformer 3D."""
+class TestWanVACETransformer3D(WanVACETransformer3DTesterConfig, ModelTesterMixin):
+    """Core model tests for Wan VACE Transformer 3D."""
 
 
-class TestWanTransformer3DMemory(WanTransformer3DTesterConfig, MemoryTesterMixin):
-    """Memory optimization tests for Wan Transformer 3D."""
+class TestWanVACETransformer3DMemory(WanVACETransformer3DTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for Wan VACE Transformer 3D."""
 
 
-class TestWanTransformer3DTraining(WanTransformer3DTesterConfig, TrainingTesterMixin):
-    """Training tests for Wan Transformer 3D."""
+class TestWanVACETransformer3DTraining(WanVACETransformer3DTesterConfig, TrainingTesterMixin):
+    """Training tests for Wan VACE Transformer 3D."""
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"WanTransformer3DModel"}
+        expected_set = {"WanVACETransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class TestWanTransformer3DAttention(WanTransformer3DTesterConfig, AttentionTesterMixin):
-    """Attention processor tests for Wan Transformer 3D."""
+class TestWanVACETransformer3DAttention(WanVACETransformer3DTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for Wan VACE Transformer 3D."""
 
 
-class TestWanTransformer3DCompile(WanTransformer3DTesterConfig, TorchCompileTesterMixin):
-    """Torch compile tests for Wan Transformer 3D."""
+class TestWanVACETransformer3DCompile(WanVACETransformer3DTesterConfig, TorchCompileTesterMixin):
+    """Torch compile tests for Wan VACE Transformer 3D."""
 
 
-class TestWanTransformer3DBitsAndBytes(WanTransformer3DTesterConfig, BitsAndBytesTesterMixin):
-    """BitsAndBytes quantization tests for Wan Transformer 3D."""
+class TestWanVACETransformer3DBitsAndBytes(WanVACETransformer3DTesterConfig, BitsAndBytesTesterMixin):
+    """BitsAndBytes quantization tests for Wan VACE Transformer 3D."""
 
 
-class TestWanTransformer3DTorchAo(WanTransformer3DTesterConfig, TorchAoTesterMixin):
-    """TorchAO quantization tests for Wan Transformer 3D."""
+class TestWanVACETransformer3DTorchAo(WanVACETransformer3DTesterConfig, TorchAoTesterMixin):
+    """TorchAO quantization tests for Wan VACE Transformer 3D."""
 
 
-class TestWanTransformer3DGGUF(WanTransformer3DTesterConfig, GGUFTesterMixin):
-    """GGUF quantization tests for Wan Transformer 3D."""
+class TestWanVACETransformer3DGGUF(WanVACETransformer3DTesterConfig, GGUFTesterMixin):
+    """GGUF quantization tests for Wan VACE Transformer 3D."""
 
     @property
     def gguf_filename(self):
-        return "https://huggingface.co/QuantStack/Wan2.2-I2V-A14B-GGUF/blob/main/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q2_K.gguf"
+        return "https://huggingface.co/QuantStack/Wan2.1_14B_VACE-GGUF/blob/main/Wan2.1_14B_VACE-Q3_K_S.gguf"
 
     @property
     def torch_dtype(self):
         return torch.bfloat16
 
     def get_dummy_inputs(self):
-        """Override to provide inputs matching the real Wan I2V model dimensions.
+        """Override to provide inputs matching the real Wan VACE model dimensions.
 
-        Wan 2.2 I2V: in_channels=36, text_dim=4096, image_dim=1280
+        Wan 2.1 VACE: in_channels=16, text_dim=4096, vace_in_channels=96
         """
         return {
             "hidden_states": randn_tensor(
-                (1, 36, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+                (1, 16, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
             "encoder_hidden_states": randn_tensor(
                 (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
-            "encoder_hidden_states_image": randn_tensor(
-                (1, 257, 1280), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            "control_hidden_states": randn_tensor(
+                (1, 96, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
             "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
         }
 
 
-class TestWanTransformer3DGGUFCompile(WanTransformer3DTesterConfig, GGUFCompileTesterMixin):
-    """GGUF + compile tests for Wan Transformer 3D."""
+class TestWanVACETransformer3DGGUFCompile(WanVACETransformer3DTesterConfig, GGUFCompileTesterMixin):
+    """GGUF + compile tests for Wan VACE Transformer 3D."""
 
     @property
     def gguf_filename(self):
-        return "https://huggingface.co/QuantStack/Wan2.2-I2V-A14B-GGUF/blob/main/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q2_K.gguf"
+        return "https://huggingface.co/QuantStack/Wan2.1_14B_VACE-GGUF/blob/main/Wan2.1_14B_VACE-Q3_K_S.gguf"
 
     @property
     def torch_dtype(self):
         return torch.bfloat16
 
     def get_dummy_inputs(self):
-        """Override to provide inputs matching the real Wan I2V model dimensions.
+        """Override to provide inputs matching the real Wan VACE model dimensions.
 
-        Wan 2.2 I2V: in_channels=36, text_dim=4096, image_dim=1280
+        Wan 2.1 VACE: in_channels=16, text_dim=4096, vace_in_channels=96
         """
         return {
             "hidden_states": randn_tensor(
-                (1, 36, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+                (1, 16, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
             "encoder_hidden_states": randn_tensor(
                 (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
-            "encoder_hidden_states_image": randn_tensor(
-                (1, 257, 1280), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            "control_hidden_states": randn_tensor(
+                (1, 96, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
             "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
         }
