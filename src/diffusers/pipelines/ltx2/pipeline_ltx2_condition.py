@@ -724,13 +724,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
         num_frames = (num_frames - 1) // scale_factor * scale_factor + 1
         return num_frames
 
-    def latent_idx_from_index(self, frame_idx: int, index_type: str = "latent") -> int:
-        if index_type == "latent":
-            latent_idx = frame_idx
-        else:
-            raise ValueError(f"Got unsupported `index_type` {index_type}. Supported index types are `latent`.")
-        return latent_idx
-
     def preprocess_conditions(
         self,
         conditions: Optional[Union[LTX2VideoCondition, List[LTX2VideoCondition]]] = None,
@@ -788,7 +781,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
                 video_like_cond = condition.frames
             condition_pixels = self.video_processor.preprocess_video(video_like_cond, height, width)
 
-            latent_start_idx = self.latent_idx_from_index(condition.index, index_type)
+            # Interpret the index as a latent index, following the original LTX-2 code.
+            latent_start_idx = condition.index
             # Support negative latent indices (e.g. -1 for the last latent index)
             if latent_start_idx < 0:
                 # latent_start_idx will be positive because latent_num_frames is positive
