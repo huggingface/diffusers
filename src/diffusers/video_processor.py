@@ -26,9 +26,11 @@ from .image_processor import VaeImageProcessor, is_valid_image, is_valid_image_i
 class VideoProcessor(VaeImageProcessor):
     r"""Simple video processor."""
 
-    def preprocess_video(self, video, height: Optional[int] = None, width: Optional[int] = None) -> torch.Tensor:
+    def preprocess_video(
+        self, video, height: Optional[int] = None, width: Optional[int] = None, **kwargs
+    ) -> torch.Tensor:
         r"""
-        Preprocesses input video(s).
+        Preprocesses input video(s). Keyword arguments will be forwarded to `VaeImageProcessor.preprocess`.
 
         Args:
             video (`List[PIL.Image]`, `List[List[PIL.Image]]`, `torch.Tensor`, `np.array`, `List[torch.Tensor]`, `List[np.array]`):
@@ -80,7 +82,7 @@ class VideoProcessor(VaeImageProcessor):
                 "Input is in incorrect format. Currently, we only support numpy.ndarray, torch.Tensor, PIL.Image.Image"
             )
 
-        video = torch.stack([self.preprocess(img, height=height, width=width) for img in video], dim=0)
+        video = torch.stack([self.preprocess(img, height=height, width=width, **kwargs) for img in video], dim=0)
 
         # move the number of channels before the number of frames.
         video = video.permute(0, 2, 1, 3, 4)
@@ -88,10 +90,11 @@ class VideoProcessor(VaeImageProcessor):
         return video
 
     def postprocess_video(
-        self, video: torch.Tensor, output_type: str = "np"
+        self, video: torch.Tensor, output_type: str = "np", **kwargs
     ) -> Union[np.ndarray, torch.Tensor, List[PIL.Image.Image]]:
         r"""
-        Converts a video tensor to a list of frames for export.
+        Converts a video tensor to a list of frames for export. Keyword arguments will be forwarded to
+        `VaeImageProcessor.postprocess`.
 
         Args:
             video (`torch.Tensor`): The video as a tensor.
@@ -101,7 +104,7 @@ class VideoProcessor(VaeImageProcessor):
         outputs = []
         for batch_idx in range(batch_size):
             batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-            batch_output = self.postprocess(batch_vid, output_type)
+            batch_output = self.postprocess(batch_vid, output_type, **kwargs)
             outputs.append(batch_output)
 
         if output_type == "np":
