@@ -28,7 +28,9 @@ class TestWanModularPipelineFast(ModularPipelineTesterMixin):
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
-    output_type = "videos"
+    output_name = "videos"
+    # WAN decoder hardcodes output_type="np" and doesn't support output_type parameter
+    requires_output_conversion = True
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)

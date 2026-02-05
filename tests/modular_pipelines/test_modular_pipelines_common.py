@@ -40,7 +40,10 @@ class ModularPipelineTesterMixin:
     intermediate_params = frozenset(["generator"])
     # Output type for the pipeline (e.g., "images" for image pipelines, "videos" for video pipelines)
     # Subclasses can override this to change the expected output type
-    output_type = "images"
+    output_name = "images"
+    # Whether the pipeline returns tensors directly with output_type="pt" or needs conversion
+    # Set to True for pipelines that don't support output_type parameter (e.g., WAN)
+    requires_output_conversion = False
 
     def get_generator(self, seed=0):
         generator = torch.Generator("cpu").manual_seed(seed)
@@ -191,7 +194,7 @@ class ModularPipelineTesterMixin:
 
         logger.setLevel(level=diffusers.logging.WARNING)
         for batch_size, batched_input in zip(batch_sizes, batched_inputs):
-            output = pipe(**batched_input, output=self.output_type)
+            output = pipe(**batched_input, output=self.output_name)
             assert len(output) == batch_size, "Output is different from expected batch size"
 
     def test_inference_batch_single_identical(
@@ -225,27 +228,21 @@ class ModularPipelineTesterMixin:
         if "batch_size" in inputs:
             batched_inputs["batch_size"] = batch_size
 
-        output = pipe(**inputs, output=self.output_type)
-        output_batch = pipe(**batched_inputs, output=self.output_type)
+        output = pipe(**inputs, output=self.output_name)
+        output_batch = pipe(**batched_inputs, output=self.output_name)
 
         assert self._get_batch_size_from_output(output_batch) == batch_size
 
-        # Convert outputs to tensors for comparison
-        if isinstance(output, list) and isinstance(output_batch, list):
-            # Both are lists - compare first elements
-            if isinstance(output[0], np.ndarray):
-                output_tensor = torch.from_numpy(output[0])
-                output_batch_tensor = torch.from_numpy(output_batch[0])
-            else:
-                output_tensor = output[0]
-                output_batch_tensor = output_batch[0]
-        else:
-            output_tensor = self._convert_output_to_tensor(output)
-            output_batch_tensor = self._convert_output_to_tensor(output_batch)
-            if output_batch_tensor.shape[0] == batch_size and output_tensor.shape[0] == 1:
-                output_batch_tensor = output_batch_tensor[0:1]
+        # Convert to tensors if needed
+        if self.requires_output_conversion:
+            output = self._convert_output_to_tensor(output)
+            output_batch = self._convert_output_to_tensor(output_batch)
 
-        max_diff = torch.abs(output_batch_tensor - output_tensor).max()
+        # For batch comparison, we only need to compare the first item
+        if output_batch.shape[0] == batch_size and output.shape[0] == 1:
+            output_batch = output_batch[0:1]
+
+        max_diff = torch.abs(output_batch - output).max()
         assert max_diff < expected_max_diff, "Batch inference results different from single inference results"
 
     @require_accelerator
@@ -260,17 +257,23 @@ class ModularPipelineTesterMixin:
         # Reset generator in case it is used inside dummy inputs
         if "generator" in inputs:
             inputs["generator"] = self.get_generator(0)
-        output = pipe(**inputs, output=self.output_type)
+
+        output = pipe(**inputs, output=self.output_name)
 
         fp16_inputs = self.get_dummy_inputs()
         # Reset generator in case it is used inside dummy inputs
         if "generator" in fp16_inputs:
             fp16_inputs["generator"] = self.get_generator(0)
-        output_fp16 = pipe_fp16(**fp16_inputs, output=self.output_type)
 
-        # Convert outputs to tensors for comparison
-        output_tensor = self._convert_output_to_tensor(output).float().cpu()
-        output_fp16_tensor = self._convert_output_to_tensor(output_fp16).float().cpu()
+        output_fp16 = pipe_fp16(**fp16_inputs, output=self.output_name)
+
+        # Convert to tensors if needed, then convert to float32 for comparison
+        if self.requires_output_conversion:
+            output_tensor = self._convert_output_to_tensor(output).float().cpu()
+            output_fp16_tensor = self._convert_output_to_tensor(output_fp16).float().cpu()
+        else:
+            output_tensor = output.float().cpu()
+            output_fp16_tensor = output_fp16.float().cpu()
 
         # Check for NaNs in outputs (can happen with tiny models in FP16)
         if torch.isnan(output_tensor).any() or torch.isnan(output_fp16_tensor).any():
@@ -306,17 +309,21 @@ class ModularPipelineTesterMixin:
     def test_inference_is_not_nan_cpu(self):
         pipe = self.get_pipeline().to("cpu")
 
-        output = pipe(**self.get_dummy_inputs(), output=self.output_type)
-        output_tensor = self._convert_output_to_tensor(output)
-        assert torch.isnan(output_tensor).sum() == 0, "CPU Inference returns NaN"
+        inputs = self.get_dummy_inputs()
+        output = pipe(**inputs, output=self.output_name)
+        if self.requires_output_conversion:
+            output = self._convert_output_to_tensor(output)
+        assert torch.isnan(output).sum() == 0, "CPU Inference returns NaN"
 
     @require_accelerator
     def test_inference_is_not_nan(self):
         pipe = self.get_pipeline().to(torch_device)
 
-        output = pipe(**self.get_dummy_inputs(), output=self.output_type)
-        output_tensor = self._convert_output_to_tensor(output)
-        assert torch.isnan(output_tensor).sum() == 0, "Accelerator Inference returns NaN"
+        inputs = self.get_dummy_inputs()
+        output = pipe(**inputs, output=self.output_name)
+        if self.requires_output_conversion:
+            output = self._convert_output_to_tensor(output)
+        assert torch.isnan(output).sum() == 0, "Accelerator Inference returns NaN"
 
     def test_num_images_per_prompt(self):
         pipe = self.get_pipeline().to(torch_device)
@@ -335,7 +342,7 @@ class ModularPipelineTesterMixin:
                     if key in self.batch_params:
                         inputs[key] = batch_size * [inputs[key]]
 
-                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt, output=self.output_type)
+                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt, output=self.output_name)
 
                 assert self._get_batch_size_from_output(images) == batch_size * num_images_per_prompt
 
@@ -350,10 +357,10 @@ class ModularPipelineTesterMixin:
         image_slices = []
         for pipe in [base_pipe, offload_pipe]:
             inputs = self.get_dummy_inputs()
-            image = pipe(**inputs, output=self.output_type)
-
-            image_tensor = self._convert_output_to_tensor(image)
-            image_slices.append(image_tensor[0, -3:, -3:, -1].flatten())
+            image = pipe(**inputs, output=self.output_name)
+            if self.requires_output_conversion:
+                image = self._convert_output_to_tensor(image)
+            image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
@@ -373,10 +380,10 @@ class ModularPipelineTesterMixin:
         image_slices = []
         for pipe in pipes:
             inputs = self.get_dummy_inputs()
-            image = pipe(**inputs, output=self.output_type)
-
-            image_tensor = self._convert_output_to_tensor(image)
-            image_slices.append(image_tensor[0, -3:, -3:, -1].flatten())
+            image = pipe(**inputs, output=self.output_name)
+            if self.requires_output_conversion:
+                image = self._convert_output_to_tensor(image)
+            image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
@@ -390,13 +397,13 @@ class ModularGuiderTesterMixin:
         pipe.update_components(guider=guider)
 
         inputs = self.get_dummy_inputs()
-        out_no_cfg = pipe(**inputs, output=self.output_type)
+        out_no_cfg = pipe(**inputs, output=self.output_name)
 
         # forward pass with CFG applied
         guider = ClassifierFreeGuidance(guidance_scale=7.5)
         pipe.update_components(guider=guider)
         inputs = self.get_dummy_inputs()
-        out_cfg = pipe(**inputs, output=self.output_type)
+        out_cfg = pipe(**inputs, output=self.output_name)
 
         assert out_cfg.shape == out_no_cfg.shape
         max_diff = torch.abs(out_cfg - out_no_cfg).max()
