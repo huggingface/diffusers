@@ -1395,9 +1395,9 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
                 sigma = self.scheduler.sigmas[i]
                 # Convert the noise_pred_video velocity model prediction into a sample (x0) prediction
                 denoised_sample = latents - noise_pred_video * sigma
-                # Apply the (packed) conditioning mask to the denoised (x0) sample, which will blend the conditions
-                # with the denoised sample according to the conditioning strength (a strength of 1.0 means we fully
-                # overwrite the denoised sample with the condition)
+                # Apply the (packed) conditioning mask to the denoised (x0) sample and clean conditioning. The
+                # conditioning mask contains conditioning strengths from 0 (always use denoised sample) to 1 (always
+                # use conditions), with intermediate values specifying how strongly to follow the conditions.
                 denoised_sample_cond = (
                     denoised_sample * (1 - conditioning_mask[:bsz]) + clean_latents.float() * conditioning_mask[:bsz]
                 ).to(noise_pred_video.dtype)
