@@ -165,6 +165,7 @@ class ModularPipelineTesterMixin:
         assert "text_encoder" in blocks.sub_blocks, "`text_encoder` block is not present in the pipeline"
         assert "denoise" in blocks.sub_blocks, "`denoise` block is not present in the pipeline"
         assert "decode" in blocks.sub_blocks, "`decode` block is not present in the pipeline"
+
         # manually set the components in the sub_pipe
         # a hack to workaround the fact the default pipeline properties are often incorrect for testing cases,
         # #e.g. vae_scale_factor is ususally not 8 because vae is configured to be smaller for testing
