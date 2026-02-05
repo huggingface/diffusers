@@ -200,8 +200,7 @@ class ModularPipelineTesterMixin:
         # #e.g. vae_scale_factor is ususally not 8 because vae is configured to be smaller for testing
         def manually_set_all_components(pipe: ModularPipeline, sub_pipe: ModularPipeline):
             for n, comp in pipe.components.items():
-                if not hasattr(sub_pipe, n):
-                    setattr(sub_pipe, n, comp)
+                setattr(sub_pipe, n, comp)
 
         # Initialize all nodes
         text_node = blocks.sub_blocks["text_encoder"].init_pipeline(self.pretrained_model_name_or_path)
