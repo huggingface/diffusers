@@ -112,7 +112,7 @@ class BrownianTreeNoiseSampler:
     """A noise sampler backed by a torchsde.BrownianTree.
 
     Args:
-        x (`torch.Tensor`): The tensor whose shape, device and dtype to use to generate random samples.
+        x (`torch.Tensor`): The tensor whose shape, device and dtype is used to generate random samples.
         sigma_min (`float`): The low end of the valid interval.
         sigma_max (`float`): The high end of the valid interval.
         seed (`int` or `List[int]`): The random seed. If a list of seeds is
