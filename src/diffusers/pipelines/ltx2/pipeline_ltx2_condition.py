@@ -97,7 +97,7 @@ class LTX2VideoCondition:
     Defines a single frame-conditioning item for LTX-2 Video - a single frame or a sequence of frames.
 
     Attributes:
-        image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `np.ndarray` or `torch.Tensor`):
+        frames (`PIL.Image.Image` or `List[PIL.Image.Image]` or `np.ndarray` or `torch.Tensor`):
             The image (or video) to condition the video on. Accepts any type that can be handled by
             VideoProcessor.preprocess_video.
         index (`int`, defaults to `0`):
@@ -106,7 +106,7 @@ class LTX2VideoCondition:
             The strength of the conditioning effect. A value of `1.0` means the conditioning effect is fully applied.
     """
 
-    image: Union[PIL.Image.Image, List[PIL.Image.Image], np.ndarray, torch.Tensor]
+    frames: Union[PIL.Image.Image, List[PIL.Image.Image], np.ndarray, torch.Tensor]
     index: int = 0
     strength: float = 1.0
 
@@ -789,19 +789,19 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
         frame_scale_factor = self.vae_temporal_compression_ratio
         latent_num_frames = (num_frames - 1) // frame_scale_factor + 1
         for i, condition in enumerate(conditions):
-            if isinstance(condition.image, PIL.Image.Image):
+            if isinstance(condition.frames, PIL.Image.Image):
                 # Single image, convert to List[PIL.Image.Image]
-                video_like_cond = [condition.image]
-            elif isinstance(condition.image, np.ndarray) and condition.image.ndim == 3:
+                video_like_cond = [condition.frames]
+            elif isinstance(condition.frames, np.ndarray) and condition.frames.ndim == 3:
                 # Image-like ndarray of shape (H, W, C), insert frame dim in first axis
-                video_like_cond = np.expand_dims(condition.image, axis=0)
-            elif isinstance(condition.image, torch.Tensor) and condition.image.ndim == 3:
+                video_like_cond = np.expand_dims(condition.frames, axis=0)
+            elif isinstance(condition.frames, torch.Tensor) and condition.frames.ndim == 3:
                 # Image-like tensor of shape (C, H, W), insert frame dim in first dim
-                video_like_cond = condition.image.unsqueeze(0)
+                video_like_cond = condition.frames.unsqueeze(0)
             else:
                 # Treat all other as videos. Note that this means 4D ndarrays and tensors will be treated as videos of
                 # shape (F, H, W, C) and (F, C, H, W), respectively.
-                video_like_cond = condition.image
+                video_like_cond = condition.frames
             condition_pixels = self.video_processor.preprocess_video(video_like_cond, height, width)
 
             latent_start_idx = self.latent_idx_from_index(condition.index, index_type)
@@ -1216,17 +1216,17 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
                 # Interpret as a list of conditions
                 conditions = []
                 for v_cond, idx, strength in zip(video, cond_index, strength):
-                    conditions.append(LTX2VideoCondition(image=v_cond, index=idx, strength=strength))
+                    conditions.append(LTX2VideoCondition(frames=v_cond, index=idx, strength=strength))
             else:
                 # Interpret as single condition (cond_index and strength are also assumed to not be lists)
-                conditions = [LTX2VideoCondition(image=video, index=cond_index, strength=strength)]
+                conditions = [LTX2VideoCondition(frames=video, index=cond_index, strength=strength)]
         elif image is not None:
             if isinstance(image, list):
                 conditions = []
                 for i_cond, idx, strength in zip(video, cond_index, strength):
-                    conditions.append(LTX2VideoCondition(image=i_cond, index=idx, strength=strength))
+                    conditions.append(LTX2VideoCondition(frames=i_cond, index=idx, strength=strength))
             else:
-                conditions = [LTX2VideoCondition(image=video, index=cond_index, strength=strength)]
+                conditions = [LTX2VideoCondition(frames=video, index=cond_index, strength=strength)]
 
         # Infer noise scale: first (largest) sigma value if using custom sigmas, else 1.0
         if noise_scale is None:
