@@ -21,11 +21,8 @@ import torch
 from diffusers import BitsAndBytesConfig, GGUFQuantizationConfig, NVIDIAModelOptConfig, QuantoConfig, TorchAoConfig
 from diffusers.utils.import_utils import (
     is_bitsandbytes_available,
-    is_gguf_available,
     is_nvidia_modelopt_available,
     is_optimum_quanto_available,
-    is_torchao_available,
-    is_torchao_version,
 )
 
 from ...testing_utils import (
@@ -58,13 +55,6 @@ if is_bitsandbytes_available():
 
 if is_optimum_quanto_available():
     from optimum.quanto import QLinear
-
-if is_gguf_available():
-    pass
-
-if is_torchao_available():
-    if is_torchao_version(">=", "0.9.0"):
-        pass
 
 
 class LoRALayer(torch.nn.Module):
