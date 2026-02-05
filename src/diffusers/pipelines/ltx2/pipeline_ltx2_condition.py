@@ -50,22 +50,29 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LTX2Pipeline
+        >>> from diffusers import LTX2ConditionPipeline
         >>> from diffusers.pipelines.ltx2.export_utils import encode_video
+        >>> from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
         >>> from diffusers.utils import load_image
 
-        >>> pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
+        >>> pipe = LTX2ConditionPipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
         >>> pipe.enable_model_cpu_offload()
 
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/a-r-r-o-w/tiny-meme-dataset-captioned/resolve/main/images/8.png"
+        >>> first_image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png"
         ... )
-        >>> prompt = "A young girl stands calmly in the foreground, looking directly at the camera, as a house fire rages in the background."
-        >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
+        >>> last_image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png"
+        ... )
+        >>> first_cond = LTX2VideoCondition(frames=first_image, index=0, strength=1.0)
+        >>> last_cond = LTX2VideoCondition(frames=last_image, index=-1, strength=1.0)
+        >>> conditions = [first_cond, last_cond]
+        >>> prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings."
+        >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted, static"
 
         >>> frame_rate = 24.0
         >>> video = pipe(
-        ...     image=image,
+        ...     conditions=conditions,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
         ...     width=768,
