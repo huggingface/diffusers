@@ -15,7 +15,6 @@
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from PIL import Image
 from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
@@ -134,15 +133,17 @@ class QwenImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
+        # Even if we specify smaller dimensions for the images, it won't work because of how
+        # the internal implementation enforces a minimal resolution of 1024x1024.
         inputs = {
             "prompt": "dance monkey",
-            "image": Image.new("RGB", (32, 32)),
+            "image": Image.new("RGB", (1024, 1024)),
             "negative_prompt": "bad quality",
             "generator": generator,
             "num_inference_steps": 2,
             "true_cfg_scale": 1.0,
-            "height": 32,
-            "width": 32,
+            "height": 1024,
+            "width": 1024,
             "max_sequence_length": 16,
             "output_type": "pt",
         }
@@ -238,6 +239,11 @@ class QwenImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "VAE tiling should not affect the inference results",
         )
 
-    @pytest.mark.xfail(condition=True, reason="Preconfigured embeddings need to be revisited.", strict=True)
-    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
-        super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol, rtol)
+    def test_encode_prompt_works_in_isolation(
+        self, extra_required_param_value_dict=None, keep_params=None, atol=1e-4, rtol=1e-4
+    ):
+        # We include `image` because it's needed in both `encode_prompt` and some other subsequent calculations.
+        # `max_sequence_length` to maintain parity between its value during all invocations of `encode_prompt`
+        # in the following test.
+        keep_params = ["image", "max_sequence_length"]
+        super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, keep_params, atol, rtol)
