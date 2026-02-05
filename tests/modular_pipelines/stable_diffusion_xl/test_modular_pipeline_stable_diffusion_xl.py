@@ -293,11 +293,6 @@ class TestSDXLModularPipelineFast(
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_image_output_shape = (1, 3, 64, 64)
 
-    # should choose from the dict returned by `get_dummy_inputs`
-    text_encoder_block_params = frozenset(["prompt"])
-    decode_block_params = frozenset(["output_type"])
-    vae_encoder_block_params = None  # None if vae_encoder is not supported
-
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
         inputs = {
@@ -346,11 +341,6 @@ class TestSDXLImg2ImgModularPipelineFast(
     )
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
     expected_image_output_shape = (1, 3, 64, 64)
-
-    # should choose from the dict returned by `get_dummy_inputs`
-    text_encoder_block_params = frozenset(["prompt"])
-    decode_block_params = frozenset(["output_type"])
-    vae_encoder_block_params = frozenset(["image"])
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)

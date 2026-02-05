@@ -36,10 +36,6 @@ class TestFlux2ModularPipelineFast(ModularPipelineTesterMixin):
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
 
-    text_encoder_block_params = frozenset(["prompt", "max_sequence_length", "text_encoder_out_layers"])
-    decode_block_params = frozenset(["output_type"])
-    vae_encoder_block_params = None
-
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
         inputs = {
@@ -67,10 +63,6 @@ class TestFlux2ImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])
-
-    text_encoder_block_params = frozenset(["prompt", "max_sequence_length", "text_encoder_out_layers"])
-    decode_block_params = frozenset(["output_type"])
-    vae_encoder_block_params = frozenset(["image", "height", "width"])
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)

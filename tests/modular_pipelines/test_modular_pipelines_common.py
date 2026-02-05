@@ -105,33 +105,6 @@ class ModularPipelineTesterMixin:
             "See existing pipeline tests for reference."
         )
 
-    @property
-    def text_encoder_block_params(self) -> frozenset:
-        raise NotImplementedError(
-            "You need to set the attribute `text_encoder_block_params` in the child test class. "
-            "`text_encoder_block_params` are the parameters required to be passed to the text encoder block. "
-            " if should be a subset of the parameters returned by `get_dummy_inputs`"
-            "See existing pipeline tests for reference."
-        )
-
-    @property
-    def decode_block_params(self) -> frozenset:
-        raise NotImplementedError(
-            "You need to set the attribute `decode_block_params` in the child test class. "
-            "`decode_block_params` are the parameters required to be passed to the decode block. "
-            " if should be a subset of the parameters returned by `get_dummy_inputs`"
-            "See existing pipeline tests for reference."
-        )
-
-    @property
-    def vae_encoder_block_params(self) -> frozenset:
-        raise NotImplementedError(
-            "You need to set the attribute `vae_encoder_block_params` in the child test class. "
-            "`vae_encoder_block_params` are the parameters required to be passed to the vae encoder block. "
-            " if should be a subset of the parameters returned by `get_dummy_inputs`"
-            "See existing pipeline tests for reference."
-        )
-
     def setup_method(self):
         # clean up the VRAM before each test
         torch.compiler.reset()
@@ -192,9 +165,6 @@ class ModularPipelineTesterMixin:
         assert "text_encoder" in blocks.sub_blocks, "`text_encoder` block is not present in the pipeline"
         assert "denoise" in blocks.sub_blocks, "`denoise` block is not present in the pipeline"
         assert "decode" in blocks.sub_blocks, "`decode` block is not present in the pipeline"
-        if self.vae_encoder_block_params is not None:
-            assert "vae_encoder" in blocks.sub_blocks, "`vae_encoder` block is not present in the pipeline"
-
         # manually set the components in the sub_pipe
         # a hack to workaround the fact the default pipeline properties are often incorrect for testing cases,
         # #e.g. vae_scale_factor is ususally not 8 because vae is configured to be smaller for testing
@@ -218,7 +188,7 @@ class ModularPipelineTesterMixin:
         decoder_node.to(torch_device)
         manually_set_all_components(pipe, decoder_node)
 
-        if self.vae_encoder_block_params is not None:
+        if "vae_encoder" in blocks.sub_blocks:
             vae_encoder_node = blocks.sub_blocks["vae_encoder"].init_pipeline(self.pretrained_model_name_or_path)
             vae_encoder_node.load_components(torch_dtype=torch.float32)
             vae_encoder_node.to(torch_device)
@@ -233,7 +203,7 @@ class ModularPipelineTesterMixin:
         inputs = self.get_dummy_inputs()
 
         # 1. Text encoder: takes from inputs
-        text_inputs = filter_inputs(inputs, self.text_encoder_block_params)
+        text_inputs = filter_inputs(inputs, text_node.blocks.input_names)
         text_output = text_node(**text_inputs)
         text_output_dict = text_output.get_by_kwargs("denoiser_input_fields")
 
