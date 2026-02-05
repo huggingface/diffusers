@@ -23,7 +23,6 @@ import torch
 from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import PipelineImageInput
 from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
 from ...models.transformers import LTX2VideoTransformer3DModel
@@ -533,11 +532,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
 
     def check_inputs(
         self,
-        conditions,
-        image,
-        video,
-        cond_index,
-        strength,
         prompt,
         height,
         width,
@@ -588,23 +582,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
                     f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
                     f" {negative_prompt_attention_mask.shape}."
                 )
-
-        if conditions is not None and (image is not None or video is not None):
-            raise ValueError("If `conditions` is provided, `image` and `video` must not be provided.")
-
-        if conditions is None:
-            if isinstance(image, list) and isinstance(cond_index, list) and len(image) != len(cond_index):
-                raise ValueError(
-                    "If `conditions` is not provided, `image` and `cond_index` must be of the same length."
-                )
-            elif isinstance(image, list) and isinstance(strength, list) and len(image) != len(strength):
-                raise ValueError("If `conditions` is not provided, `image` and `strength` must be of the same length.")
-            elif isinstance(video, list) and isinstance(cond_index, list) and len(video) != len(cond_index):
-                raise ValueError(
-                    "If `conditions` is not provided, `video` and `cond_index` must be of the same length."
-                )
-            elif isinstance(video, list) and isinstance(strength, list) and len(video) != len(strength):
-                raise ValueError("If `conditions` is not provided, `video` and `strength` must be of the same length.")
 
     @staticmethod
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._pack_latents
@@ -1042,10 +1019,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
     def __call__(
         self,
         conditions: Union[LTX2VideoCondition, List[LTX2VideoCondition]] = None,
-        image: Union[PipelineImageInput, List[PipelineImageInput]] = None,
-        video: List[PipelineImageInput] = None,
-        cond_index: Union[int, List[int]] = 0,
-        strength: Union[float, List[float]] = 1.0,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
@@ -1080,13 +1053,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
 
         Args:
             conditions (`List[LTXVideoCondition], *optional*`):
-                The list of frame-conditioning items for the video generation.If not provided, conditions will be
-                created using `image`, `video`, `frame_index` and `strength`.
-            image (`PipelineImageInput` or `List[PipelineImageInput]`, *optional*):
-                The image or images to condition the video generation. If not provided, one has to pass `video` or
-                `conditions`.
-            video (`List[PipelineImageInput]`, *optional*):
-                The video to condition the video generation. If not provided, one has to pass `image` or `conditions`.
+                The list of frame-conditioning items for the video generation.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -1186,11 +1153,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            conditions=conditions,
-            image=image,
-            video=video,
-            cond_index=cond_index,
-            strength=strength,
             prompt=prompt,
             height=height,
             width=width,
@@ -1215,25 +1177,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLora
         else:
             batch_size = prompt_embeds.shape[0]
 
-        if conditions is not None:
-            if not isinstance(conditions, list):
-                conditions = [conditions]
-        elif video is not None:
-            if isinstance(video, list):
-                # Interpret as a list of conditions
-                conditions = []
-                for v_cond, idx, strength in zip(video, cond_index, strength):
-                    conditions.append(LTX2VideoCondition(frames=v_cond, index=idx, strength=strength))
-            else:
-                # Interpret as single condition (cond_index and strength are also assumed to not be lists)
-                conditions = [LTX2VideoCondition(frames=video, index=cond_index, strength=strength)]
-        elif image is not None:
-            if isinstance(image, list):
-                conditions = []
-                for i_cond, idx, strength in zip(video, cond_index, strength):
-                    conditions.append(LTX2VideoCondition(frames=i_cond, index=idx, strength=strength))
-            else:
-                conditions = [LTX2VideoCondition(frames=video, index=cond_index, strength=strength)]
+        if conditions is not None and not isinstance(conditions, list):
+            conditions = [conditions]
 
         # Infer noise scale: first (largest) sigma value if using custom sigmas, else 1.0
         if noise_scale is None:
