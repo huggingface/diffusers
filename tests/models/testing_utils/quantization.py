@@ -221,6 +221,8 @@ class QuantizationTesterMixin:
             init_lora_weights=False,
         )
         model.add_adapter(lora_config)
+        # Move LoRA adapter weights to device (they default to CPU)
+        model.to(torch_device)
 
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
