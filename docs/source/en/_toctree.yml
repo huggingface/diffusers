@@ -54,6 +54,8 @@
     title: Batch inference
   - local: training/distributed_inference
     title: Distributed inference
+  - local: hybrid_inference/overview
+    title: Remote inference
   title: Inference
 - isExpanded: false
   sections:
@@ -90,17 +92,6 @@
   title: Inference optimization
 - isExpanded: false
   sections:
-  - local: hybrid_inference/overview
-    title: Overview
-  - local: hybrid_inference/vae_decode
-    title: VAE Decode
-  - local: hybrid_inference/vae_encode
-    title: VAE Encode
-  - local: hybrid_inference/api_reference
-    title: API Reference
-  title: Hybrid Inference
-- isExpanded: false
-  sections:
   - local: modular_diffusers/overview
     title: Overview
   - local: modular_diffusers/quickstart
@@ -123,6 +114,8 @@
     title: Guiders
   - local: modular_diffusers/custom_blocks
     title: Building Custom Blocks
+  - local: modular_diffusers/mellon
+    title: Using Custom Blocks with Mellon
   title: Modular Diffusers
 - isExpanded: false
   sections:
@@ -270,6 +263,8 @@
       title: Outputs
     - local: api/quantization
       title: Quantization
+    - local: hybrid_inference/api_reference
+      title: Remote inference
     - local: api/parallel
       title: Parallel inference
     title: Main Classes
@@ -353,6 +348,8 @@
         title: Flux2Transformer2DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
+      - local: api/models/glm_image_transformer2d
+        title: GlmImageTransformer2DModel
       - local: api/models/hidream_image_transformer
         title: HiDreamImageTransformer2DModel
       - local: api/models/hunyuan_transformer2d
@@ -367,6 +364,8 @@
         title: LatteTransformer3DModel
       - local: api/models/longcat_image_transformer2d
         title: LongCatImageTransformer2DModel
+      - local: api/models/ltx2_video_transformer3d
+        title: LTX2VideoTransformer3DModel
       - local: api/models/ltx_video_transformer3d
         title: LTXVideoTransformer3DModel
       - local: api/models/lumina2_transformer2d
@@ -443,6 +442,10 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoder_kl_hunyuan_video15
         title: AutoencoderKLHunyuanVideo15
+      - local: api/models/autoencoderkl_audio_ltx_2
+        title: AutoencoderKLLTX2Audio
+      - local: api/models/autoencoderkl_ltx_2
+        title: AutoencoderKLLTX2Video
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
       - local: api/models/autoencoderkl_magvit
@@ -495,6 +498,8 @@
         title: Bria 3.2
       - local: api/pipelines/bria_fibo
         title: Bria Fibo
+      - local: api/pipelines/bria_fibo_edit
+        title: Bria Fibo Edit
       - local: api/pipelines/chroma
         title: Chroma
       - local: api/pipelines/cogview3
@@ -541,6 +546,8 @@
         title: Flux2
       - local: api/pipelines/control_flux_inpaint
         title: FluxControlInpaint
+      - local: api/pipelines/glm_image
+        title: GLM-Image
       - local: api/pipelines/hidream
         title: HiDream-I1
       - local: api/pipelines/hunyuandit
@@ -678,6 +685,8 @@
         title: Kandinsky 5.0 Video
       - local: api/pipelines/latte
         title: Latte
+      - local: api/pipelines/ltx2
+        title: LTX-2
       - local: api/pipelines/ltx_video
         title: LTXVideo
       - local: api/pipelines/mochi

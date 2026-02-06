@@ -54,7 +54,10 @@ else:
     ]
     _import_structure["flux2"] = [
         "Flux2AutoBlocks",
+        "Flux2KleinAutoBlocks",
+        "Flux2KleinBaseAutoBlocks",
         "Flux2ModularPipeline",
+        "Flux2KleinModularPipeline",
     ]
     _import_structure["qwenimage"] = [
         "QwenImageAutoBlocks",
@@ -63,6 +66,8 @@ else:
         "QwenImageEditAutoBlocks",
         "QwenImageEditPlusModularPipeline",
         "QwenImageEditPlusAutoBlocks",
+        "QwenImageLayeredModularPipeline",
+        "QwenImageLayeredAutoBlocks",
     ]
     _import_structure["z_image"] = [
         "ZImageAutoBlocks",
@@ -79,7 +84,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .components_manager import ComponentsManager
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
-        from .flux2 import Flux2AutoBlocks, Flux2ModularPipeline
+        from .flux2 import (
+            Flux2AutoBlocks,
+            Flux2KleinAutoBlocks,
+            Flux2KleinBaseAutoBlocks,
+            Flux2KleinModularPipeline,
+            Flux2ModularPipeline,
+        )
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
@@ -96,6 +107,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageEditModularPipeline,
             QwenImageEditPlusAutoBlocks,
             QwenImageEditPlusModularPipeline,
+            QwenImageLayeredAutoBlocks,
+            QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
         )
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline

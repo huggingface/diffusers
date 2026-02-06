@@ -366,7 +366,12 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
-            input_tensor = self.conv_shortcut(input_tensor.contiguous())
+            # Only use contiguous() during training to avoid DDP gradient stride mismatch warning.
+            # In inference mode (eval or no_grad), skip contiguous() for better performance, especially on CPU.
+            # Issue: https://github.com/huggingface/diffusers/issues/12975
+            if self.training:
+                input_tensor = input_tensor.contiguous()
+            input_tensor = self.conv_shortcut(input_tensor)
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 

@@ -758,6 +758,7 @@ def load_sub_model(
     use_safetensors: bool,
     dduf_entries: Optional[Dict[str, DDUFEntry]],
     provider_options: Any,
+    disable_mmap: bool,
     quantization_config: Optional[Any] = None,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
@@ -801,12 +802,6 @@ def load_sub_model(
     # add kwargs to loading method
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     loading_kwargs = {}
-    if issubclass(class_obj, torch.nn.Module):
-        loading_kwargs["torch_dtype"] = torch_dtype
-    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
-        loading_kwargs["provider"] = provider
-        loading_kwargs["sess_options"] = sess_options
-        loading_kwargs["provider_options"] = provider_options
 
     is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
@@ -820,6 +815,17 @@ def load_sub_model(
         and issubclass(class_obj, PreTrainedModel)
         and transformers_version >= version.parse("4.20.0")
     )
+
+    # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
+    if issubclass(class_obj, torch.nn.Module):
+        if is_transformers_model and transformers_version >= version.parse("4.56.0"):
+            loading_kwargs["dtype"] = torch_dtype
+        else:
+            loading_kwargs["torch_dtype"] = torch_dtype
+    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
+        loading_kwargs["provider"] = provider
+        loading_kwargs["sess_options"] = sess_options
+        loading_kwargs["provider_options"] = provider_options
 
     # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
     # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
@@ -853,6 +859,9 @@ def load_sub_model(
             loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
         else:
             loading_kwargs["low_cpu_mem_usage"] = False
+
+    if is_diffusers_model:
+        loading_kwargs["disable_mmap"] = disable_mmap
 
     if is_transformers_model and is_transformers_version(">=", "4.57.0"):
         loading_kwargs.pop("offload_state_dict")
