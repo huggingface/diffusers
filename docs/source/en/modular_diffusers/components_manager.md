@@ -89,7 +89,7 @@ manager.enable_auto_cpu_offload(device="cuda")
 
 All models begin on the CPU and [`ComponentsManager`] moves them to the appropriate device right before they're needed, and moves other models back to the CPU when GPU memory is low.
 
-To disable offloading, call [~ComponentsManager.disable_auto_cpu_offload].
+Call [`~ComponentsManager.disable_auto_cpu_offload`] to disable offloading.
 
 ```py
 manager.disable_auto_cpu_offload()
