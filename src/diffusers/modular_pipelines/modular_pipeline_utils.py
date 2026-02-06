@@ -15,7 +15,7 @@
 import inspect
 import re
 from collections import OrderedDict
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 import PIL.Image
@@ -23,13 +23,37 @@ import torch
 
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..loaders.single_file_utils import _is_single_file_path_or_url
-from ..utils import is_torch_available, logging
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, is_torch_available, logging
 
 
 if is_torch_available():
     pass
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+# Template for modular pipeline model card description with placeholders
+MODULAR_MODEL_CARD_TEMPLATE = """{model_description}
+
+## Example Usage
+
+[TODO]
+
+## Pipeline Architecture
+
+This modular pipeline is composed of the following blocks:
+
+{blocks_description} {trigger_inputs_section}
+
+## Model Components
+
+{components_description} {configs_section}
+
+## Input/Output Specification
+
+### Inputs {inputs_description}
+
+### Outputs {outputs_description}
+"""
 
 
 class InsertableDict(OrderedDict):
@@ -186,7 +210,7 @@ class ComponentSpec:
         """
         Return the names of all loading‐related fields (i.e. those whose field.metadata["loading"] is True).
         """
-        return [f.name for f in fields(cls) if f.metadata.get("loading", False)]
+        return DIFFUSERS_LOAD_ID_FIELDS.copy()
 
     @property
     def load_id(self) -> str:
@@ -198,7 +222,7 @@ class ComponentSpec:
             return "null"
         parts = [getattr(self, k) for k in self.loading_fields()]
         parts = ["null" if p is None else p for p in parts]
-        return "|".join(p for p in parts if p)
+        return "|".join(parts)
 
     @classmethod
     def decode_load_id(cls, load_id: str) -> Dict[str, Optional[str]]:
@@ -520,6 +544,7 @@ class InputParam:
     required: bool = False
     description: str = ""
     kwargs_type: str = None
+    metadata: Dict[str, Any] = None
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
@@ -553,6 +578,7 @@ class OutputParam:
     type_hint: Any = None
     description: str = ""
     kwargs_type: str = None
+    metadata: Dict[str, Any] = None
 
     def __repr__(self):
         return (
@@ -914,3 +940,178 @@ def make_doc_string(
     output += format_output_params(outputs, indent_level=2)
 
     return output
+
+
+def generate_modular_model_card_content(blocks) -> Dict[str, Any]:
+    """
+    Generate model card content for a modular pipeline.
+
+    This function creates a comprehensive model card with descriptions of the pipeline's architecture, components,
+    configurations, inputs, and outputs.
+
+    Args:
+        blocks: The pipeline's blocks object containing all pipeline specifications
+
+    Returns:
+        Dict[str, Any]: A dictionary containing formatted content sections:
+            - pipeline_name: Name of the pipeline
+            - model_description: Overall description with pipeline type
+            - blocks_description: Detailed architecture of blocks
+            - components_description: List of required components
+            - configs_section: Configuration parameters section
+            - inputs_description: Input parameters specification
+            - outputs_description: Output parameters specification
+            - trigger_inputs_section: Conditional execution information
+            - tags: List of relevant tags for the model card
+    """
+    blocks_class_name = blocks.__class__.__name__
+    pipeline_name = blocks_class_name.replace("Blocks", " Pipeline")
+    description = getattr(blocks, "description", "A modular diffusion pipeline.")
+
+    # generate blocks architecture description
+    blocks_desc_parts = []
+    sub_blocks = getattr(blocks, "sub_blocks", None) or {}
+    if sub_blocks:
+        for i, (name, block) in enumerate(sub_blocks.items()):
+            block_class = block.__class__.__name__
+            block_desc = block.description.split("\n")[0] if getattr(block, "description", "") else ""
+            blocks_desc_parts.append(f"{i + 1}. **{name}** (`{block_class}`)")
+            if block_desc:
+                blocks_desc_parts.append(f"   - {block_desc}")
+
+            # add sub-blocks if any
+            if hasattr(block, "sub_blocks") and block.sub_blocks:
+                for sub_name, sub_block in block.sub_blocks.items():
+                    sub_class = sub_block.__class__.__name__
+                    sub_desc = sub_block.description.split("\n")[0] if getattr(sub_block, "description", "") else ""
+                    blocks_desc_parts.append(f"   - *{sub_name}*: `{sub_class}`")
+                    if sub_desc:
+                        blocks_desc_parts.append(f"     - {sub_desc}")
+
+    blocks_description = "\n".join(blocks_desc_parts) if blocks_desc_parts else "No blocks defined."
+
+    components = getattr(blocks, "expected_components", [])
+    if components:
+        components_str = format_components(components, indent_level=0, add_empty_lines=False)
+        # remove the "Components:" header since template has its own
+        components_description = components_str.replace("Components:\n", "").strip()
+        if components_description:
+            # Convert to enumerated list
+            lines = [line.strip() for line in components_description.split("\n") if line.strip()]
+            enumerated_lines = [f"{i + 1}. {line}" for i, line in enumerate(lines)]
+            components_description = "\n".join(enumerated_lines)
+        else:
+            components_description = "No specific components required."
+    else:
+        components_description = "No specific components required. Components can be loaded dynamically."
+
+    configs = getattr(blocks, "expected_configs", [])
+    configs_section = ""
+    if configs:
+        configs_str = format_configs(configs, indent_level=0, add_empty_lines=False)
+        configs_description = configs_str.replace("Configs:\n", "").strip()
+        if configs_description:
+            configs_section = f"\n\n## Configuration Parameters\n\n{configs_description}"
+
+    inputs = blocks.inputs
+    outputs = blocks.outputs
+
+    # format inputs as markdown list
+    inputs_parts = []
+    required_inputs = [inp for inp in inputs if inp.required]
+    optional_inputs = [inp for inp in inputs if not inp.required]
+
+    if required_inputs:
+        inputs_parts.append("**Required:**\n")
+        for inp in required_inputs:
+            if hasattr(inp.type_hint, "__name__"):
+                type_str = inp.type_hint.__name__
+            elif inp.type_hint is not None:
+                type_str = str(inp.type_hint).replace("typing.", "")
+            else:
+                type_str = "Any"
+            desc = inp.description or "No description provided"
+            inputs_parts.append(f"- `{inp.name}` (`{type_str}`): {desc}")
+
+    if optional_inputs:
+        if required_inputs:
+            inputs_parts.append("")
+        inputs_parts.append("**Optional:**\n")
+        for inp in optional_inputs:
+            if hasattr(inp.type_hint, "__name__"):
+                type_str = inp.type_hint.__name__
+            elif inp.type_hint is not None:
+                type_str = str(inp.type_hint).replace("typing.", "")
+            else:
+                type_str = "Any"
+            desc = inp.description or "No description provided"
+            default_str = f", default: `{inp.default}`" if inp.default is not None else ""
+            inputs_parts.append(f"- `{inp.name}` (`{type_str}`){default_str}: {desc}")
+
+    inputs_description = "\n".join(inputs_parts) if inputs_parts else "No specific inputs defined."
+
+    # format outputs as markdown list
+    outputs_parts = []
+    for out in outputs:
+        if hasattr(out.type_hint, "__name__"):
+            type_str = out.type_hint.__name__
+        elif out.type_hint is not None:
+            type_str = str(out.type_hint).replace("typing.", "")
+        else:
+            type_str = "Any"
+        desc = out.description or "No description provided"
+        outputs_parts.append(f"- `{out.name}` (`{type_str}`): {desc}")
+
+    outputs_description = "\n".join(outputs_parts) if outputs_parts else "Standard pipeline outputs."
+
+    trigger_inputs_section = ""
+    if hasattr(blocks, "trigger_inputs") and blocks.trigger_inputs:
+        trigger_inputs_list = sorted([t for t in blocks.trigger_inputs if t is not None])
+        if trigger_inputs_list:
+            trigger_inputs_str = ", ".join(f"`{t}`" for t in trigger_inputs_list)
+            trigger_inputs_section = f"""
+### Conditional Execution
+
+This pipeline contains blocks that are selected at runtime based on inputs:
+- **Trigger Inputs**: {trigger_inputs_str}
+"""
+
+    # generate tags based on pipeline characteristics
+    tags = ["modular-diffusers", "diffusers"]
+
+    if hasattr(blocks, "model_name") and blocks.model_name:
+        tags.append(blocks.model_name)
+
+    if hasattr(blocks, "trigger_inputs") and blocks.trigger_inputs:
+        triggers = blocks.trigger_inputs
+        if any(t in triggers for t in ["mask", "mask_image"]):
+            tags.append("inpainting")
+        if any(t in triggers for t in ["image", "image_latents"]):
+            tags.append("image-to-image")
+        if any(t in triggers for t in ["control_image", "controlnet_cond"]):
+            tags.append("controlnet")
+        if not any(t in triggers for t in ["image", "mask", "image_latents", "mask_image"]):
+            tags.append("text-to-image")
+    else:
+        tags.append("text-to-image")
+
+    block_count = len(blocks.sub_blocks)
+    model_description = f"""This is a modular diffusion pipeline built with 🧨 Diffusers' modular pipeline framework.
+
+**Pipeline Type**: {blocks_class_name}
+
+**Description**: {description}
+
+This pipeline uses a {block_count}-block architecture that can be customized and extended."""
+
+    return {
+        "pipeline_name": pipeline_name,
+        "model_description": model_description,
+        "blocks_description": blocks_description,
+        "components_description": components_description,
+        "configs_section": configs_section,
+        "inputs_description": inputs_description,
+        "outputs_description": outputs_description,
+        "trigger_inputs_section": trigger_inputs_section,
+        "tags": tags,
+    }
