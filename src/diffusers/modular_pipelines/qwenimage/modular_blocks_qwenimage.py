@@ -48,6 +48,7 @@ from .encoders import (
 from .inputs import (
     QwenImageAdditionalInputsStep,
     QwenImageControlNetInputsStep,
+    QwenImageNAGTextInputsStep,
     QwenImageTextInputsStep,
 )
 
@@ -95,9 +96,11 @@ class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Text encoder step that encodes the text prompt into a text embedding. This is an auto pipeline block."
-        " - `QwenImageTextEncoderStep` (text_encoder) is used when `prompt` is provided."
-        " - if `prompt` is not provided, step will be skipped."
+        return (
+            "Text encoder step that encodes the text prompt into a text embedding. This is an auto pipeline block.\n"
+            "- `QwenImageTextEncoderStep` (text_encoder) is used when `prompt` is provided.\n"
+            "- If `prompt` is not provided, this step is skipped."
+        )
 
 
 # ====================
@@ -307,14 +310,16 @@ class QwenImageImg2ImgInputStep(SequentialPipelineBlocks):
     """
 
     model_name = "qwenimage"
-    block_classes = [QwenImageTextInputsStep(), QwenImageAdditionalInputsStep()]
-    block_names = ["text_inputs", "additional_inputs"]
+    block_classes = [QwenImageTextInputsStep(), QwenImageNAGTextInputsStep(), QwenImageAdditionalInputsStep()]
+    block_names = ["text_inputs", "nag_text_inputs", "additional_inputs"]
 
     @property
     def description(self):
-        return "Input step that prepares the inputs for the img2img denoising step. It:\n"
-        " - make sure the text embeddings have consistent batch size as well as the additional inputs (`image_latents`).\n"
-        " - update height/width based `image_latents`, patchify `image_latents`."
+        return (
+            "Input step that prepares the inputs for the img2img denoising step. It:\n"
+            " - Make sure the text embeddings have a consistent batch size as well as the additional inputs (`image_latents`).\n"
+            " - Update height/width based on `image_latents` and patchify `image_latents`."
+        )
 
 
 # auto_docstring
@@ -376,19 +381,22 @@ class QwenImageInpaintInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
     block_classes = [
         QwenImageTextInputsStep(),
+        QwenImageNAGTextInputsStep(),
         QwenImageAdditionalInputsStep(
             additional_batch_inputs=[
                 InputParam(name="processed_mask_image", type_hint=torch.Tensor, description="The processed mask image")
             ]
         ),
     ]
-    block_names = ["text_inputs", "additional_inputs"]
+    block_names = ["text_inputs", "nag_text_inputs", "additional_inputs"]
 
     @property
     def description(self):
-        return "Input step that prepares the inputs for the inpainting denoising step. It:\n"
-        " - make sure the text embeddings have consistent batch size as well as the additional inputs (`image_latents` and `processed_mask_image`).\n"
-        " - update height/width based `image_latents`, patchify `image_latents`."
+        return (
+            "Input step that prepares the inputs for the inpainting denoising step. It:\n"
+            " - Make sure the text embeddings have a consistent batch size as well as the additional inputs (`image_latents` and `processed_mask_image`).\n"
+            " - Update height/width based on `image_latents` and patchify `image_latents`."
+        )
 
 
 # assemble prepare latents steps
@@ -491,6 +499,7 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
     block_classes = [
         QwenImageTextInputsStep(),
+        QwenImageNAGTextInputsStep(),
         QwenImagePrepareLatentsStep(),
         QwenImageSetTimestepsStep(),
         QwenImageRoPEInputsStep(),
@@ -499,6 +508,7 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
     ]
     block_names = [
         "input",
+        "nag_inputs",
         "prepare_latents",
         "set_timesteps",
         "prepare_rope_inputs",
@@ -733,6 +743,7 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
     block_classes = [
         QwenImageTextInputsStep(),
+        QwenImageNAGTextInputsStep(),
         QwenImageControlNetInputsStep(),
         QwenImagePrepareLatentsStep(),
         QwenImageSetTimestepsStep(),
@@ -743,6 +754,7 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
     ]
     block_names = [
         "input",
+        "nag_inputs",
         "controlnet_input",
         "prepare_latents",
         "set_timesteps",

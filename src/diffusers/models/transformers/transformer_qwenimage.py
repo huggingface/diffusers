@@ -570,6 +570,182 @@ class QwenDoubleStreamAttnProcessor2_0:
         return img_attn_output, txt_attn_output
 
 
+class QwenDoubleStreamNAGAttnProcessor2_0:
+    """
+    Qwen double-stream attention processor with Normalized Attention Guidance (NAG).
+
+    This computes joint attention outputs for both the (positive) text context and a NAG-negative text context, then
+    applies NAG to the **image** attention output (Z) following Algorithm 1 in https://huggingface.co/papers/2505.21179:
+
+    - Extrapolate in attention space: `Z_tilde = Z_pos * nag_scale - Z_neg * (nag_scale - 1)`
+    - L1-norm normalize with threshold `nag_tau`
+    - Blend with the original attention output using `nag_alpha`
+
+    The negative text context is expected to be provided via `nag_negative_encoder_hidden_states` (and optional
+    `nag_negative_encoder_hidden_states_mask`) in `cross_attention_kwargs`. The negative context may have a different
+    sequence length than the positive context; RoPE frequencies and attention masks are sliced accordingly.
+    """
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __init__(self, nag_scale: float = 5.0, nag_tau: float = 2.5, nag_alpha: float = 0.25):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "QwenDoubleStreamNAGAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
+        self.nag_scale = nag_scale
+        self.nag_tau = nag_tau
+        self.nag_alpha = nag_alpha
+
+        if nag_tau < 1.0:
+            raise ValueError(f"Expected `nag_tau` to be >= 1.0, but got {nag_tau}.")
+        if not (0.0 <= nag_alpha <= 1.0):
+            raise ValueError(f"Expected `nag_alpha` to be in [0, 1], but got {nag_alpha}.")
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,  # Image stream
+        encoder_hidden_states: torch.FloatTensor = None,  # Text stream
+        encoder_hidden_states_mask: torch.FloatTensor = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+        nag_negative_encoder_hidden_states: Optional[torch.Tensor] = None,
+        nag_negative_encoder_hidden_states_mask: Optional[torch.Tensor] = None,
+    ) -> torch.FloatTensor:
+        if encoder_hidden_states is None:
+            raise ValueError("QwenDoubleStreamNAGAttnProcessor2_0 requires encoder_hidden_states (text stream)")
+
+        apply_nag = nag_negative_encoder_hidden_states is not None and not math.isclose(self.nag_scale, 1.0)
+        if not apply_nag:
+            # Delegate to the regular joint-attention processor when NAG is disabled.
+            fallback = QwenDoubleStreamAttnProcessor2_0()
+            fallback._attention_backend = self._attention_backend
+            fallback._parallel_config = self._parallel_config
+            return fallback(
+                attn=attn,
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_hidden_states_mask=encoder_hidden_states_mask,
+                attention_mask=attention_mask,
+                image_rotary_emb=image_rotary_emb,
+            )
+
+        seq_txt = encoder_hidden_states.shape[1]
+        seq_txt_neg = nag_negative_encoder_hidden_states.shape[1]
+
+        img_query = attn.to_q(hidden_states)
+        img_key = attn.to_k(hidden_states)
+        img_value = attn.to_v(hidden_states)
+
+        txt_query = attn.add_q_proj(encoder_hidden_states)
+        txt_key = attn.add_k_proj(encoder_hidden_states)
+        txt_value = attn.add_v_proj(encoder_hidden_states)
+
+        txt_query_neg = attn.add_q_proj(nag_negative_encoder_hidden_states)
+        txt_key_neg = attn.add_k_proj(nag_negative_encoder_hidden_states)
+        txt_value_neg = attn.add_v_proj(nag_negative_encoder_hidden_states)
+
+        img_query = img_query.unflatten(-1, (attn.heads, -1))
+        img_key = img_key.unflatten(-1, (attn.heads, -1))
+        img_value = img_value.unflatten(-1, (attn.heads, -1))
+
+        txt_query = txt_query.unflatten(-1, (attn.heads, -1))
+        txt_key = txt_key.unflatten(-1, (attn.heads, -1))
+        txt_value = txt_value.unflatten(-1, (attn.heads, -1))
+
+        txt_query_neg = txt_query_neg.unflatten(-1, (attn.heads, -1))
+        txt_key_neg = txt_key_neg.unflatten(-1, (attn.heads, -1))
+        txt_value_neg = txt_value_neg.unflatten(-1, (attn.heads, -1))
+
+        if attn.norm_q is not None:
+            img_query = attn.norm_q(img_query)
+        if attn.norm_k is not None:
+            img_key = attn.norm_k(img_key)
+        if attn.norm_added_q is not None:
+            txt_query = attn.norm_added_q(txt_query)
+            txt_query_neg = attn.norm_added_q(txt_query_neg)
+        if attn.norm_added_k is not None:
+            txt_key = attn.norm_added_k(txt_key)
+            txt_key_neg = attn.norm_added_k(txt_key_neg)
+
+        if image_rotary_emb is not None:
+            img_freqs, txt_freqs = image_rotary_emb
+            img_query = apply_rotary_emb_qwen(img_query, img_freqs, use_real=False)
+            img_key = apply_rotary_emb_qwen(img_key, img_freqs, use_real=False)
+            txt_freqs_pos = txt_freqs[:seq_txt]
+            txt_freqs_neg = txt_freqs[:seq_txt_neg]
+            txt_query = apply_rotary_emb_qwen(txt_query, txt_freqs_pos, use_real=False)
+            txt_key = apply_rotary_emb_qwen(txt_key, txt_freqs_pos, use_real=False)
+            txt_query_neg = apply_rotary_emb_qwen(txt_query_neg, txt_freqs_neg, use_real=False)
+            txt_key_neg = apply_rotary_emb_qwen(txt_key_neg, txt_freqs_neg, use_real=False)
+
+        joint_query_pos = torch.cat([txt_query, img_query], dim=1)
+        joint_key_pos = torch.cat([txt_key, img_key], dim=1)
+        joint_value_pos = torch.cat([txt_value, img_value], dim=1)
+
+        joint_query_neg = torch.cat([txt_query_neg, img_query], dim=1)
+        joint_key_neg = torch.cat([txt_key_neg, img_key], dim=1)
+        joint_value_neg = torch.cat([txt_value_neg, img_value], dim=1)
+
+        neg_attention_mask = None
+        if nag_negative_encoder_hidden_states_mask is not None:
+            batch_size, image_seq_len = hidden_states.shape[:2]
+            image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
+            neg_attention_mask = torch.cat([nag_negative_encoder_hidden_states_mask.to(torch.bool), image_mask], dim=1)
+
+        joint_hidden_pos = dispatch_attention_fn(
+            joint_query_pos,
+            joint_key_pos,
+            joint_value_pos,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        ).flatten(2, 3)
+        joint_hidden_pos = joint_hidden_pos.to(joint_query_pos.dtype)
+
+        joint_hidden_neg = dispatch_attention_fn(
+            joint_query_neg,
+            joint_key_neg,
+            joint_value_neg,
+            attn_mask=neg_attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        ).flatten(2, 3)
+        joint_hidden_neg = joint_hidden_neg.to(joint_query_neg.dtype)
+
+        txt_attn_output = joint_hidden_pos[:, :seq_txt, :]
+        txt_attn_output_neg = joint_hidden_neg[:, :seq_txt_neg, :]
+        img_attn_pos = joint_hidden_pos[:, seq_txt:, :]
+        img_attn_neg = joint_hidden_neg[:, seq_txt_neg:, :]
+
+        # NAG on image attention output (Algorithm 1)
+        z_pos = img_attn_pos
+        z_neg = img_attn_neg
+        z_tilde = z_pos * self.nag_scale - z_neg * (self.nag_scale - 1.0)
+
+        # Match ComfyUI-NAG normalization: clamp norms, then scale down only when exceeding `nag_tau`.
+        eps = 1e-6
+        norm_pos = torch.norm(z_pos, p=1, dim=-1, keepdim=True).clamp_min(eps)
+        norm_guidance = torch.norm(z_tilde, p=1, dim=-1, keepdim=True).clamp_min(eps)
+        s = norm_guidance / norm_pos
+        z_tilde = z_tilde * torch.minimum(s, s.new_full((1,), self.nag_tau)) / s
+        img_attn_output = z_tilde * self.nag_alpha + z_pos * (1.0 - self.nag_alpha)
+
+        img_attn_output = attn.to_out[0](img_attn_output)
+        if len(attn.to_out) > 1:
+            img_attn_output = attn.to_out[1](img_attn_output)
+
+        txt_attn_output = attn.to_add_out(txt_attn_output)
+        txt_attn_output_neg = attn.to_add_out(txt_attn_output_neg)
+        return img_attn_output, txt_attn_output, txt_attn_output_neg
+
+
 @maybe_allow_in_graph
 class QwenImageTransformerBlock(nn.Module):
     def __init__(
@@ -666,7 +842,7 @@ class QwenImageTransformerBlock(nn.Module):
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         modulate_index: Optional[List[int]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
         # Get modulation parameters for both streams
         img_mod_params = self.img_mod(temb)  # [B, 6*dim]
 
@@ -693,20 +869,39 @@ class QwenImageTransformerBlock(nn.Module):
         # 3. Concatenates and runs joint attention
         # 4. Splits results back to separate streams
         joint_attention_kwargs = joint_attention_kwargs or {}
+        nag_negative_encoder_hidden_states = joint_attention_kwargs.get("nag_negative_encoder_hidden_states", None)
+
+        attn_kwargs = joint_attention_kwargs
+        if nag_negative_encoder_hidden_states is not None:
+            # Ensure the negative context gets the same per-block normalization + modulation as the positive context.
+            # We keep the unmodulated tensor for updating the negative text stream below.
+            attn_kwargs = joint_attention_kwargs.copy()
+            nag_txt_normed = self.txt_norm1(nag_negative_encoder_hidden_states)
+            nag_txt_modulated, _ = self._modulate(nag_txt_normed, txt_mod1)
+            attn_kwargs["nag_negative_encoder_hidden_states"] = nag_txt_modulated
         attn_output = self.attn(
             hidden_states=img_modulated,  # Image stream (will be processed as "sample")
             encoder_hidden_states=txt_modulated,  # Text stream (will be processed as "context")
             encoder_hidden_states_mask=encoder_hidden_states_mask,
             image_rotary_emb=image_rotary_emb,
-            **joint_attention_kwargs,
+            **attn_kwargs,
         )
 
-        # QwenAttnProcessor2_0 returns (img_output, txt_output) when encoder_hidden_states is provided
-        img_attn_output, txt_attn_output = attn_output
+        # QwenAttnProcessor2_0 returns (img_output, txt_output) when encoder_hidden_states is provided.
+        # When NAG is enabled, the NAG processor additionally returns `txt_attn_output_neg` so the negative text stream
+        # can be updated alongside the positive one (matching official joint-attn NAG behavior).
+        txt_attn_output_neg = None
+        if len(attn_output) == 2:
+            img_attn_output, txt_attn_output = attn_output
+        else:
+            img_attn_output, txt_attn_output, txt_attn_output_neg = attn_output
+        has_nag_negative_stream = txt_attn_output_neg is not None
 
         # Apply attention gates and add residual (like in Megatron)
         hidden_states = hidden_states + img_gate1 * img_attn_output
         encoder_hidden_states = encoder_hidden_states + txt_gate1 * txt_attn_output
+        if has_nag_negative_stream:
+            nag_negative_encoder_hidden_states = nag_negative_encoder_hidden_states + txt_gate1 * txt_attn_output_neg
 
         # Process image stream - norm2 + MLP
         img_normed2 = self.img_norm2(hidden_states)
@@ -719,12 +914,22 @@ class QwenImageTransformerBlock(nn.Module):
         txt_modulated2, txt_gate2 = self._modulate(txt_normed2, txt_mod2)
         txt_mlp_output = self.txt_mlp(txt_modulated2)
         encoder_hidden_states = encoder_hidden_states + txt_gate2 * txt_mlp_output
+        if has_nag_negative_stream:
+            nag_txt_normed2 = self.txt_norm2(nag_negative_encoder_hidden_states)
+            nag_txt_modulated2, _ = self._modulate(nag_txt_normed2, txt_mod2)
+            nag_txt_mlp_output = self.txt_mlp(nag_txt_modulated2)
+            nag_negative_encoder_hidden_states = nag_negative_encoder_hidden_states + txt_gate2 * nag_txt_mlp_output
 
         # Clip to prevent overflow for fp16
         if encoder_hidden_states.dtype == torch.float16:
             encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
         if hidden_states.dtype == torch.float16:
             hidden_states = hidden_states.clip(-65504, 65504)
+        if has_nag_negative_stream and nag_negative_encoder_hidden_states.dtype == torch.float16:
+            nag_negative_encoder_hidden_states = nag_negative_encoder_hidden_states.clip(-65504, 65504)
+
+        if has_nag_negative_stream:
+            return encoder_hidden_states, hidden_states, nag_negative_encoder_hidden_states
 
         return encoder_hidden_states, hidden_states
 
@@ -919,6 +1124,50 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
+        nag_negative_encoder_hidden_states = getattr(self, "_nag_negative_encoder_hidden_states", None)
+        nag_negative_encoder_hidden_states_mask = getattr(self, "_nag_negative_encoder_hidden_states_mask", None)
+        if nag_negative_encoder_hidden_states is not None:
+            nag_negative_encoder_hidden_states = nag_negative_encoder_hidden_states.to(
+                device=encoder_hidden_states.device, dtype=encoder_hidden_states.dtype
+            )
+            if nag_negative_encoder_hidden_states.shape[1] == 0:
+                nag_negative_encoder_hidden_states = None
+                nag_negative_encoder_hidden_states_mask = None
+            else:
+                if nag_negative_encoder_hidden_states_mask is None or (
+                    nag_negative_encoder_hidden_states_mask.shape[:2] != nag_negative_encoder_hidden_states.shape[:2]
+                ):
+                    nag_negative_encoder_hidden_states_mask = torch.ones(
+                        nag_negative_encoder_hidden_states.shape[:2],
+                        dtype=torch.bool,
+                        device=encoder_hidden_states.device,
+                    )
+                else:
+                    nag_negative_encoder_hidden_states_mask = nag_negative_encoder_hidden_states_mask.to(
+                        device=encoder_hidden_states.device, dtype=torch.bool
+                    )
+
+                nag_negative_encoder_hidden_states = self.txt_in(self.txt_norm(nag_negative_encoder_hidden_states))
+
+                # Match ComfyUI-NAG behavior for variable-length prompts: align the negative text context length to the
+                # positive context length by repeating/trimming on the sequence dimension and taking the last tokens.
+                pos_seq_len = encoder_hidden_states.shape[1]
+                neg_seq_len = nag_negative_encoder_hidden_states.shape[1]
+                if neg_seq_len != pos_seq_len:
+                    if neg_seq_len < pos_seq_len:
+                        repeats = math.ceil(pos_seq_len / neg_seq_len)
+                        nag_negative_encoder_hidden_states = nag_negative_encoder_hidden_states.repeat(1, repeats, 1)[
+                            :, -pos_seq_len:, :
+                        ]
+                        nag_negative_encoder_hidden_states_mask = nag_negative_encoder_hidden_states_mask.repeat(
+                            1, repeats
+                        )[:, -pos_seq_len:]
+                    else:
+                        nag_negative_encoder_hidden_states = nag_negative_encoder_hidden_states[:, -pos_seq_len:, :]
+                        nag_negative_encoder_hidden_states_mask = nag_negative_encoder_hidden_states_mask[
+                            :, -pos_seq_len:
+                        ]
+
         # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
         text_seq_len, _, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
             encoder_hidden_states, encoder_hidden_states_mask
@@ -933,7 +1182,11 @@ class QwenImageTransformer2DModel(
             else self.time_text_embed(timestep, guidance, hidden_states, additional_t_cond)
         )
 
-        image_rotary_emb = self.pos_embed(img_shapes, max_txt_seq_len=text_seq_len, device=hidden_states.device)
+        rope_txt_seq_len = text_seq_len
+        if nag_negative_encoder_hidden_states is not None:
+            rope_txt_seq_len = max(rope_txt_seq_len, nag_negative_encoder_hidden_states.shape[1])
+
+        image_rotary_emb = self.pos_embed(img_shapes, max_txt_seq_len=rope_txt_seq_len, device=hidden_states.device)
 
         # Construct joint attention mask once to avoid reconstructing in every block
         # This eliminates 60 GPU syncs during training while maintaining torch.compile compatibility
@@ -946,8 +1199,15 @@ class QwenImageTransformer2DModel(
             block_attention_kwargs["attention_mask"] = joint_attention_mask
 
         for index_block, block in enumerate(self.transformer_blocks):
+            if nag_negative_encoder_hidden_states is not None:
+                block_attention_kwargs["nag_negative_encoder_hidden_states"] = nag_negative_encoder_hidden_states
+                if nag_negative_encoder_hidden_states_mask is not None:
+                    block_attention_kwargs["nag_negative_encoder_hidden_states_mask"] = (
+                        nag_negative_encoder_hidden_states_mask
+                    )
+
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                block_outputs = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
                     encoder_hidden_states,
@@ -959,7 +1219,7 @@ class QwenImageTransformer2DModel(
                 )
 
             else:
-                encoder_hidden_states, hidden_states = block(
+                block_outputs = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_hidden_states_mask=None,  # Don't pass (using attention_mask instead)
@@ -968,6 +1228,13 @@ class QwenImageTransformer2DModel(
                     joint_attention_kwargs=block_attention_kwargs,
                     modulate_index=modulate_index,
                 )
+
+            # NAG-enabled blocks return the updated negative text stream as a third output. Unpack by arity to stay
+            # robust to partial patching / custom attention processors.
+            if isinstance(block_outputs, tuple) and len(block_outputs) == 3:
+                encoder_hidden_states, hidden_states, nag_negative_encoder_hidden_states = block_outputs
+            else:
+                encoder_hidden_states, hidden_states = block_outputs
 
             # controlnet residual
             if controlnet_block_samples is not None:

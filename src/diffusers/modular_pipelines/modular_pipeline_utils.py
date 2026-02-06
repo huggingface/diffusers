@@ -362,6 +362,10 @@ INPUT_PARAM_TEMPLATES = {
         "type_hint": str,
         "description": "The prompt or prompts not to guide the image generation.",
     },
+    "nag_negative_prompt": {
+        "type_hint": str,
+        "description": "The prompt or prompts used by Normalized Attention Guidance (NAG) as the negative context.",
+    },
     "max_sequence_length": {
         "type_hint": int,
         "default": 512,
@@ -480,6 +484,14 @@ INPUT_PARAM_TEMPLATES = {
         "type_hint": torch.Tensor,
         "description": "mask for the negative text embeddings. Can be generated from text_encoder step.",
     },
+    "nag_negative_prompt_embeds": {
+        "type_hint": torch.Tensor,
+        "description": "NAG negative text embeddings used as the negative attention context. Can be generated from text_encoder step.",
+    },
+    "nag_negative_prompt_embeds_mask": {
+        "type_hint": torch.Tensor,
+        "description": "mask for the NAG negative text embeddings. Can be generated from text_encoder step.",
+    },
     "image_latents": {
         "type_hint": torch.Tensor,
         "required": True,
@@ -526,6 +538,16 @@ OUTPUT_PARAM_TEMPLATES = {
         "type_hint": torch.Tensor,
         "kwargs_type": "denoiser_input_fields",
         "description": "The negative prompt embeddings mask.",
+    },
+    "nag_negative_prompt_embeds": {
+        "type_hint": torch.Tensor,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "The NAG negative prompt embeddings.",
+    },
+    "nag_negative_prompt_embeds_mask": {
+        "type_hint": torch.Tensor,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "The NAG negative prompt embeddings mask.",
     },
     "image_latents": {
         "type_hint": torch.Tensor,
