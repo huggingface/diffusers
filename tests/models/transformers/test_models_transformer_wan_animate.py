@@ -42,6 +42,10 @@ class WanAnimateTransformer3DTesterConfig(BaseModelTesterConfig):
         return WanAnimateTransformer3DModel
 
     @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-wan-animate-transformer"
+
+    @property
     def output_shape(self) -> tuple[int, ...]:
         # Output has fewer channels than input (4 vs 12)
         return (4, 21, 16, 16)

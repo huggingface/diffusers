@@ -42,6 +42,10 @@ class WanVACETransformer3DTesterConfig(BaseModelTesterConfig):
         return WanVACETransformer3DModel
 
     @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-wan-vace-transformer"
+
+    @property
     def output_shape(self) -> tuple[int, ...]:
         return (16, 2, 16, 16)
 
