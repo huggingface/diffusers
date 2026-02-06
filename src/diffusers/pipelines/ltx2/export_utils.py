@@ -15,6 +15,7 @@
 
 from collections.abc import Generator, Iterator
 from fractions import Fraction
+from itertools import chain
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -134,7 +135,7 @@ def encode_video(
             number of chunks to use often depends on the tiling config for the video VAE.
     """
     if isinstance(video, list) and isinstance(video[0], PIL.Image.Image):
-        # Pipeline output_type="pil"
+        # Pipeline output_type="pil"; assumes each image is in "RGB" mode
         video_frames = [np.array(frame) for frame in video]
         video = np.stack(video_frames, axis=0)
         video = torch.from_numpy(video)
@@ -146,7 +147,9 @@ def encode_video(
         video = torch.from_numpy(video)
 
     if isinstance(video, torch.Tensor):
-        video = iter([video])
+        # Split into video_chunks_number along the frame dimension
+        video = torch.tensor_split(video, video_chunks_number, dim=0)
+        video = iter(video)
 
     first_chunk = next(video)
 
@@ -164,13 +167,7 @@ def encode_video(
 
         audio_stream = _prepare_audio_stream(container, audio_sample_rate)
 
-    def all_tiles(
-        first_chunk: torch.Tensor, tiles_generator: Generator[Tuple[torch.Tensor, int], None, None]
-    ) -> Generator[Tuple[torch.Tensor, int], None, None]:
-        yield first_chunk
-        yield from tiles_generator
-
-    for video_chunk in tqdm(all_tiles(first_chunk, video), total=video_chunks_number):
+    for video_chunk in tqdm(chain([first_chunk], video), total=video_chunks_number, desc="Encoding video chunks"):
         video_chunk_cpu = video_chunk.to("cpu").numpy()
         for frame_array in video_chunk_cpu:
             frame = av.VideoFrame.from_ndarray(frame_array, format="rgb24")
