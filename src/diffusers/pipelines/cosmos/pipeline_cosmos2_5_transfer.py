@@ -76,64 +76,6 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-def transfer2_5_forward(
-    transformer: CosmosTransformer3DModel,
-    controlnet: CosmosControlNetModel,
-    in_latents: torch.Tensor,
-    controls_latents: torch.Tensor,
-    controls_conditioning_scale: list[float],
-    in_timestep: torch.Tensor,
-    encoder_hidden_states: tuple[torch.Tensor | None, torch.Tensor | None] | None,
-    cond_mask: torch.Tensor,
-    padding_mask: torch.Tensor,
-):
-    """
-    Forward pass for Transfer2.5 pipeline.
-
-    This function calls both transformer and controlnet's forward() methods directly, enabling proper CPU offloading.
-    The controlnet computes its own embeddings internally using duplicated modules (patch_embed_base, time_embed,
-    etc.).
-
-    Args:
-        transformer: The CosmosTransformer3DModel
-        controlnet: The CosmosControlNetModel (can be None)
-        in_latents: Input latents [B, C, T, H, W]
-        controls_latents: Control signal latents [B, C, T, H, W] (can be None)
-        controls_conditioning_scale: Scale factor(s) for control outputs
-        in_timestep: Diffusion timestep tensor
-        encoder_hidden_states: Tuple of (text_context, img_context)
-        cond_mask: Conditioning mask [B, 1, T, H, W]
-        padding_mask: Padding mask [B, 1, H, W]
-
-    Returns:
-        Model output tensor
-    """
-    control_blocks = None
-    if controls_latents is not None and controlnet is not None:
-        control_output = controlnet(
-            controls_latents=controls_latents,
-            latents=in_latents,
-            timestep=in_timestep,
-            encoder_hidden_states=encoder_hidden_states,
-            condition_mask=cond_mask,
-            conditioning_scale=controls_conditioning_scale,
-            padding_mask=padding_mask,
-            return_dict=False,
-        )
-        control_blocks = control_output[0]
-
-    noise_pred = transformer(
-        hidden_states=in_latents,
-        timestep=in_timestep,
-        encoder_hidden_states=encoder_hidden_states,
-        block_controlnet_hidden_states=control_blocks,
-        condition_mask=cond_mask,
-        padding_mask=padding_mask,
-        return_dict=False,
-    )[0]
-    return noise_pred
-
-
 DEFAULT_NEGATIVE_PROMPT = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
 
 EXAMPLE_DOC_STRING = """
@@ -142,18 +84,33 @@ EXAMPLE_DOC_STRING = """
         >>> import cv2
         >>> import numpy as np
         >>> import torch
-        >>> from diffusers import Cosmos2_5_TransferPipeline
+        >>> from diffusers import Cosmos2_5_TransferPipeline, AutoModel
         >>> from diffusers.utils import export_to_video, load_video
 
-        >>> # Load a Transfer2.5 model variant (edge, depth, seg, or blur)
         >>> model_id = "nvidia/Cosmos-Transfer2.5-2B"
+        >>> # Load a Transfer2.5 controlnet variant (edge, depth, seg, or blur)
+        >>> controlnet = AutoModel.from_pretrained(model_id, revision="diffusers/controlnet/general/edge")
         >>> pipe = Cosmos2_5_TransferPipeline.from_pretrained(
-        ...     model_id, revision="general/edge", torch_dtype=torch.bfloat16
+        ...     model_id, controlnet=controlnet, revision="diffusers/general", torch_dtype=torch.bfloat16
         ... )
         >>> pipe = pipe.to("cuda")
 
         >>> # Video2World with edge control: Generate video guided by edge maps extracted from input video.
-        >>> prompt = "A serene Japanese garden with a koi pond and cherry blossoms gently falling."
+        >>> prompt = (
+        ...     "The video is a demonstration of robotic manipulation, likely in a laboratory or testing environment. It"
+        ...     "features two robotic arms interacting with a piece of blue fabric. The setting is a room with a beige"
+        ...     "couch in the background, providing a neutral backdrop for the robotic activity. The robotic arms are"
+        ...     "positioned on either side of the fabric, which is placed on a yellow cushion. The left robotic arm is"
+        ...     "white with a black gripper, while the right arm is black with a more complex, articulated gripper. At the"
+        ...     "beginning, the fabric is laid out on the cushion. The left robotic arm approaches the fabric, its gripper"
+        ...     "opening and closing as it positions itself. The right arm remains stationary initially, poised to assist."
+        ...     "As the video progresses, the left arm grips the fabric, lifting it slightly off the cushion. The right arm"
+        ...     "then moves in, its gripper adjusting to grasp the opposite side of the fabric. Both arms work in"
+        ...     "coordination, lifting and holding the fabric between them. The fabric is manipulated with precision,"
+        ...     "showcasing the dexterity and control of the robotic arms. The camera remains static throughout, focusing"
+        ...     "on the interaction between the robotic arms and the fabric, allowing viewers to observe the detailed"
+        ...     "movements and coordination involved in the task."
+        ... )
         >>> negative_prompt = (
         ...     "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
         ...     "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
@@ -162,14 +119,20 @@ EXAMPLE_DOC_STRING = """
         ...     "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
         ...     "Overall, the video is of poor quality."
         ... )
-        >>> input_video = load_video("input_video.mp4")
+        >>> input_video = load_video(
+        ...     "https://github.com/nvidia-cosmos/cosmos-transfer2.5/raw/refs/heads/main/assets/robot_example/robot_input.mp4"
+        ... )
         >>> num_frames = 93
 
         >>> # Extract edge maps from the input video using Canny edge detection
-        >>> edge_maps = [cv2.Canny(np.array(frame), 100, 200) for frame in input_video[:num_frames]]
+        >>> edge_maps = [
+        ...     cv2.Canny(cv2.cvtColor(np.array(frame.convert("RGB")), cv2.COLOR_RGB2BGR), 100, 200)
+        ...     for frame in input_video[:num_frames]
+        ... ]
         >>> edge_maps = np.stack(edge_maps)[None]  # (T, H, W) -> (1, T, H, W)
         >>> controls = torch.from_numpy(edge_maps).expand(3, -1, -1, -1)  # (1, T, H, W) -> (3, T, H, W)
-        >>> controls = controls.permute(1, 0, 2, 3)  # (3, T, H, W) -> (T, 3, H, W)
+        >>> controls = [Image.fromarray(x.numpy()) for x in controls.permute(1, 2, 3, 0)]
+        >>> export_to_video(controls, "edge_controlled_video_edge.mp4", fps=30)
 
         >>> video = pipe(
         ...     video=input_video[:num_frames],
@@ -179,7 +142,7 @@ EXAMPLE_DOC_STRING = """
         ...     negative_prompt=negative_prompt,
         ...     num_frames=num_frames,
         ... ).frames[0]
-        >>> export_to_video(video, "edge_controlled_video.mp4", fps=31)
+        >>> export_to_video(video, "edge_controlled_video.mp4", fps=30)
         ```
 """
 
@@ -218,7 +181,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         transformer: CosmosTransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
-        controlnet: CosmosControlNetModel,
+        controlnet: Optional[CosmosControlNetModel],
         safety_checker: CosmosSafetyChecker = None,
     ):
         super().__init__()
@@ -837,31 +800,55 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                 in_latents = in_latents.to(transformer_dtype)
                 in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
-                noise_pred = transfer2_5_forward(
-                    transformer=self.transformer,
-                    controlnet=self.controlnet,
-                    in_latents=in_latents,
-                    controls_latents=controls_latents,
-                    controls_conditioning_scale=controls_conditioning_scale,
-                    in_timestep=in_timestep,
+                control_blocks = None
+                if controls_latents is not None and self.controlnet is not None:
+                    control_output = self.controlnet(
+                        controls_latents=controls_latents,
+                        latents=in_latents,
+                        timestep=in_timestep,
+                        encoder_hidden_states=encoder_hidden_states,
+                        condition_mask=cond_mask,
+                        conditioning_scale=controls_conditioning_scale,
+                        padding_mask=padding_mask,
+                        return_dict=False,
+                    )
+                    control_blocks = control_output[0]
+
+                noise_pred = self.transformer(
+                    hidden_states=in_latents,
+                    timestep=in_timestep,
                     encoder_hidden_states=encoder_hidden_states,
-                    cond_mask=cond_mask,
+                    block_controlnet_hidden_states=control_blocks,
+                    condition_mask=cond_mask,
                     padding_mask=padding_mask,
-                )
+                    return_dict=False,
+                )[0]
                 noise_pred = gt_velocity + noise_pred * (1 - cond_mask)
 
                 if self.do_classifier_free_guidance:
-                    noise_pred_neg = transfer2_5_forward(
-                        transformer=self.transformer,
-                        controlnet=self.controlnet,
-                        in_latents=in_latents,
-                        controls_latents=controls_latents,
-                        controls_conditioning_scale=controls_conditioning_scale,
-                        in_timestep=in_timestep,
+                    control_blocks = None
+                    if controls_latents is not None and self.controlnet is not None:
+                        control_output = self.controlnet(
+                            controls_latents=controls_latents,
+                            latents=in_latents,
+                            timestep=in_timestep,
+                            encoder_hidden_states=neg_encoder_hidden_states,  # NOTE: negative prompt
+                            condition_mask=cond_mask,
+                            conditioning_scale=controls_conditioning_scale,
+                            padding_mask=padding_mask,
+                            return_dict=False,
+                        )
+                        control_blocks = control_output[0]
+
+                    noise_pred_neg = self.transformer(
+                        hidden_states=in_latents,
+                        timestep=in_timestep,
                         encoder_hidden_states=neg_encoder_hidden_states,  # NOTE: negative prompt
-                        cond_mask=cond_mask,
+                        block_controlnet_hidden_states=control_blocks,
+                        condition_mask=cond_mask,
                         padding_mask=padding_mask,
-                    )
+                        return_dict=False,
+                    )[0]
                     # NOTE: replace velocity (noise_pred_neg) with gt_velocity for conditioning inputs only
                     noise_pred_neg = gt_velocity + noise_pred_neg * (1 - cond_mask)
                     noise_pred = noise_pred + self.guidance_scale * (noise_pred - noise_pred_neg)
