@@ -302,9 +302,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(
-        self,
-        timestep: Union[float, torch.Tensor],
-        schedule_timesteps: Optional[torch.Tensor] = None,
+        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
     ) -> int:
         """
         Find the index of a given timestep in the timestep schedule.
@@ -603,11 +601,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_beta
     def _convert_to_beta(
-        self,
-        in_sigmas: torch.Tensor,
-        num_inference_steps: int,
-        alpha: float = 0.6,
-        beta: float = 0.6,
+        self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
     ) -> torch.Tensor:
         """
         Construct a beta noise schedule as proposed in [Beta Sampling is All You
