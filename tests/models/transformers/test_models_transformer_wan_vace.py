@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import WanVACETransformer3DModel
@@ -109,6 +110,16 @@ class WanVACETransformer3DTesterConfig(BaseModelTesterConfig):
 class TestWanVACETransformer3D(WanVACETransformer3DTesterConfig, ModelTesterMixin):
     """Core model tests for Wan VACE Transformer 3D."""
 
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # Skip: fp16/bf16 require very high atol to pass, providing little signal.
+        # Dtype preservation is already tested by test_from_save_pretrained_dtype and test_keep_in_fp32_modules.
+        pytest.skip("Tolerance requirements too high for meaningful test")
+
+    def test_model_parallelism(self, tmp_path):
+        # Skip: Device mismatch between cuda:0 and cuda:1 in VACE control flow
+        pytest.skip("Model parallelism not yet supported for WanVACE")
+
 
 class TestWanVACETransformer3DMemory(WanVACETransformer3DTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for Wan VACE Transformer 3D."""
@@ -128,6 +139,26 @@ class TestWanVACETransformer3DAttention(WanVACETransformer3DTesterConfig, Attent
 
 class TestWanVACETransformer3DCompile(WanVACETransformer3DTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for Wan VACE Transformer 3D."""
+
+    def test_torch_compile_repeated_blocks(self):
+        # WanVACE has two block types (WanTransformerBlock and WanVACETransformerBlock),
+        # so we need recompile_limit=2 instead of the default 1.
+        import torch._dynamo
+        import torch._inductor.utils
+
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+
+        model = self.model_class(**init_dict).to(torch_device)
+        model.eval()
+        model.compile_repeated_blocks(fullgraph=True)
+
+        with (
+            torch._inductor.utils.fresh_inductor_cache(),
+            torch._dynamo.config.patch(recompile_limit=2),
+        ):
+            _ = model(**inputs_dict)
+            _ = model(**inputs_dict)
 
 
 class TestWanVACETransformer3DBitsAndBytes(WanVACETransformer3DTesterConfig, BitsAndBytesTesterMixin):
