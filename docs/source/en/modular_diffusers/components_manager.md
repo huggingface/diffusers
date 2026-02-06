@@ -54,7 +54,7 @@ Components loaded by the pipeline are automatically registered in the manager. Y
 
 Print the [`ComponentsManager`] to see all registered components, including their class, device placement, dtype, memory size, and load ID.
 
-The output below corresponds to the `from_pretrained` example above
+The output below corresponds to the `from_pretrained` example above.
 
 ```py
 Components:
