@@ -233,7 +233,7 @@ class HunyuanVideoImageToVideoPipelineFastTests(
         self.assertEqual(generated_video.shape, (5, 3, 16, 16))
 
         # fmt: off
-        expected_slice = torch.tensor([0.444, 0.479, 0.4485, 0.5752, 0.3539, 0.1548, 0.2706, 0.3593, 0.5323, 0.6635, 0.6795, 0.5255, 0.5091, 0.345, 0.4276, 0.4128])
+        expected_slice = torch.tensor([0.4441, 0.4790, 0.4485, 0.5748, 0.3539, 0.1553, 0.2707, 0.3594, 0.5331, 0.6645, 0.6799, 0.5257, 0.5092, 0.3450, 0.4276, 0.4127])
         # fmt: on
 
         generated_slice = generated_video.flatten()

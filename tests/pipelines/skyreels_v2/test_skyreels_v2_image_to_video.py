@@ -18,6 +18,7 @@ import numpy as np
 import torch
 from PIL import Image
 from transformers import (
+    AutoConfig,
     AutoTokenizer,
     CLIPImageProcessor,
     CLIPVisionConfig,
@@ -71,7 +72,8 @@ class SkyReelsV2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(flow_shift=5.0, use_flow_sigmas=True)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)

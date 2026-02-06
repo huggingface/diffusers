@@ -287,6 +287,9 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
                 truncation=True,
                 padding="max_length",
             )
+            input_ids = (
+                input_ids["input_ids"] if not isinstance(input_ids, list) and "input_ids" in input_ids else input_ids
+            )
             input_ids = torch.LongTensor(input_ids)
             input_ids_batch.append(input_ids)
 

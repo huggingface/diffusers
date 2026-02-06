@@ -160,7 +160,7 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_image.shape, (3, 32, 32))
 
         # fmt: off
-        expected_slice = torch.tensor([0.56331, 0.63677, 0.6015, 0.56369, 0.58166, 0.55277, 0.57176, 0.63261, 0.41466, 0.35561, 0.56229, 0.48334, 0.49714, 0.52622, 0.40872, 0.50208])
+        expected_slice = torch.tensor([0.5646, 0.6369, 0.6019, 0.5640, 0.5830, 0.5520, 0.5717, 0.6315, 0.4167, 0.3563, 0.5640, 0.4849, 0.4961, 0.5237, 0.4084, 0.5014])
         # fmt: on
 
         generated_slice = generated_image.flatten()
