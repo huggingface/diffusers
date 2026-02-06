@@ -18,7 +18,7 @@ This guide will show you how to use [`ComponentsManager`] to manage components a
 
 ## Connect to a pipeline
 
-Create a [`ComponentsManager`] and pass it to a [`ModularPipeline`] with either [`~ModularPipeline.from_pretrained`] or [`~ModularPipelineBlocks.init_pipeline`]. All components loaded by the pipeline are automatically registered in the manager.
+Create a [`ComponentsManager`] and pass it to a [`ModularPipeline`] with either [`~ModularPipeline.from_pretrained`] or [`~ModularPipelineBlocks.init_pipeline`]. 
 
 
 <hfoptions id="create">
