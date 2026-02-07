@@ -73,6 +73,7 @@ if is_torch_available():
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
+    _import_structure["transformers.ace_step_transformer"] = ["AceStepDiTModel"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
     _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]
     _import_structure["transformers.consisid_transformer_3d"] = ["ConsisIDTransformer3DModel"]
@@ -193,6 +194,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .transformers import (
+            AceStepDiTModel,
             AllegroTransformer3DModel,
             AuraFlowTransformer2DModel,
             BriaFiboTransformer2DModel,
