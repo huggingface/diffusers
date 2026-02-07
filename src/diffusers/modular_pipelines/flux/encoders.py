@@ -302,7 +302,7 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("prompt"),
+            InputParam("prompt", required=True),
             InputParam("prompt_2"),
             InputParam("max_sequence_length", type_hint=int, default=512, required=False),
             InputParam("joint_attention_kwargs"),

@@ -80,7 +80,7 @@ class Flux2TextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("prompt"),
+            InputParam("prompt", required=True),
             InputParam("max_sequence_length", type_hint=int, default=512, required=False),
             InputParam("text_encoder_out_layers", type_hint=Tuple[int], default=(10, 20, 30), required=False),
         ]
@@ -99,7 +99,7 @@ class Flux2TextEncoderStep(ModularPipelineBlocks):
     @staticmethod
     def check_inputs(block_state):
         prompt = block_state.prompt
-        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
     @staticmethod
@@ -193,7 +193,7 @@ class Flux2RemoteTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("prompt"),
+            InputParam("prompt", required=True),
         ]
 
     @property
@@ -210,7 +210,7 @@ class Flux2RemoteTextEncoderStep(ModularPipelineBlocks):
     @staticmethod
     def check_inputs(block_state):
         prompt = block_state.prompt
-        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(block_state.prompt)}")
 
     @torch.no_grad()
@@ -270,7 +270,7 @@ class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("prompt"),
+            InputParam("prompt", required=True),
             InputParam("max_sequence_length", type_hint=int, default=512, required=False),
             InputParam("text_encoder_out_layers", type_hint=Tuple[int], default=(9, 18, 27), required=False),
         ]
@@ -290,7 +290,7 @@ class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
     def check_inputs(block_state):
         prompt = block_state.prompt
 
-        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
     @staticmethod
@@ -405,7 +405,7 @@ class Flux2KleinBaseTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("prompt"),
+            InputParam("prompt", required=True),
             InputParam("max_sequence_length", type_hint=int, default=512, required=False),
             InputParam("text_encoder_out_layers", type_hint=Tuple[int], default=(9, 18, 27), required=False),
         ]
@@ -431,7 +431,7 @@ class Flux2KleinBaseTextEncoderStep(ModularPipelineBlocks):
     def check_inputs(block_state):
         prompt = block_state.prompt
 
-        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
     @staticmethod

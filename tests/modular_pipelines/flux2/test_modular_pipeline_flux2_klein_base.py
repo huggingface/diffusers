@@ -32,7 +32,7 @@ class TestFlux2ModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Flux2KleinModularPipeline
     pipeline_blocks_class = Flux2KleinBaseAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-base-modular"
-
+    default_repo_id = "hf-internal-testing/tiny-flux2-klein"
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
 
@@ -59,6 +59,7 @@ class TestFlux2ImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Flux2KleinModularPipeline
     pipeline_blocks_class = Flux2KleinBaseAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-base-modular"
+    default_repo_id = "hf-internal-testing/tiny-flux2-klein"
 
     params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])

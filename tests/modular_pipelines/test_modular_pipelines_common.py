@@ -37,6 +37,8 @@ class ModularPipelineTesterMixin:
     optional_params = frozenset(["num_inference_steps", "num_images_per_prompt", "latents", "output_type"])
     # this is modular specific: generator needs to be a intermediate input because it's mutable
     intermediate_params = frozenset(["generator"])
+    # prompt is required for most pipeline, with exceptions like qwen-image layer
+    required_params = frozenset(["prompt"])
 
     def get_generator(self, seed=0):
         generator = torch.Generator("cpu").manual_seed(seed)
@@ -53,6 +55,12 @@ class ModularPipelineTesterMixin:
     def pretrained_model_name_or_path(self) -> str:
         raise NotImplementedError(
             "You need to set the attribute `pretrained_model_name_or_path` in the child test class. See existing pipeline tests for reference."
+        )
+
+    @property
+    def default_repo_id(self) -> str:
+        raise NotImplementedError(
+            "You need to set the attribute `default_repo_id` in the child test class. See existing pipeline tests for reference."
         )
 
     @property
@@ -121,6 +129,7 @@ class ModularPipelineTesterMixin:
         pipe = self.get_pipeline()
         input_parameters = pipe.blocks.input_names
         optional_parameters = pipe.default_call_parameters
+        required_parameters = pipe.blocks.required_inputs
 
         def _check_for_parameters(parameters, expected_parameters, param_type):
             remaining_parameters = {param for param in parameters if param not in expected_parameters}
@@ -130,6 +139,98 @@ class ModularPipelineTesterMixin:
 
         _check_for_parameters(self.params, input_parameters, "input")
         _check_for_parameters(self.optional_params, optional_parameters, "optional")
+        _check_for_parameters(self.required_params, required_parameters, "required")
+
+    def test_loading_from_default_repo(self):
+        if self.default_repo_id is None:
+            return
+
+        try:
+            pipe = ModularPipeline.from_pretrained(self.default_repo_id)
+            assert pipe.blocks.__class__ == self.pipeline_blocks_class
+        except Exception as e:
+            assert False, f"Failed to load pipeline from default repo: {e}"
+
+    def test_modular_inference(self):
+        # run the pipeline to get the base output for comparison
+        pipe = self.get_pipeline()
+        pipe.to(torch_device, torch.float32)
+
+        inputs = self.get_dummy_inputs()
+        standard_output = pipe(**inputs, output="images")
+
+        # create text, denoise, decoder (and optional vae encoder) nodes
+        blocks = self.pipeline_blocks_class()
+
+        assert "text_encoder" in blocks.sub_blocks, "`text_encoder` block is not present in the pipeline"
+        assert "denoise" in blocks.sub_blocks, "`denoise` block is not present in the pipeline"
+        assert "decode" in blocks.sub_blocks, "`decode` block is not present in the pipeline"
+
+        # manually set the components in the sub_pipe
+        # a hack to workaround the fact the default pipeline properties are often incorrect for testing cases,
+        # #e.g. vae_scale_factor is ususally not 8 because vae is configured to be smaller for testing
+        def manually_set_all_components(pipe: ModularPipeline, sub_pipe: ModularPipeline):
+            for n, comp in pipe.components.items():
+                setattr(sub_pipe, n, comp)
+
+        # Initialize all nodes
+        text_node = blocks.sub_blocks["text_encoder"].init_pipeline(self.pretrained_model_name_or_path)
+        text_node.load_components(torch_dtype=torch.float32)
+        text_node.to(torch_device)
+        manually_set_all_components(pipe, text_node)
+
+        denoise_node = blocks.sub_blocks["denoise"].init_pipeline(self.pretrained_model_name_or_path)
+        denoise_node.load_components(torch_dtype=torch.float32)
+        denoise_node.to(torch_device)
+        manually_set_all_components(pipe, denoise_node)
+
+        decoder_node = blocks.sub_blocks["decode"].init_pipeline(self.pretrained_model_name_or_path)
+        decoder_node.load_components(torch_dtype=torch.float32)
+        decoder_node.to(torch_device)
+        manually_set_all_components(pipe, decoder_node)
+
+        if "vae_encoder" in blocks.sub_blocks:
+            vae_encoder_node = blocks.sub_blocks["vae_encoder"].init_pipeline(self.pretrained_model_name_or_path)
+            vae_encoder_node.load_components(torch_dtype=torch.float32)
+            vae_encoder_node.to(torch_device)
+            manually_set_all_components(pipe, vae_encoder_node)
+        else:
+            vae_encoder_node = None
+
+        def filter_inputs(available: dict, expected_keys) -> dict:
+            return {k: v for k, v in available.items() if k in expected_keys}
+
+        # prepare inputs for each node
+        inputs = self.get_dummy_inputs()
+
+        # 1. Text encoder: takes from inputs
+        text_inputs = filter_inputs(inputs, text_node.blocks.input_names)
+        text_output = text_node(**text_inputs)
+        text_output_dict = text_output.get_by_kwargs("denoiser_input_fields")
+
+        # 2. VAE encoder (optional): takes from inputs + text_output
+        if vae_encoder_node is not None:
+            vae_available = {**inputs, **text_output_dict}
+            vae_encoder_inputs = filter_inputs(vae_available, vae_encoder_node.blocks.input_names)
+            vae_encoder_output = vae_encoder_node(**vae_encoder_inputs)
+            vae_output_dict = vae_encoder_output.values
+        else:
+            vae_output_dict = {}
+
+        # 3. Denoise: takes from inputs + text_output + vae_output
+        denoise_available = {**inputs, **text_output_dict, **vae_output_dict}
+        denoise_inputs = filter_inputs(denoise_available, denoise_node.blocks.input_names)
+        denoise_output = denoise_node(**denoise_inputs)
+        latents = denoise_output.latents
+
+        # 4. Decoder: takes from inputs + denoise_output
+        decode_available = {**inputs, "latents": latents}
+        decode_inputs = filter_inputs(decode_available, decoder_node.blocks.input_names)
+        modular_output = decoder_node(**decode_inputs).images
+
+        assert modular_output.shape == standard_output.shape, (
+            f"Modular output should have same shape as standard output {standard_output.shape}, but got {modular_output.shape}"
+        )
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
         pipe = self.get_pipeline().to(torch_device)

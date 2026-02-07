@@ -56,52 +56,7 @@ logger = logging.get_logger(__name__)
 
 
 # ====================
-# 1. TEXT ENCODER
-# ====================
-
-
-# auto_docstring
-class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
-    """
-    Text encoder step that encodes the text prompt into a text embedding. This is an auto pipeline block.
-
-      Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use tokenizer (`Qwen2Tokenizer`):
-          The tokenizer to use guider (`ClassifierFreeGuidance`)
-
-      Inputs:
-          prompt (`str`, *optional*):
-              The prompt or prompts to guide image generation.
-          negative_prompt (`str`, *optional*):
-              The prompt or prompts not to guide the image generation.
-          max_sequence_length (`int`, *optional*, defaults to 1024):
-              Maximum sequence length for prompt encoding.
-
-      Outputs:
-          prompt_embeds (`Tensor`):
-              The prompt embeddings.
-          prompt_embeds_mask (`Tensor`):
-              The encoder attention mask.
-          negative_prompt_embeds (`Tensor`):
-              The negative prompt embeddings.
-          negative_prompt_embeds_mask (`Tensor`):
-              The negative prompt embeddings mask.
-    """
-
-    model_name = "qwenimage"
-    block_classes = [QwenImageTextEncoderStep()]
-    block_names = ["text_encoder"]
-    block_trigger_inputs = ["prompt"]
-
-    @property
-    def description(self) -> str:
-        return "Text encoder step that encodes the text prompt into a text embedding. This is an auto pipeline block."
-        " - `QwenImageTextEncoderStep` (text_encoder) is used when `prompt` is provided."
-        " - if `prompt` is not provided, step will be skipped."
-
-
-# ====================
-# 2. VAE ENCODER
+# 1. VAE ENCODER
 # ====================
 
 
@@ -249,7 +204,7 @@ class QwenImageOptionalControlNetVaeEncoderStep(AutoPipelineBlocks):
 
 
 # ====================
-# 3. DENOISE (input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise)
+# 2. DENOISE (input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise)
 # ====================
 
 
@@ -1011,7 +966,7 @@ class QwenImageAutoCoreDenoiseStep(ConditionalPipelineBlocks):
 
 
 # ====================
-# 4. DECODE
+# 3. DECODE
 # ====================
 
 
@@ -1096,11 +1051,11 @@ class QwenImageAutoDecodeStep(AutoPipelineBlocks):
 
 
 # ====================
-# 5. AUTO BLOCKS & PRESETS
+# 4. AUTO BLOCKS & PRESETS
 # ====================
 AUTO_BLOCKS = InsertableDict(
     [
-        ("text_encoder", QwenImageAutoTextEncoderStep()),
+        ("text_encoder", QwenImageTextEncoderStep()),
         ("vae_encoder", QwenImageAutoVaeEncoderStep()),
         ("controlnet_vae_encoder", QwenImageOptionalControlNetVaeEncoderStep()),
         ("denoise", QwenImageAutoCoreDenoiseStep()),

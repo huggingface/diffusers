@@ -244,7 +244,7 @@ class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("prompt"),
+            InputParam("prompt", required=True),
             InputParam("prompt_2"),
             InputParam("negative_prompt"),
             InputParam("negative_prompt_2"),

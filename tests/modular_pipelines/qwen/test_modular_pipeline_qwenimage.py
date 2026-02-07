@@ -34,6 +34,7 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuider
     pipeline_class = QwenImageModularPipeline
     pipeline_blocks_class = QwenImageAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-modular"
+    default_repo_id = "Qwen/Qwen-Image"
 
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
@@ -60,6 +61,7 @@ class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGu
     pipeline_class = QwenImageEditModularPipeline
     pipeline_blocks_class = QwenImageEditAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-modular"
+    default_repo_id = "Qwen/Qwen-Image-Edit"
 
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
@@ -86,6 +88,7 @@ class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, Modul
     pipeline_class = QwenImageEditPlusModularPipeline
     pipeline_blocks_class = QwenImageEditPlusAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-plus-modular"
+    default_repo_id = "Qwen/Qwen-Image-Edit-2509"
 
     # No `mask_image` yet.
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image"])
