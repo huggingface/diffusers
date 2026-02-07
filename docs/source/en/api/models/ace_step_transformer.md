@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AceStepDiTModel
 
-A Diffusion Transformer (DiT) model for music generation from [ACE-Step](https://github.com/ACE-Step/ACE-Step).
+A Diffusion Transformer (DiT) model for music generation from [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-1.5).
 
 ## AceStepDiTModel
 

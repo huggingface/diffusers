@@ -10,15 +10,15 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# ACE-Step
+# ACE-Step 1.5
 
-ACE-Step was proposed in [ACE-Step: A Step Towards Music Generation Foundation Model](https://github.com/ACE-Step/ACE-Step) by the ACE-Step Team. It is a text-to-music generation model that generates high-quality music with lyrics from text prompts.
+ACE-Step 1.5 was proposed in [ACE-Step: A Step Towards Music Generation Foundation Model](https://arxiv.org/abs/2602.00744) by the ACE-Step Team. It is a highly efficient open-source music foundation model that generates commercial-grade music with lyrics from text prompts.
 
-ACE-Step generates variable-length stereo music at 48kHz from text prompts and optional lyrics. It comprises three components: an Oobleck autoencoder (VAE) that compresses waveforms into 25Hz latent representations, a Qwen3-based text encoder for text and lyric conditioning, and a Diffusion Transformer (DiT) model that operates in the latent space of the autoencoder using flow matching.
+ACE-Step 1.5 generates variable-length stereo music at 48kHz (from 10 seconds to 10 minutes) from text prompts and optional lyrics. It comprises three components: an Oobleck autoencoder (VAE) that compresses waveforms into 25Hz latent representations, a Qwen3-based text encoder for text and lyric conditioning, and a Diffusion Transformer (DiT) model that operates in the latent space of the autoencoder using flow matching.
 
-The model supports multiple languages for lyrics including English, Chinese, Japanese, Korean, French, German, Spanish, Italian, Portuguese, Russian, and more.
+The model supports 50+ languages for lyrics including English, Chinese, Japanese, Korean, French, German, Spanish, Italian, Portuguese, Russian, and more. It runs locally with less than 4GB of VRAM and generates a full song in under 2 seconds on an A100.
 
-This pipeline was contributed by [ACE-Step Team](https://github.com/ACE-Step). The original codebase can be found at [ACE-Step/ACE-Step](https://github.com/ACE-Step/ACE-Step).
+This pipeline was contributed by [ACE-Step Team](https://github.com/ACE-Step). The original codebase can be found at [ACE-Step/ACE-Step-1.5](https://github.com/ACE-Step/ACE-Step-1.5).
 
 ## Tips
 

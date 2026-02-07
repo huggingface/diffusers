@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Pipeline-specific models for ACE-Step: ConditionEncoder, LyricEncoder, TimbreEncoder, AudioTokenizer, and
+Pipeline-specific models for ACE-Step 1.5: ConditionEncoder, LyricEncoder, TimbreEncoder, AudioTokenizer, and
 AudioTokenDetokenizer.
 
 These models are used within the AceStepPipeline to encode conditioning inputs (text, lyrics, timbre) for

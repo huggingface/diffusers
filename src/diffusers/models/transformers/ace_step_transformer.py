@@ -453,7 +453,7 @@ class AceStepDiTLayer(nn.Module):
 
 class AceStepDiTModel(ModelMixin, ConfigMixin):
     """
-    The Diffusion Transformer (DiT) model for ACE-Step music generation.
+    The Diffusion Transformer (DiT) model for ACE-Step 1.5 music generation.
 
     This model generates audio latents conditioned on text, lyrics, and timbre. It uses patch-based processing with
     transformer layers, timestep conditioning via AdaLN, and cross-attention to encoder outputs.

@@ -90,7 +90,7 @@ EXAMPLE_DOC_STRING = """
 
 class AceStepPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-music generation using ACE-Step.
+    Pipeline for text-to-music generation using ACE-Step 1.5.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
