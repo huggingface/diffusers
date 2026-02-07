@@ -212,6 +212,51 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         self.assertEqual(generated_video.shape, (3, 3, 32, 32))
         self.assertTrue(torch.isfinite(generated_video).all())
 
+    def test_inference_autoregressive_multi_chunk(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_frames"] = 5
+        inputs["num_frames_per_chunk"] = 3
+        inputs["num_conditional_frames"] = 1
+
+        video = pipe(**inputs).frames
+        generated_video = video[0]
+        self.assertEqual(generated_video.shape, (5, 3, 32, 32))
+        self.assertTrue(torch.isfinite(generated_video).all())
+
+    def test_inference_autoregressive_multi_chunk_no_condition_video_ignored(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_frames"] = 5
+        inputs["num_frames_per_chunk"] = 3
+        inputs["num_conditional_frames"] = 0
+
+        video_a = torch.zeros(5, 3, 32, 32)
+        video_b = torch.ones(5, 3, 32, 32)
+
+        inputs["video"] = video_a
+        inputs["generator"] = torch.Generator(device=device).manual_seed(0)
+        out_a = pipe(**inputs).frames
+
+        inputs["video"] = video_b
+        inputs["generator"] = torch.Generator(device=device).manual_seed(0)
+        out_b = pipe(**inputs).frames
+
+        # output should be independent of input video
+        self.assertTrue(torch.allclose(out_a, out_b))
+
     def test_inference_with_controls(self):
         """Test inference with control inputs (ControlNet)."""
         device = "cpu"
@@ -222,13 +267,13 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        # Add control video input - should be a video tensor
-        inputs["controls"] = [torch.randn(3, 3, 32, 32)]  # num_frames, channels, height, width
+        inputs["controls"] = [torch.randn(3, 32, 32) for _ in range(5)]  # list of 5 frames (C, H, W)
         inputs["controls_conditioning_scale"] = 1.0
+        inputs["num_frames"] = None
 
         video = pipe(**inputs).frames
         generated_video = video[0]
-        self.assertEqual(generated_video.shape, (3, 3, 32, 32))
+        self.assertEqual(generated_video.shape, (5, 3, 32, 32))
         self.assertTrue(torch.isfinite(generated_video).all())
 
     def test_callback_inputs(self):

@@ -131,6 +131,26 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertIsInstance(output[0], list)
         self.assertEqual(len(output[0]), init_dict["n_controlnet_blocks"])
 
+    def test_condition_mask_changes_output(self):
+        """Test that condition mask affects control outputs."""
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        inputs_no_mask = dict(inputs_dict)
+        inputs_no_mask["condition_mask"] = torch.zeros_like(inputs_dict["condition_mask"])
+
+        with torch.no_grad():
+            output_no_mask = model(**inputs_no_mask)
+            output_with_mask = model(**inputs_dict)
+
+        self.assertEqual(len(output_no_mask.control_block_samples), len(output_with_mask.control_block_samples))
+        for no_mask_tensor, with_mask_tensor in zip(
+            output_no_mask.control_block_samples, output_with_mask.control_block_samples
+        ):
+            self.assertFalse(torch.equal(no_mask_tensor, with_mask_tensor))
+
     def test_conditioning_scale_single(self):
         """Test that a single conditioning scale is broadcast to all blocks."""
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
