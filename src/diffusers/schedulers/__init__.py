@@ -77,6 +77,7 @@ else:
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
     _import_structure["scheduling_utils"] = ["AysSchedules", "KarrasDiffusionSchedulers", "SchedulerMixin"]
     _import_structure["scheduling_vq_diffusion"] = ["VQDiffusionScheduler"]
+    _import_structure["scheduling_ucgm_anystep"] = ["UCGMScheduler"]
 
 try:
     if not is_flax_available():
@@ -180,6 +181,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_unipc_multistep import UniPCMultistepScheduler
         from .scheduling_utils import AysSchedules, KarrasDiffusionSchedulers, SchedulerMixin
         from .scheduling_vq_diffusion import VQDiffusionScheduler
+        from .scheduling_ucgm_anystep import UCGMScheduler
     try:
         if not is_flax_available():
             raise OptionalDependencyNotAvailable()
