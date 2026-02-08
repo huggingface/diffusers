@@ -363,17 +363,16 @@ pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base
 pipeline.save_pretrained("local/path", repo_id="my-username/sdxl-modular", push_to_hub=True)
 ```
 
-A modular repository can also include custom pipeline blocks as Python code. This allows you to share specialized blocks that aren't native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
+A modular repository may contain custom code for loading a [`ModularPipeline`]. This allows you to use specialized blocks that aren’t native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
 
 ```
 Florence2-image-Annotator/
 ├── block.py                    # Custom pipeline blocks implementation
-├── config.json                 # Pipeline configuration and auto_map
-├── mellon_config.json          # UI configuration for Mellon
+├── modular_config.json         # Pipeline configuration and auto_map
 └── modular_model_index.json    # Component loading specifications
 ```
 
-The `config.json` file contains an `auto_map` key that tells [`ModularPipeline`] where to find the custom blocks:
+The `modular_config.json` file contains an `auto_map` key that tells [`ModularPipeline`] where to find the custom blocks:
 
 ```json
 {
