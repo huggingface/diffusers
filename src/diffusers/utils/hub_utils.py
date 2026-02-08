@@ -107,6 +107,7 @@ def load_or_create_model_card(
     license: Optional[str] = None,
     widget: Optional[List[dict]] = None,
     inference: Optional[bool] = None,
+    is_modular: bool = False,
 ) -> ModelCard:
     """
     Loads or creates a model card.
@@ -131,6 +132,8 @@ def load_or_create_model_card(
         widget (`List[dict]`, *optional*): Widget to accompany a gallery template.
         inference: (`bool`, optional): Whether to turn on inference widget. Helpful when using
             `load_or_create_model_card` from a training script.
+        is_modular: (`bool`, optional): Boolean flag to denote if the model card is for a modular pipeline.
+            When True, uses model_description as-is without additional template formatting.
     """
     if not is_jinja_available():
         raise ValueError(
@@ -159,10 +162,14 @@ def load_or_create_model_card(
             )
         else:
             card_data = ModelCardData()
-            component = "pipeline" if is_pipeline else "model"
-            if model_description is None:
-                model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
-            model_card = ModelCard.from_template(card_data, model_description=model_description)
+            if is_modular and model_description is not None:
+                model_card = ModelCard(model_description)
+                model_card.data = card_data
+            else:
+                component = "pipeline" if is_pipeline else "model"
+                if model_description is None:
+                    model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
+                model_card = ModelCard.from_template(card_data, model_description=model_description)
 
     return model_card
 

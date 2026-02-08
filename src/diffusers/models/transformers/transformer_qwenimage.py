@@ -561,11 +561,11 @@ class QwenDoubleStreamAttnProcessor2_0:
         img_attn_output = joint_hidden_states[:, seq_txt:, :]  # Image part
 
         # Apply output projections
-        img_attn_output = attn.to_out[0](img_attn_output)
+        img_attn_output = attn.to_out[0](img_attn_output.contiguous())
         if len(attn.to_out) > 1:
             img_attn_output = attn.to_out[1](img_attn_output)  # dropout
 
-        txt_attn_output = attn.to_add_out(txt_attn_output)
+        txt_attn_output = attn.to_add_out(txt_attn_output.contiguous())
 
         return img_attn_output, txt_attn_output
 

@@ -19,16 +19,22 @@ import torch
 from transformers import AutoTokenizer, PreTrainedModel
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin
+from ...loaders import FromSingleFileMixin, ZImageLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
-from ...models.controlnets import ZImageControlNetModel
 from ...models.transformers import ZImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import ZImagePipelineOutput
 
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -36,63 +42,34 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import ZImageControlNetPipeline
-        >>> from diffusers import ZImageControlNetModel
+        >>> from diffusers import ZImageInpaintPipeline
         >>> from diffusers.utils import load_image
-        >>> from huggingface_hub import hf_hub_download
 
-        >>> controlnet = ZImageControlNetModel.from_single_file(
-        ...     hf_hub_download(
-        ...         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union",
-        ...         filename="Z-Image-Turbo-Fun-Controlnet-Union.safetensors",
-        ...     ),
-        ...     torch_dtype=torch.bfloat16,
-        ... )
-
-        >>> # 2.1
-        >>> # controlnet = ZImageControlNetModel.from_single_file(
-        >>> #     hf_hub_download(
-        >>> #         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
-        >>> #         filename="Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors",
-        >>> #     ),
-        >>> #     torch_dtype=torch.bfloat16,
-        >>> # )
-
-        >>> # 2.0
-        >>> # controlnet = ZImageControlNetModel.from_single_file(
-        >>> #     hf_hub_download(
-        >>> #         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
-        >>> #         filename="Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors",
-        >>> #     ),
-        >>> #     torch_dtype=torch.bfloat16,
-        >>> # )
-
-        >>> pipe = ZImageControlNetPipeline.from_pretrained(
-        ...     "Tongyi-MAI/Z-Image-Turbo", controlnet=controlnet, torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = ZImageInpaintPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> # Optionally, set the attention backend to flash-attn 2 or 3, default is SDPA in PyTorch.
-        >>> # (1) Use flash attention 2
-        >>> # pipe.transformer.set_attention_backend("flash")
-        >>> # (2) Use flash attention 3
-        >>> # pipe.transformer.set_attention_backend("_flash_3")
+        >>> url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+        >>> init_image = load_image(url).resize((1024, 1024))
 
-        >>> control_image = load_image(
-        ...     "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/asset/pose.jpg?download=true"
-        ... )
-        >>> prompt = "一位年轻女子站在阳光明媚的海岸线上，白裙在轻拂的海风中微微飘动。她拥有一头鲜艳的紫色长发，在风中轻盈舞动，发间系着一个精致的黑色蝴蝶结，与身后柔和的蔚蓝天空形成鲜明对比。她面容清秀，眉目精致，透着一股甜美的青春气息；神情柔和，略带羞涩，目光静静地凝望着远方的地平线，双手自然交叠于身前，仿佛沉浸在思绪之中。在她身后，是辽阔无垠、波光粼粼的大海，阳光洒在海面上，映出温暖的金色光晕。"
+        >>> # Create a mask (white = inpaint, black = preserve)
+        >>> import numpy as np
+        >>> from PIL import Image
+
+        >>> mask = np.zeros((1024, 1024), dtype=np.uint8)
+        >>> mask[256:768, 256:768] = 255  # Inpaint center region
+        >>> mask_image = Image.fromarray(mask)
+
+        >>> prompt = "A beautiful lake with mountains in the background"
         >>> image = pipe(
         ...     prompt,
-        ...     control_image=control_image,
-        ...     controlnet_conditioning_scale=0.75,
-        ...     height=1728,
-        ...     width=992,
+        ...     image=init_image,
+        ...     mask_image=mask_image,
+        ...     strength=1.0,
         ...     num_inference_steps=9,
         ...     guidance_scale=0.0,
-        ...     generator=torch.Generator("cuda").manual_seed(43),
+        ...     generator=torch.Generator("cuda").manual_seed(42),
         ... ).images[0]
-        >>> image.save("zimage.png")
+        >>> image.save("zimage_inpaint.png")
         ```
 """
 
@@ -185,10 +162,26 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
+class ZImageInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMixin):
+    r"""
+    The ZImage pipeline for inpainting.
+
+    Args:
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        text_encoder ([`PreTrainedModel`]):
+            A text encoder model to encode text prompts.
+        tokenizer ([`AutoTokenizer`]):
+            A tokenizer to tokenize text prompts.
+        transformer ([`ZImageTransformer2DModel`]):
+            A ZImage transformer model to denoise the encoded image latents.
+    """
+
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _optional_components = []
-    _callback_tensor_inputs = ["latents", "prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "mask", "masked_image_latents"]
 
     def __init__(
         self,
@@ -197,10 +190,8 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         text_encoder: PreTrainedModel,
         tokenizer: AutoTokenizer,
         transformer: ZImageTransformer2DModel,
-        controlnet: ZImageControlNetModel,
     ):
         super().__init__()
-        controlnet = ZImageControlNetModel.from_transformer(controlnet, transformer)
 
         self.register_modules(
             vae=vae,
@@ -208,13 +199,19 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             tokenizer=tokenizer,
             scheduler=scheduler,
             transformer=transformer,
-            controlnet=controlnet,
         )
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor * 2,
+            do_normalize=False,
+            do_binarize=True,
+            do_convert_grayscale=True,
+        )
 
+    # Copied from diffusers.pipelines.z_image.pipeline_z_image.ZImagePipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -249,6 +246,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             negative_prompt_embeds = []
         return prompt_embeds, negative_prompt_embeds
 
+    # Copied from diffusers.pipelines.z_image.pipeline_z_image.ZImagePipeline._encode_prompt
     def _encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -300,8 +298,90 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
 
         return embeddings_list
 
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(num_inference_steps * strength, num_inference_steps)
+
+        t_start = int(max(num_inference_steps - init_timestep, 0))
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
+
+        return timesteps, num_inference_steps - t_start
+
+    def prepare_mask_latents(
+        self,
+        mask,
+        masked_image,
+        batch_size,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+    ):
+        """Prepare mask and masked image latents for inpainting.
+
+        Args:
+            mask: Binary mask tensor where 1 = inpaint region, 0 = preserve region.
+            masked_image: Original image with masked regions zeroed out.
+            batch_size: Number of images to generate.
+            height: Output image height.
+            width: Output image width.
+            dtype: Data type for the tensors.
+            device: Device to place tensors on.
+            generator: Random generator for reproducibility.
+
+        Returns:
+            Tuple of (mask, masked_image_latents) prepared for the denoising loop.
+        """
+        # Calculate latent dimensions
+        latent_height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        latent_width = 2 * (int(width) // (self.vae_scale_factor * 2))
+
+        # Resize mask to latent dimensions
+        mask = torch.nn.functional.interpolate(mask, size=(latent_height, latent_width), mode="nearest")
+        mask = mask.to(device=device, dtype=dtype)
+
+        # Encode masked image to latents
+        masked_image = masked_image.to(device=device, dtype=dtype)
+        if isinstance(generator, list):
+            masked_image_latents = [
+                retrieve_latents(self.vae.encode(masked_image[i : i + 1]), generator=generator[i])
+                for i in range(masked_image.shape[0])
+            ]
+            masked_image_latents = torch.cat(masked_image_latents, dim=0)
+        else:
+            masked_image_latents = retrieve_latents(self.vae.encode(masked_image), generator=generator)
+
+        # Apply VAE scaling
+        masked_image_latents = (masked_image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+
+        # Expand for batch size
+        if mask.shape[0] < batch_size:
+            if not batch_size % mask.shape[0] == 0:
+                raise ValueError(
+                    "The passed mask and the required batch size don't match. Masks are supposed to be duplicated to"
+                    f" a total batch size of {batch_size}, but {mask.shape[0]} masks were passed. Make sure the number"
+                    " of masks that you pass is divisible by the total requested batch size."
+                )
+            mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
+        if masked_image_latents.shape[0] < batch_size:
+            if not batch_size % masked_image_latents.shape[0] == 0:
+                raise ValueError(
+                    "The passed images and the required batch size don't match. Images are supposed to be duplicated"
+                    f" to a total batch size of {batch_size}, but {masked_image_latents.shape[0]} images were passed."
+                    " Make sure the number of images that you pass is divisible by the total requested batch size."
+                )
+            masked_image_latents = masked_image_latents.repeat(batch_size // masked_image_latents.shape[0], 1, 1, 1)
+
+        return mask, masked_image_latents
+
     def prepare_latents(
         self,
+        image,
+        timestep,
         batch_size,
         num_channels_latents,
         height,
@@ -311,53 +391,70 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         generator,
         latents=None,
     ):
+        """Prepare latents for inpainting, returning noise and image_latents for blending.
+
+        Returns:
+            Tuple of (latents, noise, image_latents) where:
+            - latents: Noised image latents for denoising
+            - noise: The noise tensor used for blending
+            - image_latents: Clean image latents for blending
+        """
         height = 2 * (int(height) // (self.vae_scale_factor * 2))
         width = 2 * (int(width) // (self.vae_scale_factor * 2))
 
         shape = (batch_size, num_channels_latents, height, width)
 
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            if latents.shape != shape:
-                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
-            latents = latents.to(device)
-        return latents
+        if latents is not None:
+            # Generate noise for blending even if latents are provided
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            # Encode image for blending
+            image = image.to(device=device, dtype=dtype)
+            if isinstance(generator, list):
+                image_latents = [
+                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                    for i in range(image.shape[0])
+                ]
+                image_latents = torch.cat(image_latents, dim=0)
+            else:
+                image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+            image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+            if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
+                image_latents = torch.cat([image_latents] * (batch_size // image_latents.shape[0]), dim=0)
+            return latents.to(device=device, dtype=dtype), noise, image_latents
 
-    # Copied from diffusers.pipelines.controlnet_sd3.pipeline_stable_diffusion_3_controlnet.StableDiffusion3ControlNetPipeline.prepare_image
-    def prepare_image(
-        self,
-        image,
-        width,
-        height,
-        batch_size,
-        num_images_per_prompt,
-        device,
-        dtype,
-        do_classifier_free_guidance=False,
-        guess_mode=False,
-    ):
-        if isinstance(image, torch.Tensor):
-            pass
-        else:
-            image = self.image_processor.preprocess(image, height=height, width=width)
-
-        image_batch_size = image.shape[0]
-
-        if image_batch_size == 1:
-            repeat_by = batch_size
-        else:
-            # image batch size is the same as prompt batch size
-            repeat_by = num_images_per_prompt
-
-        image = image.repeat_interleave(repeat_by, dim=0)
-
+        # Encode the input image
         image = image.to(device=device, dtype=dtype)
+        if image.shape[1] != num_channels_latents:
+            if isinstance(generator, list):
+                image_latents = [
+                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                    for i in range(image.shape[0])
+                ]
+                image_latents = torch.cat(image_latents, dim=0)
+            else:
+                image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
-        if do_classifier_free_guidance and not guess_mode:
-            image = torch.cat([image] * 2)
+            # Apply scaling (inverse of decoding: decode does latents/scaling_factor + shift_factor)
+            image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+        else:
+            image_latents = image
 
-        return image
+        # Handle batch size expansion
+        if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
+            additional_image_per_prompt = batch_size // image_latents.shape[0]
+            image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
+        elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
+            )
+
+        # Generate noise for both initial noising and later blending
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+
+        # Add noise using flow matching scale_noise
+        latents = self.scheduler.scale_noise(image_latents, timestep, noise)
+
+        return latents, noise, image_latents
 
     @property
     def guidance_scale(self):
@@ -379,18 +476,71 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
     def interrupt(self):
         return self._interrupt
 
+    def check_inputs(
+        self,
+        prompt,
+        image,
+        mask_image,
+        strength,
+        height,
+        width,
+        output_type,
+        negative_prompt=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
+    ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should be in [0.0, 1.0] but is {strength}")
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if image is None:
+            raise ValueError("`image` input cannot be undefined for inpainting.")
+
+        if mask_image is None:
+            raise ValueError("`mask_image` input cannot be undefined for inpainting.")
+
+        if output_type not in ["latent", "pil", "np", "pt"]:
+            raise ValueError(f"`output_type` must be one of 'latent', 'pil', 'np', or 'pt', but got {output_type}")
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
+        image: PipelineImageInput = None,
+        mask_image: PipelineImageInput = None,
+        masked_image_latents: Optional[torch.FloatTensor] = None,
+        strength: float = 1.0,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         sigmas: Optional[List[float]] = None,
         guidance_scale: float = 5.0,
-        control_image: PipelineImageInput = None,
-        controlnet_conditioning_scale: Union[float, List[float]] = 0.75,
         cfg_normalization: bool = False,
         cfg_truncation: float = 1.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -407,16 +557,32 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         max_sequence_length: int = 512,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        Function invoked when calling the pipeline for inpainting.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
+                numpy array and pytorch tensor, the expected value range is between `[0, 1]`. If it's a tensor or a
+                list of tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or
+                a list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`.
+            mask_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, numpy array or tensor representing a mask image for inpainting. White pixels (value 1) in the
+                mask will be inpainted, black pixels (value 0) will be preserved from the original image.
+            masked_image_latents (`torch.FloatTensor`, *optional*):
+                Pre-encoded masked image latents. If provided, the masked image encoding step will be skipped.
+            strength (`float`, *optional*, defaults to 1.0):
+                Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
+                starting point and more noise is added the higher the `strength`. The number of denoising steps depends
+                on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
+                process runs for the full number of iterations specified in `num_inference_steps`. A value of 1
+                essentially ignores `image` in the masked region.
             height (`int`, *optional*, defaults to 1024):
-                The height in pixels of the generated image.
+                The height in pixels of the generated image. If not provided, uses the input image height.
             width (`int`, *optional*, defaults to 1024):
-                The width in pixels of the generated image.
+                The width in pixels of the generated image. If not provided, uses the input image width.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -483,8 +649,30 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
             generated images.
         """
-        height = height or 1024
-        width = width or 1024
+        # 1. Check inputs
+        self.check_inputs(
+            prompt=prompt,
+            image=image,
+            mask_image=mask_image,
+            strength=strength,
+            height=height,
+            width=width,
+            output_type=output_type,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+        )
+
+        # 2. Preprocess image and mask
+        init_image = self.image_processor.preprocess(image)
+        init_image = init_image.to(dtype=torch.float32)
+
+        # Get dimensions from the preprocessed image if not specified
+        if height is None:
+            height = init_image.shape[-2]
+        if width is None:
+            width = init_image.shape[-1]
 
         vae_scale = self.vae_scale_factor * 2
         if height % vae_scale != 0:
@@ -498,6 +686,9 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                 f"Please adjust the width to a multiple of {vae_scale}."
             )
 
+        # Preprocess mask
+        mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
+
         device = self._execution_device
 
         self._guidance_scale = guidance_scale
@@ -505,7 +696,8 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         self._interrupt = False
         self._cfg_normalization = cfg_normalization
         self._cfg_truncation = cfg_truncation
-        # 2. Define call parameters
+
+        # 3. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -537,45 +729,6 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.in_channels
 
-        control_image = self.prepare_image(
-            image=control_image,
-            width=width,
-            height=height,
-            batch_size=batch_size * num_images_per_prompt,
-            num_images_per_prompt=num_images_per_prompt,
-            device=device,
-            dtype=self.vae.dtype,
-        )
-        height, width = control_image.shape[-2:]
-        control_image = retrieve_latents(self.vae.encode(control_image), generator=generator, sample_mode="argmax")
-        control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
-        control_image = control_image.unsqueeze(2)
-
-        if num_channels_latents != self.controlnet.config.control_in_dim:
-            # For model version 2.0
-            control_image = torch.cat(
-                [
-                    control_image,
-                    torch.zeros(
-                        control_image.shape[0],
-                        self.controlnet.config.control_in_dim - num_channels_latents,
-                        *control_image.shape[2:],
-                    ).to(device=control_image.device, dtype=control_image.dtype),
-                ],
-                dim=1,
-            )
-
-        latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            torch.float32,
-            device,
-            generator,
-            latents,
-        )
-
         # Repeat prompt_embeds for num_images_per_prompt
         if num_images_per_prompt > 1:
             prompt_embeds = [pe for pe in prompt_embeds for _ in range(num_images_per_prompt)]
@@ -583,7 +736,11 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                 negative_prompt_embeds = [npe for npe in negative_prompt_embeds for _ in range(num_images_per_prompt)]
 
         actual_batch_size = batch_size * num_images_per_prompt
-        image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
+
+        # Calculate latent dimensions for image_seq_len
+        latent_height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        latent_width = 2 * (int(width) // (self.vae_scale_factor * 2))
+        image_seq_len = (latent_height // 2) * (latent_width // 2)
 
         # 5. Prepare timesteps
         mu = calculate_shift(
@@ -602,10 +759,52 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             sigmas=sigmas,
             **scheduler_kwargs,
         )
+
+        # 6. Adjust timesteps based on strength
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        if num_inference_steps < 1:
+            raise ValueError(
+                f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline "
+                f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
+            )
+        latent_timestep = timesteps[:1].repeat(actual_batch_size)
+
+        # 7. Prepare latents from image (returns noise and image_latents for blending)
+        latents, noise, image_latents = self.prepare_latents(
+            init_image,
+            latent_timestep,
+            actual_batch_size,
+            num_channels_latents,
+            height,
+            width,
+            prompt_embeds[0].dtype,
+            device,
+            generator,
+            latents,
+        )
+
+        # 8. Prepare mask and masked image latents
+        # Create masked image: preserve only unmasked regions (mask=0)
+        if masked_image_latents is None:
+            masked_image = init_image * (mask < 0.5)
+        else:
+            masked_image = None  # Will use provided masked_image_latents
+
+        mask, masked_image_latents = self.prepare_mask_latents(
+            mask,
+            masked_image if masked_image is not None else init_image,
+            actual_batch_size,
+            height,
+            width,
+            prompt_embeds[0].dtype,
+            device,
+            generator,
+        )
+
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        # 6. Denoising loop
+        # 9. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -635,29 +834,18 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                     latent_model_input = latents_typed.repeat(2, 1, 1, 1)
                     prompt_embeds_model_input = prompt_embeds + negative_prompt_embeds
                     timestep_model_input = timestep.repeat(2)
-                    control_image_input = control_image.repeat(2, 1, 1, 1, 1)
                 else:
                     latent_model_input = latents.to(self.transformer.dtype)
                     prompt_embeds_model_input = prompt_embeds
                     timestep_model_input = timestep
-                    control_image_input = control_image
 
                 latent_model_input = latent_model_input.unsqueeze(2)
                 latent_model_input_list = list(latent_model_input.unbind(dim=0))
-
-                controlnet_block_samples = self.controlnet(
-                    latent_model_input_list,
-                    timestep_model_input,
-                    prompt_embeds_model_input,
-                    control_image_input,
-                    conditioning_scale=controlnet_conditioning_scale,
-                )
 
                 model_out_list = self.transformer(
                     latent_model_input_list,
                     timestep_model_input,
                     prompt_embeds_model_input,
-                    controlnet_block_samples=controlnet_block_samples,
                 )[0]
 
                 if apply_cfg:
@@ -693,6 +881,19 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                 latents = self.scheduler.step(noise_pred.to(torch.float32), t, latents, return_dict=False)[0]
                 assert latents.dtype == torch.float32
 
+                # Inpainting blend: combine denoised latents with original image latents
+                init_latents_proper = image_latents
+
+                # Re-scale original latents to current noise level for proper blending
+                if i < len(timesteps) - 1:
+                    noise_timestep = timesteps[i + 1]
+                    init_latents_proper = self.scheduler.scale_noise(
+                        init_latents_proper, torch.tensor([noise_timestep]), noise
+                    )
+
+                # Blend: mask=1 for inpaint region (use denoised), mask=0 for preserve region (use original)
+                latents = (1 - mask) * init_latents_proper + mask * latents
+
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
@@ -702,10 +903,15 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    mask = callback_outputs.pop("mask", mask)
+                    masked_image_latents = callback_outputs.pop("masked_image_latents", masked_image_latents)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if output_type == "latent":
             image = latents

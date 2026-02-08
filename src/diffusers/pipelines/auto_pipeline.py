@@ -127,6 +127,7 @@ from .z_image import (
     ZImageControlNetInpaintPipeline,
     ZImageControlNetPipeline,
     ZImageImg2ImgPipeline,
+    ZImageInpaintPipeline,
     ZImageOmniPipeline,
     ZImagePipeline,
 )
@@ -235,6 +236,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-pag", StableDiffusionPAGInpaintPipeline),
         ("qwenimage", QwenImageInpaintPipeline),
         ("qwenimage-edit", QwenImageEditInpaintPipeline),
+        ("z-image", ZImageInpaintPipeline),
     ]
 )
 
@@ -246,7 +248,7 @@ AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
 
 AUTO_IMAGE2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
-        ("wan", WanImageToVideoPipeline),
+        ("wan-i2v", WanImageToVideoPipeline),
     ]
 )
 
