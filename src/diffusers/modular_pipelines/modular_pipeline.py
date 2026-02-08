@@ -2018,8 +2018,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Args:
             **kwargs: Component objects or configuration values to update:
                 - Component objects: Models loaded with `AutoModel.from_pretrained()` or `ComponentSpec.load()`
-                are automatically tagged with loading information. ConfigMixin objects without weights
-                (e.g., schedulers, guiders) can be passed directly.
+                are automatically tagged with loading information. ConfigMixin objects without weights (e.g.,
+                schedulers, guiders) can be passed directly.
                 - Configuration values: Simple values to update configuration settings
                 (e.g., `requires_safety_checker=False`)
 
@@ -2030,7 +2030,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
             # Update configuration values
             pipeline.update_components(requires_safety_checker=False)
-
             ```
 
         Notes:
@@ -2039,9 +2038,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             - ConfigMixin objects without weights (e.g., schedulers, guiders) can be passed directly.
         """
 
-        passed_components = {
-            k: kwargs.pop(k) for k in self._component_specs if k in kwargs
-        }
+        passed_components = {k: kwargs.pop(k) for k in self._component_specs if k in kwargs}
         passed_config_values = {k: kwargs.pop(k) for k in self._config_specs if k in kwargs}
 
         for name, component in passed_components.items():
