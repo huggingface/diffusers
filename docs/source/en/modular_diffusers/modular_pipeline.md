@@ -340,6 +340,46 @@ pipeline.update_components(guider=guider)
 
 See the [Guiders](./guiders) guide for more details on available guiders and how to configure them.
 
+## Splitting a pipeline into stages
+
+Since blocks are composable, you can take a pipeline apart and reconstruct it into separate pipelines for each stage. The example below shows how we can separate the text encoder block from the rest of the pipeline, so you can encode the prompt independently and pass the embeddings to the main pipeline.
+
+```py
+from diffusers import ModularPipeline, ComponentsManager
+import torch
+
+device = "cuda"
+dtype = torch.bfloat16
+repo_id = "black-forest-labs/FLUX.2-klein-4B"
+
+# get the blocks and separate out the text encoder
+blocks = ModularPipeline.from_pretrained(repo_id).blocks
+text_block = blocks.sub_blocks.pop("text_encoder")
+
+# use ComponentsManager to handle offloading across multiple pipelines
+manager = ComponentsManager()
+manager.enable_auto_cpu_offload(device=device)
+
+# create separate pipelines for each stage
+text_encoder_pipeline = text_block.init_pipeline(repo_id, components_manager=manager)
+pipeline = blocks.init_pipeline(repo_id, components_manager=manager)
+
+# encode text
+text_encoder_pipeline.load_components(torch_dtype=dtype)
+text_embeddings = text_encoder_pipeline(prompt="a cat").get_by_kwargs("denoiser_input_fields")
+
+# denoise and decode
+pipeline.load_components(torch_dtype=dtype)
+output = pipeline(
+    **text_embeddings,
+    num_inference_steps=4,
+).images[0]
+```
+
+[`ComponentsManager`] handles memory across multiple pipelines. Unlike the offloading strategies in [`DiffusionPipeline`] that follow a fixed order, [`ComponentsManager`] makes offloading decisions dynamically each time a model forward pass runs, based on the current memory situation. This means it works regardless of how many pipelines you create or what order you run them in. See the [ComponentsManager](./components_manager) guide for more details.
+
+If pipeline stages share components (e.g., the same VAE used for encoding and decoding), you can use [`~ModularPipeline.update_components`] to pass an already-loaded component to another pipeline instead of loading it again.
+
 ## Modular repository
 
 A repository is required if the pipeline blocks use *pretrained components*. The repository supplies loading specifications and metadata.
@@ -351,7 +391,7 @@ A repository is required if the pipeline blocks use *pretrained components*. The
 
 The key advantage of a modular repository is that components can be loaded from different repositories. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads a quantized transformer from `diffusers/FLUX.2-dev-bnb-4bit` while loading the remaining components from `black-forest-labs/FLUX.2-dev`.
 
-To convert a regular diffusers repository into a modular one, create the pipeline using the regular repository, and then save it using `save_pretrained()`. The saved repository will contain a `modular_model_index.json` with all the loading specifications. Optionnally, you can pass a `repo_id` and `push_to_hub=True` to publish it on Huggingface Hub.
+To convert a regular diffusers repository into a modular one, create the pipeline using the regular repository, and then push to the Hub. The saved repository will contain a `modular_model_index.json` with all the loading specifications.
 
 ```py
 from diffusers import ModularPipeline
@@ -363,16 +403,17 @@ pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base
 pipeline.save_pretrained("local/path", repo_id="my-username/sdxl-modular", push_to_hub=True)
 ```
 
-A modular repository may contain custom code for loading a [`ModularPipeline`]. This allows you to use specialized blocks that aren’t native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
+A modular repository can also include custom pipeline blocks as Python code. This allows you to share specialized blocks that aren't native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
 
 ```
 Florence2-image-Annotator/
 ├── block.py                    # Custom pipeline blocks implementation
-├── modular_config.json         # Pipeline configuration and auto_map
+├── config.json                 # Pipeline configuration and auto_map
+├── mellon_config.json          # UI configuration for Mellon
 └── modular_model_index.json    # Component loading specifications
 ```
 
-The `modular_config.json` file contains an `auto_map` key that tells [`ModularPipeline`] where to find the custom blocks:
+The `config.json` file contains an `auto_map` key that tells [`ModularPipeline`] where to find the custom blocks:
 
 ```json
 {
