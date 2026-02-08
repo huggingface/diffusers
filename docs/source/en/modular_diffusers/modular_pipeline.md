@@ -12,27 +12,28 @@ specific language governing permissions and limitations under the License.
 
 # ModularPipeline
 
-[`ModularPipeline`] converts [`~modular_pipelines.ModularPipelineBlocks`]'s into an executable pipeline that loads models and performs the computation steps defined in the block. It is the main interface for running a pipeline and it is very similar to the [`DiffusionPipeline`] API.
+[`ModularPipeline`] converts [`~modular_pipelines.ModularPipelineBlocks`] into an executable pipeline that loads models and performs the computation steps defined in the blocks. It is the main interface for running a pipeline and the API is very similar to [`DiffusionPipeline`] but with a few key differences.
 
-The main difference is to include an expected `output` argument in the pipeline.
+**Loading is lazy.** With [`DiffusionPipeline`], [`~DiffusionPipeline.from_pretrained`] creates the pipeline and loads all models at the same time. With [`ModularPipeline`], creating and loading are two separate steps: [`~ModularPipeline.from_pretrained`] reads the configuration and knows where to load each component from, but doesn't actually load the model weights. You load the models later with [`~ModularPipeline.load_components`], which is where you pass loading arguments like `torch_dtype` and `quantization_config`.
+
+**Two ways to create a pipeline.** You can use [`~ModularPipeline.from_pretrained`] with an existing diffusers model repository — it automatically maps to the default pipeline blocks and then converts to a [`ModularPipeline`] with no extra setup. Currently supported models include SDXL, Wan, Qwen, Z-Image, Flux, and Flux2. You can also assemble your own pipeline from [`ModularPipelineBlocks`] and convert it with the [`~ModularPipelineBlocks.init_pipeline`] method (see [Creating a pipeline](#creating-a-pipeline) for more details).
+
+**Running the pipeline is the same.** Once loaded, you call the pipeline with the same arguments you're used to. A single [`ModularPipeline`] can support multiple workflows (text-to-image, image-to-image, inpainting, etc.) when the pipeline blocks use [`AutoPipelineBlocks`](./auto_pipeline) to automatically select the workflow based on your inputs.
+
+Below are complete examples for text-to-image, image-to-image, and inpainting with SDXL.
 
 <hfoptions id="example">
 <hfoption id="text-to-image">
 
 ```py
 import torch
-from diffusers.modular_pipelines import SequentialPipelineBlocks
-from diffusers.modular_pipelines.stable_diffusion_xl import TEXT2IMAGE_BLOCKS
+from diffusers import ModularPipeline
 
-blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
-
-modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
-pipeline = blocks.init_pipeline(modular_repo_id)
-
+pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(torch_dtype=torch.float16)
 pipeline.to("cuda")
 
-image = pipeline(prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", output="images")[0]
+image = pipeline(prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
 image.save("modular_t2i_out.png")
 ```
 
@@ -41,21 +42,17 @@ image.save("modular_t2i_out.png")
 
 ```py
 import torch
-from diffusers.modular_pipelines import SequentialPipelineBlocks
-from diffusers.modular_pipelines.stable_diffusion_xl import IMAGE2IMAGE_BLOCKS
+from diffusers import ModularPipeline
+from diffusers.utils import load_image
 
-blocks = SequentialPipelineBlocks.from_blocks_dict(IMAGE2IMAGE_BLOCKS)
-
-modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
-pipeline = blocks.init_pipeline(modular_repo_id)
-
+pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(torch_dtype=torch.float16)
 pipeline.to("cuda")
 
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-text2img.png"
 init_image = load_image(url)
 prompt = "a dog catching a frisbee in the jungle"
-image = pipeline(prompt=prompt, image=init_image, strength=0.8, output="images")[0]
+image = pipeline(prompt=prompt, image=init_image, strength=0.8).images[0]
 image.save("modular_i2i_out.png")
 ```
 
@@ -64,15 +61,10 @@ image.save("modular_i2i_out.png")
 
 ```py
 import torch
-from diffusers.modular_pipelines import SequentialPipelineBlocks
-from diffusers.modular_pipelines.stable_diffusion_xl import INPAINT_BLOCKS
+from diffusers import ModularPipeline
 from diffusers.utils import load_image
 
-blocks = SequentialPipelineBlocks.from_blocks_dict(INPAINT_BLOCKS)
-
-modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
-pipeline = blocks.init_pipeline(modular_repo_id)
-
+pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 pipeline.load_components(torch_dtype=torch.float16)
 pipeline.to("cuda")
 
@@ -83,96 +75,160 @@ init_image = load_image(img_url)
 mask_image = load_image(mask_url)
 
 prompt = "A deep sea diver floating"
-image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.85, output="images")[0]
+image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.85).images[0]
 image.save("moduar_inpaint_out.png")
 ```
 
 </hfoption>
 </hfoptions>
 
-This guide will show you how to create a [`ModularPipeline`] and manage the components in it.
-
-## Adding blocks
-
-Blocks are [`InsertableDict`] objects that can be inserted at specific positions, providing a flexible way to mix-and-match blocks.
-
-Use [`~modular_pipelines.modular_pipeline_utils.InsertableDict.insert`] on either the block class or `sub_blocks` attribute to add a block.
-
-```py
-# BLOCKS is dict of block classes, you need to add class to it
-BLOCKS.insert("block_name", BlockClass, index)
-# sub_blocks attribute contains instance, add a block instance to the  attribute
-t2i_blocks.sub_blocks.insert("block_name", block_instance, index)
-```
-
-Use [`~modular_pipelines.modular_pipeline_utils.InsertableDict.pop`] on either the block class or `sub_blocks` attribute to remove a block.
-
-```py
-# remove a block class from preset
-BLOCKS.pop("text_encoder")
-# split out a block instance on its own
-text_encoder_block = t2i_blocks.sub_blocks.pop("text_encoder")
-```
-
-Swap blocks by setting the existing block to the new block.
-
-```py
-# Replace block class in preset
-BLOCKS["prepare_latents"] = CustomPrepareLatents
-# Replace in sub_blocks attribute using an block instance
-t2i_blocks.sub_blocks["prepare_latents"] = CustomPrepareLatents()
-```
+This guide will show you how to create a [`ModularPipeline`] and manage the components in it, and run it.
 
 ## Creating a pipeline
 
-There are two ways to create a [`ModularPipeline`]. Assemble and create a pipeline from [`ModularPipelineBlocks`] or load an existing pipeline with [`~ModularPipeline.from_pretrained`].
+There are two ways to create a [`ModularPipeline`]. Assemble and create a pipeline from [`ModularPipelineBlocks`] with [`~ModularPipelineBlocks.init_pipeline`], or load an existing pipeline with [`~ModularPipeline.from_pretrained`].
 
 You should also initialize a [`ComponentsManager`] to handle device placement and memory and component management.
 
 > [!TIP]
 > Refer to the [ComponentsManager](./components_manager) doc for more details about how it can help manage components across different workflows.
 
-<hfoptions id="create">
-<hfoption id="ModularPipelineBlocks">
+### init_pipeline
 
-Use the [`~ModularPipelineBlocks.init_pipeline`] method to create a [`ModularPipeline`] from the component and configuration specifications. This method loads the *specifications* from a `modular_model_index.json` file, but it doesn't load the *models* yet.
+[`~ModularPipelineBlocks.init_pipeline`] converts any [`ModularPipelineBlocks`] into a [`ModularPipeline`].
 
+Let's define a minimal block to see how it works:
 ```py
-from diffusers import ComponentsManager
-from diffusers.modular_pipelines import SequentialPipelineBlocks
-from diffusers.modular_pipelines.stable_diffusion_xl import TEXT2IMAGE_BLOCKS
+from transformers import CLIPTextModel
+from diffusers.modular_pipelines import (
+    ComponentSpec,
+    ModularPipelineBlocks,
+    PipelineState,
+)
 
-t2i_blocks = SequentialPipelineBlocks.from_blocks_dict(TEXT2IMAGE_BLOCKS)
+class MyBlock(ModularPipelineBlocks):
+    @property
+    def expected_components(self):
+        return [
+            ComponentSpec(
+                name="text_encoder",
+                type_hint=CLIPTextModel,
+                pretrained_model_name_or_path="openai/clip-vit-large-patch14",
+            ),
+        ]
 
-modular_repo_id = "YiYiXu/modular-loader-t2i-0704"
-components = ComponentsManager()
-t2i_pipeline = t2i_blocks.init_pipeline(modular_repo_id, components_manager=components)
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        return components, state
 ```
 
-</hfoption>
-<hfoption id="from_pretrained">
+Call [`~ModularPipelineBlocks.init_pipeline`] to convert it into a pipeline. The `blocks` attribute on the pipeline is the blocks it was created from — it determines the expected inputs, outputs, and computation logic.
+```py
+block = MyBlock()
+pipe = block.init_pipeline()
+pipe.blocks
+```
+```
+MyBlock {
+  "_class_name": "MyBlock",
+  "_diffusers_version": "0.37.0.dev0"
+}
+```
 
-The [`~ModularPipeline.from_pretrained`] method creates a [`ModularPipeline`] from a modular repository on the Hub.
+Call [`~ModularPipelineBlocks.init_pipeline`] to convert it into a pipeline. The `blocks` attribute on the pipeline is the blocks it was created from — it determines the expected inputs, outputs, and computation logic.
 
+> [!WARNING]
+> Blocks are mutable — you can freely add, remove, or swap blocks before creating a pipeline. However, once a pipeline is created, modifying `pipeline.blocks` won't affect the pipeline because it returns a copy. If you want a different block structure, create a new pipeline after modifying the blocks.
+
+When you call [`~ModularPipelineBlocks.init_pipeline`] without a repository, it uses the `pretrained_model_name_or_path` defined in the block's [`ComponentSpec`] to determine where to load each component from. Printing the pipeline shows the component loading configuration.
+
+```py
+pipe
+ModularPipeline {
+  "_blocks_class_name": "MyBlock",
+  "_class_name": "ModularPipeline",
+  "_diffusers_version": "0.37.0.dev0",
+  "text_encoder": [
+    null,
+    null,
+    {
+      "pretrained_model_name_or_path": "openai/clip-vit-large-patch14",
+      "revision": null,
+      "subfolder": "",
+      "type_hint": [
+        "transformers",
+        "CLIPTextModel"
+      ],
+      "variant": null
+    }
+  ]
+}
+```
+
+If you pass a repository to [`~ModularPipelineBlocks.init_pipeline`], it overrides the loading path by matching your block's components against the pipeline config in that repository (`model_index.json` or `modular_model_index.json`).
+
+In the example below, the `pretrained_model_name_or_path` will be updated to `"stabilityai/stable-diffusion-xl-base-1.0"`.
+```py
+pipe = block.init_pipeline("stabilityai/stable-diffusion-xl-base-1.0")
+pipe
+ModularPipeline {
+  "_blocks_class_name": "MyBlock",
+  "_class_name": "ModularPipeline",
+  "_diffusers_version": "0.37.0.dev0",
+  "text_encoder": [
+    null,
+    null,
+    {
+      "pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-base-1.0",
+      "revision": null,
+      "subfolder": "text_encoder",
+      "type_hint": [
+        "transformers",
+        "CLIPTextModel"
+      ],
+      "variant": null
+    }
+  ]
+}
+```
+
+If a component in your block doesn't exist in the repository, it remains `null` and is skipped during [`~ModularPipeline.load_components`].
+
+### from_pretrained
+
+[`~ModularPipeline.from_pretrained`] is a convenient way to create a [`ModularPipeline`] without defining blocks yourself.
+
+It works with three types of repositories.
+
+**A regular diffusers repository.** Pass any supported model repository and it automatically maps to the default pipeline blocks. Currently supported models include SDXL, Wan, Qwen, Z-Image, Flux, and Flux2.
 ```py
 from diffusers import ModularPipeline, ComponentsManager
 
 components = ComponentsManager()
-pipeline = ModularPipeline.from_pretrained("YiYiXu/modular-loader-t2i-0704", components_manager=components)
+pipeline = ModularPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", components_manager=components
+)
 ```
 
-Add the `trust_remote_code` argument to load a custom [`ModularPipeline`].
-
+**A modular repository.** These repositories contain a `modular_model_index.json` that specifies where to load each component from — the components can come from different repositories and the modular repository itself may not contain any model weights. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads a quantized transformer from one repository and the remaining components from another. See [Modular repository](#modular-repository) for more details on the format.
 ```py
 from diffusers import ModularPipeline, ComponentsManager
 
 components = ComponentsManager()
-modular_repo_id = "YiYiXu/modular-diffdiff-0704"
-diffdiff_pipeline = ModularPipeline.from_pretrained(modular_repo_id, trust_remote_code=True, components_manager=components)
+pipeline = ModularPipeline.from_pretrained(
+    "diffusers/flux2-bnb-4bit-modular", components_manager=components
+)
 ```
 
-</hfoption>
-</hfoptions>
+**A modular repository with custom code.** Some repositories include custom pipeline blocks alongside the loading configuration. Add `trust_remote_code=True` to load them. See [Custom blocks](./custom_blocks) for how to create your own.
+```py
+from diffusers import ModularPipeline, ComponentsManager
+
+components = ComponentsManager()
+pipeline = ModularPipeline.from_pretrained(
+    "diffusers/Florence2-image-Annotator", trust_remote_code=True, components_manager=components
+)
+```
+
 
 ## Loading components
 
@@ -184,7 +240,7 @@ A [`ModularPipeline`] doesn't automatically instantiate with components. It only
 ```py
 import torch
 
-t2i_pipeline.load_components(torch_dtype=torch.float16)
+pipeline.load_components(torch_dtype=torch.float16)
 t2i_pipeline.to("cuda")
 ```
 
@@ -196,7 +252,7 @@ The example below only loads the UNet and VAE.
 ```py
 import torch
 
-t2i_pipeline.load_components(names=["unet", "vae"], torch_dtype=torch.float16)
+pipeline.load_components(names=["unet", "vae"], torch_dtype=torch.float16)
 ```
 
 </hfoption>
