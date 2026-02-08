@@ -24,6 +24,8 @@ else:
     _import_structure["modular_blocks_qwenimage"] = [
         "AUTO_BLOCKS",
         "QwenImageAutoBlocks",
+        "QwenImageAreaCompositionCoreDenoiseStep",
+        "QwenImageAreaCompositionImg2ImgCoreDenoiseStep",
     ]
     _import_structure["modular_blocks_qwenimage_edit"] = [
         "EDIT_AUTO_BLOCKS",
@@ -53,6 +55,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modular_blocks_qwenimage import (
             AUTO_BLOCKS,
+            QwenImageAreaCompositionCoreDenoiseStep,
+            QwenImageAreaCompositionImg2ImgCoreDenoiseStep,
             QwenImageAutoBlocks,
         )
         from .modular_blocks_qwenimage_edit import (
