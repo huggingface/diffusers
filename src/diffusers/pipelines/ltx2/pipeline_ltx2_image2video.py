@@ -75,8 +75,6 @@ EXAMPLE_DOC_STRING = """
         ...     output_type="np",
         ...     return_dict=False,
         ... )
-        >>> video = (video * 255).round().astype("uint8")
-        >>> video = torch.from_numpy(video)
 
         >>> encode_video(
         ...     video[0],
