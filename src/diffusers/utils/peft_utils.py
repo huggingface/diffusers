@@ -16,6 +16,7 @@ PEFT utilities: Utilities related to peft library
 """
 
 import collections
+import functools
 import importlib
 from typing import Optional
 
@@ -273,6 +274,59 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
             # Set the scaling weight for each adapter for this module
             for adapter_name, weight in zip(adapter_names, weights):
                 module.set_scale(adapter_name, get_module_weight(weight, module_name))
+
+
+def apply_lora_scale(kwargs_name: str = "joint_attention_kwargs"):
+    """
+    Decorator to automatically handle LoRA layer scaling/unscaling in forward methods.
+
+    This decorator extracts the `lora_scale` from the specified kwargs parameter, applies scaling before the forward
+    pass, and ensures unscaling happens after, even if an exception occurs.
+
+    Args:
+        kwargs_name (`str`, defaults to `"joint_attention_kwargs"`):
+            The name of the keyword argument that contains the LoRA scale. Common values include
+            "joint_attention_kwargs", "attention_kwargs", "cross_attention_kwargs", etc.
+    """
+
+    def decorator(forward_fn):
+        @functools.wraps(forward_fn)
+        def wrapper(self, *args, **kwargs):
+            from . import USE_PEFT_BACKEND
+
+            lora_scale = 1.0
+            attention_kwargs = kwargs.get(kwargs_name)
+
+            if attention_kwargs is not None:
+                attention_kwargs = attention_kwargs.copy()
+                kwargs[kwargs_name] = attention_kwargs
+                lora_scale = attention_kwargs.pop("scale", 1.0)
+            else:
+                if (
+                    not USE_PEFT_BACKEND
+                    and attention_kwargs is not None
+                    and attention_kwargs.get("scale", None) is not None
+                ):
+                    logger.warning(
+                        f"Passing `scale` via `{kwargs_name}` when not using the PEFT backend is ineffective."
+                    )
+
+            # Apply LoRA scaling if using PEFT backend
+            if USE_PEFT_BACKEND:
+                scale_lora_layers(self, lora_scale)
+
+            try:
+                # Execute the forward pass
+                result = forward_fn(self, *args, **kwargs)
+                return result
+            finally:
+                # Always unscale, even if forward pass raises an exception
+                if USE_PEFT_BACKEND:
+                    unscale_lora_layers(self, lora_scale)
+
+        return wrapper
+
+    return decorator
 
 
 def check_peft_version(min_version: str) -> None:

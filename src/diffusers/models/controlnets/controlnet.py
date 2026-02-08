@@ -21,7 +21,7 @@ from torch.nn import functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
-from ...utils import BaseOutput, logging
+from ...utils import BaseOutput, apply_lora_scale, logging
 from ..attention import AttentionMixin
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -598,6 +598,7 @@ class ControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginalModel
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
+    @apply_lora_scale("cross_attention_kwargs")
     def forward(
         self,
         sample: torch.Tensor,
