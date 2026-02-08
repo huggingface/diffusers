@@ -76,13 +76,13 @@ mask_image = load_image(mask_url)
 
 prompt = "A deep sea diver floating"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.85).images[0]
-image.save("moduar_inpaint_out.png")
+image.save("modular_inpaint_out.png")
 ```
 
 </hfoption>
 </hfoptions>
 
-This guide will show you how to create a [`ModularPipeline`] and manage the components in it, and run it.
+This guide will show you how to create a [`ModularPipeline`], manage the components in it, and run it.
 
 ## Creating a pipeline
 
@@ -98,6 +98,7 @@ You should also initialize a [`ComponentsManager`] to handle device placement an
 [`~ModularPipelineBlocks.init_pipeline`] converts any [`ModularPipelineBlocks`] into a [`ModularPipeline`].
 
 Let's define a minimal block to see how it works:
+
 ```py
 from transformers import CLIPTextModel
 from diffusers.modular_pipelines import (
@@ -122,19 +123,19 @@ class MyBlock(ModularPipelineBlocks):
 ```
 
 Call [`~ModularPipelineBlocks.init_pipeline`] to convert it into a pipeline. The `blocks` attribute on the pipeline is the blocks it was created from — it determines the expected inputs, outputs, and computation logic.
+
 ```py
 block = MyBlock()
 pipe = block.init_pipeline()
 pipe.blocks
 ```
+
 ```
 MyBlock {
   "_class_name": "MyBlock",
   "_diffusers_version": "0.37.0.dev0"
 }
 ```
-
-Call [`~ModularPipelineBlocks.init_pipeline`] to convert it into a pipeline. The `blocks` attribute on the pipeline is the blocks it was created from — it determines the expected inputs, outputs, and computation logic.
 
 > [!WARNING]
 > Blocks are mutable — you can freely add, remove, or swap blocks before creating a pipeline. However, once a pipeline is created, modifying `pipeline.blocks` won't affect the pipeline because it returns a copy. If you want a different block structure, create a new pipeline after modifying the blocks.
@@ -167,6 +168,7 @@ ModularPipeline {
 If you pass a repository to [`~ModularPipelineBlocks.init_pipeline`], it overrides the loading path by matching your block's components against the pipeline config in that repository (`model_index.json` or `modular_model_index.json`).
 
 In the example below, the `pretrained_model_name_or_path` will be updated to `"stabilityai/stable-diffusion-xl-base-1.0"`.
+
 ```py
 pipe = block.init_pipeline("stabilityai/stable-diffusion-xl-base-1.0")
 pipe
@@ -200,6 +202,7 @@ If a component in your block doesn't exist in the repository, it remains `null` 
 It works with three types of repositories.
 
 **A regular diffusers repository.** Pass any supported model repository and it automatically maps to the default pipeline blocks. Currently supported models include SDXL, Wan, Qwen, Z-Image, Flux, and Flux2.
+
 ```py
 from diffusers import ModularPipeline, ComponentsManager
 
@@ -210,6 +213,7 @@ pipeline = ModularPipeline.from_pretrained(
 ```
 
 **A modular repository.** These repositories contain a `modular_model_index.json` that specifies where to load each component from — the components can come from different repositories and the modular repository itself may not contain any model weights. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads a quantized transformer from one repository and the remaining components from another. See [Modular repository](#modular-repository) for more details on the format.
+
 ```py
 from diffusers import ModularPipeline, ComponentsManager
 
@@ -220,6 +224,7 @@ pipeline = ModularPipeline.from_pretrained(
 ```
 
 **A modular repository with custom code.** Some repositories include custom pipeline blocks alongside the loading configuration. Add `trust_remote_code=True` to load them. See [Custom blocks](./custom_blocks) for how to create your own.
+
 ```py
 from diffusers import ModularPipeline, ComponentsManager
 
@@ -229,12 +234,12 @@ pipeline = ModularPipeline.from_pretrained(
 )
 ```
 
-
 ## Loading components
 
 A [`ModularPipeline`] doesn't automatically instantiate with components. It only loads the configuration and component specifications. You can load components with [`~ModularPipeline.load_components`].
 
 This will load all the components that have a valid loading spec.
+
 ```py
 import torch
 
@@ -242,14 +247,17 @@ pipeline.load_components(torch_dtype=torch.float16)
 ```
 
 You can also load specific components by name. The example below only loads the text_encoder.
+
 ```py
 pipeline.load_components(names=["text_encoder"], torch_dtype=torch.float16)
 ```
 
 After loading, printing the pipeline shows which components are loaded — the first two fields change from `null` to the component's library and class.
+
 ```py
 pipeline
 ```
+
 ```
 # text_encoder is loaded - shows library and class
 "text_encoder": [
@@ -266,8 +274,8 @@ pipeline
 ]
 ```
 
-
 Loading keyword arguments like `torch_dtype`, `variant`, `revision`, and `quantization_config` are passed through to `from_pretrained()` for each component. You can pass a single value to apply to all components, or a dict to set per-component values.
+
 ```py
 # apply bfloat16 to all components
 pipeline.load_components(torch_dtype=torch.bfloat16)
@@ -278,44 +286,14 @@ pipeline.load_components(torch_dtype={"transformer": torch.bfloat16, "default": 
 
 Note that [`~ModularPipeline.load_components`] only loads components that haven't been loaded yet and have a valid loading spec. This means if you've already set a component on the pipeline, calling [`~ModularPipeline.load_components`] again won't reload it.
 
-### Component loading status
-
-The pipeline properties below provide more information about which components are loaded.
-
-Use `component_names` to return all expected components.
-```py
-pipeline.component_names
-['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'guider', 'scheduler', 'unet', 'vae', 'image_processor']
-```
-
-Use `null_component_names` to return components that aren't loaded yet.
-```py
-pipeline.null_component_names
-['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'scheduler']
-```
-
-Use `pretrained_component_names` to return components that will be loaded from pretrained models.
-```py
-pipeline.pretrained_component_names
-['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'scheduler', 'unet', 'vae']
-```
-
-Use `config_component_names` to return components that are created with the default config (not loaded from a modular repository). Components from a config aren't included because they are already initialized during pipeline creation. This is why they aren't listed in `null_component_names`.
-
-```py
-pipeline.config_component_names
-['guider', 'image_processor']
-```
-
 ## Updating components
 
-[`~ModularPipeline.update_components`] replaces a component on the pipeline with a new one. When a component is updated, the loading specifications are also updated in the pipeline config and [`~ModularPipeline.load_components`] will skip it unless it was expliclty listed in the `names` argument.
-
-There are several ways to load a component to update.
+[`~ModularPipeline.update_components`] replaces a component on the pipeline with a new one. When a component is updated, the loading specifications are also updated in the pipeline config and [`~ModularPipeline.load_components`] will skip it on subsequent calls.
 
 ### From AutoModel
 
 You can pass a model object loaded with `AutoModel.from_pretrained()`. Models loaded this way are automatically tagged with their loading information.
+
 ```py
 from diffusers import AutoModel
 
@@ -328,6 +306,7 @@ pipeline.update_components(unet=unet)
 ### From ComponentSpec
 
 Use [`~ModularPipeline.get_component_spec`] to get a copy of the current component specification, modify it, and load a new component.
+
 ```py
 unet_spec = pipeline.get_component_spec("unet")
 
@@ -341,8 +320,8 @@ pipeline.update_components(unet=unet)
 
 You can also create a [`ComponentSpec`] from scratch.
 
-
 Not all components are loaded from pretrained weights — some are created from a config (listed under `pipeline.config_component_names`). For these, use [`~ComponentSpec.create`] instead of [`~ComponentSpec.load`].
+
 ```py
 guider_spec = pipeline.get_component_spec("guider")
 guider_spec.config = {"guidance_scale": 5.0}
@@ -351,6 +330,7 @@ pipeline.update_components(guider=guider)
 ```
 
 Or simply pass the object directly.
+
 ```py
 from diffusers.guiders import ClassifierFreeGuidance
 
@@ -371,7 +351,7 @@ A repository is required if the pipeline blocks use *pretrained components*. The
 
 The key advantage of a modular repository is that components can be loaded from different repositories. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads a quantized transformer from `diffusers/FLUX.2-dev-bnb-4bit` while loading the remaining components from `black-forest-labs/FLUX.2-dev`.
 
-To convert a regular diffusers repository into a modular one, create the pipeline using the regular repository, and then save it using `save_pretrained()`. The saved repository will contain a `modular_model_index.json` with all the loading specifications. Optionnally, you can pass a repo_id and push_to_hub=True to publich the modular repo on Huggingface Hub. 
+To convert a regular diffusers repository into a modular one, create the pipeline using the regular repository, and then save it using `save_pretrained()`. The saved repository will contain a `modular_model_index.json` with all the loading specifications. Optionnally, you can pass a `repo_id` and `push_to_hub=True` to publish it on Huggingface Hub.
 
 ```py
 from diffusers import ModularPipeline
@@ -380,10 +360,11 @@ from diffusers import ModularPipeline
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
 
 # push as a modular repository
-pipeline.save_pretrained("local/path", repo_id = ..., push_to_hub=True)
+pipeline.save_pretrained("local/path", repo_id="my-username/sdxl-modular", push_to_hub=True)
 ```
 
 A modular repository can also include custom pipeline blocks as Python code. This allows you to share specialized blocks that aren't native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
+
 ```
 Florence2-image-Annotator/
 ├── block.py                    # Custom pipeline blocks implementation
@@ -393,6 +374,7 @@ Florence2-image-Annotator/
 ```
 
 The `config.json` file contains an `auto_map` key that tells [`ModularPipeline`] where to find the custom blocks:
+
 ```json
 {
   "_class_name": "Florence2AnnotatorBlocks",
