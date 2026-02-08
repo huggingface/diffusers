@@ -280,7 +280,7 @@ class WanAdditionalInputsStep(ModularPipelineBlocks):
 
     def __init__(
         self,
-        image_latent_inputs: List[str] = ["first_frame_latents"],
+        image_latent_inputs: List[str] = ["image_condition_latents"],
         additional_batch_inputs: List[str] = [],
     ):
         """Initialize a configurable step that standardizes the inputs for the denoising step. It:\n"
@@ -294,20 +294,16 @@ class WanAdditionalInputsStep(ModularPipelineBlocks):
         Args:
             image_latent_inputs (List[str], optional): Names of image latent tensors to process.
                 In additional to adjust batch size of these inputs, they will be used to determine height/width. Can be
-                a single string or list of strings. Defaults to ["first_frame_latents"].
+                a single string or list of strings. Defaults to ["image_condition_latents"].
             additional_batch_inputs (List[str], optional):
                 Names of additional conditional input tensors to expand batch size. These tensors will only have their
                 batch dimensions adjusted to match the final batch size. Can be a single string or list of strings.
                 Defaults to [].
 
         Examples:
-            # Configure to process first_frame_latents (default behavior) WanAdditionalInputsStep()
-
-            # Configure to process multiple image latent inputs
-            WanAdditionalInputsStep(image_latent_inputs=["first_frame_latents", "last_frame_latents"])
-
-            # Configure to process image latents and additional batch inputs WanAdditionalInputsStep(
-                image_latent_inputs=["first_frame_latents"], additional_batch_inputs=["image_embeds"]
+            # Configure to process image_condition_latents (default behavior) WanAdditionalInputsStep() # Configure to
+            process image latents and additional batch inputs WanAdditionalInputsStep(
+                image_latent_inputs=["image_condition_latents"], additional_batch_inputs=["image_embeds"]
             )
         """
         if not isinstance(image_latent_inputs, list):
@@ -556,82 +552,4 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
 
-        return components, state
-
-
-class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
-    model_name = "wan"
-
-    @property
-    def description(self) -> str:
-        return "step that prepares the masked first frame latents and add it to the latent condition"
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam("first_frame_latents", type_hint=Optional[torch.Tensor]),
-            InputParam("num_frames", type_hint=int),
-        ]
-
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-
-        batch_size, _, _, latent_height, latent_width = block_state.first_frame_latents.shape
-
-        mask_lat_size = torch.ones(batch_size, 1, block_state.num_frames, latent_height, latent_width)
-        mask_lat_size[:, :, list(range(1, block_state.num_frames))] = 0
-
-        first_frame_mask = mask_lat_size[:, :, 0:1]
-        first_frame_mask = torch.repeat_interleave(
-            first_frame_mask, dim=2, repeats=components.vae_scale_factor_temporal
-        )
-        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
-        mask_lat_size = mask_lat_size.view(
-            batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width
-        )
-        mask_lat_size = mask_lat_size.transpose(1, 2)
-        mask_lat_size = mask_lat_size.to(block_state.first_frame_latents.device)
-        block_state.first_frame_latents = torch.concat([mask_lat_size, block_state.first_frame_latents], dim=1)
-
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class WanPrepareFirstLastFrameLatentsStep(ModularPipelineBlocks):
-    model_name = "wan"
-
-    @property
-    def description(self) -> str:
-        return "step that prepares the masked latents with first and last frames and add it to the latent condition"
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam("first_last_frame_latents", type_hint=Optional[torch.Tensor]),
-            InputParam("num_frames", type_hint=int),
-        ]
-
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-
-        batch_size, _, _, latent_height, latent_width = block_state.first_last_frame_latents.shape
-
-        mask_lat_size = torch.ones(batch_size, 1, block_state.num_frames, latent_height, latent_width)
-        mask_lat_size[:, :, list(range(1, block_state.num_frames - 1))] = 0
-
-        first_frame_mask = mask_lat_size[:, :, 0:1]
-        first_frame_mask = torch.repeat_interleave(
-            first_frame_mask, dim=2, repeats=components.vae_scale_factor_temporal
-        )
-        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
-        mask_lat_size = mask_lat_size.view(
-            batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width
-        )
-        mask_lat_size = mask_lat_size.transpose(1, 2)
-        mask_lat_size = mask_lat_size.to(block_state.first_last_frame_latents.device)
-        block_state.first_last_frame_latents = torch.concat(
-            [mask_lat_size, block_state.first_last_frame_latents], dim=1
-        )
-
-        self.set_block_state(state, block_state)
         return components, state
