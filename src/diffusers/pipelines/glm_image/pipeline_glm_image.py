@@ -658,12 +658,7 @@ class GlmImagePipeline(DiffusionPipeline):
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        if prompt is not None and prior_token_ids is not None:
-            raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prior_token_ids`: {prior_token_ids}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prior_token_ids is None:
+        if prompt is None and prior_token_ids is None:
             raise ValueError(
                 "Provide either `prompt` or `prior_token_ids`. Cannot leave both `prompt` and `prior_token_ids` undefined."
             )
@@ -694,8 +689,8 @@ class GlmImagePipeline(DiffusionPipeline):
                 "for i2i mode, as the images are needed for VAE encoding to build the KV cache."
             )
 
-        if prior_token_ids is not None and prompt_embeds is None:
-            raise ValueError("`prompt_embeds` must also be provided with `prior_token_ids`.")
+        if prior_token_ids is not None and prompt_embeds is None and prompt is None:
+            raise ValueError("`prompt_embeds` or `prompt` must also be provided with `prior_token_ids`.")
 
     @property
     def guidance_scale(self):
