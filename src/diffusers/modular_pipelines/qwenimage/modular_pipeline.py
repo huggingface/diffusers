@@ -216,12 +216,15 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
 
     @property
     def requires_unconditional_embeds(self):
-        requires_unconditional_embeds = False
+        guider = getattr(self, "guider", None)
+        if guider is None or not guider._enabled:
+            return False
 
-        if hasattr(self, "guider") and self.guider is not None:
-            requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
+        requires_unconditional_embeds = getattr(guider, "requires_unconditional_embeds", None)
+        if requires_unconditional_embeds is None:
+            requires_unconditional_embeds = guider.num_conditions > 1
 
-        return requires_unconditional_embeds
+        return bool(requires_unconditional_embeds)
 
 
 class QwenImageEditModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
@@ -269,12 +272,15 @@ class QwenImageEditModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
 
     @property
     def requires_unconditional_embeds(self):
-        requires_unconditional_embeds = False
+        guider = getattr(self, "guider", None)
+        if guider is None or not guider._enabled:
+            return False
 
-        if hasattr(self, "guider") and self.guider is not None:
-            requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
+        requires_unconditional_embeds = getattr(guider, "requires_unconditional_embeds", None)
+        if requires_unconditional_embeds is None:
+            requires_unconditional_embeds = guider.num_conditions > 1
 
-        return requires_unconditional_embeds
+        return bool(requires_unconditional_embeds)
 
 
 class QwenImageEditPlusModularPipeline(QwenImageEditModularPipeline):
