@@ -15,22 +15,20 @@
 
 import pytest
 
-from diffusers.modular_pipelines import WanAutoBlocks, WanModularPipeline
+from diffusers.modular_pipelines import WanBlocks, WanModularPipeline
 
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
 class TestWanModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = WanModularPipeline
-    pipeline_blocks_class = WanAutoBlocks
+    pipeline_blocks_class = WanBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-modular-pipe"
 
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
     output_name = "videos"
-    # WAN decoder hardcodes output_type="np" and doesn't support output_type parameter
-    requires_output_conversion = True
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
@@ -42,6 +40,7 @@ class TestWanModularPipelineFast(ModularPipelineTesterMixin):
             "width": 16,
             "num_frames": 9,
             "max_sequence_length": 16,
+            "output_type": "pt",
         }
         return inputs
 

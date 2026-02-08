@@ -41,9 +41,6 @@ class ModularPipelineTesterMixin:
     # Output type for the pipeline (e.g., "images" for image pipelines, "videos" for video pipelines)
     # Subclasses can override this to change the expected output type
     output_name = "images"
-    # Whether the pipeline returns tensors directly with output_type="pt" or needs conversion
-    # Set to True for pipelines that don't support output_type parameter (e.g., WAN)
-    requires_output_conversion = False
 
     def get_generator(self, seed=0):
         generator = torch.Generator("cpu").manual_seed(seed)
@@ -233,11 +230,6 @@ class ModularPipelineTesterMixin:
 
         assert self._get_batch_size_from_output(output_batch) == batch_size
 
-        # Convert to tensors if needed
-        if self.requires_output_conversion:
-            output = self._convert_output_to_tensor(output)
-            output_batch = self._convert_output_to_tensor(output_batch)
-
         # For batch comparison, we only need to compare the first item
         if output_batch.shape[0] == batch_size and output.shape[0] == 1:
             output_batch = output_batch[0:1]
@@ -267,13 +259,8 @@ class ModularPipelineTesterMixin:
 
         output_fp16 = pipe_fp16(**fp16_inputs, output=self.output_name)
 
-        # Convert to tensors if needed, then convert to float32 for comparison
-        if self.requires_output_conversion:
-            output_tensor = self._convert_output_to_tensor(output).float().cpu()
-            output_fp16_tensor = self._convert_output_to_tensor(output_fp16).float().cpu()
-        else:
-            output_tensor = output.float().cpu()
-            output_fp16_tensor = output_fp16.float().cpu()
+        output_tensor = output.float().cpu()
+        output_fp16_tensor = output_fp16.float().cpu()
 
         # Check for NaNs in outputs (can happen with tiny models in FP16)
         if torch.isnan(output_tensor).any() or torch.isnan(output_fp16_tensor).any():
@@ -311,8 +298,6 @@ class ModularPipelineTesterMixin:
 
         inputs = self.get_dummy_inputs()
         output = pipe(**inputs, output=self.output_name)
-        if self.requires_output_conversion:
-            output = self._convert_output_to_tensor(output)
         assert torch.isnan(output).sum() == 0, "CPU Inference returns NaN"
 
     @require_accelerator
@@ -321,8 +306,6 @@ class ModularPipelineTesterMixin:
 
         inputs = self.get_dummy_inputs()
         output = pipe(**inputs, output=self.output_name)
-        if self.requires_output_conversion:
-            output = self._convert_output_to_tensor(output)
         assert torch.isnan(output).sum() == 0, "Accelerator Inference returns NaN"
 
     def test_num_images_per_prompt(self):
@@ -358,8 +341,6 @@ class ModularPipelineTesterMixin:
         for pipe in [base_pipe, offload_pipe]:
             inputs = self.get_dummy_inputs()
             image = pipe(**inputs, output=self.output_name)
-            if self.requires_output_conversion:
-                image = self._convert_output_to_tensor(image)
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
@@ -381,8 +362,6 @@ class ModularPipelineTesterMixin:
         for pipe in pipes:
             inputs = self.get_dummy_inputs()
             image = pipe(**inputs, output=self.output_name)
-            if self.requires_output_conversion:
-                image = self._convert_output_to_tensor(image)
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
