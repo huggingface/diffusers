@@ -89,52 +89,10 @@ class WanImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
             InputParam(
-                "first_frame_latents",
+                "image_condition_latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The first frame latents to use for the denoising process. Can be generated in prepare_first_frame_latents step.",
-            ),
-            InputParam(
-                "dtype",
-                required=True,
-                type_hint=torch.dtype,
-                description="The dtype of the model inputs. Can be generated in input step.",
-            ),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.latent_model_input = torch.cat([block_state.latents, block_state.first_frame_latents], dim=1).to(
-            block_state.dtype
-        )
-        return components, block_state
-
-
-class WanFLF2VLoopBeforeDenoiser(ModularPipelineBlocks):
-    model_name = "wan"
-
-    @property
-    def description(self) -> str:
-        return (
-            "step within the denoising loop that prepares the latent input for the denoiser. "
-            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
-            "object (e.g. `WanDenoiseLoopWrapper`)"
-        )
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam(
-                "latents",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
-            ),
-            InputParam(
-                "first_last_frame_latents",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The first and last frame latents to use for the denoising process. Can be generated in prepare_first_last_frame_latents step.",
+                description="The image condition latents to use for the denoising process. Can be generated in prepare_first_frame_latents/prepare_first_last_frame_latents step.",
             ),
             InputParam(
                 "dtype",
@@ -147,7 +105,7 @@ class WanFLF2VLoopBeforeDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
         block_state.latent_model_input = torch.cat(
-            [block_state.latents, block_state.first_last_frame_latents], dim=1
+            [block_state.latents, block_state.image_condition_latents], dim=1
         ).to(block_state.dtype)
         return components, block_state
 
@@ -583,30 +541,4 @@ class Wan22Image2VideoDenoiseStep(WanDenoiseLoopWrapper):
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
             "This block supports image-to-video tasks for Wan2.2."
-        )
-
-
-class WanFLF2VDenoiseStep(WanDenoiseLoopWrapper):
-    block_classes = [
-        WanFLF2VLoopBeforeDenoiser,
-        WanLoopDenoiser(
-            guider_input_fields={
-                "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
-                "encoder_hidden_states_image": "image_embeds",
-            }
-        ),
-        WanLoopAfterDenoiser,
-    ]
-    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
-
-    @property
-    def description(self) -> str:
-        return (
-            "Denoise step that iteratively denoise the latents. \n"
-            "Its loop logic is defined in `WanDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
-            " - `WanFLF2VLoopBeforeDenoiser`\n"
-            " - `WanLoopDenoiser`\n"
-            " - `WanLoopAfterDenoiser`\n"
-            "This block supports FLF2V tasks for wan2.1."
         )
