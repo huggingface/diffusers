@@ -2,7 +2,6 @@ import gc
 import tempfile
 from typing import Callable, Union
 
-import numpy as np
 import pytest
 import torch
 
@@ -121,16 +120,6 @@ class ModularPipelineTesterMixin:
         pipeline.set_progress_bar_config(disable=None)
         return pipeline
 
-    def _get_batch_size_from_output(self, output):
-        if isinstance(output, torch.Tensor):
-            return output.shape[0]
-        elif isinstance(output, list):
-            return len(output)
-        elif isinstance(output, np.ndarray):
-            return output.shape[0]
-        else:
-            raise TypeError(f"Unsupported output type: {type(output)}")
-
     def test_pipeline_call_signature(self):
         pipe = self.get_pipeline()
         input_parameters = pipe.blocks.input_names
@@ -214,7 +203,7 @@ class ModularPipelineTesterMixin:
         output = pipe(**inputs, output=self.output_name)
         output_batch = pipe(**batched_inputs, output=self.output_name)
 
-        assert self._get_batch_size_from_output(output_batch) == batch_size
+        assert output_batch.shape[0] == batch_size
 
         # For batch comparison, we only need to compare the first item
         if output_batch.shape[0] == batch_size and output.shape[0] == 1:
@@ -313,7 +302,7 @@ class ModularPipelineTesterMixin:
 
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt, output=self.output_name)
 
-                assert self._get_batch_size_from_output(images) == batch_size * num_images_per_prompt
+                assert images.shape[0] == batch_size * num_images_per_prompt
 
     @require_accelerator
     def test_components_auto_cpu_offload_inference_consistent(self):
