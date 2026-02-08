@@ -232,183 +232,174 @@ pipeline = ModularPipeline.from_pretrained(
 
 ## Loading components
 
-A [`ModularPipeline`] doesn't automatically instantiate with components. It only loads the configuration and component specifications. You can load all components with [`~ModularPipeline.load_components`] or only load specific components with [`~ModularPipeline.load_components`].
+A [`ModularPipeline`] doesn't automatically instantiate with components. It only loads the configuration and component specifications. You can load components with [`~ModularPipeline.load_components`].
 
-<hfoptions id="load">
-<hfoption id="load_components">
-
+This will load all the components that have a valid loading spec.
 ```py
 import torch
 
 pipeline.load_components(torch_dtype=torch.float16)
-t2i_pipeline.to("cuda")
 ```
 
-</hfoption>
-<hfoption id="load_components">
-
-The example below only loads the UNet and VAE.
-
+You can also load specific components by name. The example below only loads the text_encoder.
 ```py
-import torch
-
-pipeline.load_components(names=["unet", "vae"], torch_dtype=torch.float16)
+pipeline.load_components(names=["text_encoder"], torch_dtype=torch.float16)
 ```
 
-</hfoption>
-</hfoptions>
-
-Print the pipeline to inspect the loaded pretrained components.
-
+After loading, printing the pipeline shows which components are loaded — the first two fields change from `null` to the component's library and class.
 ```py
-t2i_pipeline
+pipeline
 ```
-
-This should match the `modular_model_index.json` file from the modular repository a pipeline is initialized from. If a pipeline doesn't need a component, it won't be included even if it exists in the modular repository.
-
-To modify where components are loaded from, edit the `modular_model_index.json` file in the repository and change it to your desired loading path. The example below loads a UNet from a different repository.
-
-```json
-# original
-"unet": [
-  null, null,
-  {
-    "repo": "stabilityai/stable-diffusion-xl-base-1.0",
-    "subfolder": "unet",
-    "variant": "fp16"
-  }
+```
+# text_encoder is loaded - shows library and class
+"text_encoder": [
+  "transformers",
+  "CLIPTextModel",
+  { ... }
 ]
 
-# modified
+# unet is not loaded yet - still null
 "unet": [
-  null, null,
-  {
-    "repo": "RunDiffusion/Juggernaut-XL-v9",
-    "subfolder": "unet",
-    "variant": "fp16"
-  }
+  null,
+  null,
+  { ... }
 ]
 ```
+
+
+Loading keyword arguments like `torch_dtype`, `variant`, `revision`, and `quantization_config` are passed through to `from_pretrained()` for each component. You can pass a single value to apply to all components, or a dict to set per-component values.
+```py
+# apply bfloat16 to all components
+pipeline.load_components(torch_dtype=torch.bfloat16)
+
+# different dtypes per component
+pipeline.load_components(torch_dtype={"transformer": torch.bfloat16, "default": torch.float32})
+```
+
+Note that [`~ModularPipeline.load_components`] only loads components that haven't been loaded yet and have a valid loading spec. This means if you've already set a component on the pipeline, calling [`~ModularPipeline.load_components`] again won't reload it.
 
 ### Component loading status
 
 The pipeline properties below provide more information about which components are loaded.
 
 Use `component_names` to return all expected components.
-
 ```py
-t2i_pipeline.component_names
+pipeline.component_names
 ['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'guider', 'scheduler', 'unet', 'vae', 'image_processor']
 ```
 
-Use `null_component_names` to return components that aren't loaded yet. Load these components with [`~ModularPipeline.from_pretrained`].
-
+Use `null_component_names` to return components that aren't loaded yet.
 ```py
-t2i_pipeline.null_component_names
+pipeline.null_component_names
 ['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'scheduler']
 ```
 
 Use `pretrained_component_names` to return components that will be loaded from pretrained models.
-
 ```py
-t2i_pipeline.pretrained_component_names
+pipeline.pretrained_component_names
 ['text_encoder', 'text_encoder_2', 'tokenizer', 'tokenizer_2', 'scheduler', 'unet', 'vae']
 ```
 
 Use `config_component_names` to return components that are created with the default config (not loaded from a modular repository). Components from a config aren't included because they are already initialized during pipeline creation. This is why they aren't listed in `null_component_names`.
 
 ```py
-t2i_pipeline.config_component_names
+pipeline.config_component_names
 ['guider', 'image_processor']
 ```
 
 ## Updating components
 
-Components may be updated depending on whether it is a *pretrained component* or a *config component*.
+[`~ModularPipeline.update_components`] replaces a component on the pipeline with a new one. When a component is updated, the loading specifications are also updated in the pipeline config and [`~ModularPipeline.load_components`] will skip it unless it was expliclty listed in the `names` argument.
 
-> [!WARNING]
-> A component may change from pretrained to config when updating a component. The component type is initially defined in a block's `expected_components` field.
+There are several ways to load a component to update.
 
-A pretrained component is updated with [`ComponentSpec`] whereas a config component is updated by eihter passing the object directly or with [`ComponentSpec`].
+### From AutoModel
 
-The [`ComponentSpec`] shows `default_creation_method="from_pretrained"` for a pretrained component shows `default_creation_method="from_config` for a config component.
-
-To update a pretrained component, create a [`ComponentSpec`] with the name of the component and where to load it from. Use the [`~ComponentSpec.load`] method to load the component.
-
+You can pass a model object loaded with `AutoModel.from_pretrained()`. Models loaded this way are automatically tagged with their loading information.
 ```py
-from diffusers import ComponentSpec, UNet2DConditionModel
+from diffusers import AutoModel
 
-unet_spec = ComponentSpec(name="unet",type_hint=UNet2DConditionModel, repo="stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", variant="fp16")
-unet = unet_spec.load(torch_dtype=torch.float16)
-```
-
-The [`~ModularPipeline.update_components`] method replaces the component with a new one.
-
-```py
-t2i_pipeline.update_components(unet=unet2)
-```
-
-When a component is updated, the loading specifications are also updated in the pipeline config.
-
-### Component extraction and modification
-
-When you use [`~ComponentSpec.load`], the new component maintains its loading specifications. This makes it possible to extract the specification and recreate the component.
-
-```py
-spec = ComponentSpec.from_component("unet", unet2)
-spec
-ComponentSpec(name='unet', type_hint=<class 'diffusers.models.unets.unet_2d_condition.UNet2DConditionModel'>, description=None, config=None, repo='stabilityai/stable-diffusion-xl-base-1.0', subfolder='unet', variant='fp16', revision=None, default_creation_method='from_pretrained')
-unet2_recreated = spec.load(torch_dtype=torch.float16)
-```
-
-The [`~ModularPipeline.get_component_spec`] method gets a copy of the current component specification to modify or update.
-
-```py
-unet_spec = t2i_pipeline.get_component_spec("unet")
-unet_spec
-ComponentSpec(
-    name='unet',
-    type_hint=<class 'diffusers.models.unets.unet_2d_condition.UNet2DConditionModel'>,
-    pretrained_model_name_or_path='RunDiffusion/Juggernaut-XL-v9',
-    subfolder='unet',
-    variant='fp16',
-    default_creation_method='from_pretrained'
+unet = AutoModel.from_pretrained(
+    "RunDiffusion/Juggernaut-XL-v9", subfolder="unet", variant="fp16", torch_dtype=torch.float16
 )
+pipeline.update_components(unet=unet)
+```
+
+### From ComponentSpec
+
+Use [`~ModularPipeline.get_component_spec`] to get a copy of the current component specification, modify it, and load a new component.
+```py
+unet_spec = pipeline.get_component_spec("unet")
 
 # modify to load from a different repository
-unet_spec.pretrained_model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
+unet_spec.pretrained_model_name_or_path = "RunDiffusion/Juggernaut-XL-v9"
 
-# load component with modified spec
+# load and update
 unet = unet_spec.load(torch_dtype=torch.float16)
+pipeline.update_components(unet=unet)
 ```
+
+You can also create a [`ComponentSpec`] from scratch.
+
+
+Not all components are loaded from pretrained weights — some are created from a config (listed under `pipeline.config_component_names`). For these, use [`~ComponentSpec.create`] instead of [`~ComponentSpec.load`].
+```py
+guider_spec = pipeline.get_component_spec("guider")
+guider_spec.config = {"guidance_scale": 5.0}
+guider = guider_spec.create()
+pipeline.update_components(guider=guider)
+```
+
+Or simply pass the object directly.
+```py
+from diffusers.guiders import ClassifierFreeGuidance
+
+guider = ClassifierFreeGuidance(guidance_scale=5.0)
+pipeline.update_components(guider=guider)
+```
+
+See the [Guiders](./guiders) guide for more details on available guiders and how to configure them.
 
 ## Modular repository
 
 A repository is required if the pipeline blocks use *pretrained components*. The repository supplies loading specifications and metadata.
 
-[`ModularPipeline`] specifically requires *modular repositories* (see [example repository](https://huggingface.co/YiYiXu/modular-diffdiff)) which are more flexible than a typical repository. It contains a `modular_model_index.json` file containing the following 3 elements.
+[`ModularPipeline`] works with regular diffusers repositories out of the box. However, you can also create a *modular repository* for more flexibility. A modular repository contains a `modular_model_index.json` file containing the following 3 elements.
 
-- `library` and `class` shows which library the component was loaded from and it's class. If `null`, the component hasn't been loaded yet.
+- `library` and `class` shows which library the component was loaded from and its class. If `null`, the component hasn't been loaded yet.
 - `loading_specs_dict` contains the information required to load the component such as the repository and subfolder it is loaded from.
 
-Unlike standard repositories, a modular repository can fetch components from different repositories based on the `loading_specs_dict`. Components don't need to exist in the same repository.
+The key advantage of a modular repository is that components can be loaded from different repositories. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads a quantized transformer from `diffusers/FLUX.2-dev-bnb-4bit` while loading the remaining components from `black-forest-labs/FLUX.2-dev`.
 
-A modular repository may contain custom code for loading a [`ModularPipeline`]. This allows you to use specialized blocks that aren't native to Diffusers.
+To convert a regular diffusers repository into a modular one, create the pipeline using the regular repository, and then save it using `save_pretrained()`. The saved repository will contain a `modular_model_index.json` with all the loading specifications. Optionnally, you can pass a repo_id and push_to_hub=True to publich the modular repo on Huggingface Hub. 
 
+```py
+from diffusers import ModularPipeline
+
+# load from a regular repo
+pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+
+# push as a modular repository
+pipeline.save_pretrained("local/path", repo_id = ..., push_to_hub=True)
 ```
-modular-diffdiff-0704/
+
+A modular repository can also include custom pipeline blocks as Python code. This allows you to share specialized blocks that aren't native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
+```
+Florence2-image-Annotator/
 ├── block.py                    # Custom pipeline blocks implementation
 ├── config.json                 # Pipeline configuration and auto_map
+├── mellon_config.json          # UI configuration for Mellon
 └── modular_model_index.json    # Component loading specifications
 ```
 
-The [config.json](https://huggingface.co/YiYiXu/modular-diffdiff-0704/blob/main/config.json) file contains an `auto_map` key that points to where a custom block is defined in `block.py`.
-
+The `config.json` file contains an `auto_map` key that tells [`ModularPipeline`] where to find the custom blocks:
 ```json
 {
-  "_class_name": "DiffDiffBlocks",
+  "_class_name": "Florence2AnnotatorBlocks",
   "auto_map": {
-    "ModularPipelineBlocks": "block.DiffDiffBlocks"
+    "ModularPipelineBlocks": "block.Florence2AnnotatorBlocks"
   }
 }
 ```
+
+Load custom code repositories with `trust_remote_code=True` as shown in [from_pretrained](#from_pretrained). See [Custom blocks](./custom_blocks) for how to create and share your own.
