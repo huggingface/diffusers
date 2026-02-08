@@ -41,7 +41,7 @@ class GGUFQuantizer(DiffusersQuantizer):
 
         self.compute_dtype = quantization_config.compute_dtype
         self.pre_quantized = quantization_config.pre_quantized
-        self.modules_to_not_convert = quantization_config.modules_to_not_convert
+        self.modules_to_not_convert = quantization_config.modules_to_not_convert or []
 
         if not isinstance(self.modules_to_not_convert, list):
             self.modules_to_not_convert = [self.modules_to_not_convert]
