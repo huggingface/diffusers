@@ -286,6 +286,12 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         transformer: LTXVideoTransformer3DModel,
     ):
         super().__init__()
+        self._guidance_scale = 3
+        self._guidance_rescale = 0.0
+        self._num_timesteps = 0
+        self._current_timestep = None
+        self._attention_kwargs = None
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,
@@ -1007,8 +1013,6 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
         self._guidance_scale = guidance_scale
         self._guidance_rescale = guidance_rescale
         self._attention_kwargs = attention_kwargs
-        self._interrupt = False
-        self._current_timestep = None
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

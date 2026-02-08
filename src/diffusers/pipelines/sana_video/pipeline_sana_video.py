@@ -219,6 +219,10 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     ):
         super().__init__()
 
+        self._guidance_scale = 6.0
+        self._attention_kwargs = None
+        self._interrupt = False
+        self._num_timesteps = 0
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
