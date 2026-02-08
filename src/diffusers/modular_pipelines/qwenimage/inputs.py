@@ -78,6 +78,37 @@ def repeat_tensor_to_batch_size(
     return input_tensor
 
 
+def repeat_area_prompt_tensor_to_batch_size(
+    input_name: str,
+    input_tensor: torch.Tensor,
+    batch_size: int,
+    num_images_per_prompt: int = 1,
+) -> torch.Tensor:
+    """Repeat regional prompt tensor along its batch axis (dim=1).
+
+    Regional prompt tensors are expected to have shape `[num_areas, batch, ...]`.
+    """
+
+    if not isinstance(input_tensor, torch.Tensor):
+        raise ValueError(f"`{input_name}` must be a tensor")
+
+    if input_tensor.ndim < 3:
+        raise ValueError(f"`{input_name}` must have at least 3 dimensions, but got {input_tensor.ndim}")
+
+    if input_tensor.shape[1] == 1:
+        repeat_by = batch_size * num_images_per_prompt
+    elif input_tensor.shape[1] == batch_size:
+        repeat_by = num_images_per_prompt
+    else:
+        raise ValueError(
+            f"`{input_name}` must have batch size (dim=1) 1 or {batch_size}, but got {input_tensor.shape[1]}"
+        )
+
+    input_tensor = input_tensor.repeat_interleave(repeat_by, dim=1)
+
+    return input_tensor
+
+
 def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: int) -> Tuple[int, int]:
     """Calculate image dimensions from latent tensor dimensions.
 
@@ -171,6 +202,26 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
             InputParam.template("prompt_embeds_mask"),
             InputParam.template("negative_prompt_embeds"),
             InputParam.template("negative_prompt_embeds_mask"),
+            InputParam(
+                name="area_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Regional prompt embeddings generated from `area_composition`.",
+            ),
+            InputParam(
+                name="area_prompt_embeds_mask",
+                type_hint=torch.Tensor,
+                description="Regional prompt attention masks generated from `area_composition`.",
+            ),
+            InputParam(
+                name="area_negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Regional negative prompt embeddings generated from `area_composition`.",
+            ),
+            InputParam(
+                name="area_negative_prompt_embeds_mask",
+                type_hint=torch.Tensor,
+                description="Regional negative prompt attention masks generated from `area_composition`.",
+            ),
         ]
 
     @property
@@ -182,6 +233,26 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
             OutputParam.template("prompt_embeds_mask", note="batch-expanded"),
             OutputParam.template("negative_prompt_embeds", note="batch-expanded"),
             OutputParam.template("negative_prompt_embeds_mask", note="batch-expanded"),
+            OutputParam(
+                name="area_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Regional prompt embeddings. (batch-expanded on dim=1)",
+            ),
+            OutputParam(
+                name="area_prompt_embeds_mask",
+                type_hint=torch.Tensor,
+                description="Regional prompt attention masks. (batch-expanded on dim=1)",
+            ),
+            OutputParam(
+                name="area_negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Regional negative prompt embeddings. (batch-expanded on dim=1)",
+            ),
+            OutputParam(
+                name="area_negative_prompt_embeds_mask",
+                type_hint=torch.Tensor,
+                description="Regional negative prompt attention masks. (batch-expanded on dim=1)",
+            ),
         ]
 
     @staticmethod
@@ -190,6 +261,10 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         prompt_embeds_mask,
         negative_prompt_embeds,
         negative_prompt_embeds_mask,
+        area_prompt_embeds,
+        area_prompt_embeds_mask,
+        area_negative_prompt_embeds,
+        area_negative_prompt_embeds_mask,
     ):
         if negative_prompt_embeds is not None and negative_prompt_embeds_mask is None:
             raise ValueError("`negative_prompt_embeds_mask` is required when `negative_prompt_embeds` is not None")
@@ -208,6 +283,22 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         ):
             raise ValueError("`negative_prompt_embeds_mask` must have the same batch size as `prompt_embeds`")
 
+        if area_prompt_embeds is not None and area_prompt_embeds_mask is None:
+            raise ValueError("`area_prompt_embeds_mask` is required when `area_prompt_embeds` is not None")
+
+        if area_prompt_embeds is None and area_prompt_embeds_mask is not None:
+            raise ValueError("cannot pass `area_prompt_embeds_mask` without `area_prompt_embeds`")
+
+        if area_negative_prompt_embeds is not None and area_negative_prompt_embeds_mask is None:
+            raise ValueError(
+                "`area_negative_prompt_embeds_mask` is required when `area_negative_prompt_embeds` is not None"
+            )
+
+        if area_negative_prompt_embeds is None and area_negative_prompt_embeds_mask is not None:
+            raise ValueError(
+                "cannot pass `area_negative_prompt_embeds_mask` without `area_negative_prompt_embeds`"
+            )
+
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
@@ -216,6 +307,10 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
             prompt_embeds_mask=block_state.prompt_embeds_mask,
             negative_prompt_embeds=block_state.negative_prompt_embeds,
             negative_prompt_embeds_mask=block_state.negative_prompt_embeds_mask,
+            area_prompt_embeds=block_state.area_prompt_embeds,
+            area_prompt_embeds_mask=block_state.area_prompt_embeds_mask,
+            area_negative_prompt_embeds=block_state.area_negative_prompt_embeds,
+            area_negative_prompt_embeds_mask=block_state.area_negative_prompt_embeds_mask,
         )
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -247,6 +342,34 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
             )
             block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask.view(
                 block_state.batch_size * block_state.num_images_per_prompt, seq_len
+            )
+
+        if block_state.area_prompt_embeds is not None:
+            block_state.area_prompt_embeds = repeat_area_prompt_tensor_to_batch_size(
+                input_name="area_prompt_embeds",
+                input_tensor=block_state.area_prompt_embeds,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
+            )
+            block_state.area_prompt_embeds_mask = repeat_area_prompt_tensor_to_batch_size(
+                input_name="area_prompt_embeds_mask",
+                input_tensor=block_state.area_prompt_embeds_mask,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
+            )
+
+        if block_state.area_negative_prompt_embeds is not None:
+            block_state.area_negative_prompt_embeds = repeat_area_prompt_tensor_to_batch_size(
+                input_name="area_negative_prompt_embeds",
+                input_tensor=block_state.area_negative_prompt_embeds,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
+            )
+            block_state.area_negative_prompt_embeds_mask = repeat_area_prompt_tensor_to_batch_size(
+                input_name="area_negative_prompt_embeds_mask",
+                input_tensor=block_state.area_negative_prompt_embeds_mask,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
             )
 
         self.set_block_state(state, block_state)

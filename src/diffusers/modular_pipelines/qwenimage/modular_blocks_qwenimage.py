@@ -33,6 +33,7 @@ from .decoders import (
     QwenImageProcessImagesOutputStep,
 )
 from .denoise import (
+    QwenImageAreaCompositionDenoiseStep,
     QwenImageControlNetDenoiseStep,
     QwenImageDenoiseStep,
     QwenImageInpaintControlNetDenoiseStep,
@@ -677,6 +678,50 @@ class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
         ]
 
 
+class QwenImageAreaCompositionCoreDenoiseStep(QwenImageCoreDenoiseStep):
+    model_name = "qwenimage"
+
+    block_classes = [
+        QwenImageTextInputsStep(),
+        QwenImagePrepareLatentsStep(),
+        QwenImageSetTimestepsStep(),
+        QwenImageRoPEInputsStep(),
+        QwenImageAreaCompositionDenoiseStep(),
+        QwenImageAfterDenoiseStep(),
+    ]
+    block_names = [
+        "input",
+        "prepare_latents",
+        "set_timesteps",
+        "prepare_rope_inputs",
+        "denoise",
+        "after_denoise",
+    ]
+
+
+class QwenImageAreaCompositionImg2ImgCoreDenoiseStep(QwenImageImg2ImgCoreDenoiseStep):
+    model_name = "qwenimage"
+
+    block_classes = [
+        QwenImageImg2ImgInputStep(),
+        QwenImagePrepareLatentsStep(),
+        QwenImageSetTimestepsWithStrengthStep(),
+        QwenImagePrepareLatentsWithStrengthStep(),
+        QwenImageRoPEInputsStep(),
+        QwenImageAreaCompositionDenoiseStep(),
+        QwenImageAfterDenoiseStep(),
+    ]
+    block_names = [
+        "input",
+        "prepare_latents",
+        "set_timesteps",
+        "prepare_img2img_latents",
+        "prepare_rope_inputs",
+        "denoise",
+        "after_denoise",
+    ]
+
+
 # Qwen Image (text2image) with controlnet
 # auto_docstring
 class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
@@ -953,24 +998,36 @@ class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
 class QwenImageAutoCoreDenoiseStep(ConditionalPipelineBlocks):
     block_classes = [
         QwenImageCoreDenoiseStep,
+        QwenImageAreaCompositionCoreDenoiseStep,
         QwenImageInpaintCoreDenoiseStep,
         QwenImageImg2ImgCoreDenoiseStep,
+        QwenImageAreaCompositionImg2ImgCoreDenoiseStep,
         QwenImageControlNetCoreDenoiseStep,
         QwenImageControlNetInpaintCoreDenoiseStep,
         QwenImageControlNetImg2ImgCoreDenoiseStep,
     ]
     block_names = [
         "text2image",
+        "area_text2image",
         "inpaint",
         "img2img",
+        "area_img2img",
         "controlnet_text2image",
         "controlnet_inpaint",
         "controlnet_img2img",
     ]
-    block_trigger_inputs = ["control_image_latents", "processed_mask_image", "image_latents"]
+    block_trigger_inputs = ["control_image_latents", "processed_mask_image", "image_latents", "area_composition"]
     default_block_name = "text2image"
 
-    def select_block(self, control_image_latents=None, processed_mask_image=None, image_latents=None):
+    def select_block(
+        self,
+        control_image_latents=None,
+        processed_mask_image=None,
+        image_latents=None,
+        area_composition=None,
+    ):
+        use_area = isinstance(area_composition, list) and len(area_composition) > 0
+
         if control_image_latents is not None:
             if processed_mask_image is not None:
                 return "controlnet_inpaint"
@@ -982,17 +1039,19 @@ class QwenImageAutoCoreDenoiseStep(ConditionalPipelineBlocks):
             if processed_mask_image is not None:
                 return "inpaint"
             elif image_latents is not None:
-                return "img2img"
+                return "area_img2img" if use_area else "img2img"
             else:
-                return "text2image"
+                return "area_text2image" if use_area else "text2image"
 
     @property
     def description(self):
         return (
             "Core step that performs the denoising process. \n"
             + " - `QwenImageCoreDenoiseStep` (text2image) for text2image tasks.\n"
+            + " - `QwenImageAreaCompositionCoreDenoiseStep` (area_text2image) for text2image tasks with area composition.\n"
             + " - `QwenImageInpaintCoreDenoiseStep` (inpaint) for inpaint tasks.\n"
             + " - `QwenImageImg2ImgCoreDenoiseStep` (img2img) for img2img tasks.\n"
+            + " - `QwenImageAreaCompositionImg2ImgCoreDenoiseStep` (area_img2img) for img2img tasks with area composition.\n"
             + " - `QwenImageControlNetCoreDenoiseStep` (controlnet_text2image) for text2image tasks with controlnet.\n"
             + " - `QwenImageControlNetInpaintCoreDenoiseStep` (controlnet_inpaint) for inpaint tasks with controlnet.\n"
             + " - `QwenImageControlNetImg2ImgCoreDenoiseStep` (controlnet_img2img) for img2img tasks with controlnet.\n"
@@ -1000,6 +1059,7 @@ class QwenImageAutoCoreDenoiseStep(ConditionalPipelineBlocks):
             + " - for image-to-image generation, you need to provide `image_latents`\n"
             + " - for inpainting, you need to provide `processed_mask_image` and `image_latents`\n"
             + " - to run the controlnet workflow, you need to provide `control_image_latents`\n"
+            + " - to enable area composition route, provide non-empty `area_composition`\n"
             + " - for text-to-image generation, all you need to provide is prompt embeddings"
         )
 

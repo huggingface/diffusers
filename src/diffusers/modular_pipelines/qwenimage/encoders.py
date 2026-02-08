@@ -16,7 +16,7 @@
 Text and VAE encoder blocks for QwenImage pipelines.
 """
 
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import PIL
 import torch
@@ -94,6 +94,96 @@ def get_qwen_prompt_embeds(
     prompt_embeds = prompt_embeds.to(device=device)
 
     return prompt_embeds, encoder_attention_mask
+
+
+def _normalize_area_prompt_batch(
+    prompt_value: Union[str, List[str]],
+    batch_size: int,
+    field_name: str,
+    area_index: int,
+) -> List[str]:
+    if isinstance(prompt_value, str):
+        return [prompt_value] * batch_size
+
+    if isinstance(prompt_value, list):
+        if len(prompt_value) != batch_size:
+            raise ValueError(
+                f"`area_composition[{area_index}]['{field_name}']` must have length {batch_size}, "
+                f"but got {len(prompt_value)}."
+            )
+        if not all(isinstance(item, str) for item in prompt_value):
+            raise ValueError(
+                f"`area_composition[{area_index}]['{field_name}']` must be a string or a list of strings."
+            )
+        return prompt_value
+
+    raise ValueError(
+        f"`area_composition[{area_index}]['{field_name}']` must be a string or a list of strings, "
+        f"but got {type(prompt_value)}."
+    )
+
+
+def prepare_area_composition_prompt_batches(
+    area_composition: Optional[List[Dict[str, Any]]],
+    batch_size: int,
+    default_negative_prompt: Optional[Union[str, List[str]]] = None,
+    requires_unconditional_embeds: bool = False,
+):
+    if area_composition is None:
+        return None, None
+
+    if not isinstance(area_composition, list):
+        raise ValueError(
+            f"`area_composition` must be a list of dictionaries, but got {type(area_composition)}."
+        )
+
+    if len(area_composition) == 0:
+        return [], [] if requires_unconditional_embeds else None
+
+    area_prompt_batches = []
+    area_negative_prompt_batches = [] if requires_unconditional_embeds else None
+
+    default_negative_prompt_batch = None
+    if requires_unconditional_embeds:
+        if default_negative_prompt is None:
+            default_negative_prompt = ""
+
+        default_negative_prompt_batch = _normalize_area_prompt_batch(
+            default_negative_prompt,
+            batch_size=batch_size,
+            field_name="negative_prompt",
+            area_index=-1,
+        )
+
+    for area_idx, area in enumerate(area_composition):
+        if not isinstance(area, dict):
+            raise ValueError(
+                f"`area_composition[{area_idx}]` must be a dictionary, but got {type(area)}."
+            )
+
+        if "prompt" not in area:
+            raise ValueError(f"`area_composition[{area_idx}]` must contain the `prompt` field.")
+
+        area_prompt_batches.append(
+            _normalize_area_prompt_batch(
+                area["prompt"],
+                batch_size=batch_size,
+                field_name="prompt",
+                area_index=area_idx,
+            )
+        )
+
+        if requires_unconditional_embeds:
+            area_negative_prompt_batches.append(
+                _normalize_area_prompt_batch(
+                    area.get("negative_prompt", default_negative_prompt_batch),
+                    batch_size=batch_size,
+                    field_name="negative_prompt",
+                    area_index=area_idx,
+                )
+            )
+
+    return area_prompt_batches, area_negative_prompt_batches
 
 
 def get_qwen_prompt_embeds_edit(
@@ -718,6 +808,14 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
             InputParam.template("prompt"),
             InputParam.template("negative_prompt"),
             InputParam.template("max_sequence_length", default=1024),
+            InputParam(
+                name="area_composition",
+                type_hint=List[Dict[str, Any]],
+                description=(
+                    "Optional regional prompt configuration. Each item is a dict containing at least "
+                    "`prompt`, `x`, `y`, `width`, `height`, and optional `strength`, `negative_prompt`."
+                ),
+            ),
         ]
 
     @property
@@ -727,6 +825,30 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
             OutputParam.template("prompt_embeds_mask"),
             OutputParam.template("negative_prompt_embeds"),
             OutputParam.template("negative_prompt_embeds_mask"),
+            OutputParam(
+                name="area_prompt_embeds",
+                type_hint=torch.Tensor,
+                description=(
+                    "Regional prompt embeddings with shape [num_areas, batch_size, seq_len, hidden_dim]."
+                ),
+            ),
+            OutputParam(
+                name="area_prompt_embeds_mask",
+                type_hint=torch.Tensor,
+                description="Regional prompt attention masks with shape [num_areas, batch_size, seq_len].",
+            ),
+            OutputParam(
+                name="area_negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                description=(
+                    "Regional negative prompt embeddings with shape [num_areas, batch_size, seq_len, hidden_dim]."
+                ),
+            ),
+            OutputParam(
+                name="area_negative_prompt_embeds_mask",
+                type_hint=torch.Tensor,
+                description="Regional negative prompt attention masks with shape [num_areas, batch_size, seq_len].",
+            ),
         ]
 
     @staticmethod
@@ -783,6 +905,74 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
             block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask[
                 :, : block_state.max_sequence_length
             ]
+
+        block_state.area_prompt_embeds = None
+        block_state.area_prompt_embeds_mask = None
+        block_state.area_negative_prompt_embeds = None
+        block_state.area_negative_prompt_embeds_mask = None
+
+        area_prompt_batches, area_negative_prompt_batches = prepare_area_composition_prompt_batches(
+            area_composition=block_state.area_composition,
+            batch_size=block_state.prompt_embeds.shape[0],
+            default_negative_prompt=block_state.negative_prompt,
+            requires_unconditional_embeds=components.requires_unconditional_embeds,
+        )
+
+        if area_prompt_batches:
+            num_areas = len(area_prompt_batches)
+            flat_area_prompts = [text for area_prompts in area_prompt_batches for text in area_prompts]
+
+            area_prompt_embeds, area_prompt_embeds_mask = get_qwen_prompt_embeds(
+                components.text_encoder,
+                components.tokenizer,
+                prompt=flat_area_prompts,
+                prompt_template_encode=self.prompt_template_encode,
+                prompt_template_encode_start_idx=self.prompt_template_encode_start_idx,
+                tokenizer_max_length=self.tokenizer_max_length,
+                device=device,
+            )
+
+            area_prompt_embeds = area_prompt_embeds[:, : block_state.max_sequence_length]
+            area_prompt_embeds_mask = area_prompt_embeds_mask[:, : block_state.max_sequence_length]
+
+            seq_len = area_prompt_embeds.shape[1]
+            hidden_dim = area_prompt_embeds.shape[2]
+            batch_size = block_state.prompt_embeds.shape[0]
+
+            block_state.area_prompt_embeds = area_prompt_embeds.reshape(num_areas, batch_size, seq_len, hidden_dim)
+            block_state.area_prompt_embeds_mask = area_prompt_embeds_mask.reshape(num_areas, batch_size, seq_len)
+
+            if components.requires_unconditional_embeds and area_negative_prompt_batches is not None:
+                flat_area_negative_prompts = [
+                    text for area_prompts in area_negative_prompt_batches for text in area_prompts
+                ]
+                area_negative_prompt_embeds, area_negative_prompt_embeds_mask = get_qwen_prompt_embeds(
+                    components.text_encoder,
+                    components.tokenizer,
+                    prompt=flat_area_negative_prompts,
+                    prompt_template_encode=self.prompt_template_encode,
+                    prompt_template_encode_start_idx=self.prompt_template_encode_start_idx,
+                    tokenizer_max_length=self.tokenizer_max_length,
+                    device=device,
+                )
+
+                area_negative_prompt_embeds = area_negative_prompt_embeds[:, : block_state.max_sequence_length]
+                area_negative_prompt_embeds_mask = area_negative_prompt_embeds_mask[:, : block_state.max_sequence_length]
+
+                negative_seq_len = area_negative_prompt_embeds.shape[1]
+                negative_hidden_dim = area_negative_prompt_embeds.shape[2]
+
+                block_state.area_negative_prompt_embeds = area_negative_prompt_embeds.reshape(
+                    num_areas,
+                    batch_size,
+                    negative_seq_len,
+                    negative_hidden_dim,
+                )
+                block_state.area_negative_prompt_embeds_mask = area_negative_prompt_embeds_mask.reshape(
+                    num_areas,
+                    batch_size,
+                    negative_seq_len,
+                )
 
         self.set_block_state(state, block_state)
         return components, state
