@@ -64,6 +64,7 @@ class AdaLayerNorm(nn.Module):
     def forward(
         self, x: torch.Tensor, timestep: Optional[torch.Tensor] = None, temb: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        assert timestep is not None or temb is not None, "One has to provide either timestep or temb argument."
         if self.emb is not None:
             temb = self.emb(timestep)
 
@@ -163,6 +164,9 @@ class AdaLayerNormZero(nn.Module):
         hidden_dtype: Optional[torch.dtype] = None,
         emb: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        assert any((timestep and class_labels) or emb), (
+            "Modulation embedding has to be provided either via CombinedTimestepLabelEmbeddings or emb argument"
+        )
         if self.emb is not None:
             emb = self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)
         emb = self.linear(self.silu(emb))
@@ -180,11 +184,11 @@ class AdaLayerNormZeroSingle(nn.Module):
         num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
-    def __init__(self, embedding_dim: int, norm_type="layer_norm", bias=True):
+    def __init__(self, embedding_dim: int,  num_embeddings: Optional[int] = None, norm_type="layer_norm", bias=True):
         super().__init__()
 
         self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, 3 * embedding_dim, bias=bias)
+        self.linear = nn.Linear(num_embeddings or embedding_dim, 3 * embedding_dim, bias=bias)
         if norm_type == "layer_norm":
             self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
         else:
@@ -195,7 +199,7 @@ class AdaLayerNormZeroSingle(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        emb: Optional[torch.Tensor] = None,
+        emb: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         emb = self.linear(self.silu(emb))
         shift_msa, scale_msa, gate_msa = emb.chunk(3, dim=1)
