@@ -16,7 +16,7 @@ import warnings
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 import torch.nn.functional as F
 
@@ -26,9 +26,11 @@ from .image_processor import VaeImageProcessor, is_valid_image, is_valid_image_i
 class VideoProcessor(VaeImageProcessor):
     r"""Simple video processor."""
 
-    def preprocess_video(self, video, height: Optional[int] = None, width: Optional[int] = None) -> torch.Tensor:
+    def preprocess_video(
+        self, video, height: Optional[int] = None, width: Optional[int] = None, **kwargs
+    ) -> torch.Tensor:
         r"""
-        Preprocesses input video(s).
+        Preprocesses input video(s). Keyword arguments will be forwarded to `VaeImageProcessor.preprocess`.
 
         Args:
             video (`List[PIL.Image]`, `List[List[PIL.Image]]`, `torch.Tensor`, `np.array`, `List[torch.Tensor]`, `List[np.array]`):
@@ -50,6 +52,10 @@ class VideoProcessor(VaeImageProcessor):
             width (`int`, *optional*`, defaults to `None`):
                 The width in preprocessed frames of the video. If `None`, will use get_default_height_width()` to get
                 the default width.
+
+        Returns:
+            `torch.Tensor` of shape `(batch_size, num_channels, num_frames, height, width)`:
+                A 5D tensor holding the batched channels-first video(s).
         """
         if isinstance(video, list) and isinstance(video[0], np.ndarray) and video[0].ndim == 5:
             warnings.warn(
@@ -67,20 +73,47 @@ class VideoProcessor(VaeImageProcessor):
             video = torch.cat(video, axis=0)
 
         # ensure the input is a list of videos:
-        # - if it is a batch of videos (5d torch.Tensor or np.ndarray), it is converted to a list of videos (a list of 4d torch.Tensor or np.ndarray)
-        # - if it is a single video, it is converted to a list of one video.
+        # - if it is a batched array of videos (5d torch.Tensor or np.ndarray), it is converted to a list of video
+        #   arrays (a list of 4d torch.Tensor or np.ndarray). `VaeImageProcessor.preprocess` will then treat the first
+        #   (frame) dim as a batch dim.
+        # - if it is a single video, it is converted to a list of one video. (A single video is a list of images or a
+        #   single imagelist.)
+        # - if it is a list of imagelists, it will be kept as is (already a list of videos).
+        # - if it is a single image, it is expanded to a single frame video and then to a list of one video. The
+        #   expansion will depend on the image type:
+        #   - PIL.Image.Image --> one element list of PIL.Image.Image
+        #   - 3D np.ndarray   --> interpret as (H, W, C), expand to (F=1, H, W, C)
+        #   - 3D torch.Tensor --> interpret as (C, H, W), expand to (F=1, C, H, W)
         if isinstance(video, (np.ndarray, torch.Tensor)) and video.ndim == 5:
             video = list(video)
         elif isinstance(video, list) and is_valid_image(video[0]) or is_valid_image_imagelist(video):
             video = [video]
         elif isinstance(video, list) and is_valid_image_imagelist(video[0]):
             video = video
+        elif is_valid_image(video):
+            if isinstance(video, PIL.Image.Image):
+                video = [video]
+            elif isinstance(video, np.ndarray):
+                if video.ndim == 2:
+                    video = np.expand_dims(video, axis=-1)  # Unsqueeze channel dim in last axis
+                if video.ndim == 3:
+                    video = np.expand_dims(video, axis=0)
+                else:
+                    raise ValueError(f"Input numpy.ndarray is expected to have 2 or 3 dims but got {video.ndim} dims")
+            elif isinstance(video, torch.Tensor):
+                if video.ndim == 2:
+                    video = torch.unsqueeze(video, dim=0)  # Unsqueeze channel dim in first dim
+                if video.ndim == 3:
+                    video = torch.unsqueeze(video, dim=0)
+                else:
+                    raise ValueError(f"Input torch.Tensor is expected to have 2 or 3 dims but got {video.ndim} dims")
+            video = [video]
         else:
             raise ValueError(
                 "Input is in incorrect format. Currently, we only support numpy.ndarray, torch.Tensor, PIL.Image.Image"
             )
 
-        video = torch.stack([self.preprocess(img, height=height, width=width) for img in video], dim=0)
+        video = torch.stack([self.preprocess(img, height=height, width=width, **kwargs) for img in video], dim=0)
 
         # move the number of channels before the number of frames.
         video = video.permute(0, 2, 1, 3, 4)
@@ -88,10 +121,11 @@ class VideoProcessor(VaeImageProcessor):
         return video
 
     def postprocess_video(
-        self, video: torch.Tensor, output_type: str = "np"
+        self, video: torch.Tensor, output_type: str = "np", **kwargs
     ) -> Union[np.ndarray, torch.Tensor, List[PIL.Image.Image]]:
         r"""
-        Converts a video tensor to a list of frames for export.
+        Converts a video tensor to a list of frames for export. Keyword arguments will be forwarded to
+        `VaeImageProcessor.postprocess`.
 
         Args:
             video (`torch.Tensor`): The video as a tensor.
@@ -101,7 +135,7 @@ class VideoProcessor(VaeImageProcessor):
         outputs = []
         for batch_idx in range(batch_size):
             batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-            batch_output = self.postprocess(batch_vid, output_type)
+            batch_output = self.postprocess(batch_vid, output_type, **kwargs)
             outputs.append(batch_output)
 
         if output_type == "np":
