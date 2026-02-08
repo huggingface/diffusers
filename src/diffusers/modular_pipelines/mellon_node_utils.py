@@ -156,6 +156,12 @@ MELLON_PARAM_TEMPLATES = {
         "display": "slider",
         "required_block_params": ["layers"],
     },
+    "output_type": {
+        "label": "Output Type",
+        "type": "dropdown",
+        "default": "np",
+        "options": ["np", "pil", "pt"],
+    },
     # ControlNet
     "controlnet_conditioning_scale": {
         "label": "Controlnet Conditioning Scale",
