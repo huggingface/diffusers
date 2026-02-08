@@ -121,20 +121,6 @@ class ModularPipelineTesterMixin:
         pipeline.set_progress_bar_config(disable=None)
         return pipeline
 
-    def _convert_output_to_tensor(self, output):
-        if isinstance(output, torch.Tensor):
-            return output
-        elif isinstance(output, list):
-            # For video outputs (list of numpy arrays)
-            if len(output) > 0 and isinstance(output[0], np.ndarray):
-                return torch.from_numpy(output[0])
-            # For batched video outputs
-            return torch.stack([torch.from_numpy(item) for item in output])
-        elif isinstance(output, np.ndarray):
-            return torch.from_numpy(output)
-        else:
-            raise TypeError(f"Unsupported output type: {type(output)}")
-
     def _get_batch_size_from_output(self, output):
         if isinstance(output, torch.Tensor):
             return output.shape[0]
