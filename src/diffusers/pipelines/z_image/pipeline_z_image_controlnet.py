@@ -635,10 +635,12 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                     latent_model_input = latents_typed.repeat(2, 1, 1, 1)
                     prompt_embeds_model_input = prompt_embeds + negative_prompt_embeds
                     timestep_model_input = timestep.repeat(2)
+                    control_image_input = control_image.repeat(2, 1, 1, 1, 1)
                 else:
                     latent_model_input = latents.to(self.transformer.dtype)
                     prompt_embeds_model_input = prompt_embeds
                     timestep_model_input = timestep
+                    control_image_input = control_image
 
                 latent_model_input = latent_model_input.unsqueeze(2)
                 latent_model_input_list = list(latent_model_input.unbind(dim=0))
@@ -647,7 +649,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                     latent_model_input_list,
                     timestep_model_input,
                     prompt_embeds_model_input,
-                    control_image,
+                    control_image_input,
                     conditioning_scale=controlnet_conditioning_scale,
                 )
 

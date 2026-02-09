@@ -343,6 +343,34 @@ We ran a benchmark with Ulysess, Ring, and Unified Attention with [this script](
 
 From the above table, it's clear that Ulysses provides better throughput, but the number of devices it can use remains limited to the number of attention heads, a limitation that is solved by unified attention.
 
+
+### Ulysses Anything Attention
+
+The default Ulysses Attention mechanism requires that the sequence length of hidden states must be divisible by the number of devices. This imposes significant limitations on the practical application of Ulysses Attention. [Ulysses Anything Attention](https://github.com/huggingface/diffusers/pull/12996) is a variant of Ulysses Attention that supports arbitrary sequence lengths and arbitrary numbers of attention heads, thereby enhancing the versatility of Ulysses Attention in practical use.
+
+[`ContextParallelConfig`] supports Ulysses Anything Attention by specifying both `ulysses_degree` and `ulysses_anything`. Please note that Ulysses Anything Attention is not currently supported by Unified Attention. Pass the [`ContextParallelConfig`] with both `ulysses_degree` set to bigger than 1 and `ulysses_anything=True` to [`~ModelMixin.enable_parallelism`].
+
+```py
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ulysses_anything=True))
+```
+
+> [!TIP] To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in `init_process_group`. This will significantly reduce communication latency.
+
+We ran a benchmark for FLUX.1-dev with Ulysses, Ring, Unified Attention and Ulysses Anything Attention with [this script](https://github.com/huggingface/diffusers/pull/12996#issuecomment-3797695999) on a node of 4 L20 GPUs. The results are summarized as follows:
+
+| CP Backend         | Time / Iter (ms) | Steps / Sec | Peak Memory (GB) | Shape (HxW)|
+|--------------------|------------------|-------------|------------------|------------|
+| ulysses            |   281.07         |    3.56     |     37.11        | 1024x1024  |
+| ring               |   351.34         |    2.85     |     37.01        | 1024x1024  |
+| unified_balanced   |   324.37         |    3.08     |     37.16        | 1024x1024  |
+| ulysses_anything   |   280.94         |    3.56     |     37.11        | 1024x1024  |
+| ulysses            |   failed         |    failed   |     failed       | 1008x1008  |
+| ring               |   failed         |    failed   |     failed       | 1008x1008  |
+| unified_balanced   |   failed         |    failed   |     failed       | 1008x1008  |
+| ulysses_anything   |   278.40         |    3.59     |     36.99        | 1008x1008  |
+
+From the above table, it is clear that Ulysses Anything Attention offers better compatibility with arbitrary sequence lengths while maintaining the same performance as the standard Ulysses Attention.
+
 ### parallel_config
 
 Pass `parallel_config` during model initialization to enable context parallelism.

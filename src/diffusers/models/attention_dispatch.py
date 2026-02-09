@@ -21,6 +21,8 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.distributed as dist
+import torch.nn.functional as F
 
 
 if torch.distributed.is_available():
@@ -44,6 +46,8 @@ from ..utils import (
     is_xformers_version,
 )
 from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
+from ..utils.torch_utils import maybe_allow_in_graph
+from ._modeling_parallel import gather_size_by_comm
 
 
 if TYPE_CHECKING:
@@ -1569,6 +1573,154 @@ class SeqAllToAllDim(torch.autograd.Function):
         return (None, grad_input, None, None)
 
 
+# Below are helper functions to handle abritrary head num and abritrary sequence length for Ulysses Anything Attention.
+def _maybe_pad_qkv_head(x: torch.Tensor, H: int, group: dist.ProcessGroup) -> Tuple[torch.Tensor, int]:
+    r"""Maybe pad the head dimension to be divisible by world_size.
+    x: torch.Tensor, shape (B, S_LOCAL, H, D) H: int, original global head num return: Tuple[torch.Tensor, int], padded
+    tensor (B, S_LOCAL, H + H_PAD, D) and H_PAD
+    """
+    world_size = dist.get_world_size(group=group)
+    H_PAD = 0
+    if H % world_size != 0:
+        H_PAD = world_size - (H % world_size)
+        NEW_H_LOCAL = (H + H_PAD) // world_size
+        # e.g., Allow: H=30, world_size=8 -> NEW_H_LOCAL=4, H_PAD=2.
+        # NOT ALLOW: H=30, world_size=16 -> NEW_H_LOCAL=2, H_PAD=14.
+        assert H_PAD < NEW_H_LOCAL, f"Padding head num {H_PAD} should be less than new local head num {NEW_H_LOCAL}"
+        x = F.pad(x, (0, 0, 0, H_PAD)).contiguous()
+    return x, H_PAD
+
+
+def _maybe_unpad_qkv_head(x: torch.Tensor, H_PAD: int, group: dist.ProcessGroup) -> torch.Tensor:
+    r"""Maybe unpad the head dimension.
+    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL + H_PAD, D) H_PAD: int, head padding num return: torch.Tensor,
+    unpadded tensor (B, S_GLOBAL, H_LOCAL, D)
+    """
+    rank = dist.get_rank(group=group)
+    world_size = dist.get_world_size(group=group)
+    # Only the last rank may have padding
+    if H_PAD > 0 and rank == world_size - 1:
+        x = x[:, :, :-H_PAD, :]
+    return x.contiguous()
+
+
+def _maybe_pad_o_head(x: torch.Tensor, H: int, group: dist.ProcessGroup) -> Tuple[torch.Tensor, int]:
+    r"""Maybe pad the head dimension to be divisible by world_size.
+    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D) H: int, original global head num return: Tuple[torch.Tensor, int],
+    padded tensor (B, S_GLOBAL, H_LOCAL + H_PAD, D) and H_PAD
+    """
+    if H is None:
+        return x, 0
+
+    rank = dist.get_rank(group=group)
+    world_size = dist.get_world_size(group=group)
+    H_PAD = 0
+    # Only the last rank may need padding
+    if H % world_size != 0:
+        # We need to broadcast H_PAD to all ranks to keep consistency
+        # in unpadding step later for all ranks.
+        H_PAD = world_size - (H % world_size)
+        NEW_H_LOCAL = (H + H_PAD) // world_size
+        assert H_PAD < NEW_H_LOCAL, f"Padding head num {H_PAD} should be less than new local head num {NEW_H_LOCAL}"
+        if rank == world_size - 1:
+            x = F.pad(x, (0, 0, 0, H_PAD)).contiguous()
+    return x, H_PAD
+
+
+def _maybe_unpad_o_head(x: torch.Tensor, H_PAD: int, group: dist.ProcessGroup) -> torch.Tensor:
+    r"""Maybe unpad the head dimension.
+    x: torch.Tensor, shape (B, S_LOCAL, H_GLOBAL + H_PAD, D) H_PAD: int, head padding num return: torch.Tensor,
+    unpadded tensor (B, S_LOCAL, H_GLOBAL, D)
+    """
+    if H_PAD > 0:
+        x = x[:, :, :-H_PAD, :]
+    return x.contiguous()
+
+
+def ulysses_anything_metadata(query: torch.Tensor, **kwargs) -> dict:
+    # query: (B, S_LOCAL, H_GLOBAL, D)
+    assert len(query.shape) == 4, "Query tensor must be 4-dimensional of shape (B, S_LOCAL, H_GLOBAL, D)"
+    extra_kwargs = {}
+    extra_kwargs["NUM_QO_HEAD"] = query.shape[2]
+    extra_kwargs["Q_S_LOCAL"] = query.shape[1]
+    # Add other kwargs if needed in future
+    return extra_kwargs
+
+
+@maybe_allow_in_graph
+def all_to_all_single_any_qkv_async(
+    x: torch.Tensor, group: dist.ProcessGroup, **kwargs
+) -> Callable[..., torch.Tensor]:
+    r"""
+    x: torch.Tensor, shape (B, S_LOCAL, H, D) return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
+    """
+    world_size = dist.get_world_size(group=group)
+    B, S_LOCAL, H, D = x.shape
+    x, H_PAD = _maybe_pad_qkv_head(x, H, group)
+    H_LOCAL = (H + H_PAD) // world_size
+    # (world_size, S_LOCAL, B, H_LOCAL, D)
+    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+
+    input_split_sizes = [S_LOCAL] * world_size
+    # S_LOCAL maybe not equal for all ranks in dynamic shape case,
+    # since we don't know the actual shape before this timing, thus,
+    # we have to use all gather to collect the S_LOCAL first.
+    output_split_sizes = gather_size_by_comm(S_LOCAL, group)
+    x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
+    x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x, H_PAD
+        x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
+        # (S_GLOBAL, B, H_LOCAL, D)
+        # -> (B, S_GLOBAL, H_LOCAL, D)
+        x = x.permute(1, 0, 2, 3).contiguous()
+        x = _maybe_unpad_qkv_head(x, H_PAD, group)
+        return x
+
+    return wait
+
+
+@maybe_allow_in_graph
+def all_to_all_single_any_o_async(x: torch.Tensor, group: dist.ProcessGroup, **kwargs) -> Callable[..., torch.Tensor]:
+    r"""
+    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D) return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
+    """
+    # Assume H is provided in kwargs, since we can't infer H from x's shape.
+    # The padding logic needs H to determine if padding is necessary.
+    H = kwargs.get("NUM_QO_HEAD", None)
+    world_size = dist.get_world_size(group=group)
+
+    x, H_PAD = _maybe_pad_o_head(x, H, group)
+    shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
+    (B, S_GLOBAL, H_LOCAL, D) = shape
+
+    # input_split: e.g, S_GLOBAL=9 input splits across ranks [[5,4], [5,4],..]
+    # output_split: e.g, S_GLOBAL=9 output splits across ranks [[5,5], [4,4],..]
+
+    # WARN: In some cases, e.g, joint attn in Qwen-Image, the S_LOCAL can not infer
+    # from tensor split due to: if c = torch.cat((a, b)), world_size=4, then,
+    # c.tensor_split(4)[0].shape[1] may != to (a.tensor_split(4)[0].shape[1] +
+    # b.tensor_split(4)[0].shape[1])
+
+    S_LOCAL = kwargs.get("Q_S_LOCAL")
+    input_split_sizes = gather_size_by_comm(S_LOCAL, group)
+    x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
+    output_split_sizes = [S_LOCAL] * world_size
+    x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x, H_PAD
+        x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
+        x = x.reshape(world_size, S_LOCAL, B, H_LOCAL, D)
+        x = x.permute(2, 1, 0, 3, 4).contiguous()
+        x = x.reshape(B, S_LOCAL, world_size * H_LOCAL, D)
+        x = _maybe_unpad_o_head(x, H_PAD, group)
+        return x
+
+    return wait
+
+
 class TemplatedRingAttention(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -1791,6 +1943,82 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None, None
 
 
+class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        is_causal: bool,
+        scale: Optional[float],
+        enable_gqa: bool,
+        return_lse: bool,
+        forward_op,
+        backward_op,
+        _parallel_config: Optional["ParallelConfig"] = None,
+        **kwargs,
+    ):
+        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
+        group = ulysses_mesh.get_group()
+
+        ctx.forward_op = forward_op
+        ctx.backward_op = backward_op
+        ctx._parallel_config = _parallel_config
+
+        metadata = ulysses_anything_metadata(query)
+        query_wait = all_to_all_single_any_qkv_async(query, group, **metadata)
+        key_wait = all_to_all_single_any_qkv_async(key, group, **metadata)
+        value_wait = all_to_all_single_any_qkv_async(value, group, **metadata)
+
+        query = query_wait()  # type: torch.Tensor
+        key = key_wait()  # type: torch.Tensor
+        value = value_wait()  # type: torch.Tensor
+
+        out = forward_op(
+            ctx,
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            _save_ctx=False,  # ulysses anything only support forward pass now.
+            _parallel_config=_parallel_config,
+        )
+        if return_lse:
+            out, lse, *_ = out
+
+        # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
+        out_wait = all_to_all_single_any_o_async(out, group, **metadata)
+
+        if return_lse:
+            # lse: (B, S_Q_GLOBAL, H_LOCAL)
+            lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
+            lse_wait = all_to_all_single_any_o_async(lse, group, **metadata)
+            out = out_wait()  # type: torch.Tensor
+            lse = lse_wait()  # type: torch.Tensor
+            lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
+        else:
+            out = out_wait()  # type: torch.Tensor
+            lse = None
+
+        return (out, lse) if return_lse else out
+
+    @staticmethod
+    def backward(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+    ):
+        raise NotImplementedError("Backward pass for Ulysses Anything Attention in diffusers is not implemented yet.")
+
+
 def _templated_unified_attention(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -1908,20 +2136,37 @@ def _templated_context_parallel_attention(
             _parallel_config,
         )
     elif _parallel_config.context_parallel_config.ulysses_degree > 1:
-        return TemplatedUlyssesAttention.apply(
-            query,
-            key,
-            value,
-            attn_mask,
-            dropout_p,
-            is_causal,
-            scale,
-            enable_gqa,
-            return_lse,
-            forward_op,
-            backward_op,
-            _parallel_config,
-        )
+        if _parallel_config.context_parallel_config.ulysses_anything:
+            # For Any sequence lengths and Any head num support
+            return TemplatedUlyssesAnythingAttention.apply(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_causal,
+                scale,
+                enable_gqa,
+                return_lse,
+                forward_op,
+                backward_op,
+                _parallel_config,
+            )
+        else:
+            return TemplatedUlyssesAttention.apply(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_causal,
+                scale,
+                enable_gqa,
+                return_lse,
+                forward_op,
+                backward_op,
+                _parallel_config,
+            )
     else:
         raise ValueError("Reaching this branch of code is unexpected. Please report a bug.")
 

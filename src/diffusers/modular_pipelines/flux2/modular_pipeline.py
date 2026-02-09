@@ -55,3 +55,45 @@ class Flux2ModularPipeline(ModularPipeline, Flux2LoraLoaderMixin):
         if getattr(self, "transformer", None):
             num_channels_latents = self.transformer.config.in_channels // 4
         return num_channels_latents
+
+
+class Flux2KleinModularPipeline(Flux2ModularPipeline):
+    """
+    A ModularPipeline for Flux2-Klein (distilled model).
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "Flux2KleinAutoBlocks"
+
+    @property
+    def requires_unconditional_embeds(self):
+        if hasattr(self.config, "is_distilled") and self.config.is_distilled:
+            return False
+
+        requires_unconditional_embeds = False
+        if hasattr(self, "guider") and self.guider is not None:
+            requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
+
+        return requires_unconditional_embeds
+
+
+class Flux2KleinBaseModularPipeline(Flux2ModularPipeline):
+    """
+    A ModularPipeline for Flux2-Klein (base model).
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "Flux2KleinBaseAutoBlocks"
+
+    @property
+    def requires_unconditional_embeds(self):
+        if hasattr(self.config, "is_distilled") and self.config.is_distilled:
+            return False
+
+        requires_unconditional_embeds = False
+        if hasattr(self, "guider") and self.guider is not None:
+            requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
+
+        return requires_unconditional_embeds

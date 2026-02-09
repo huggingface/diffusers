@@ -22,8 +22,11 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, logging
 from .scheduling_utils_flax import FlaxSchedulerMixin
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -102,7 +105,10 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         s_min: float = 0.05,
         s_max: float = 50,
     ):
-        pass
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
 
     def create_state(self):
         return KarrasVeSchedulerState.create()
