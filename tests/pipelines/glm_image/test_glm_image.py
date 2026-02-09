@@ -297,16 +297,6 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # Step 1: Run with prompt only to get prior_token_ids from AR model
         generator = torch.Generator(device=device).manual_seed(0)
-        inputs_prompt_only = {
-            "prompt": "A photo of a cat",
-            "generator": generator,
-            "num_inference_steps": 2,
-            "guidance_scale": 1.5,
-            "height": height,
-            "width": width,
-            "max_sequence_length": 16,
-            "output_type": "pt",
-        }
         prior_token_ids, _, _ = pipe.generate_prior_tokens(
             prompt="A photo of a cat",
             height=height,
@@ -344,7 +334,9 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Neither prompt nor prior_token_ids → error
         with self.assertRaises(ValueError):
             pipe.check_inputs(
-                prompt=None, height=height, width=width,
+                prompt=None,
+                height=height,
+                width=width,
                 callback_on_step_end_tensor_inputs=None,
                 prompt_embeds=torch.randn(1, 16, 32),
             )
@@ -352,7 +344,9 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # prior_token_ids alone without prompt or prompt_embeds → error
         with self.assertRaises(ValueError):
             pipe.check_inputs(
-                prompt=None, height=height, width=width,
+                prompt=None,
+                height=height,
+                width=width,
                 callback_on_step_end_tensor_inputs=None,
                 prior_token_ids=torch.randint(0, 100, (1, 64)),
             )
@@ -360,7 +354,9 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # prompt + prompt_embeds together → error
         with self.assertRaises(ValueError):
             pipe.check_inputs(
-                prompt="A cat", height=height, width=width,
+                prompt="A cat",
+                height=height,
+                width=width,
                 callback_on_step_end_tensor_inputs=None,
                 prompt_embeds=torch.randn(1, 16, 32),
             )
