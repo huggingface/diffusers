@@ -64,7 +64,6 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        *,
         messages: Optional[List[Dict[str, str]]] = None,
         input_ids: Optional[torch.LongTensor] = None,
         use_chat_template: bool = True,

@@ -120,34 +120,9 @@ class BlockRefinementPipeline(DiffusionPipeline):
         self,
         model: Any,
         tokenizer: Optional[Any] = None,
-        *,
-        gen_length: int = 128,
-        block_length: int = 32,
-        steps: int = 32,
-        temperature: float = 0.0,
-        top_p: Optional[float] = None,
-        top_k: Optional[int] = None,
-        sampling_method: str = "auto",
-        threshold: float = 0.95,
-        minimal_topk: int = 1,
-        eos_early_stop: bool = False,
-        attention_mask_mode: str = "auto",
     ):
         super().__init__()
         self.register_modules(model=model, tokenizer=tokenizer)
-        self.register_to_config(
-            gen_length=gen_length,
-            block_length=block_length,
-            steps=steps,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            sampling_method=sampling_method,
-            threshold=threshold,
-            minimal_topk=minimal_topk,
-            eos_early_stop=eos_early_stop,
-            attention_mask_mode=attention_mask_mode,
-        )
 
     @property
     def num_timesteps(self):
@@ -236,25 +211,70 @@ class BlockRefinementPipeline(DiffusionPipeline):
         encoded = self.tokenizer(prompt, return_tensors="pt", padding=True)
         return encoded["input_ids"].to(device=device)
 
+    def prepare_latents(
+        self,
+        batch_size: int,
+        total_length: int,
+        mask_token_id: int,
+        device: torch.device,
+    ) -> torch.LongTensor:
+        return torch.full((batch_size, total_length), int(mask_token_id), device=device, dtype=torch.long)
+
+    def check_inputs(
+        self,
+        gen_length: int,
+        block_length: int,
+        steps: int,
+        minimal_topk: int,
+        threshold: float,
+        sampling_method: str,
+        callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
+        callback_on_step_end_tensor_inputs: Optional[List[str]],
+    ):
+        if gen_length <= 0:
+            raise ValueError(f"`gen_length` must be > 0, got {gen_length}.")
+        if block_length <= 0:
+            raise ValueError(f"`block_length` must be > 0, got {block_length}.")
+        if steps <= 0:
+            raise ValueError(f"`steps` must be > 0, got {steps}.")
+        if minimal_topk <= 0:
+            raise ValueError(f"`minimal_topk` must be > 0, got {minimal_topk}.")
+        if not (0.0 <= threshold <= 1.0) and not (threshold > 1.0):
+            raise ValueError(f"`threshold` must be in [0, 1] (or > 1 to force top-k commits), got {threshold}.")
+        if sampling_method not in {"auto", "greedy", "multinomial"}:
+            raise ValueError(
+                f"`sampling_method` must be one of {{'auto','greedy','multinomial'}}, got {sampling_method!r}."
+            )
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
     @torch.no_grad()
     def __call__(
         self,
-        *,
         prompt: Optional[Union[str, List[str]]] = None,
         prompt_ids: Optional[torch.LongTensor] = None,
-        gen_length: Optional[int] = None,
-        block_length: Optional[int] = None,
-        steps: Optional[int] = None,
-        temperature: Optional[float] = None,
+        gen_length: int = 128,
+        block_length: int = 32,
+        steps: int = 32,
+        temperature: float = 0.0,
         top_p: Optional[float] = None,
         top_k: Optional[int] = None,
-        sampling_method: Optional[str] = None,
-        threshold: Optional[float] = None,
-        minimal_topk: Optional[int] = None,
-        eos_early_stop: Optional[bool] = None,
+        sampling_method: str = "auto",
+        threshold: float = 0.95,
+        minimal_topk: int = 1,
+        eos_early_stop: bool = False,
         eos_token_id: Optional[int] = None,
         mask_token_id: Optional[int] = None,
-        attention_mask_mode: Optional[str] = None,
+        attention_mask_mode: str = "auto",
         generator: Optional[torch.Generator] = None,
         return_text: bool = True,
         callback_on_step_end: Optional[
@@ -270,32 +290,32 @@ class BlockRefinementPipeline(DiffusionPipeline):
                 Prompt text to encode with the tokenizer.
             prompt_ids (`torch.LongTensor`, *optional*):
                 Pre-tokenized prompt IDs with shape `[prompt_len]` or `[batch, prompt_len]`.
-            gen_length (`int`, *optional*):
-                Number of tokens to generate. If `None`, uses `pipe.config.gen_length`.
-            block_length (`int`, *optional*):
-                Block size for refinement. If `None`, uses `pipe.config.block_length`.
-            steps (`int`, *optional*):
-                Refinement steps per block. If `None`, uses `pipe.config.steps`.
-            temperature (`float`, *optional*):
-                Sampling temperature. If `None`, uses `pipe.config.temperature`.
+            gen_length (`int`):
+                Number of tokens to generate.
+            block_length (`int`):
+                Block size for refinement.
+            steps (`int`):
+                Refinement steps per block.
+            temperature (`float`):
+                Sampling temperature.
             top_p (`float`, *optional*):
-                Nucleus sampling cutoff. If `None`, uses `pipe.config.top_p`.
+                Nucleus sampling cutoff.
             top_k (`int`, *optional*):
-                Top-k sampling cutoff. If `None`, uses `pipe.config.top_k`.
-            sampling_method (`str`, *optional*):
-                Sampling method (`auto`, `greedy`, `multinomial`). If `None`, uses `pipe.config.sampling_method`.
-            threshold (`float`, *optional*):
-                Confidence threshold for committing tokens. If `None`, uses `pipe.config.threshold`.
-            minimal_topk (`int`, *optional*):
-                Minimum number of tokens to commit per step. If `None`, uses `pipe.config.minimal_topk`.
-            eos_early_stop (`bool`, *optional*):
-                Whether to stop after committing EOS in a block. If `None`, uses `pipe.config.eos_early_stop`.
+                Top-k sampling cutoff.
+            sampling_method (`str`):
+                Sampling method (`auto`, `greedy`, `multinomial`).
+            threshold (`float`):
+                Confidence threshold for committing tokens.
+            minimal_topk (`int`):
+                Minimum number of tokens to commit per step.
+            eos_early_stop (`bool`):
+                Whether to stop after committing EOS in a block.
             eos_token_id (`int`, *optional*):
                 EOS token ID to use for early stopping.
             mask_token_id (`int`, *optional*):
                 Mask token ID to use for the template.
-            attention_mask_mode (`str`, *optional*):
-                Attention mask mode (`auto`, `4d`, `2d`, `none`). If `None`, uses `pipe.config.attention_mask_mode`.
+            attention_mask_mode (`str`):
+                Attention mask mode (`auto`, `4d`, `2d`, `none`).
             generator (`torch.Generator`, *optional*):
                 RNG for sampling.
             return_text (`bool`, *optional*, defaults to `True`):
@@ -307,57 +327,23 @@ class BlockRefinementPipeline(DiffusionPipeline):
                 Tensor keys to pass to the callback. Allowed keys: `cur_x`, `x0`, `x0_p`, `transfer_index`,
                 `confidence`, `active_block`.
         """
-        if gen_length is None:
-            gen_length = int(self.config.gen_length)
-        if block_length is None:
-            block_length = int(self.config.block_length)
-        if steps is None:
-            steps = int(self.config.steps)
-        if temperature is None:
-            temperature = float(self.config.temperature)
-        if top_p is None:
-            top_p = self.config.top_p
-        if top_k is None:
-            top_k = self.config.top_k
-        if sampling_method is None:
-            sampling_method = str(self.config.sampling_method)
-        if threshold is None:
-            threshold = float(self.config.threshold)
-        if minimal_topk is None:
-            minimal_topk = int(self.config.minimal_topk)
-        if eos_early_stop is None:
-            eos_early_stop = bool(self.config.eos_early_stop)
-        if attention_mask_mode is None:
-            attention_mask_mode = str(self.config.attention_mask_mode)
-
-        if gen_length <= 0:
-            raise ValueError(f"`gen_length` must be > 0, got {gen_length}.")
-        if block_length <= 0:
-            raise ValueError(f"`block_length` must be > 0, got {block_length}.")
-        if steps <= 0:
-            raise ValueError(f"`steps` must be > 0, got {steps}.")
-        if minimal_topk <= 0:
-            raise ValueError(f"`minimal_topk` must be > 0, got {minimal_topk}.")
-        if not (0.0 <= threshold <= 1.0) and not (threshold > 1.0):
-            raise ValueError(f"`threshold` must be in [0, 1] (or > 1 to force top-k commits), got {threshold}.")
-        if sampling_method not in {"auto", "greedy", "multinomial"}:
-            raise ValueError(
-                f"`sampling_method` must be one of {{'auto','greedy','multinomial'}}, got {sampling_method!r}."
-            )
-
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
         if callback_on_step_end_tensor_inputs is None:
             callback_on_step_end_tensor_inputs = ["cur_x"]
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
-                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
+
+        self.check_inputs(
+            gen_length=gen_length,
+            block_length=block_length,
+            steps=steps,
+            minimal_topk=minimal_topk,
+            threshold=threshold,
+            sampling_method=sampling_method,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+        )
 
         model_params = list(self.model.parameters()) if hasattr(self.model, "parameters") else []
         model_device = model_params[0].device if len(model_params) > 0 else torch.device("cpu")
@@ -391,7 +377,7 @@ class BlockRefinementPipeline(DiffusionPipeline):
             torch.arange(total_length, device=model_device, dtype=torch.long).unsqueeze(0).expand(batch_size, -1)
         )
 
-        x = torch.full((batch_size, total_length), int(mask_token_id), device=model_device, dtype=torch.long)
+        x = self.prepare_latents(batch_size, total_length, int(mask_token_id), model_device)
         if prompt_length > 0:
             x[:, :prompt_length] = prompt_ids.to(device=model_device)
 

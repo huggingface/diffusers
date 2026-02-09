@@ -90,6 +90,31 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         unif = (1.0 - mask) / max(self.vocab_size - 1, 1)
         self.unif = unif
 
+    def sample_prior(
+        self,
+        shape: torch.Size,
+        device: torch.device,
+        generator: Optional[torch.Generator] = None,
+    ) -> torch.LongTensor:
+        """
+        Sample from the prior distribution at t=1.
+
+        At t=1, the stationary distribution concentrates on the mask token, so this returns a tensor filled with
+        `mask_token_id`.
+
+        Args:
+            shape (`torch.Size`):
+                Desired output shape, e.g. `(batch_size, seq_len)`.
+            device (`torch.device`):
+                Device for the output tensor.
+            generator (`torch.Generator`, *optional*):
+                Optional generator for determinism (unused for the absorbing prior).
+
+        Returns:
+            `torch.LongTensor` of shape `shape` with `mask_token_id`.
+        """
+        return torch.full(shape, self.mask_token_id, device=device, dtype=torch.long)
+
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device, None] = None) -> None:
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")

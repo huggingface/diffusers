@@ -87,23 +87,12 @@ class DFlashPipeline(DiffusionPipeline):
         target_model: torch.nn.Module,
         tokenizer: Optional[object] = None,
         scheduler: Optional[DFlashTokenDiffusionScheduler] = None,
-        *,
-        max_new_tokens: int = 2048,
-        temperature: float = 0.0,
-        use_chat_template: bool = True,
-        add_generation_prompt: bool = True,
     ):
         super().__init__()
         if scheduler is None:
             scheduler = DFlashTokenDiffusionScheduler()
         self.register_modules(
             draft_model=draft_model, target_model=target_model, tokenizer=tokenizer, scheduler=scheduler
-        )
-        self.register_to_config(
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            use_chat_template=use_chat_template,
-            add_generation_prompt=add_generation_prompt,
         )
 
     @classmethod
@@ -151,20 +140,56 @@ class DFlashPipeline(DiffusionPipeline):
             **pipeline_kwargs,
         )
 
+    def check_inputs(
+        self,
+        input_ids: torch.LongTensor,
+        mask_token_id: Optional[int],
+        callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
+        callback_on_step_end_tensor_inputs: Optional[List[str]],
+    ):
+        if input_ids.shape[0] != 1:
+            raise ValueError("DFlashPipeline currently supports batch_size=1 input_ids.")
+        if mask_token_id is None:
+            raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
+    def prepare_latents(
+        self,
+        max_length: int,
+        block_size: int,
+        mask_token_id: int,
+        device: torch.device,
+    ) -> torch.LongTensor:
+        return torch.full(
+            (1, max_length + int(block_size)),
+            int(mask_token_id),
+            dtype=torch.long,
+            device=device,
+        )
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        *,
         messages: Optional[List[Dict[str, str]]] = None,
         input_ids: Optional[torch.LongTensor] = None,
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
+        max_new_tokens: int = 2048,
+        temperature: float = 0.0,
         stop_token_ids: Optional[List[int]] = None,
         mask_token_id: Optional[int] = None,
-        use_chat_template: Optional[bool] = None,
-        add_generation_prompt: Optional[bool] = None,
+        use_chat_template: bool = True,
+        add_generation_prompt: bool = True,
         chat_template_kwargs: Optional[Dict[str, object]] = None,
         return_text: bool = True,
         return_dict: bool = True,
@@ -178,28 +203,12 @@ class DFlashPipeline(DiffusionPipeline):
 
         Examples:
         """
-        if max_new_tokens is None:
-            max_new_tokens = int(self.config.max_new_tokens)
-        if temperature is None:
-            temperature = float(self.config.temperature)
-        if use_chat_template is None:
-            use_chat_template = bool(self.config.use_chat_template)
-        if add_generation_prompt is None:
-            add_generation_prompt = bool(self.config.add_generation_prompt)
-
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
         if callback_on_step_end_tensor_inputs is None:
             callback_on_step_end_tensor_inputs = ["block_output_ids"]
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
-                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
 
         input_ids = self._prepare_input_ids(
             prompt=prompt,
@@ -210,8 +219,15 @@ class DFlashPipeline(DiffusionPipeline):
             chat_template_kwargs=chat_template_kwargs,
         )
 
-        if input_ids.shape[0] != 1:
-            raise ValueError("DFlashPipeline currently supports batch_size=1 input_ids.")
+        if mask_token_id is None:
+            mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
+
+        self.check_inputs(
+            input_ids=input_ids,
+            mask_token_id=mask_token_id,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+        )
 
         target_params = list(self.target_model.parameters()) if hasattr(self.target_model, "parameters") else []
         device = target_params[0].device if len(target_params) > 0 else torch.device("cpu")
@@ -224,11 +240,6 @@ class DFlashPipeline(DiffusionPipeline):
                 draft_device,
                 device,
             )
-
-        if mask_token_id is None:
-            mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
-        if mask_token_id is None:
-            raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
 
         if stop_token_ids is None:
             eos_token_id = getattr(getattr(self, "tokenizer", None), "eos_token_id", None)
@@ -247,12 +258,8 @@ class DFlashPipeline(DiffusionPipeline):
 
         num_input_tokens = input_ids.shape[1]
         max_length = num_input_tokens + int(max_new_tokens)
-        output_ids = torch.full(
-            (1, max_length + int(block_size)),
-            int(mask_token_id),
-            dtype=torch.long,
-            device=device,
-        )
+
+        output_ids = self.prepare_latents(max_length, block_size, int(mask_token_id), device)
         position_ids = torch.arange(output_ids.shape[1], device=device).unsqueeze(0)
 
         past_key_values_target = DynamicCache()

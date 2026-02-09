@@ -67,22 +67,9 @@ class BlockTokenDiffusionPipeline(DiffusionPipeline):
         model: Any,
         scheduler: Any,
         tokenizer: Optional[Any] = None,
-        *,
-        seq_len: int = 64,
-        block_size: int = 32,
-        num_inference_steps: int = 64,
-        inject_start_token: bool = False,
-        top_p: float = 1.0,
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler, tokenizer=tokenizer)
-        self.register_to_config(
-            seq_len=seq_len,
-            block_size=block_size,
-            num_inference_steps=num_inference_steps,
-            inject_start_token=inject_start_token,
-            top_p=top_p,
-        )
 
     @property
     def num_timesteps(self):
@@ -118,32 +105,60 @@ class BlockTokenDiffusionPipeline(DiffusionPipeline):
             prefix_ids = prefix_ids.expand(batch_size, -1)
         return prefix_ids
 
-    def _init_latents(
+    def prepare_latents(
         self,
         batch_size: int,
         seq_len: int,
-        *,
-        generator: Optional[torch.Generator],
-        device: torch.device,
+        generator: Optional[torch.Generator] = None,
+        device: Optional[torch.device] = None,
     ) -> torch.LongTensor:
-        mask_token_id = getattr(self.scheduler, "mask_token_id", None)
-        if mask_token_id is None:
-            raise ValueError("Scheduler must define `mask_token_id` for block diffusion sampling.")
-        return torch.full((batch_size, seq_len), int(mask_token_id), device=device, dtype=torch.long)
+        shape = torch.Size((batch_size, seq_len))
+        return self.scheduler.sample_prior(shape, device=device, generator=generator)
+
+    def check_inputs(
+        self,
+        batch_size: int,
+        seq_len: int,
+        block_size: int,
+        callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
+        callback_on_step_end_tensor_inputs: Optional[List[str]],
+        infill_mask: Optional[torch.BoolTensor],
+        prefix_ids: Optional[torch.LongTensor],
+    ):
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+        if infill_mask is not None and infill_mask.shape != (batch_size, seq_len):
+            raise ValueError(f"`infill_mask` must have shape {(batch_size, seq_len)}, got {tuple(infill_mask.shape)}.")
+        if prefix_ids is not None:
+            p = prefix_ids
+            if p.ndim == 1:
+                p = p.unsqueeze(0)
+            if p.ndim == 2 and p.shape[1] > seq_len:
+                raise ValueError(f"`prefix_ids` length {p.shape[1]} must be <= seq_len={seq_len}.")
+        if block_size <= 0 or block_size > seq_len:
+            raise ValueError(f"`block_size` must be in [1, seq_len], got block_size={block_size}, seq_len={seq_len}.")
 
     @torch.no_grad()
     def __call__(
         self,
-        *,
         batch_size: int = 1,
-        seq_len: Optional[int] = None,
-        block_size: Optional[int] = None,
-        num_inference_steps: Optional[int] = None,
+        seq_len: int = 64,
+        block_size: int = 32,
+        num_inference_steps: int = 64,
         generator: Optional[torch.Generator] = None,
         prefix_ids: Optional[torch.LongTensor] = None,
         infill_mask: Optional[torch.BoolTensor] = None,
-        inject_start_token: Optional[bool] = None,
-        top_p: Optional[float] = None,
+        inject_start_token: bool = False,
+        top_p: float = 1.0,
         return_text: bool = True,
         return_dict: bool = True,
         callback_on_step_end: Optional[
@@ -152,53 +167,39 @@ class BlockTokenDiffusionPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
         **model_kwargs,
     ) -> Union[BlockTokenDiffusionPipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
-        if seq_len is None:
-            seq_len = int(self.config.seq_len)
-        if block_size is None:
-            block_size = int(self.config.block_size)
-        if num_inference_steps is None:
-            num_inference_steps = int(self.config.num_inference_steps)
-        if inject_start_token is None:
-            inject_start_token = bool(self.config.inject_start_token)
-        if top_p is None:
-            top_p = float(self.config.top_p)
-
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
         if callback_on_step_end_tensor_inputs is None:
             callback_on_step_end_tensor_inputs = ["input_ids"]
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
-                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
+
+        self.check_inputs(
+            batch_size=batch_size,
+            seq_len=seq_len,
+            block_size=block_size,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            infill_mask=infill_mask,
+            prefix_ids=prefix_ids,
+        )
 
         device = self._execution_device
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        input_ids = self._init_latents(batch_size, seq_len, generator=generator, device=device)
+        input_ids = self.prepare_latents(batch_size, seq_len, generator=generator, device=device)
         attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
         fixed_mask = None
         fixed_values = None
         if infill_mask is not None:
-            if infill_mask.shape != (batch_size, seq_len):
-                raise ValueError(
-                    f"`infill_mask` must have shape {(batch_size, seq_len)}, got {tuple(infill_mask.shape)}."
-                )
             fixed_mask = (~infill_mask.to(device=device)).to(dtype=torch.bool)
             fixed_values = input_ids.clone()
 
         if prefix_ids is not None:
             prefix_ids = self._normalize_prefix_ids(prefix_ids, batch_size=batch_size, device=device)
             prefix_len = prefix_ids.shape[1]
-            if prefix_len > seq_len:
-                raise ValueError(f"`prefix_ids` length {prefix_len} must be <= seq_len={seq_len}.")
 
             input_ids[:, :prefix_len] = prefix_ids
             if fixed_mask is None:
@@ -215,9 +216,6 @@ class BlockTokenDiffusionPipeline(DiffusionPipeline):
                 fixed_values = input_ids.clone()
             fixed_mask[:, 0] = True
             fixed_values[:, 0] = start_token_id
-
-        if block_size <= 0 or block_size > seq_len:
-            raise ValueError(f"`block_size` must be in [1, seq_len], got block_size={block_size}, seq_len={seq_len}.")
 
         num_blocks = (seq_len + block_size - 1) // block_size
         self._num_timesteps = len(timesteps) * int(num_blocks)

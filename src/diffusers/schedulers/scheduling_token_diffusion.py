@@ -148,6 +148,33 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         draw = torch.randint(0, v_eff, shape, device=device, dtype=dtype, generator=generator)
         return torch.where(draw >= self.mask_token_id, draw + 1, draw)
 
+    def sample_prior(
+        self,
+        shape: torch.Size,
+        device: torch.device,
+        generator: Optional[torch.Generator] = None,
+    ) -> torch.LongTensor:
+        """
+        Sample from the prior distribution of the forward process at t=1.
+
+        For `forward_process="absorbing"`, returns a tensor filled with `mask_token_id`.
+        For `forward_process="uniform"`, returns uniform random token IDs (optionally excluding `mask_token_id`).
+
+        Args:
+            shape (`torch.Size`):
+                Desired output shape, e.g. `(batch_size, seq_len)`.
+            device (`torch.device`):
+                Device for the output tensor.
+            generator (`torch.Generator`, *optional*):
+                Optional generator for determinism (only used for the uniform process).
+
+        Returns:
+            `torch.LongTensor` of shape `shape` with sampled prior token IDs.
+        """
+        if self.forward_process == "uniform":
+            return self._sample_uniform_tokens(shape, device=device, dtype=torch.long, generator=generator)
+        return torch.full(shape, self.mask_token_id, device=device, dtype=torch.long)
+
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device, None] = None) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).

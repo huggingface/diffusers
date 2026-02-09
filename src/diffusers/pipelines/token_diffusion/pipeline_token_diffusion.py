@@ -63,18 +63,9 @@ class TokenDiffusionPipeline(DiffusionPipeline):
         model: Any,
         scheduler: Any,
         tokenizer: Optional[Any] = None,
-        *,
-        seq_len: int = 64,
-        num_inference_steps: int = 128,
-        inject_start_token: bool = False,
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler, tokenizer=tokenizer)
-        self.register_to_config(
-            seq_len=seq_len,
-            num_inference_steps=num_inference_steps,
-            inject_start_token=inject_start_token,
-        )
 
     @property
     def num_timesteps(self):
@@ -90,37 +81,15 @@ class TokenDiffusionPipeline(DiffusionPipeline):
                 return int(token_id)
         return None
 
-    def _init_latents(
+    def prepare_latents(
         self,
         batch_size: int,
         seq_len: int,
-        *,
-        generator: Optional[torch.Generator],
-        device: torch.device,
+        generator: Optional[torch.Generator] = None,
+        device: Optional[torch.device] = None,
     ) -> torch.LongTensor:
-        # Prefer a scheduler-provided prior if available.
-        if hasattr(self.scheduler, "forward_process") and getattr(self.scheduler, "forward_process") == "uniform":
-            # Uniform prior over token IDs. Mirror scheduler's exclude-mask behavior.
-            if getattr(self.scheduler, "exclude_mask_from_uniform", False) and hasattr(
-                self.scheduler, "_sample_uniform_tokens"
-            ):
-                return self.scheduler._sample_uniform_tokens(
-                    torch.Size((batch_size, seq_len)),
-                    device=device,
-                    dtype=torch.long,
-                    generator=generator,
-                )
-            vocab_size = int(getattr(self.scheduler, "vocab_size", 0))
-            if vocab_size <= 0:
-                raise ValueError("Scheduler must define `vocab_size` for uniform prior sampling.")
-            return torch.randint(
-                0, vocab_size, (batch_size, seq_len), device=device, dtype=torch.long, generator=generator
-            )
-
-        mask_token_id = getattr(self.scheduler, "mask_token_id", None)
-        if mask_token_id is None:
-            raise ValueError("Scheduler must define `mask_token_id` for absorbing prior sampling.")
-        return torch.full((batch_size, seq_len), int(mask_token_id), device=device, dtype=torch.long)
+        shape = torch.Size((batch_size, seq_len))
+        return self.scheduler.sample_prior(shape, device=device, generator=generator)
 
     def _normalize_prefix_ids(
         self, prefix_ids: torch.LongTensor, batch_size: int, device: torch.device
@@ -142,17 +111,45 @@ class TokenDiffusionPipeline(DiffusionPipeline):
             prefix_ids = prefix_ids.expand(batch_size, -1)
         return prefix_ids
 
+    def check_inputs(
+        self,
+        batch_size: int,
+        seq_len: int,
+        callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
+        callback_on_step_end_tensor_inputs: Optional[List[str]],
+        infill_mask: Optional[torch.BoolTensor],
+        prefix_ids: Optional[torch.LongTensor],
+    ):
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+        if infill_mask is not None and infill_mask.shape != (batch_size, seq_len):
+            raise ValueError(f"`infill_mask` must have shape {(batch_size, seq_len)}, got {tuple(infill_mask.shape)}.")
+        if prefix_ids is not None:
+            p = prefix_ids
+            if p.ndim == 1:
+                p = p.unsqueeze(0)
+            if p.ndim == 2 and p.shape[1] > seq_len:
+                raise ValueError(f"`prefix_ids` length {p.shape[1]} must be <= seq_len={seq_len}.")
+
     @torch.no_grad()
     def __call__(
         self,
-        *,
         batch_size: int = 1,
-        seq_len: Optional[int] = None,
-        num_inference_steps: Optional[int] = None,
+        seq_len: int = 64,
+        num_inference_steps: int = 128,
         generator: Optional[torch.Generator] = None,
         prefix_ids: Optional[torch.LongTensor] = None,
         infill_mask: Optional[torch.BoolTensor] = None,
-        inject_start_token: Optional[bool] = None,
+        inject_start_token: bool = False,
         return_text: bool = True,
         return_dict: bool = True,
         callback_on_step_end: Optional[
@@ -164,9 +161,8 @@ class TokenDiffusionPipeline(DiffusionPipeline):
         """
         Args:
             batch_size: Number of sequences to generate.
-            seq_len: Sequence length in tokens. Uses `pipe.config.seq_len` when `None`.
-            num_inference_steps:
-                Number of reverse diffusion steps. Uses `pipe.config.num_inference_steps` when `None`.
+            seq_len: Sequence length in tokens.
+            num_inference_steps: Number of reverse diffusion steps.
             generator: Optional torch generator for determinism.
             prefix_ids: Optional prefix token IDs to keep fixed at the start of each sequence. Shape `[P]` or
                 `[batch_size, P]`.
@@ -174,7 +170,6 @@ class TokenDiffusionPipeline(DiffusionPipeline):
                 Optional boolean mask of shape `[batch_size, seq_len]` indicating which positions are editable (`True`)
                 vs fixed (`False`). Fixed positions are clamped to the initial values on every step.
             inject_start_token: If True, inject `bos_token_id` (or `cls_token_id`) into position 0 (if available).
-                Uses `pipe.config.inject_start_token` when `None`.
             return_text: If True and tokenizer exists, also return decoded strings.
             return_dict: If True, returns a `TokenDiffusionPipelineOutput`.
             callback_on_step_end: A function called after each denoising step with signature
@@ -182,26 +177,21 @@ class TokenDiffusionPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs: List of tensor keys to include in `callback_kwargs`.
             model_kwargs: Forward kwargs passed to `model(...)` (e.g. attention mask overrides).
         """
-        if seq_len is None:
-            seq_len = int(self.config.seq_len)
-        if num_inference_steps is None:
-            num_inference_steps = int(self.config.num_inference_steps)
-        if inject_start_token is None:
-            inject_start_token = bool(self.config.inject_start_token)
-
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
         if callback_on_step_end_tensor_inputs is None:
             callback_on_step_end_tensor_inputs = ["input_ids"]
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
-                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
+
+        self.check_inputs(
+            batch_size=batch_size,
+            seq_len=seq_len,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            infill_mask=infill_mask,
+            prefix_ids=prefix_ids,
+        )
 
         device = self._execution_device
 
@@ -209,24 +199,18 @@ class TokenDiffusionPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
         self._num_timesteps = len(timesteps)
 
-        input_ids = self._init_latents(batch_size, seq_len, generator=generator, device=device)
+        input_ids = self.prepare_latents(batch_size, seq_len, generator=generator, device=device)
         attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
         fixed_mask = None
         fixed_values = None
         if infill_mask is not None:
-            if infill_mask.shape != (batch_size, seq_len):
-                raise ValueError(
-                    f"`infill_mask` must have shape {(batch_size, seq_len)}, got {tuple(infill_mask.shape)}."
-                )
             fixed_mask = (~infill_mask.to(device=device)).to(dtype=torch.bool)
             fixed_values = input_ids.clone()
 
         if prefix_ids is not None:
             prefix_ids = self._normalize_prefix_ids(prefix_ids, batch_size=batch_size, device=device)
             prefix_len = prefix_ids.shape[1]
-            if prefix_len > seq_len:
-                raise ValueError(f"`prefix_ids` length {prefix_len} must be <= seq_len={seq_len}.")
 
             input_ids[:, :prefix_len] = prefix_ids
             if fixed_mask is None:

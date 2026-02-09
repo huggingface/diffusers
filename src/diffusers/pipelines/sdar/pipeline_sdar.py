@@ -69,7 +69,62 @@ class SDARPipeline(DiffusionPipeline):
         model: torch.nn.Module,
         tokenizer: Optional[object] = None,
         scheduler: Optional[SDARTokenDiffusionScheduler] = None,
-        *,
+    ):
+        super().__init__()
+        if scheduler is None:
+            scheduler = SDARTokenDiffusionScheduler()
+        self.register_modules(model=model, tokenizer=tokenizer, scheduler=scheduler)
+        self._store_kv_supported: Optional[bool] = None
+
+    def check_inputs(
+        self,
+        input_ids: torch.LongTensor,
+        block_length: int,
+        denoising_steps: int,
+        mask_token_id: Optional[int],
+        callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
+        callback_on_step_end_tensor_inputs: Optional[List[str]],
+    ):
+        if input_ids.shape[0] != 1:
+            raise ValueError("SDARPipeline currently supports batch_size=1 input_ids.")
+        if block_length <= 0:
+            raise ValueError(f"`block_length` must be > 0, got {block_length}.")
+        if denoising_steps <= 0:
+            raise ValueError(f"`denoising_steps` must be > 0, got {denoising_steps}.")
+        if mask_token_id is None:
+            raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
+    def prepare_latents(
+        self,
+        total_length: int,
+        mask_token_id: int,
+        device: torch.device,
+    ) -> torch.LongTensor:
+        return torch.full(
+            (1, total_length),
+            int(mask_token_id),
+            dtype=torch.long,
+            device=device,
+        )
+
+    @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
+    def __call__(
+        self,
+        prompt: Optional[Union[str, List[str]]] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        input_ids: Optional[torch.LongTensor] = None,
         max_new_tokens: int = 256,
         block_length: int = 4,
         denoising_steps: int = 4,
@@ -79,61 +134,11 @@ class SDARPipeline(DiffusionPipeline):
         remasking_strategy: str = "low_confidence_dynamic",
         confidence_threshold: float = 0.9,
         entropy_threshold: float = 0.35,
-        use_chat_template: bool = True,
-        add_generation_prompt: bool = True,
-        attention_mask_mode: str = "3d",
-    ):
-        super().__init__()
-        if scheduler is None:
-            scheduler = SDARTokenDiffusionScheduler(
-                block_length=block_length,
-                denoising_steps=denoising_steps,
-                remasking_strategy=remasking_strategy,
-                confidence_threshold=confidence_threshold,
-                entropy_threshold=entropy_threshold,
-                temperature=temperature,
-                top_k=top_k,
-                top_p=top_p,
-            )
-        self.register_modules(model=model, tokenizer=tokenizer, scheduler=scheduler)
-        self.register_to_config(
-            max_new_tokens=max_new_tokens,
-            block_length=block_length,
-            denoising_steps=denoising_steps,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            remasking_strategy=remasking_strategy,
-            confidence_threshold=confidence_threshold,
-            entropy_threshold=entropy_threshold,
-            use_chat_template=use_chat_template,
-            add_generation_prompt=add_generation_prompt,
-            attention_mask_mode=attention_mask_mode,
-        )
-        self._store_kv_supported: Optional[bool] = None
-
-    @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
-    def __call__(
-        self,
-        prompt: Optional[Union[str, List[str]]] = None,
-        *,
-        messages: Optional[List[Dict[str, str]]] = None,
-        input_ids: Optional[torch.LongTensor] = None,
-        max_new_tokens: Optional[int] = None,
-        block_length: Optional[int] = None,
-        denoising_steps: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_k: Optional[int] = None,
-        top_p: Optional[float] = None,
-        remasking_strategy: Optional[str] = None,
-        confidence_threshold: Optional[float] = None,
-        entropy_threshold: Optional[float] = None,
         stop_token_ids: Optional[List[int]] = None,
         mask_token_id: Optional[int] = None,
-        attention_mask_mode: Optional[str] = None,
-        use_chat_template: Optional[bool] = None,
-        add_generation_prompt: Optional[bool] = None,
+        attention_mask_mode: str = "3d",
+        use_chat_template: bool = True,
+        add_generation_prompt: bool = True,
         chat_template_kwargs: Optional[Dict[str, object]] = None,
         return_text: bool = True,
         return_dict: bool = True,
@@ -147,47 +152,19 @@ class SDARPipeline(DiffusionPipeline):
 
         Examples:
         """
-        if max_new_tokens is None:
-            max_new_tokens = int(self.config.max_new_tokens)
-        if block_length is None:
-            model_block_length = getattr(self.model, "block_length", None)
-            if model_block_length is None:
-                model_block_length = getattr(getattr(self.model, "config", None), "block_length", None)
-            block_length = int(model_block_length) if model_block_length is not None else int(self.config.block_length)
-        if denoising_steps is None:
-            denoising_steps = int(self.config.denoising_steps)
-        if temperature is None:
-            temperature = float(self.config.temperature)
-        if top_k is None:
-            top_k = int(self.config.top_k)
-        if top_p is None:
-            top_p = float(self.config.top_p)
-        if remasking_strategy is None:
-            remasking_strategy = str(self.config.remasking_strategy)
-        if confidence_threshold is None:
-            confidence_threshold = float(self.config.confidence_threshold)
-        if entropy_threshold is None:
-            entropy_threshold = float(self.config.entropy_threshold)
-        if attention_mask_mode is None:
-            attention_mask_mode = str(self.config.attention_mask_mode)
-        if use_chat_template is None:
-            use_chat_template = bool(self.config.use_chat_template)
-        if add_generation_prompt is None:
-            add_generation_prompt = bool(self.config.add_generation_prompt)
-
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
         if callback_on_step_end_tensor_inputs is None:
             callback_on_step_end_tensor_inputs = ["cur_x"]
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
-                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
+
+        # Resolve block_length from model if not explicitly overridden by the user
+        model_block_length = getattr(self.model, "block_length", None)
+        if model_block_length is None:
+            model_block_length = getattr(getattr(self.model, "config", None), "block_length", None)
+        if model_block_length is not None:
+            block_length = int(model_block_length)
 
         input_ids = self._prepare_input_ids(
             prompt=prompt,
@@ -198,17 +175,21 @@ class SDARPipeline(DiffusionPipeline):
             chat_template_kwargs=chat_template_kwargs,
         )
 
-        if input_ids.shape[0] != 1:
-            raise ValueError("SDARPipeline currently supports batch_size=1 input_ids.")
+        if mask_token_id is None:
+            mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
+
+        self.check_inputs(
+            input_ids=input_ids,
+            block_length=block_length,
+            denoising_steps=denoising_steps,
+            mask_token_id=mask_token_id,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+        )
 
         params = list(self.model.parameters()) if hasattr(self.model, "parameters") else []
         device = params[0].device if len(params) > 0 else torch.device("cpu")
         input_ids = input_ids.to(device=device)
-
-        if mask_token_id is None:
-            mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
-        if mask_token_id is None:
-            raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
 
         if stop_token_ids is None:
             eos_token_id = getattr(getattr(self, "tokenizer", None), "eos_token_id", None)
@@ -217,11 +198,6 @@ class SDARPipeline(DiffusionPipeline):
             stop_token_ids = [int(token_id) for token_id in stop_token_ids]
 
         self.model.eval()
-        if block_length <= 0:
-            raise ValueError(f"`block_length` must be > 0, got {block_length}.")
-        if denoising_steps <= 0:
-            raise ValueError(f"`denoising_steps` must be > 0, got {denoising_steps}.")
-
         self.scheduler.set_timesteps(int(denoising_steps), device=device)
 
         prompt_length = input_ids.shape[1]
@@ -238,12 +214,7 @@ class SDARPipeline(DiffusionPipeline):
         block_mask_4d = self._build_block_attention_mask_4d(block_mask_3d, dtype=torch.float32)
         block_mask_2d = block_mask_3d[0]
 
-        x = torch.full(
-            (1, total_length),
-            int(mask_token_id),
-            dtype=torch.long,
-            device=device,
-        )
+        x = self.prepare_latents(total_length, int(mask_token_id), device)
         x[:, :prompt_length] = input_ids
 
         position_ids = torch.arange(total_length, device=device).unsqueeze(0)
