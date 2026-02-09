@@ -125,6 +125,8 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
+        self.alphas = None
+        self._step_index_map = None
 
     def _effective_vocab_size(self) -> int:
         if self.forward_process == "uniform" and self.exclude_mask_from_uniform:
@@ -180,6 +182,8 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Timesteps are stored in descending order, so `timesteps[0]` is the noisiest step.
+        Alpha values are pre-computed for each timestep so that `step()` can look them up
+        by index instead of recomputing them on every call.
         """
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
@@ -190,6 +194,14 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             self.num_train_timesteps - 1, 0, self.num_inference_steps, dtype=torch.float32
         ).round()
         self.timesteps = timesteps.to(dtype=torch.long, device=device)
+
+        # Pre-compute alpha(t) for every inference timestep.
+        t_continuous = timesteps / float(self.num_train_timesteps - 1)
+        t_continuous = t_continuous.clamp_(0.0, 1.0)
+        self.alphas = self._alpha_t(t_continuous).to(dtype=torch.float32, device=device)
+
+        # Build a map from timestep value → index for O(1) lookup in step().
+        self._step_index_map = {int(self.timesteps[i].item()): i for i in range(len(self.timesteps))}
 
     def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         return sample
@@ -403,22 +415,33 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         else:
             timestep_int = int(timestep)
 
-        # Find current index in timesteps and use the next value as "previous" time (less noisy).
-        # If we are at the end, perform a "noise removal" step (alpha_prev = 1).
-        current_indices = (self.timesteps == timestep_int).nonzero(as_tuple=False)
-        if current_indices.numel() == 0:
-            raise ValueError(f"`timestep` ({timestep_int}) must be one of `self.timesteps`.")
-        step_index = int(current_indices[0].item())
-        is_noise_removal_step = step_index + 1 >= len(self.timesteps)
-        prev_timestep_int = int(self.timesteps[step_index + 1].item()) if not is_noise_removal_step else 0
-
-        t = self._t_from_timestep(timestep_int, device=device)
-        alpha_t = self._alpha_t(t).to(dtype=torch.float32)
-        if is_noise_removal_step:
-            alpha_prev = torch.tensor(1.0, device=device, dtype=torch.float32)
+        # Look up the step index and pre-computed alpha values.
+        if self._step_index_map is not None and timestep_int in self._step_index_map:
+            step_index = self._step_index_map[timestep_int]
         else:
-            t_prev = self._t_from_timestep(prev_timestep_int, device=device)
-            alpha_prev = self._alpha_t(t_prev).to(dtype=torch.float32)
+            current_indices = (self.timesteps == timestep_int).nonzero(as_tuple=False)
+            if current_indices.numel() == 0:
+                raise ValueError(f"`timestep` ({timestep_int}) must be one of `self.timesteps`.")
+            step_index = int(current_indices[0].item())
+
+        is_noise_removal_step = step_index + 1 >= len(self.timesteps)
+
+        # Use pre-computed alphas when available, otherwise fall back to computing on the fly.
+        if self.alphas is not None:
+            alpha_t = self.alphas[step_index].to(device=device)
+            if is_noise_removal_step:
+                alpha_prev = torch.tensor(1.0, device=device, dtype=torch.float32)
+            else:
+                alpha_prev = self.alphas[step_index + 1].to(device=device)
+        else:
+            t = self._t_from_timestep(timestep_int, device=device)
+            alpha_t = self._alpha_t(t).to(dtype=torch.float32)
+            if is_noise_removal_step:
+                alpha_prev = torch.tensor(1.0, device=device, dtype=torch.float32)
+            else:
+                prev_timestep_int = int(self.timesteps[step_index + 1].item())
+                t_prev = self._t_from_timestep(prev_timestep_int, device=device)
+                alpha_prev = self._alpha_t(t_prev).to(dtype=torch.float32)
 
         if self.forward_process == "uniform":
             # Convert logits to probabilities for x0; optionally forbid mask token.
@@ -461,30 +484,27 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
             x_prev = _gumbel_argmax(torch.log(q_xs), generator=generator).to(dtype=torch.long)
 
-            if not return_dict:
-                return (x_prev,)
-            return TokenDiffusionSchedulerOutput(prev_sample=x_prev)
+        elif self.forward_process == "absorbing":
+            # p_denoise = (alpha_prev - alpha_t) / (1 - alpha_t)
+            denom = (1.0 - alpha_t).clamp_min(torch.finfo(torch.float32).eps)
+            p_denoise = ((alpha_prev - alpha_t) / denom).clamp(0.0, 1.0)
 
-        if self.forward_process != "absorbing":
+            # Sample x0 predictions (never sample the mask token).
+            logits = model_output.to(dtype=torch.float32)
+            logits[..., self.mask_token_id] = torch.finfo(logits.dtype).min
+            sampled_x0 = _gumbel_argmax(logits, generator=generator).to(dtype=torch.long)
+
+            # Only masked positions can change.
+            is_masked = sample == self.mask_token_id
+
+            # Bernoulli draw for whether to denoise at this step (only matters on masked positions).
+            rand = torch.rand((batch_size, seq_len), device=device, dtype=torch.float32, generator=generator)
+            should_denoise = rand < float(p_denoise.item())
+
+            x_prev = torch.where(is_masked & should_denoise, sampled_x0, sample)
+
+        else:
             raise ValueError(f"Unsupported forward process for `step()`: {self.forward_process!r}")
-
-        # p_denoise = (alpha_prev - alpha_t) / (1 - alpha_t)
-        denom = (1.0 - alpha_t).clamp_min(torch.finfo(torch.float32).eps)
-        p_denoise = ((alpha_prev - alpha_t) / denom).clamp(0.0, 1.0)
-
-        # Sample x0 predictions (never sample the mask token).
-        logits = model_output.to(dtype=torch.float32)
-        logits[..., self.mask_token_id] = torch.finfo(logits.dtype).min
-        sampled_x0 = _gumbel_argmax(logits, generator=generator).to(dtype=torch.long)
-
-        # Only masked positions can change.
-        is_masked = sample == self.mask_token_id
-
-        # Bernoulli draw for whether to denoise at this step (only matters on masked positions).
-        rand = torch.rand((batch_size, seq_len), device=device, dtype=torch.float32, generator=generator)
-        should_denoise = rand < float(p_denoise.item())
-
-        x_prev = torch.where(is_masked & should_denoise, sampled_x0, sample)
 
         if not return_dict:
             return (x_prev,)

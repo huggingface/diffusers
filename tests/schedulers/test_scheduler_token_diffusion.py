@@ -125,6 +125,66 @@ class TokenDiffusionSchedulerTest(unittest.TestCase):
         self.assertEqual(alpha.shape, (3, 1))
         self.assertEqual(dalpha.shape, (3, 1))
 
+    def test_set_timesteps_precomputes_alphas(self):
+        for schedule in ["log_linear", "linear", "cosine", "geometric"]:
+            scheduler = self.get_scheduler(alpha_schedule=schedule)
+            scheduler.set_timesteps(10)
+
+            self.assertIsNotNone(scheduler.alphas)
+            self.assertEqual(len(scheduler.alphas), 10)
+
+            # Verify pre-computed alphas match on-the-fly computation.
+            for i, ts in enumerate(scheduler.timesteps):
+                t = scheduler._t_from_timestep(int(ts.item()), device=torch.device("cpu"))
+                expected = scheduler._alpha_t(t).to(dtype=torch.float32)
+                self.assertTrue(
+                    torch.allclose(scheduler.alphas[i].cpu(), expected, atol=1e-6),
+                    f"Alpha mismatch at step {i} for schedule {schedule}",
+                )
+
+    def test_set_timesteps_builds_step_index_map(self):
+        scheduler = self.get_scheduler()
+        scheduler.set_timesteps(5)
+
+        self.assertIsNotNone(scheduler._step_index_map)
+        self.assertEqual(len(scheduler._step_index_map), 5)
+
+        for i, ts in enumerate(scheduler.timesteps):
+            self.assertEqual(scheduler._step_index_map[int(ts.item())], i)
+
+    def test_step_uses_precomputed_alphas_consistent_with_recompute(self):
+        """Verify step() produces identical results whether using pre-computed or recomputed alphas."""
+        for process in ["absorbing", "uniform"]:
+            scheduler = self.get_scheduler(forward_process=process)
+            scheduler.set_timesteps(3)
+
+            batch_size, seq_len = 2, 8
+            if process == "absorbing":
+                x_t = torch.full((batch_size, seq_len), scheduler.mask_token_id, dtype=torch.long)
+            else:
+                x_t = torch.randint(0, scheduler.vocab_size, (batch_size, seq_len), dtype=torch.long)
+            logits = torch.randn((batch_size, seq_len, scheduler.vocab_size), dtype=torch.float32)
+
+            gen1 = torch.Generator().manual_seed(42)
+            out1 = scheduler.step(logits, scheduler.timesteps[0], x_t, generator=gen1, return_dict=True)
+
+            # Temporarily clear pre-computed alphas to force recomputation.
+            saved_alphas = scheduler.alphas
+            saved_map = scheduler._step_index_map
+            scheduler.alphas = None
+            scheduler._step_index_map = None
+
+            gen2 = torch.Generator().manual_seed(42)
+            out2 = scheduler.step(logits, scheduler.timesteps[0], x_t, generator=gen2, return_dict=True)
+
+            scheduler.alphas = saved_alphas
+            scheduler._step_index_map = saved_map
+
+            self.assertTrue(
+                torch.equal(out1.prev_sample, out2.prev_sample),
+                f"Mismatch for forward_process={process}",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
