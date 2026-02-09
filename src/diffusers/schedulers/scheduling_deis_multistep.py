@@ -867,7 +867,9 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
     def index_for_timestep(
-        self, timestep: Union[int, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self,
+        timestep: Union[int, torch.Tensor],
+        schedule_timesteps: Optional[torch.Tensor] = None,
     ) -> int:
         """
         Find the index for a given timestep in the schedule.

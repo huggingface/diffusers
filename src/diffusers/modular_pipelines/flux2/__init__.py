@@ -55,7 +55,11 @@ else:
         "Flux2VaeEncoderSequentialStep",
     ]
     _import_structure["modular_blocks_flux2_klein"] = ["Flux2KleinAutoBlocks", "Flux2KleinBaseAutoBlocks"]
-    _import_structure["modular_pipeline"] = ["Flux2ModularPipeline", "Flux2KleinModularPipeline"]
+    _import_structure["modular_pipeline"] = [
+        "Flux2ModularPipeline",
+        "Flux2KleinModularPipeline",
+        "Flux2KleinBaseModularPipeline",
+    ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -101,7 +105,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinAutoBlocks,
             Flux2KleinBaseAutoBlocks,
         )
-        from .modular_pipeline import Flux2KleinModularPipeline, Flux2ModularPipeline
+        from .modular_pipeline import Flux2KleinBaseModularPipeline, Flux2KleinModularPipeline, Flux2ModularPipeline
 else:
     import sys
 
