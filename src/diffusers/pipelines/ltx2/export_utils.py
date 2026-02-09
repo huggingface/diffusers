@@ -149,8 +149,8 @@ def encode_video(
             video = (video * 255).round().astype("uint8")
         else:
             logger.warning(
-                f"Supplied `numpy.ndarray` does not have values in [0, 1]. The values will be assumed to be pixel "
-                f"values in [0, ..., 255] and will be used as is."
+                "Supplied `numpy.ndarray` does not have values in [0, 1]. The values will be assumed to be pixel "
+                "values in [0, ..., 255] and will be used as is."
             )
         video = torch.from_numpy(video)
 
