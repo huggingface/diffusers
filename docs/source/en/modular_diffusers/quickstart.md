@@ -39,17 +39,44 @@ image
 [`~ModularPipeline.from_pretrained`] uses lazy loading - it reads the configuration to learn where to load each component from, but doesn't actually load the model weights until you call [`~ModularPipeline.load_components`]. This gives you control over when and how components are loaded.
 
 > [!TIP]
-> [`ComponentsManager`] with `enable_auto_cpu_offload` automatically moves models between CPU and GPU as needed, reducing memory usage for large models like Qwen-Image. Learn more in the [ComponentsManager](./components_manager) guide.
+> `ComponentsManager` with `enable_auto_cpu_offload` automatically moves models between CPU and GPU as needed, reducing memory usage for large models like Qwen-Image. Learn more in the [ComponentsManager](./components_manager) guide.
+>
+> If you don't need offloading, simply remove the `components_manager` argument and move the pipeline to your device manually with `pipe.to("cuda")`.
 
 Learn more about creating and loading pipelines in the [Creating a pipeline](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#creating-a-pipeline) and [Loading components](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#loading-components) guides.
 
 ## Understand the structure
 
-A [`ModularPipeline`] has two parts:
-- **State**: the loaded components (models, schedulers, processors) and configuration
-- **Definition**: the [`ModularPipelineBlocks`] that specify inputs, outputs, expected components and computation logic
+A [`ModularPipeline`] has two parts: a **definition** (the blocks) and a **state** (the loaded components and configs).
 
-The blocks define *what* the pipeline does. Access them through `pipe.blocks`.
+Print the pipeline to see its state — the components and their loading status and configuration.
+```py
+print(pipe)
+```
+```
+QwenImageModularPipeline {
+  "_blocks_class_name": "QwenImageAutoBlocks",
+  "_class_name": "QwenImageModularPipeline",
+  "_diffusers_version": "0.37.0.dev0",
+  "transformer": [
+    "diffusers",
+    "QwenImageTransformer2DModel",
+    {
+      "pretrained_model_name_or_path": "Qwen/Qwen-Image",
+      "revision": null,
+      "subfolder": "transformer",
+      "type_hint": [
+        "diffusers",
+        "QwenImageTransformer2DModel"
+      ],
+      "variant": null
+    }
+  ],
+  ...
+}
+```
+
+Access the definition through `pipe.blocks` — this is the [`~modular_pipelines.ModularPipelineBlocks`] that defines the pipeline's workflows, inputs, outputs, and computation logic.
 ```py
 print(pipe.blocks)
 ```
@@ -87,7 +114,9 @@ The output returns:
 
 ### Workflows
 
-`QwenImageAutoBlocks` is a [`ConditionalPipelineBlocks`], so this pipeline supports multiple workflows and adapts its behavior based on the inputs you provide. For example, if you pass `image` to the pipeline, it runs an image-to-image workflow instead of text-to-image. Let's see this in action with an example.
+This pipeline supports multiple workflows and adapts its behavior based on the inputs you provide. For example, if you pass `image` to the pipeline, it runs an image-to-image workflow instead of text-to-image. Learn more about how this works under the hood in the [AutoPipelineBlocks](https://huggingface.co/docs/diffusers/modular_diffusers/auto_pipeline_blocks) guide.
+
+Let's see this in action with an example.
 ```py
 from diffusers.utils import load_image
 
@@ -99,20 +128,21 @@ image = pipe(
 ).images[0]
 ```
 
-Use `get_workflow()` to extract the blocks for a specific workflow. Pass the workflow name (e.g., `"image2image"`, `"inpainting"`, `"controlnet_text2image"`) to get only the blocks relevant to that workflow.
+Use `get_workflow()` to extract the blocks for a specific workflow. Pass the workflow name (e.g., `"image2image"`, `"inpainting"`, `"controlnet_text2image"`) to get only the blocks relevant to that workflow. This is useful when you want to customize or debug a specific workflow.
 ```py
 img2img_blocks = pipe.blocks.get_workflow("image2image")
 ```
 
-Conditional blocks are convenient for users, but their conditional logic adds complexity when customizing or debugging. Extracting a workflow gives you the specific blocks relevant to your workflow, making it easier to work with. Learn more in the [AutoPipelineBlocks](https://huggingface.co/docs/diffusers/modular_diffusers/auto_pipeline_blocks) guide.
 
 ### Sub-blocks
 
 Blocks can contain other blocks. `pipe.blocks` gives you the top-level block definition (here, `QwenImageAutoBlocks`), while `sub_blocks` lets you access the smaller blocks inside it.
 
-`QwenImageAutoBlocks` is composed of: `text_encoder`, `vae_encoder`, `controlnet_vae_encoder`, `denoise`, and `decode`. Access them through the `sub_blocks` property.
+`QwenImageAutoBlocks` is composed of: `text_encoder`, `vae_encoder`, `controlnet_vae_encoder`, `denoise`, and `decode`.
 
-The `doc` property is useful for seeing the full documentation of any block, including its inputs, outputs, and components.
+These sub-blocks run one after another and data flows linearly from one block to the next — each block's `intermediate_outputs` become available as `inputs` to the next block. This is how [`SequentialPipelineBlocks`](./sequential_pipeline_blocks) work.
+
+You can access them through the `sub_blocks` property. The `doc` property is useful for seeing the full documentation of any block, including its inputs, outputs, and components.
 ```py
 vae_encoder_block = pipe.blocks.sub_blocks["vae_encoder"]
 print(vae_encoder_block.doc)
@@ -165,7 +195,7 @@ class CannyBlock
           Canny map for input image
 ```
 
-UUse `get_workflow` to extract the ControlNet workflow from [`QwenImageAutoBlocks`].
+Use `get_workflow` to extract the ControlNet workflow from [`QwenImageAutoBlocks`].
 ```py
 # Get the controlnet workflow that we want to work with
 blocks = pipe.blocks.get_workflow("controlnet_text2image")
@@ -182,9 +212,8 @@ class SequentialPipelineBlocks
       ...
 ```
 
-The extracted workflow is a [`SequentialPipelineBlocks`](./sequential_pipeline_blocks) - a multi-block type where blocks run one after another and data flows linearly from one block to the next. Each block's `intermediate_outputs` become available as `inputs` to subsequent blocks.
 
-Currently this workflow requires `control_image` as input. Let's insert the canny block at the beginning so the pipeline accepts a regular image instead.
+The extracted workflow is a [`SequentialPipelineBlocks`](./sequential_pipeline_blocks) and it currently requires `control_image` as input. Let's insert the canny block at the beginning so the pipeline accepts a regular image instead.
 ```py
 # Insert canny at the beginning
 blocks.sub_blocks.insert("canny", canny_block, 0)
@@ -211,7 +240,7 @@ class SequentialPipelineBlocks
 
 Now the pipeline takes `image` as input instead of `control_image`. Because blocks in a sequence share data automatically, the canny block's output (`control_image`) flows to the denoise block that needs it, and the canny block's input (`image`) becomes a pipeline input since no earlier block provides it.
 
-Create a pipeline from the modified blocks and load a ControlNet model.
+Create a pipeline from the modified blocks and load a ControlNet model. The ControlNet isn't part of the original model repository, so we load it separately and add it with [`~ModularPipeline.update_components`].
 ```py
 pipeline = blocks.init_pipeline("Qwen/Qwen-Image", components_manager=manager)
 
@@ -241,6 +270,16 @@ output
 ## Next steps
 
 <hfoptions id="next">
+<hfoption id="Learn the basics">
+
+Understand the core building blocks of Modular Diffusers:
+
+- [ModularPipelineBlocks](./pipeline_block): The basic unit for defining a step in a pipeline.
+- [SequentialPipelineBlocks](./sequential_pipeline_blocks): Chain blocks to run in sequence.
+- [AutoPipelineBlocks](./auto_pipeline_blocks): Create pipelines that support multiple workflows.
+- [States](./modular_diffusers_states): How data is shared between blocks.
+
+</hfoption>
 <hfoption id="Build custom blocks">
 
 Learn how to create your own blocks with custom logic in the [Building Custom Blocks](./custom_blocks) guide.
