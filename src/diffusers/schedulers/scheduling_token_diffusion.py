@@ -157,8 +157,8 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         """
         Sample from the prior distribution of the forward process at t=1.
 
-        For `forward_process="absorbing"`, returns a tensor filled with `mask_token_id`.
-        For `forward_process="uniform"`, returns uniform random token IDs (optionally excluding `mask_token_id`).
+        For `forward_process="absorbing"`, returns a tensor filled with `mask_token_id`. For
+        `forward_process="uniform"`, returns uniform random token IDs (optionally excluding `mask_token_id`).
 
         Args:
             shape (`torch.Size`):

@@ -21,7 +21,7 @@ import torch
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...utils import BaseOutput
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, DiscreteDiffusionPipelineMixin
 
 
 @dataclass
@@ -40,7 +40,7 @@ class TokenDiffusionPipelineOutput(BaseOutput):
     texts: Optional[List[str]] = None
 
 
-class TokenDiffusionPipeline(DiffusionPipeline):
+class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     """
     Generic token diffusion sampling pipeline.
 
@@ -71,16 +71,6 @@ class TokenDiffusionPipeline(DiffusionPipeline):
     def num_timesteps(self):
         return self._num_timesteps
 
-    def _resolve_start_token_id(self) -> Optional[int]:
-        tok = getattr(self, "tokenizer", None)
-        if tok is None:
-            return None
-        for attr in ("bos_token_id", "cls_token_id"):
-            token_id = getattr(tok, attr, None)
-            if token_id is not None:
-                return int(token_id)
-        return None
-
     def prepare_latents(
         self,
         batch_size: int,
@@ -90,26 +80,6 @@ class TokenDiffusionPipeline(DiffusionPipeline):
     ) -> torch.LongTensor:
         shape = torch.Size((batch_size, seq_len))
         return self.scheduler.sample_prior(shape, device=device, generator=generator)
-
-    def _normalize_prefix_ids(
-        self, prefix_ids: torch.LongTensor, batch_size: int, device: torch.device
-    ) -> torch.LongTensor:
-        if prefix_ids.ndim == 1:
-            prefix_ids = prefix_ids.unsqueeze(0)
-        if prefix_ids.ndim != 2:
-            raise ValueError(
-                f"`prefix_ids` must have shape [prefix_len] or [batch, prefix_len], got {prefix_ids.shape}."
-            )
-        if prefix_ids.shape[0] not in (1, batch_size):
-            raise ValueError(
-                f"`prefix_ids` batch dim must be 1 or batch_size={batch_size}, got {prefix_ids.shape[0]}."
-            )
-        if prefix_ids.dtype != torch.long:
-            raise ValueError(f"`prefix_ids` must be int64 token IDs, got dtype={prefix_ids.dtype}.")
-        prefix_ids = prefix_ids.to(device=device)
-        if prefix_ids.shape[0] == 1 and batch_size > 1:
-            prefix_ids = prefix_ids.expand(batch_size, -1)
-        return prefix_ids
 
     def check_inputs(
         self,

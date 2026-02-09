@@ -21,73 +21,13 @@ import torch
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...utils import BaseOutput
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, DiscreteDiffusionPipelineMixin
 
 
 @dataclass
 class BlockRefinementPipelineOutput(BaseOutput):
     sequences: torch.LongTensor
     texts: Optional[List[str]] = None
-
-
-def _top_k_filtering(logits: torch.Tensor, top_k: Optional[int]) -> torch.Tensor:
-    if top_k is None or top_k <= 0:
-        return logits
-    if top_k >= logits.shape[-1]:
-        return logits
-    values, _ = torch.topk(logits, k=int(top_k), dim=-1)
-    min_keep = values[..., -1, None]
-    return logits.masked_fill(logits < min_keep, torch.finfo(logits.dtype).min)
-
-
-def _top_p_filtering(logits: torch.Tensor, top_p: Optional[float]) -> torch.Tensor:
-    if top_p is None or top_p >= 1.0:
-        return logits
-    if not (0.0 < top_p <= 1.0):
-        raise ValueError(f"`top_p` must be in (0, 1], got {top_p}.")
-
-    sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
-    sorted_probs = torch.softmax(sorted_logits, dim=-1)
-    cumulative_probs = sorted_probs.cumsum(dim=-1)
-
-    sorted_indices_to_remove = cumulative_probs > float(top_p)
-    sorted_indices_to_remove[..., 0] = 0
-
-    sorted_logits = sorted_logits.masked_fill(sorted_indices_to_remove, torch.finfo(sorted_logits.dtype).min)
-    filtered = logits.scatter(-1, sorted_indices, sorted_logits)
-    return filtered
-
-
-def _sample_with_temperature_topk_topp(
-    logits: torch.Tensor,
-    *,
-    temperature: float,
-    top_k: Optional[int],
-    top_p: Optional[float],
-    generator: Optional[torch.Generator],
-    use_multinomial: bool,
-) -> tuple[torch.LongTensor, torch.Tensor]:
-    vocab_size = logits.shape[-1]
-    flat_logits = logits.reshape(-1, vocab_size)
-
-    filtered = _top_k_filtering(flat_logits, top_k=top_k)
-    filtered = _top_p_filtering(filtered, top_p=top_p)
-
-    if temperature < 0:
-        raise ValueError(f"`temperature` must be >= 0, got {temperature}.")
-
-    scaled = filtered
-    if temperature > 0.0 and temperature != 1.0:
-        scaled = filtered / float(temperature)
-
-    probs = torch.softmax(scaled.float(), dim=-1)
-    if use_multinomial:
-        token = torch.multinomial(probs, num_samples=1, generator=generator)
-    else:
-        token = scaled.argmax(dim=-1, keepdim=True)
-    token_prob = torch.gather(probs, -1, token)
-
-    return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
 
 
 def _get_num_transfer_tokens(block_length: int, steps: int) -> torch.LongTensor:
@@ -100,7 +40,7 @@ def _get_num_transfer_tokens(block_length: int, steps: int) -> torch.LongTensor:
     return out
 
 
-class BlockRefinementPipeline(DiffusionPipeline):
+class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     """
     Block-wise iterative refinement pipeline for token generation.
 
@@ -415,7 +355,7 @@ class BlockRefinementPipeline(DiffusionPipeline):
                 )
                 block_logits = logits[:, -int(block_length) :, :]
 
-                x0, x0_p = _sample_with_temperature_topk_topp(
+                x0, x0_p = self._sample_with_temperature_topk_topp(
                     block_logits,
                     temperature=float(temperature),
                     top_k=top_k,

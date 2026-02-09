@@ -23,7 +23,7 @@ from transformers import DynamicCache
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...schedulers import SDARTokenDiffusionScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, DiscreteDiffusionPipelineMixin
 
 
 logger = logging.get_logger(__name__)
@@ -54,7 +54,7 @@ class SDARPipelineOutput(BaseOutput):
     texts: Optional[List[str]] = None
 
 
-class SDARPipeline(DiffusionPipeline):
+class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     r"""
     Block diffusion pipeline for SDAR-style token generation.
     """
@@ -419,69 +419,6 @@ class SDARPipeline(DiffusionPipeline):
             torch.zeros((), device=attn.device, dtype=dtype),
             torch.full((), float("-inf"), device=attn.device, dtype=dtype),
         )
-
-    def _prepare_input_ids(
-        self,
-        *,
-        prompt: Optional[Union[str, List[str]]],
-        messages: Optional[List[Dict[str, str]]],
-        input_ids: Optional[torch.LongTensor],
-        use_chat_template: bool,
-        add_generation_prompt: bool,
-        chat_template_kwargs: Optional[Dict[str, object]],
-    ) -> torch.LongTensor:
-        if input_ids is not None:
-            if input_ids.ndim == 1:
-                input_ids = input_ids.unsqueeze(0)
-            if input_ids.ndim != 2:
-                raise ValueError(f"`input_ids` must be 2D, got shape {tuple(input_ids.shape)}.")
-            if input_ids.dtype != torch.long:
-                raise ValueError(f"`input_ids` must be int64 token IDs, got dtype={input_ids.dtype}.")
-            return input_ids
-
-        if self.tokenizer is None:
-            raise ValueError("Tokenizer is required when `input_ids` is not provided.")
-
-        if messages is not None and prompt is not None:
-            raise ValueError("Provide either `prompt` or `messages`, not both.")
-        if messages is None and prompt is None:
-            raise ValueError("Provide one of `prompt`, `messages`, or `input_ids`.")
-
-        chat_template_kwargs = chat_template_kwargs or {}
-
-        def _extract_input_ids(encoded):
-            if isinstance(encoded, dict) and "input_ids" in encoded:
-                return encoded["input_ids"]
-            if hasattr(encoded, "input_ids"):
-                return encoded.input_ids
-            return encoded
-
-        if messages is not None:
-            encoded = self.tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=add_generation_prompt,
-                tokenize=True,
-                return_tensors="pt",
-                return_dict=True,
-                **chat_template_kwargs,
-            )
-            return _extract_input_ids(encoded)
-
-        if use_chat_template and getattr(self.tokenizer, "chat_template", None):
-            if isinstance(prompt, list):
-                raise ValueError("`prompt` must be a string when `use_chat_template=True`.")
-            encoded = self.tokenizer.apply_chat_template(
-                [{"role": "user", "content": prompt}],
-                add_generation_prompt=add_generation_prompt,
-                tokenize=True,
-                return_tensors="pt",
-                return_dict=True,
-                **chat_template_kwargs,
-            )
-            return _extract_input_ids(encoded)
-
-        encoded = self.tokenizer(prompt, return_tensors="pt", padding=isinstance(prompt, list))
-        return _extract_input_ids(encoded)
 
 
 __all__ = ["SDARPipeline", "SDARPipelineOutput"]
