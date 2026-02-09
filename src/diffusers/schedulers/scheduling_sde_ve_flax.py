@@ -23,7 +23,15 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
+from ..utils import logging
+from .scheduling_utils_flax import (
+    FlaxSchedulerMixin,
+    FlaxSchedulerOutput,
+    broadcast_to_shape_from_left,
+)
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -95,7 +103,10 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sampling_eps: float = 1e-5,
         correct_steps: int = 1,
     ):
-        pass
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
 
     def create_state(self):
         state = ScoreSdeVeSchedulerState.create()
@@ -108,7 +119,11 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
 
     def set_timesteps(
-        self, state: ScoreSdeVeSchedulerState, num_inference_steps: int, shape: Tuple = (), sampling_eps: float = None
+        self,
+        state: ScoreSdeVeSchedulerState,
+        num_inference_steps: int,
+        shape: Tuple = (),
+        sampling_eps: float = None,
     ) -> ScoreSdeVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
