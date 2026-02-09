@@ -181,9 +181,8 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
-        Timesteps are stored in descending order, so `timesteps[0]` is the noisiest step.
-        Alpha values are pre-computed for each timestep so that `step()` can look them up
-        by index instead of recomputing them on every call.
+        Timesteps are stored in descending order, so `timesteps[0]` is the noisiest step. Alpha values are pre-computed
+        for each timestep so that `step()` can look them up by index instead of recomputing them on every call.
         """
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
@@ -339,11 +338,23 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         original_samples: torch.LongTensor,
         noise: Optional[torch.Tensor],
         timesteps: torch.LongTensor,
+        block_mask: Optional[torch.BoolTensor] = None,
     ) -> torch.LongTensor:
         """
-        Apply the (absorbing) forward process q(x_t | x_0).
+        Apply the forward process q(x_t | x_0).
 
         The `noise` argument is accepted for API compatibility but is not used for the absorbing kernel.
+
+        Args:
+            original_samples (`torch.LongTensor`):
+                Original token IDs of shape `(batch_size, seq_len)`.
+            noise (`torch.Tensor`, *optional*):
+                Accepted for API compatibility; unused.
+            timesteps (`torch.LongTensor`):
+                Per-example timestep indices of shape `(batch_size,)`.
+            block_mask (`torch.BoolTensor`, *optional*):
+                Boolean mask of shape `(batch_size, seq_len)`. When provided, only positions where `block_mask` is
+                `True` are noised; other positions are kept unchanged.
         """
         del noise
 
@@ -351,6 +362,13 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(f"`original_samples` must be int64 token IDs, got dtype={original_samples.dtype}.")
         if timesteps.dtype not in (torch.int32, torch.int64):
             raise ValueError(f"`timesteps` must be an integer tensor, got dtype={timesteps.dtype}.")
+        if block_mask is not None:
+            if block_mask.dtype != torch.bool:
+                raise ValueError(f"`block_mask` must be boolean, got dtype={block_mask.dtype}.")
+            if block_mask.shape != original_samples.shape:
+                raise ValueError(
+                    f"`block_mask` must have shape {tuple(original_samples.shape)}, got {tuple(block_mask.shape)}."
+                )
 
         batch_size, seq_len = original_samples.shape
         device = original_samples.device
@@ -372,7 +390,10 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise ValueError(f"Unsupported forward process: {self.forward_process!r}")
 
-        return torch.where(replace_positions, replacement, original_samples)
+        noised = torch.where(replace_positions, replacement, original_samples)
+        if block_mask is not None:
+            noised = torch.where(block_mask.to(device=device), noised, original_samples)
+        return noised
 
     def step(
         self,
@@ -381,6 +402,7 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.LongTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
+        block_mask: Optional[torch.BoolTensor] = None,
     ) -> Union[TokenDiffusionSchedulerOutput, Tuple[torch.LongTensor]]:
         """
         Reverse diffusion step for the configured forward process.
@@ -402,6 +424,11 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 f"`model_output` batch/seq dims {tuple(model_output.shape[:2])} must match `sample` {tuple(sample.shape)}."
             )
+        if block_mask is not None:
+            if block_mask.dtype != torch.bool:
+                raise ValueError(f"`block_mask` must be boolean, got dtype={block_mask.dtype}.")
+            if block_mask.shape != sample.shape:
+                raise ValueError(f"`block_mask` must have shape {tuple(sample.shape)}, got {tuple(block_mask.shape)}.")
 
         device = sample.device
         batch_size, seq_len = sample.shape
@@ -505,6 +532,9 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         else:
             raise ValueError(f"Unsupported forward process for `step()`: {self.forward_process!r}")
+
+        if block_mask is not None:
+            x_prev = torch.where(block_mask.to(device=device), x_prev, sample)
 
         if not return_dict:
             return (x_prev,)

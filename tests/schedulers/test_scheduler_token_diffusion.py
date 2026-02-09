@@ -152,6 +152,55 @@ class TokenDiffusionSchedulerTest(unittest.TestCase):
         for i, ts in enumerate(scheduler.timesteps):
             self.assertEqual(scheduler._step_index_map[int(ts.item())], i)
 
+    def test_step_respects_block_mask(self):
+        scheduler = self.get_scheduler()
+        scheduler.set_timesteps(1)
+
+        batch_size, seq_len = 2, 8
+        x = torch.full((batch_size, seq_len), scheduler.mask_token_id, dtype=torch.long)
+        block_mask = torch.zeros_like(x, dtype=torch.bool)
+        block_mask[:, :4] = True
+
+        logits = torch.zeros((batch_size, seq_len, scheduler.config.vocab_size), dtype=torch.float32)
+        gen = torch.Generator().manual_seed(0)
+        out = scheduler.step(logits, scheduler.timesteps[0], x, generator=gen, return_dict=True, block_mask=block_mask)
+
+        # Block positions should be denoised (non-mask) after the final noise-removal step.
+        self.assertTrue((out.prev_sample[:, :4] != scheduler.mask_token_id).all().item())
+        # Outside the block, tokens should remain unchanged (still mask).
+        self.assertTrue((out.prev_sample[:, 4:] == scheduler.mask_token_id).all().item())
+
+    def test_add_noise_respects_block_mask(self):
+        scheduler = self.get_scheduler()
+        batch_size, seq_len = 2, 16
+        x0 = torch.randint(0, scheduler.config.vocab_size - 1, (batch_size, seq_len), dtype=torch.long)
+        block_mask = torch.zeros_like(x0, dtype=torch.bool)
+        block_mask[:, :4] = True
+
+        # Use high noise timestep so almost all block positions get noised.
+        timesteps = torch.full((batch_size,), scheduler.num_train_timesteps - 1, dtype=torch.long)
+        xt = scheduler.add_noise(x0, noise=None, timesteps=timesteps, block_mask=block_mask)
+
+        # Outside the block, tokens must be unchanged.
+        self.assertTrue(torch.equal(xt[:, 4:], x0[:, 4:]))
+
+    def test_step_without_block_mask_unchanged(self):
+        """Passing block_mask=None should produce the same result as before."""
+        scheduler = self.get_scheduler()
+        scheduler.set_timesteps(3)
+
+        batch_size, seq_len = 2, 8
+        x_t = torch.full((batch_size, seq_len), scheduler.mask_token_id, dtype=torch.long)
+        logits = torch.randn((batch_size, seq_len, scheduler.config.vocab_size), dtype=torch.float32)
+
+        gen1 = torch.Generator().manual_seed(42)
+        out1 = scheduler.step(logits, scheduler.timesteps[0], x_t, generator=gen1, return_dict=True)
+
+        gen2 = torch.Generator().manual_seed(42)
+        out2 = scheduler.step(logits, scheduler.timesteps[0], x_t, generator=gen2, return_dict=True, block_mask=None)
+
+        self.assertTrue(torch.equal(out1.prev_sample, out2.prev_sample))
+
     def test_step_uses_precomputed_alphas_consistent_with_recompute(self):
         """Verify step() produces identical results whether using pre-computed or recomputed alphas."""
         for process in ["absorbing", "uniform"]:
