@@ -88,7 +88,7 @@ This guide will show you how to create a [`ModularPipeline`], manage the compone
 
 There are two ways to create a [`ModularPipeline`]. Assemble and create a pipeline from [`ModularPipelineBlocks`] with [`~ModularPipelineBlocks.init_pipeline`], or load an existing pipeline with [`~ModularPipeline.from_pretrained`].
 
-You should also initialize a [`ComponentsManager`] to handle device placement and memory and component management.
+You can also initialize a [`ComponentsManager`](./components_manager) to handle device placement and memory management. If you don't need automatic offloading, you can skip this and move the pipeline to your device manually with `pipeline.to("cuda")`.
 
 > [!TIP]
 > Refer to the [ComponentsManager](./components_manager) doc for more details about how it can help manage components across different workflows.
