@@ -19,7 +19,6 @@ import re
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import ftfy
 import torch
 from PIL import Image
 from transformers import AutoTokenizer, UMT5EncoderModel
