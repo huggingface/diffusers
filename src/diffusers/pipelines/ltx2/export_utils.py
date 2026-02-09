@@ -23,7 +23,10 @@ import PIL.Image
 import torch
 from tqdm import tqdm
 
-from ...utils import is_av_available
+from ...utils import get_logger, is_av_available
+
+
+logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
 _CAN_USE_AV = is_av_available()
@@ -144,6 +147,11 @@ def encode_video(
         is_denormalized = np.logical_and(np.zeros_like(video) <= video, video <= np.ones_like(video))
         if np.all(is_denormalized):
             video = (video * 255).round().astype("uint8")
+        else:
+            logger.warning(
+                f"Supplied `numpy.ndarray` does not have values in [0, 1]. The values will be assumed to be pixel "
+                f"values in [0, ..., 255] and will be used as is."
+            )
         video = torch.from_numpy(video)
 
     if isinstance(video, torch.Tensor):
