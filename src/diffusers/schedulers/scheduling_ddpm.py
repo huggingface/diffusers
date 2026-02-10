@@ -557,7 +557,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 variance = self._get_variance(t, predicted_variance=predicted_variance)
                 variance = torch.exp(0.5 * variance) * variance_noise
             elif self.variance_type == "zeros":
-                variance = torch.zeros_like(model_output)
+                variance = torch.zeros_like(pred_prev_sample)
             else:
                 variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * variance_noise
 
