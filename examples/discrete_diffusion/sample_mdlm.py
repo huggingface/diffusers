@@ -52,9 +52,7 @@ def main():
 
     print(f"Loading model: {args.model_id}")
     tokenizer = AutoTokenizer.from_pretrained("gpt2", use_fast=True)
-    model = AutoModelForMaskedLM.from_pretrained(
-        args.model_id, trust_remote_code=args.trust_remote_code
-    ).to(device)
+    model = AutoModelForMaskedLM.from_pretrained(args.model_id, trust_remote_code=args.trust_remote_code).to(device)
     model.eval()
 
     mask_token_id = len(tokenizer)  # MDLM appends mask token after vocab
