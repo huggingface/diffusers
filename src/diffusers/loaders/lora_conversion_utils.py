@@ -824,7 +824,6 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
     if not has_mixture:
         state_dict = {k.replace("diffusion_model.", "lora_unet_"): v for k, v in state_dict.items()}
         state_dict = {k.replace("text_encoders.clip_l.transformer.", "lora_te_"): v for k, v in state_dict.items()}
-        state_dict = {k.replace("text_encoders.clip_l.transformer.", "lora_te1_"): v for k, v in state_dict.items()}
 
         has_position_embedding = any("position_embedding" in k for k in state_dict)
         if has_position_embedding:
