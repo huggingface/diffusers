@@ -6,7 +6,7 @@ import pytest
 import torch
 
 import diffusers
-from diffusers import ComponentsManager, ModularPipeline, ModularPipelineBlocks
+from diffusers import AutoModel, ComponentsManager, ModularPipeline, ModularPipelineBlocks
 from diffusers.guiders import ClassifierFreeGuidance
 from diffusers.modular_pipelines.modular_pipeline_utils import (
     ComponentSpec,
@@ -598,3 +598,69 @@ class TestModularModelCardContent:
         content = generate_modular_model_card_content(blocks)
 
         assert "5-block architecture" in content["model_description"]
+
+
+class TestAutoModelLoadIdTagging:
+    def test_automodel_tags_load_id(self):
+        model = AutoModel.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe", subfolder="unet")
+
+        assert hasattr(model, "_diffusers_load_id"), "Model should have _diffusers_load_id attribute"
+        assert model._diffusers_load_id != "null", "_diffusers_load_id should not be 'null'"
+
+        # Verify load_id contains the expected fields
+        load_id = model._diffusers_load_id
+        assert "hf-internal-testing/tiny-stable-diffusion-xl-pipe" in load_id
+        assert "unet" in load_id
+
+    def test_automodel_update_components(self):
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        pipe.load_components(torch_dtype=torch.float32)
+
+        auto_model = AutoModel.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe", subfolder="unet")
+
+        pipe.update_components(unet=auto_model)
+
+        assert pipe.unet is auto_model
+
+        assert "unet" in pipe._component_specs
+        spec = pipe._component_specs["unet"]
+        assert spec.pretrained_model_name_or_path == "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+        assert spec.subfolder == "unet"
+
+
+class TestLoadComponentsSkipBehavior:
+    def test_load_components_skips_already_loaded(self):
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        pipe.load_components(torch_dtype=torch.float32)
+
+        original_unet = pipe.unet
+
+        pipe.load_components()
+
+        # Verify that the unet is the same object (not reloaded)
+        assert pipe.unet is original_unet, "load_components should skip already loaded components"
+
+    def test_load_components_selective_loading(self):
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+
+        pipe.load_components(names="unet", torch_dtype=torch.float32)
+
+        # Verify only requested component was loaded.
+        assert hasattr(pipe, "unet")
+        assert pipe.unet is not None
+        if "vae" in pipe._component_specs:
+            assert getattr(pipe, "vae", None) is None
+
+    def test_load_components_skips_invalid_pretrained_path(self):
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+
+        pipe._component_specs["test_component"] = ComponentSpec(
+            name="test_component",
+            type_hint=torch.nn.Module,
+            pretrained_model_name_or_path=None,
+            default_creation_method="from_pretrained",
+        )
+        pipe.load_components(torch_dtype=torch.float32)
+
+        # Verify test_component was not loaded
+        assert not hasattr(pipe, "test_component") or pipe.test_component is None
