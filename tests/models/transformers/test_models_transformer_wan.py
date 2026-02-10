@@ -134,9 +134,41 @@ class TestWanTransformer3DCompile(WanTransformer3DTesterConfig, TorchCompileTest
 class TestWanTransformer3DBitsAndBytes(WanTransformer3DTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Wan Transformer 3D."""
 
+    @property
+    def torch_dtype(self):
+        return torch.float16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the tiny Wan model dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 36, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
+
 
 class TestWanTransformer3DTorchAo(WanTransformer3DTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Wan Transformer 3D."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the tiny Wan model dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 36, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
 
 
 class TestWanTransformer3DGGUF(WanTransformer3DTesterConfig, GGUFTesterMixin):

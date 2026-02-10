@@ -168,9 +168,47 @@ class TestWanVACETransformer3DCompile(WanVACETransformer3DTesterConfig, TorchCom
 class TestWanVACETransformer3DBitsAndBytes(WanVACETransformer3DTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Wan VACE Transformer 3D."""
 
+    @property
+    def torch_dtype(self):
+        return torch.float16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the tiny Wan VACE model dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 16, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "control_hidden_states": randn_tensor(
+                (1, 96, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
+
 
 class TestWanVACETransformer3DTorchAo(WanVACETransformer3DTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Wan VACE Transformer 3D."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the tiny Wan VACE model dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 16, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "control_hidden_states": randn_tensor(
+                (1, 96, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
 
 
 class TestWanVACETransformer3DGGUF(WanVACETransformer3DTesterConfig, GGUFTesterMixin):
