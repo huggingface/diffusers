@@ -824,6 +824,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
     if not has_mixture:
         state_dict = {k.replace("diffusion_model.", "lora_unet_"): v for k, v in state_dict.items()}
         state_dict = {k.replace("text_encoders.clip_l.transformer.", "lora_te_"): v for k, v in state_dict.items()}
+        state_dict = {k.replace("text_encoders.clip_l.transformer.", "lora_te1_"): v for k, v in state_dict.items()}
 
         has_position_embedding = any("position_embedding" in k for k in state_dict)
         if has_position_embedding:
@@ -856,7 +857,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 )
             state_dict = {k: v for k, v in state_dict.items() if not k.startswith("text_encoders.t5xxl.transformer.")}
 
-        has_diffb = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_")) for k in state_dict)
+        has_diffb = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_", "lora_te1_")) for k in state_dict)
         if has_diffb:
             zero_status_diff_b = state_dict_all_zero(state_dict, ".diff_b")
             if zero_status_diff_b:
@@ -895,7 +896,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         state_dict = {
             _custom_replace(k, limit_substrings): v
             for k, v in state_dict.items()
-            if k.startswith(("lora_unet_", "lora_te_"))
+            if k.startswith(("lora_unet_", "lora_te_", "lora_te1_"))
         }
 
         if any("text_projection" in k for k in state_dict):
