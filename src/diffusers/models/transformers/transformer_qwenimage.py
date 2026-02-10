@@ -164,7 +164,11 @@ def compute_text_seq_len_from_mask(
     position_ids = torch.arange(text_seq_len, device=encoder_hidden_states.device, dtype=torch.long)
     active_positions = torch.where(encoder_hidden_states_mask, position_ids, position_ids.new_zeros(()))
     has_active = encoder_hidden_states_mask.any(dim=1)
-    per_sample_len = torch.where(has_active, active_positions.max(dim=1).values + 1, torch.as_tensor(text_seq_len))
+    per_sample_len = torch.where(
+        has_active, 
+        active_positions.max(dim=1).values + 1, 
+        torch.as_tensor(text_seq_len, device=encoder_hidden_states.device)
+    )
     return text_seq_len, per_sample_len, encoder_hidden_states_mask
 
 
