@@ -31,9 +31,7 @@ else:
         "FluxAutoBeforeDenoiseStep",
         "FluxAutoBlocks",
         "FluxAutoDecodeStep",
-        "FluxAutoDenoiseStep",
         "FluxKontextAutoBlocks",
-        "FluxKontextAutoDenoiseStep",
         "FluxKontextBeforeDenoiseStep",
     ]
     _import_structure["modular_pipeline"] = ["FluxKontextModularPipeline", "FluxModularPipeline"]
@@ -55,9 +53,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxAutoBeforeDenoiseStep,
             FluxAutoBlocks,
             FluxAutoDecodeStep,
-            FluxAutoDenoiseStep,
             FluxKontextAutoBlocks,
-            FluxKontextAutoDenoiseStep,
             FluxKontextBeforeDenoiseStep,
         )
         from .modular_pipeline import FluxKontextModularPipeline, FluxModularPipeline

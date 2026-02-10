@@ -297,6 +297,8 @@ else:
             "ComponentSpec",
             "ModularPipeline",
             "ModularPipelineBlocks",
+            "InputParam",
+            "OutputParam",
         ]
     )
     _import_structure["optimization"] = [
@@ -1060,7 +1062,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageTransformer2DModel,
             attention_backend,
         )
-        from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
+        from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks, InputParam, OutputParam
         from .optimization import (
             get_constant_schedule,
             get_constant_schedule_with_warmup,

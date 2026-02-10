@@ -201,37 +201,6 @@ class FluxKontextAutoBeforeDenoiseStep(AutoPipelineBlocks):
         )
 
 
-# denoise: text2image
-class FluxAutoDenoiseStep(AutoPipelineBlocks):
-    block_classes = [FluxDenoiseStep]
-    block_names = ["denoise"]
-    block_trigger_inputs = [None]
-
-    @property
-    def description(self) -> str:
-        return (
-            "Denoise step that iteratively denoise the latents. "
-            "This is a auto pipeline block that works for text2image and img2img tasks."
-            " - `FluxDenoiseStep` (denoise) for text2image and img2img tasks."
-        )
-
-
-# denoise: Flux Kontext
-
-
-class FluxKontextAutoDenoiseStep(AutoPipelineBlocks):
-    block_classes = [FluxKontextDenoiseStep]
-    block_names = ["denoise"]
-    block_trigger_inputs = [None]
-
-    @property
-    def description(self) -> str:
-        return (
-            "Denoise step that iteratively denoise the latents for Flux Kontext. "
-            "This is a auto pipeline block that works for text2image and img2img tasks."
-            " - `FluxDenoiseStep` (denoise) for text2image and img2img tasks."
-        )
-
 
 # decode: all task (text2img, img2img)
 class FluxAutoDecodeStep(AutoPipelineBlocks):
@@ -322,7 +291,7 @@ class FluxKontextAutoInputStep(AutoPipelineBlocks):
 
 class FluxCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "flux"
-    block_classes = [FluxAutoInputStep, FluxAutoBeforeDenoiseStep, FluxAutoDenoiseStep]
+    block_classes = [FluxAutoInputStep, FluxAutoBeforeDenoiseStep, FluxDenoiseStep]
     block_names = ["input", "before_denoise", "denoise"]
 
     @property
@@ -331,7 +300,7 @@ class FluxCoreDenoiseStep(SequentialPipelineBlocks):
             "Core step that performs the denoising process. \n"
             + " - `FluxAutoInputStep` (input) standardizes the inputs for the denoising step.\n"
             + " - `FluxAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
-            + " - `FluxAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
+            + " - `FluxDenoiseStep` (denoise) iteratively denoises the latents.\n"
             + "This step supports text-to-image and image-to-image tasks for Flux:\n"
             + " - for image-to-image generation, you need to provide `image_latents`\n"
             + " - for text-to-image generation, all you need to provide is prompt embeddings."
@@ -340,7 +309,7 @@ class FluxCoreDenoiseStep(SequentialPipelineBlocks):
 
 class FluxKontextCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "flux-kontext"
-    block_classes = [FluxKontextAutoInputStep, FluxKontextAutoBeforeDenoiseStep, FluxKontextAutoDenoiseStep]
+    block_classes = [FluxKontextAutoInputStep, FluxKontextAutoBeforeDenoiseStep, FluxKontextDenoiseStep]
     block_names = ["input", "before_denoise", "denoise"]
 
     @property
@@ -349,7 +318,7 @@ class FluxKontextCoreDenoiseStep(SequentialPipelineBlocks):
             "Core step that performs the denoising process. \n"
             + " - `FluxKontextAutoInputStep` (input) standardizes the inputs for the denoising step.\n"
             + " - `FluxKontextAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
-            + " - `FluxKontextAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
+            + " - `FluxKontextDenoiseStep` (denoise) iteratively denoises the latents.\n"
             + "This step supports text-to-image and image-to-image tasks for Flux:\n"
             + " - for image-to-image generation, you need to provide `image_latents`\n"
             + " - for text-to-image generation, all you need to provide is prompt embeddings."
