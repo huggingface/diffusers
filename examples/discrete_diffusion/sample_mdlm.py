@@ -13,19 +13,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Sample script for MDLM-style absorbing token diffusion text generation.
+
+This script demonstrates how to use the TokenDiffusionPipeline for unconditional
+text generation using absorbing-state discrete diffusion.
+
+Example usage:
+    python sample_mdlm.py --model_id kuleshov-group/mdlm-owt --num_samples 4 --seq_len 64
+"""
+
 import argparse
-from typing import Optional
 
 import torch
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 
-from diffusers import TokenDiffusionScheduler
+from diffusers import TokenDiffusionPipeline, TokenDiffusionScheduler
 
 
-def parse_args():
+def main():
     parser = argparse.ArgumentParser(description="Sample from an absorbing token diffusion LM (MDLM-style).")
     parser.add_argument(
-        "--checkpoint_path", type=str, required=True, help="Path saved by train_mdlm.py (or compatible)."
+        "--model_id",
+        type=str,
+        default="kuleshov-group/mdlm-owt",
+        help="HuggingFace model ID or path to local checkpoint.",
     )
     parser.add_argument("--num_samples", type=int, default=4)
     parser.add_argument("--seq_len", type=int, default=64)
@@ -33,68 +45,39 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--inject_bos", action="store_true")
-    return parser.parse_args()
+    parser.add_argument("--trust_remote_code", action="store_true", help="Trust remote code for model/tokenizer.")
 
-
-@torch.no_grad()
-def sample(
-    model,
-    tokenizer,
-    scheduler: TokenDiffusionScheduler,
-    *,
-    num_samples: int,
-    seq_len: int,
-    num_inference_steps: int,
-    generator: Optional[torch.Generator],
-    inject_bos: bool,
-    device: torch.device,
-):
-    scheduler.set_timesteps(num_inference_steps, device=device)
-
-    x = torch.full((num_samples, seq_len), scheduler.mask_token_id, dtype=torch.long, device=device)
-    attention_mask = torch.ones_like(x, dtype=torch.long)
-
-    if inject_bos and tokenizer.bos_token_id is not None:
-        x[:, 0] = int(tokenizer.bos_token_id)
-
-    for t in scheduler.timesteps:
-        logits = model(input_ids=x, attention_mask=attention_mask).logits  # [B, L, V]
-        x = scheduler.step(logits, t, x, generator=generator, return_dict=True).prev_sample
-
-        if inject_bos and tokenizer.bos_token_id is not None:
-            x[:, 0] = int(tokenizer.bos_token_id)
-
-    return x
-
-
-def main():
-    args = parse_args()
+    args = parser.parse_args()
     device = torch.device(args.device)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.checkpoint_path, use_fast=True)
-    model = AutoModelForMaskedLM.from_pretrained(args.checkpoint_path).to(device)
-    scheduler = TokenDiffusionScheduler.from_pretrained(args.checkpoint_path)
-
+    print(f"Loading model: {args.model_id}")
+    tokenizer = AutoTokenizer.from_pretrained("gpt2", use_fast=True)
+    model = AutoModelForMaskedLM.from_pretrained(
+        args.model_id, trust_remote_code=args.trust_remote_code
+    ).to(device)
     model.eval()
 
-    gen = torch.Generator(device=device)
-    gen.manual_seed(args.seed)
+    mask_token_id = len(tokenizer)  # MDLM appends mask token after vocab
+    vocab_size = mask_token_id + 1
+    scheduler = TokenDiffusionScheduler(vocab_size=vocab_size, mask_token_id=mask_token_id)
 
-    samples = sample(
-        model,
-        tokenizer,
-        scheduler,
-        num_samples=args.num_samples,
+    pipe = TokenDiffusionPipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
+
+    generator = torch.Generator(device=device).manual_seed(args.seed)
+
+    print(f"Generating {args.num_samples} samples of {args.seq_len} tokens with {args.num_inference_steps} steps")
+    print("-" * 50)
+
+    output = pipe(
+        batch_size=args.num_samples,
         seq_len=args.seq_len,
         num_inference_steps=args.num_inference_steps,
-        generator=gen,
-        inject_bos=args.inject_bos,
-        device=device,
+        generator=generator,
+        inject_start_token=args.inject_bos,
     )
 
-    texts = tokenizer.batch_decode(samples, skip_special_tokens=True)
-    for i, t in enumerate(texts):
-        print(f"[{i}] {t}")
+    for i, text in enumerate(output.texts):
+        print(f"[{i}] {text}")
 
 
 if __name__ == "__main__":

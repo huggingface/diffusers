@@ -197,7 +197,8 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 fixed_values[:, 0] = start_token_id
 
         for step_idx, t in enumerate(timesteps):
-            out = self.model(input_ids=input_ids, attention_mask=attention_mask, **model_kwargs)
+            timestep = t.expand(batch_size)
+            out = self.model(input_ids=input_ids, timesteps=timestep, return_dict=True, **model_kwargs)
             logits = getattr(out, "logits", None)
             if logits is None:
                 # Fall back to tuple-style returns.
