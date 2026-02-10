@@ -323,6 +323,9 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
         prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
 
+        if prompt_embeds_mask is not None and prompt_embeds_mask.all():
+            prompt_embeds_mask = None
+
         return prompt_embeds, prompt_embeds_mask
 
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit.QwenImageEditPipeline.check_inputs
@@ -663,6 +666,13 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         else:
             batch_size = prompt_embeds.shape[0]
 
+        # QwenImageEditPlusPipeline does not currently support batch_size > 1
+        if batch_size > 1:
+            raise ValueError(
+                f"QwenImageEditPlusPipeline currently only supports batch_size=1, but received batch_size={batch_size}. "
+                "Please process prompts one at a time."
+            )
+
         device = self._execution_device
         # 3. Preprocess image
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
@@ -777,11 +787,6 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if self.attention_kwargs is None:
             self._attention_kwargs = {}
 
-        txt_seq_lens = prompt_embeds_mask.sum(dim=1).tolist() if prompt_embeds_mask is not None else None
-        negative_txt_seq_lens = (
-            negative_prompt_embeds_mask.sum(dim=1).tolist() if negative_prompt_embeds_mask is not None else None
-        )
-
         # 6. Denoising loop
         self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -805,7 +810,6 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                         encoder_hidden_states_mask=prompt_embeds_mask,
                         encoder_hidden_states=prompt_embeds,
                         img_shapes=img_shapes,
-                        txt_seq_lens=txt_seq_lens,
                         attention_kwargs=self.attention_kwargs,
                         return_dict=False,
                     )[0]
@@ -820,7 +824,6 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                             encoder_hidden_states_mask=negative_prompt_embeds_mask,
                             encoder_hidden_states=negative_prompt_embeds,
                             img_shapes=img_shapes,
-                            txt_seq_lens=negative_txt_seq_lens,
                             attention_kwargs=self.attention_kwargs,
                             return_dict=False,
                         )[0]

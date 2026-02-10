@@ -22,6 +22,7 @@ import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -29,6 +30,9 @@ from .scheduling_utils_flax import (
     FlaxSchedulerOutput,
     add_noise_common,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -103,7 +107,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
+            https://huggingface.co/papers/2210.02303)
         dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
             the `dtype` used for params and computation.
     """
@@ -131,6 +135,10 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         prediction_type: str = "epsilon",
         dtype: jnp.dtype = jnp.float32,
     ):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         self.dtype = dtype
 
         # For now we only support F-PNDM, i.e. the runge-kutta method
@@ -190,7 +198,10 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         else:
             prk_timesteps = _timesteps[-self.pndm_order :].repeat(2) + jnp.tile(
-                jnp.array([0, self.config.num_train_timesteps // num_inference_steps // 2], dtype=jnp.int32),
+                jnp.array(
+                    [0, self.config.num_train_timesteps // num_inference_steps // 2],
+                    dtype=jnp.int32,
+                ),
                 self.pndm_order,
             )
 
@@ -218,7 +229,10 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
 
     def scale_model_input(
-        self, state: PNDMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+        self,
+        state: PNDMSchedulerState,
+        sample: jnp.ndarray,
+        timestep: Optional[int] = None,
     ) -> jnp.ndarray:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -320,7 +334,9 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             )
 
         diff_to_prev = jnp.where(
-            state.counter % 2, 0, self.config.num_train_timesteps // state.num_inference_steps // 2
+            state.counter % 2,
+            0,
+            self.config.num_train_timesteps // state.num_inference_steps // 2,
         )
         prev_timestep = timestep - diff_to_prev
         timestep = state.prk_timesteps[state.counter // 4 * 4]
@@ -401,7 +417,9 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         prev_timestep = jnp.where(state.counter == 1, timestep, prev_timestep)
         timestep = jnp.where(
-            state.counter == 1, timestep + self.config.num_train_timesteps // state.num_inference_steps, timestep
+            state.counter == 1,
+            timestep + self.config.num_train_timesteps // state.num_inference_steps,
+            timestep,
         )
 
         # Reference:
@@ -466,7 +484,9 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # prev_sample -> x_(t−δ)
         alpha_prod_t = state.common.alphas_cumprod[timestep]
         alpha_prod_t_prev = jnp.where(
-            prev_timestep >= 0, state.common.alphas_cumprod[prev_timestep], state.final_alpha_cumprod
+            prev_timestep >= 0,
+            state.common.alphas_cumprod[prev_timestep],
+            state.final_alpha_cumprod,
         )
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev

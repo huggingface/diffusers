@@ -15,6 +15,7 @@ from diffusers import (
 )
 
 from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     nightly,
     numpy_cosine_similarity_distance,
@@ -26,8 +27,10 @@ from ..test_pipelines_common import (
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
     FluxIPAdapterTesterMixin,
+    MagCacheTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
+    TaylorSeerCacheTesterMixin,
     check_qkv_fused_layers_exist,
 )
 
@@ -38,6 +41,8 @@ class FluxPipelineFastTests(
     PyramidAttentionBroadcastTesterMixin,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
+    TaylorSeerCacheTesterMixin,
+    MagCacheTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = FluxPipeline
@@ -276,10 +281,14 @@ class FluxPipelineSlowTests(unittest.TestCase):
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
         # fmt: off
-        expected_slice = np.array(
-            [0.3242, 0.3203, 0.3164, 0.3164, 0.3125, 0.3125, 0.3281, 0.3242, 0.3203, 0.3301, 0.3262, 0.3242, 0.3281, 0.3242, 0.3203, 0.3262, 0.3262, 0.3164, 0.3262, 0.3281, 0.3184, 0.3281, 0.3281, 0.3203, 0.3281, 0.3281, 0.3164, 0.3320, 0.3320, 0.3203],
-            dtype=np.float32,
+
+        expected_slices = Expectations(
+            {
+                ("cuda", None): np.array([0.3242, 0.3203, 0.3164, 0.3164, 0.3125, 0.3125, 0.3281, 0.3242, 0.3203, 0.3301, 0.3262, 0.3242, 0.3281, 0.3242, 0.3203, 0.3262, 0.3262, 0.3164, 0.3262, 0.3281, 0.3184, 0.3281, 0.3281, 0.3203, 0.3281, 0.3281, 0.3164, 0.3320, 0.3320, 0.3203], dtype=np.float32,),
+                ("xpu", 3): np.array([0.3301, 0.3281, 0.3359, 0.3203, 0.3203, 0.3281, 0.3281, 0.3301, 0.3340, 0.3281, 0.3320, 0.3359, 0.3281, 0.3301, 0.3320, 0.3242, 0.3301, 0.3281, 0.3242, 0.3320, 0.3320, 0.3281, 0.3320, 0.3320, 0.3262, 0.3320, 0.3301, 0.3301, 0.3359, 0.3320], dtype=np.float32,),
+            }
         )
+        expected_slice = expected_slices.get_expectation()
         # fmt: on
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())

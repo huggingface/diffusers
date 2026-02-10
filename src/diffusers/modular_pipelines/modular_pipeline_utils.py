@@ -15,19 +15,45 @@
 import inspect
 import re
 from collections import OrderedDict
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional, Type, Union
 
+import PIL.Image
 import torch
 
 from ..configuration_utils import ConfigMixin, FrozenDict
-from ..utils import is_torch_available, logging
+from ..loaders.single_file_utils import _is_single_file_path_or_url
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, is_torch_available, logging
 
 
 if is_torch_available():
     pass
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+# Template for modular pipeline model card description with placeholders
+MODULAR_MODEL_CARD_TEMPLATE = """{model_description}
+
+## Example Usage
+
+[TODO]
+
+## Pipeline Architecture
+
+This modular pipeline is composed of the following blocks:
+
+{blocks_description} {trigger_inputs_section}
+
+## Model Components
+
+{components_description} {configs_section}
+
+## Input/Output Specification
+
+### Inputs {inputs_description}
+
+### Outputs {outputs_description}
+"""
 
 
 class InsertableDict(OrderedDict):
@@ -80,10 +106,10 @@ class ComponentSpec:
         type_hint: Type of the component (e.g. UNet2DConditionModel)
         description: Optional description of the component
         config: Optional config dict for __init__ creation
-        repo: Optional repo path for from_pretrained creation
-        subfolder: Optional subfolder in repo
-        variant: Optional variant in repo
-        revision: Optional revision in repo
+        pretrained_model_name_or_path: Optional pretrained_model_name_or_path path for from_pretrained creation
+        subfolder: Optional subfolder in pretrained_model_name_or_path
+        variant: Optional variant in pretrained_model_name_or_path
+        revision: Optional revision in pretrained_model_name_or_path
         default_creation_method: Preferred creation method - "from_config" or "from_pretrained"
     """
 
@@ -91,12 +117,19 @@ class ComponentSpec:
     type_hint: Optional[Type] = None
     description: Optional[str] = None
     config: Optional[FrozenDict] = None
-    # YiYi Notes: should we change it to pretrained_model_name_or_path for consistency? a bit long for a field name
-    repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
+    pretrained_model_name_or_path: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
     subfolder: Optional[str] = field(default="", metadata={"loading": True})
     variant: Optional[str] = field(default=None, metadata={"loading": True})
     revision: Optional[str] = field(default=None, metadata={"loading": True})
     default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
+
+    # Deprecated
+    repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": False})
+
+    def __post_init__(self):
+        repo_value = self.repo
+        if repo_value is not None and self.pretrained_model_name_or_path is None:
+            object.__setattr__(self, "pretrained_model_name_or_path", repo_value)
 
     def __hash__(self):
         """Make ComponentSpec hashable, using load_id as the hash value."""
@@ -177,19 +210,19 @@ class ComponentSpec:
         """
         Return the names of all loading‐related fields (i.e. those whose field.metadata["loading"] is True).
         """
-        return [f.name for f in fields(cls) if f.metadata.get("loading", False)]
+        return DIFFUSERS_LOAD_ID_FIELDS.copy()
 
     @property
     def load_id(self) -> str:
         """
-        Unique identifier for this spec's pretrained load, composed of repo|subfolder|variant|revision (no empty
-        segments).
+        Unique identifier for this spec's pretrained load, composed of
+        pretrained_model_name_or_path|subfolder|variant|revision (no empty segments).
         """
         if self.default_creation_method == "from_config":
             return "null"
         parts = [getattr(self, k) for k in self.loading_fields()]
         parts = ["null" if p is None else p for p in parts]
-        return "|".join(p for p in parts if p)
+        return "|".join(parts)
 
     @classmethod
     def decode_load_id(cls, load_id: str) -> Dict[str, Optional[str]]:
@@ -197,12 +230,13 @@ class ComponentSpec:
         Decode a load_id string back into a dictionary of loading fields and values.
 
         Args:
-            load_id: The load_id string to decode, format: "repo|subfolder|variant|revision"
+            load_id: The load_id string to decode, format: "pretrained_model_name_or_path|subfolder|variant|revision"
                      where None values are represented as "null"
 
         Returns:
             Dict mapping loading field names to their values. e.g. {
-                "repo": "path/to/repo", "subfolder": "subfolder", "variant": "variant", "revision": "revision"
+                "pretrained_model_name_or_path": "path/to/repo", "subfolder": "subfolder", "variant": "variant",
+                "revision": "revision"
             } If a segment value is "null", it's replaced with None. Returns None if load_id is "null" (indicating
             component not created with `load` method).
         """
@@ -259,34 +293,45 @@ class ComponentSpec:
     # YiYi TODO: add guard for type of model, if it is supported by from_pretrained
     def load(self, **kwargs) -> Any:
         """Load component using from_pretrained."""
-
-        # select loading fields from kwargs passed from user: e.g. repo, subfolder, variant, revision, note the list could change
+        # select loading fields from kwargs passed from user: e.g. pretrained_model_name_or_path, subfolder, variant, revision, note the list could change
         passed_loading_kwargs = {key: kwargs.pop(key) for key in self.loading_fields() if key in kwargs}
         # merge loading field value in the spec with user passed values to create load_kwargs
         load_kwargs = {key: passed_loading_kwargs.get(key, getattr(self, key)) for key in self.loading_fields()}
-        # repo is a required argument for from_pretrained, a.k.a. pretrained_model_name_or_path
-        repo = load_kwargs.pop("repo", None)
-        if repo is None:
+
+        pretrained_model_name_or_path = load_kwargs.pop("pretrained_model_name_or_path", None)
+        if pretrained_model_name_or_path is None:
             raise ValueError(
-                "`repo` info is required when using `load` method (you can directly set it in `repo` field of the ComponentSpec or pass it as an argument)"
+                "`pretrained_model_name_or_path` info is required when using `load` method (you can directly set it in `pretrained_model_name_or_path` field of the ComponentSpec or pass it as an argument)"
+            )
+        is_single_file = _is_single_file_path_or_url(pretrained_model_name_or_path)
+        if is_single_file and self.type_hint is None:
+            raise ValueError(
+                f"`type_hint` is required when loading a single file model but is missing for component: {self.name}"
             )
 
         if self.type_hint is None:
             try:
                 from diffusers import AutoModel
 
-                component = AutoModel.from_pretrained(repo, **load_kwargs, **kwargs)
+                component = AutoModel.from_pretrained(pretrained_model_name_or_path, **load_kwargs, **kwargs)
             except Exception as e:
                 raise ValueError(f"Unable to load {self.name} without `type_hint`: {e}")
             # update type_hint if AutoModel load successfully
             self.type_hint = component.__class__
         else:
+            # determine load method
+            load_method = (
+                getattr(self.type_hint, "from_single_file")
+                if is_single_file
+                else getattr(self.type_hint, "from_pretrained")
+            )
+
             try:
-                component = self.type_hint.from_pretrained(repo, **load_kwargs, **kwargs)
+                component = load_method(pretrained_model_name_or_path, **load_kwargs, **kwargs)
             except Exception as e:
                 raise ValueError(f"Unable to load {self.name} using load method: {e}")
 
-        self.repo = repo
+        self.pretrained_model_name_or_path = pretrained_model_name_or_path
         for k, v in load_kwargs.items():
             setattr(self, k, v)
         component._diffusers_load_id = self.load_id
@@ -303,11 +348,192 @@ class ConfigSpec:
     description: Optional[str] = None
 
 
-# YiYi Notes: both inputs and intermediate_inputs are InputParam objects
-# however some fields are not relevant for intermediate_inputs
-# e.g. unlike inputs, required only used in docstring for intermediate_inputs, we do not check if a required intermediate inputs is passed
-# default is not used for intermediate_inputs, we only use default from inputs, so it is ignored if it is set for intermediate_inputs
-# -> should we use different class for inputs and intermediate_inputs?
+# ======================================================
+# InputParam and OutputParam templates
+# ======================================================
+
+INPUT_PARAM_TEMPLATES = {
+    "prompt": {
+        "type_hint": str,
+        "required": True,
+        "description": "The prompt or prompts to guide image generation.",
+    },
+    "negative_prompt": {
+        "type_hint": str,
+        "description": "The prompt or prompts not to guide the image generation.",
+    },
+    "max_sequence_length": {
+        "type_hint": int,
+        "default": 512,
+        "description": "Maximum sequence length for prompt encoding.",
+    },
+    "height": {
+        "type_hint": int,
+        "description": "The height in pixels of the generated image.",
+    },
+    "width": {
+        "type_hint": int,
+        "description": "The width in pixels of the generated image.",
+    },
+    "num_inference_steps": {
+        "type_hint": int,
+        "default": 50,
+        "description": "The number of denoising steps.",
+    },
+    "num_images_per_prompt": {
+        "type_hint": int,
+        "default": 1,
+        "description": "The number of images to generate per prompt.",
+    },
+    "generator": {
+        "type_hint": torch.Generator,
+        "description": "Torch generator for deterministic generation.",
+    },
+    "sigmas": {
+        "type_hint": List[float],
+        "description": "Custom sigmas for the denoising process.",
+    },
+    "strength": {
+        "type_hint": float,
+        "default": 0.9,
+        "description": "Strength for img2img/inpainting.",
+    },
+    "image": {
+        "type_hint": Union[PIL.Image.Image, List[PIL.Image.Image]],
+        "required": True,
+        "description": "Reference image(s) for denoising. Can be a single image or list of images.",
+    },
+    "latents": {
+        "type_hint": torch.Tensor,
+        "description": "Pre-generated noisy latents for image generation.",
+    },
+    "timesteps": {
+        "type_hint": torch.Tensor,
+        "description": "Timesteps for the denoising process.",
+    },
+    "output_type": {
+        "type_hint": str,
+        "default": "pil",
+        "description": "Output format: 'pil', 'np', 'pt'.",
+    },
+    "attention_kwargs": {
+        "type_hint": Dict[str, Any],
+        "description": "Additional kwargs for attention processors.",
+    },
+    "denoiser_input_fields": {
+        "name": None,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
+    },
+    # inpainting
+    "mask_image": {
+        "type_hint": PIL.Image.Image,
+        "required": True,
+        "description": "Mask image for inpainting.",
+    },
+    "padding_mask_crop": {
+        "type_hint": int,
+        "description": "Padding for mask cropping in inpainting.",
+    },
+    # controlnet
+    "control_image": {
+        "type_hint": PIL.Image.Image,
+        "required": True,
+        "description": "Control image for ControlNet conditioning.",
+    },
+    "control_guidance_start": {
+        "type_hint": float,
+        "default": 0.0,
+        "description": "When to start applying ControlNet.",
+    },
+    "control_guidance_end": {
+        "type_hint": float,
+        "default": 1.0,
+        "description": "When to stop applying ControlNet.",
+    },
+    "controlnet_conditioning_scale": {
+        "type_hint": float,
+        "default": 1.0,
+        "description": "Scale for ControlNet conditioning.",
+    },
+    "layers": {
+        "type_hint": int,
+        "default": 4,
+        "description": "Number of layers to extract from the image",
+    },
+    # common intermediate inputs
+    "prompt_embeds": {
+        "type_hint": torch.Tensor,
+        "required": True,
+        "description": "text embeddings used to guide the image generation. Can be generated from text_encoder step.",
+    },
+    "prompt_embeds_mask": {
+        "type_hint": torch.Tensor,
+        "required": True,
+        "description": "mask for the text embeddings. Can be generated from text_encoder step.",
+    },
+    "negative_prompt_embeds": {
+        "type_hint": torch.Tensor,
+        "description": "negative text embeddings used to guide the image generation. Can be generated from text_encoder step.",
+    },
+    "negative_prompt_embeds_mask": {
+        "type_hint": torch.Tensor,
+        "description": "mask for the negative text embeddings. Can be generated from text_encoder step.",
+    },
+    "image_latents": {
+        "type_hint": torch.Tensor,
+        "required": True,
+        "description": "image latents used to guide the image generation. Can be generated from vae_encoder step.",
+    },
+    "batch_size": {
+        "type_hint": int,
+        "default": 1,
+        "description": "Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
+    },
+    "dtype": {
+        "type_hint": torch.dtype,
+        "default": torch.float32,
+        "description": "The dtype of the model inputs, can be generated in input step.",
+    },
+}
+
+OUTPUT_PARAM_TEMPLATES = {
+    "images": {
+        "type_hint": List[PIL.Image.Image],
+        "description": "Generated images.",
+    },
+    "latents": {
+        "type_hint": torch.Tensor,
+        "description": "Denoised latents.",
+    },
+    # intermediate outputs
+    "prompt_embeds": {
+        "type_hint": torch.Tensor,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "The prompt embeddings.",
+    },
+    "prompt_embeds_mask": {
+        "type_hint": torch.Tensor,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "The encoder attention mask.",
+    },
+    "negative_prompt_embeds": {
+        "type_hint": torch.Tensor,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "The negative prompt embeddings.",
+    },
+    "negative_prompt_embeds_mask": {
+        "type_hint": torch.Tensor,
+        "kwargs_type": "denoiser_input_fields",
+        "description": "The negative prompt embeddings mask.",
+    },
+    "image_latents": {
+        "type_hint": torch.Tensor,
+        "description": "The latent representation of the input image.",
+    },
+}
+
+
 @dataclass
 class InputParam:
     """Specification for an input parameter."""
@@ -317,10 +543,31 @@ class InputParam:
     default: Any = None
     required: bool = False
     description: str = ""
-    kwargs_type: str = None  # YiYi Notes: remove this feature (maybe)
+    kwargs_type: str = None
+    metadata: Dict[str, Any] = None
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
+
+    @classmethod
+    def template(cls, template_name: str, note: str = None, **overrides) -> "InputParam":
+        """Get template for name if exists, otherwise raise ValueError."""
+        if template_name not in INPUT_PARAM_TEMPLATES:
+            raise ValueError(f"InputParam template for {template_name} not found")
+
+        template_kwargs = INPUT_PARAM_TEMPLATES[template_name].copy()
+
+        # Determine the actual param name:
+        # 1. From overrides if provided
+        # 2. From template if present
+        # 3. Fall back to template_name
+        name = overrides.pop("name", template_kwargs.pop("name", template_name))
+
+        if note and "description" in template_kwargs:
+            template_kwargs["description"] = f"{template_kwargs['description']} ({note})"
+
+        template_kwargs.update(overrides)
+        return cls(name=name, **template_kwargs)
 
 
 @dataclass
@@ -330,12 +577,33 @@ class OutputParam:
     name: str
     type_hint: Any = None
     description: str = ""
-    kwargs_type: str = None  # YiYi notes: remove this feature (maybe)
+    kwargs_type: str = None
+    metadata: Dict[str, Any] = None
 
     def __repr__(self):
         return (
             f"<{self.name}: {self.type_hint.__name__ if hasattr(self.type_hint, '__name__') else str(self.type_hint)}>"
         )
+
+    @classmethod
+    def template(cls, template_name: str, note: str = None, **overrides) -> "OutputParam":
+        """Get template for name if exists, otherwise raise ValueError."""
+        if template_name not in OUTPUT_PARAM_TEMPLATES:
+            raise ValueError(f"OutputParam template for {template_name} not found")
+
+        template_kwargs = OUTPUT_PARAM_TEMPLATES[template_name].copy()
+
+        # Determine the actual param name:
+        # 1. From overrides if provided
+        # 2. From template if present
+        # 3. Fall back to template_name
+        name = overrides.pop("name", template_kwargs.pop("name", template_name))
+
+        if note and "description" in template_kwargs:
+            template_kwargs["description"] = f"{template_kwargs['description']} ({note})"
+
+        template_kwargs.update(overrides)
+        return cls(name=name, **template_kwargs)
 
 
 def format_inputs_short(inputs):
@@ -489,10 +757,12 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
             desc = re.sub(r"\[(.*?)\]\((https?://[^\s\)]+)\)", r"[\1](\2)", param.description)
             wrapped_desc = wrap_text(desc, desc_indent, max_line_length)
             param_str += f"\n{desc_indent}{wrapped_desc}"
+        else:
+            param_str += f"\n{desc_indent}TODO: Add description."
 
         formatted_params.append(param_str)
 
-    return "\n\n".join(formatted_params)
+    return "\n".join(formatted_params)
 
 
 def format_input_params(input_params, indent_level=4, max_line_length=115):
@@ -562,7 +832,7 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
         loading_field_values = []
         for field_name in component.loading_fields():
             field_value = getattr(component, field_name)
-            if field_value is not None:
+            if field_value:
                 loading_field_values.append(f"{field_name}={field_value}")
 
         # Add loading field information if available
@@ -649,17 +919,17 @@ def make_doc_string(
     # Add description
     if description:
         desc_lines = description.strip().split("\n")
-        aligned_desc = "\n".join("  " + line for line in desc_lines)
+        aligned_desc = "\n".join("  " + line.rstrip() for line in desc_lines)
         output += aligned_desc + "\n\n"
 
     # Add components section if provided
     if expected_components and len(expected_components) > 0:
-        components_str = format_components(expected_components, indent_level=2)
+        components_str = format_components(expected_components, indent_level=2, add_empty_lines=False)
         output += components_str + "\n\n"
 
     # Add configs section if provided
     if expected_configs and len(expected_configs) > 0:
-        configs_str = format_configs(expected_configs, indent_level=2)
+        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
         output += configs_str + "\n\n"
 
     # Add inputs section
@@ -670,3 +940,178 @@ def make_doc_string(
     output += format_output_params(outputs, indent_level=2)
 
     return output
+
+
+def generate_modular_model_card_content(blocks) -> Dict[str, Any]:
+    """
+    Generate model card content for a modular pipeline.
+
+    This function creates a comprehensive model card with descriptions of the pipeline's architecture, components,
+    configurations, inputs, and outputs.
+
+    Args:
+        blocks: The pipeline's blocks object containing all pipeline specifications
+
+    Returns:
+        Dict[str, Any]: A dictionary containing formatted content sections:
+            - pipeline_name: Name of the pipeline
+            - model_description: Overall description with pipeline type
+            - blocks_description: Detailed architecture of blocks
+            - components_description: List of required components
+            - configs_section: Configuration parameters section
+            - inputs_description: Input parameters specification
+            - outputs_description: Output parameters specification
+            - trigger_inputs_section: Conditional execution information
+            - tags: List of relevant tags for the model card
+    """
+    blocks_class_name = blocks.__class__.__name__
+    pipeline_name = blocks_class_name.replace("Blocks", " Pipeline")
+    description = getattr(blocks, "description", "A modular diffusion pipeline.")
+
+    # generate blocks architecture description
+    blocks_desc_parts = []
+    sub_blocks = getattr(blocks, "sub_blocks", None) or {}
+    if sub_blocks:
+        for i, (name, block) in enumerate(sub_blocks.items()):
+            block_class = block.__class__.__name__
+            block_desc = block.description.split("\n")[0] if getattr(block, "description", "") else ""
+            blocks_desc_parts.append(f"{i + 1}. **{name}** (`{block_class}`)")
+            if block_desc:
+                blocks_desc_parts.append(f"   - {block_desc}")
+
+            # add sub-blocks if any
+            if hasattr(block, "sub_blocks") and block.sub_blocks:
+                for sub_name, sub_block in block.sub_blocks.items():
+                    sub_class = sub_block.__class__.__name__
+                    sub_desc = sub_block.description.split("\n")[0] if getattr(sub_block, "description", "") else ""
+                    blocks_desc_parts.append(f"   - *{sub_name}*: `{sub_class}`")
+                    if sub_desc:
+                        blocks_desc_parts.append(f"     - {sub_desc}")
+
+    blocks_description = "\n".join(blocks_desc_parts) if blocks_desc_parts else "No blocks defined."
+
+    components = getattr(blocks, "expected_components", [])
+    if components:
+        components_str = format_components(components, indent_level=0, add_empty_lines=False)
+        # remove the "Components:" header since template has its own
+        components_description = components_str.replace("Components:\n", "").strip()
+        if components_description:
+            # Convert to enumerated list
+            lines = [line.strip() for line in components_description.split("\n") if line.strip()]
+            enumerated_lines = [f"{i + 1}. {line}" for i, line in enumerate(lines)]
+            components_description = "\n".join(enumerated_lines)
+        else:
+            components_description = "No specific components required."
+    else:
+        components_description = "No specific components required. Components can be loaded dynamically."
+
+    configs = getattr(blocks, "expected_configs", [])
+    configs_section = ""
+    if configs:
+        configs_str = format_configs(configs, indent_level=0, add_empty_lines=False)
+        configs_description = configs_str.replace("Configs:\n", "").strip()
+        if configs_description:
+            configs_section = f"\n\n## Configuration Parameters\n\n{configs_description}"
+
+    inputs = blocks.inputs
+    outputs = blocks.outputs
+
+    # format inputs as markdown list
+    inputs_parts = []
+    required_inputs = [inp for inp in inputs if inp.required]
+    optional_inputs = [inp for inp in inputs if not inp.required]
+
+    if required_inputs:
+        inputs_parts.append("**Required:**\n")
+        for inp in required_inputs:
+            if hasattr(inp.type_hint, "__name__"):
+                type_str = inp.type_hint.__name__
+            elif inp.type_hint is not None:
+                type_str = str(inp.type_hint).replace("typing.", "")
+            else:
+                type_str = "Any"
+            desc = inp.description or "No description provided"
+            inputs_parts.append(f"- `{inp.name}` (`{type_str}`): {desc}")
+
+    if optional_inputs:
+        if required_inputs:
+            inputs_parts.append("")
+        inputs_parts.append("**Optional:**\n")
+        for inp in optional_inputs:
+            if hasattr(inp.type_hint, "__name__"):
+                type_str = inp.type_hint.__name__
+            elif inp.type_hint is not None:
+                type_str = str(inp.type_hint).replace("typing.", "")
+            else:
+                type_str = "Any"
+            desc = inp.description or "No description provided"
+            default_str = f", default: `{inp.default}`" if inp.default is not None else ""
+            inputs_parts.append(f"- `{inp.name}` (`{type_str}`){default_str}: {desc}")
+
+    inputs_description = "\n".join(inputs_parts) if inputs_parts else "No specific inputs defined."
+
+    # format outputs as markdown list
+    outputs_parts = []
+    for out in outputs:
+        if hasattr(out.type_hint, "__name__"):
+            type_str = out.type_hint.__name__
+        elif out.type_hint is not None:
+            type_str = str(out.type_hint).replace("typing.", "")
+        else:
+            type_str = "Any"
+        desc = out.description or "No description provided"
+        outputs_parts.append(f"- `{out.name}` (`{type_str}`): {desc}")
+
+    outputs_description = "\n".join(outputs_parts) if outputs_parts else "Standard pipeline outputs."
+
+    trigger_inputs_section = ""
+    if hasattr(blocks, "trigger_inputs") and blocks.trigger_inputs:
+        trigger_inputs_list = sorted([t for t in blocks.trigger_inputs if t is not None])
+        if trigger_inputs_list:
+            trigger_inputs_str = ", ".join(f"`{t}`" for t in trigger_inputs_list)
+            trigger_inputs_section = f"""
+### Conditional Execution
+
+This pipeline contains blocks that are selected at runtime based on inputs:
+- **Trigger Inputs**: {trigger_inputs_str}
+"""
+
+    # generate tags based on pipeline characteristics
+    tags = ["modular-diffusers", "diffusers"]
+
+    if hasattr(blocks, "model_name") and blocks.model_name:
+        tags.append(blocks.model_name)
+
+    if hasattr(blocks, "trigger_inputs") and blocks.trigger_inputs:
+        triggers = blocks.trigger_inputs
+        if any(t in triggers for t in ["mask", "mask_image"]):
+            tags.append("inpainting")
+        if any(t in triggers for t in ["image", "image_latents"]):
+            tags.append("image-to-image")
+        if any(t in triggers for t in ["control_image", "controlnet_cond"]):
+            tags.append("controlnet")
+        if not any(t in triggers for t in ["image", "mask", "image_latents", "mask_image"]):
+            tags.append("text-to-image")
+    else:
+        tags.append("text-to-image")
+
+    block_count = len(blocks.sub_blocks)
+    model_description = f"""This is a modular diffusion pipeline built with 🧨 Diffusers' modular pipeline framework.
+
+**Pipeline Type**: {blocks_class_name}
+
+**Description**: {description}
+
+This pipeline uses a {block_count}-block architecture that can be customized and extended."""
+
+    return {
+        "pipeline_name": pipeline_name,
+        "model_description": model_description,
+        "blocks_description": blocks_description,
+        "components_description": components_description,
+        "configs_section": configs_section,
+        "inputs_description": inputs_description,
+        "outputs_description": outputs_description,
+        "trigger_inputs_section": trigger_inputs_section,
+        "tags": tags,
+    }

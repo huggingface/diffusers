@@ -19,6 +19,7 @@ import flax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -26,6 +27,9 @@ from .scheduling_utils_flax import (
     FlaxSchedulerOutput,
     broadcast_to_shape_from_left,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -40,9 +44,18 @@ class EulerDiscreteSchedulerState:
 
     @classmethod
     def create(
-        cls, common: CommonSchedulerState, init_noise_sigma: jnp.ndarray, timesteps: jnp.ndarray, sigmas: jnp.ndarray
+        cls,
+        common: CommonSchedulerState,
+        init_noise_sigma: jnp.ndarray,
+        timesteps: jnp.ndarray,
+        sigmas: jnp.ndarray,
     ):
-        return cls(common=common, init_noise_sigma=init_noise_sigma, timesteps=timesteps, sigmas=sigmas)
+        return cls(
+            common=common,
+            init_noise_sigma=init_noise_sigma,
+            timesteps=timesteps,
+            sigmas=sigmas,
+        )
 
 
 @dataclass
@@ -74,7 +87,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
+            https://huggingface.co/papers/2210.02303)
         dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
             the `dtype` used for params and computation.
     """
@@ -99,6 +112,10 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         timestep_spacing: str = "linspace",
         dtype: jnp.dtype = jnp.float32,
     ):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         self.dtype = dtype
 
     def create_state(self, common: Optional[CommonSchedulerState] = None) -> EulerDiscreteSchedulerState:
@@ -146,7 +163,10 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         return sample
 
     def set_timesteps(
-        self, state: EulerDiscreteSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self,
+        state: EulerDiscreteSchedulerState,
+        num_inference_steps: int,
+        shape: Tuple = (),
     ) -> EulerDiscreteSchedulerState:
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -159,7 +179,12 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         """
 
         if self.config.timestep_spacing == "linspace":
-            timesteps = jnp.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=self.dtype)
+            timesteps = jnp.linspace(
+                self.config.num_train_timesteps - 1,
+                0,
+                num_inference_steps,
+                dtype=self.dtype,
+            )
         elif self.config.timestep_spacing == "leading":
             step_ratio = self.config.num_train_timesteps // num_inference_steps
             timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)

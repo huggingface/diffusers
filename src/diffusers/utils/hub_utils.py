@@ -38,13 +38,13 @@ from huggingface_hub.constants import HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
+    HfHubHTTPError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     is_jinja_available,
     validate_hf_hub_args,
 )
 from packaging import version
-from requests import HTTPError
 
 from .. import __version__
 from .constants import (
@@ -107,13 +107,15 @@ def load_or_create_model_card(
     license: Optional[str] = None,
     widget: Optional[List[dict]] = None,
     inference: Optional[bool] = None,
+    is_modular: bool = False,
 ) -> ModelCard:
     """
     Loads or creates a model card.
 
     Args:
         repo_id_or_path (`str`):
-            The repo id (e.g., "runwayml/stable-diffusion-v1-5") or local path where to look for the model card.
+            The repo id (e.g., "stable-diffusion-v1-5/stable-diffusion-v1-5") or local path where to look for the model
+            card.
         token (`str`, *optional*):
             Authentication token. Will default to the stored token. See https://huggingface.co/settings/token for more
             details.
@@ -130,6 +132,8 @@ def load_or_create_model_card(
         widget (`List[dict]`, *optional*): Widget to accompany a gallery template.
         inference: (`bool`, optional): Whether to turn on inference widget. Helpful when using
             `load_or_create_model_card` from a training script.
+        is_modular: (`bool`, optional): Boolean flag to denote if the model card is for a modular pipeline.
+            When True, uses model_description as-is without additional template formatting.
     """
     if not is_jinja_available():
         raise ValueError(
@@ -158,10 +162,14 @@ def load_or_create_model_card(
             )
         else:
             card_data = ModelCardData()
-            component = "pipeline" if is_pipeline else "model"
-            if model_description is None:
-                model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
-            model_card = ModelCard.from_template(card_data, model_description=model_description)
+            if is_modular and model_description is not None:
+                model_card = ModelCard(model_description)
+                model_card.data = card_data
+            else:
+                component = "pipeline" if is_pipeline else "model"
+                if model_description is None:
+                    model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
+                model_card = ModelCard.from_template(card_data, model_description=model_description)
 
     return model_card
 
@@ -316,7 +324,7 @@ def _get_model_file(
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
             ) from e
-        except HTTPError as e:
+        except HfHubHTTPError as e:
             raise EnvironmentError(
                 f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{e}"
             ) from e
@@ -432,7 +440,7 @@ def _get_checkpoint_shard_files(
 
     # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
     # we don't have to catch them here. We have also dealt with EntryNotFoundError.
-    except HTTPError as e:
+    except HfHubHTTPError as e:
         raise EnvironmentError(
             f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
             " again after checking your internet connection."

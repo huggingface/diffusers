@@ -25,6 +25,7 @@ from ..utils import (
     is_accelerate_available,
     logging,
 )
+from ..utils.torch_utils import get_device
 
 
 if is_accelerate_available():
@@ -159,9 +160,18 @@ class AutoOffloadStrategy:
         if len(hooks) == 0:
             return []
 
-        current_module_size = model.get_memory_footprint()
+        try:
+            current_module_size = model.get_memory_footprint()
+        except AttributeError:
+            raise AttributeError(f"Do not know how to compute memory footprint of `{model.__class__.__name__}.")
 
-        mem_on_device = torch.cuda.mem_get_info(execution_device.index)[0]
+        device_type = execution_device.type
+        device_module = getattr(torch, device_type, torch.cuda)
+        try:
+            mem_on_device = device_module.mem_get_info(execution_device.index)[0]
+        except AttributeError:
+            raise AttributeError(f"Do not know how to obtain obtain memory info for {str(device_module)}.")
+
         mem_on_device = mem_on_device - self.memory_reserve_margin
         if current_module_size < mem_on_device:
             return []
@@ -283,11 +293,7 @@ class ComponentsManager:
     encoders, etc.) across different modular pipelines. It includes features for duplicate detection, memory
     management, and component organization.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Example:
         ```python
@@ -301,7 +307,7 @@ class ComponentsManager:
         cm.add("vae", vae_model, collection="sdxl")
 
         # Enable auto offloading
-        cm.enable_auto_cpu_offload(device="cuda")
+        cm.enable_auto_cpu_offload()
 
         # Retrieve components
         unet = cm.get_one(name="unet", collection="sdxl")
@@ -318,6 +324,7 @@ class ComponentsManager:
         "has_hook",
         "execution_device",
         "ip_adapter",
+        "quantization",
     ]
 
     def __init__(self):
@@ -350,7 +357,9 @@ class ComponentsManager:
                     ids_by_name.add(component_id)
         else:
             ids_by_name = set(components.keys())
-        if collection:
+        if collection and collection not in self.collections:
+            return set()
+        elif collection and collection in self.collections:
             ids_by_collection = set()
             for component_id, component in components.items():
                 if component_id in self.collections[collection]:
@@ -417,7 +426,8 @@ class ComponentsManager:
 
         # add component to components manager
         self.components[component_id] = component
-        self.added_time[component_id] = time.time()
+        if is_new_component:
+            self.added_time[component_id] = time.time()
 
         if collection:
             if collection not in self.collections:
@@ -490,6 +500,8 @@ class ComponentsManager:
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            if torch.xpu.is_available():
+                torch.xpu.empty_cache()
 
     # YiYi TODO: rename to search_components for now, may remove this method
     def search_components(
@@ -678,7 +690,7 @@ class ComponentsManager:
 
         return get_return_dict(matches, return_dict_with_names)
 
-    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device] = "cuda", memory_reserve_margin="3GB"):
+    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device] = None, memory_reserve_margin="3GB"):
         """
         Enable automatic CPU offloading for all components.
 
@@ -698,15 +710,28 @@ class ComponentsManager:
         if not is_accelerate_available():
             raise ImportError("Make sure to install accelerate to use auto_cpu_offload")
 
+        if device is None:
+            device = get_device()
+        if not isinstance(device, torch.device):
+            device = torch.device(device)
+
+        device_type = device.type
+        device_module = getattr(torch, device_type, torch.cuda)
+        if not hasattr(device_module, "mem_get_info"):
+            raise NotImplementedError(
+                f"`enable_auto_cpu_offload() relies on the `mem_get_info()` method. It's not implemented for {str(device.type)}."
+            )
+
+        if device.index is None:
+            device = torch.device(f"{device.type}:{0}")
+
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module) and hasattr(component, "_hf_hook"):
                 remove_hook_from_module(component, recurse=True)
 
         self.disable_auto_cpu_offload()
         offload_strategy = AutoOffloadStrategy(memory_reserve_margin=memory_reserve_margin)
-        device = torch.device(device)
-        if device.index is None:
-            device = torch.device(f"{device.type}:{0}")
+
         all_hooks = []
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module):
@@ -739,7 +764,6 @@ class ComponentsManager:
         self.model_hooks = None
         self._auto_offload_enabled = False
 
-    # YiYi TODO: (1) add quantization info
     def get_model_info(
         self,
         component_id: str,
@@ -814,6 +838,17 @@ class ComponentsManager:
                     }
                     if scales:
                         info["ip_adapter"] = summarize_dict_by_value_and_parts(scales)
+
+            # Check for quantization
+            hf_quantizer = getattr(component, "hf_quantizer", None)
+            if hf_quantizer is not None:
+                quant_config = hf_quantizer.quantization_config
+                if hasattr(quant_config, "to_diff_dict"):
+                    info["quantization"] = quant_config.to_diff_dict()
+                else:
+                    info["quantization"] = quant_config.to_dict()
+            else:
+                info["quantization"] = None
 
         # If fields specified, filter info
         if fields is not None:
@@ -945,12 +980,16 @@ class ComponentsManager:
         output += "\nAdditional Component Info:\n" + "=" * 50 + "\n"
         for name in self.components:
             info = self.get_model_info(name)
-            if info is not None and (info.get("adapters") is not None or info.get("ip_adapter")):
+            if info is not None and (
+                info.get("adapters") is not None or info.get("ip_adapter") or info.get("quantization")
+            ):
                 output += f"\n{name}:\n"
                 if info.get("adapters") is not None:
                     output += f"  Adapters: {info['adapters']}\n"
                 if info.get("ip_adapter"):
                     output += "  IP-Adapter: Enabled\n"
+                if info.get("quantization"):
+                    output += f"  Quantization: {info['quantization']}\n"
 
         return output
 

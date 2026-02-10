@@ -23,6 +23,7 @@ from .constants import (
     DEFAULT_HF_PARALLEL_LOADING_WORKERS,
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
+    DIFFUSERS_LOAD_ID_FIELDS,
     FLAX_WEIGHTS_NAME,
     GGUF_FILE_EXTENSION,
     HF_ENABLE_PARALLEL_LOADING,
@@ -38,7 +39,7 @@ from .constants import (
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
 )
-from .deprecation_utils import deprecate
+from .deprecation_utils import _maybe_remap_transformers_class, deprecate
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video
@@ -64,6 +65,9 @@ from .import_utils import (
     get_objects_from_module,
     is_accelerate_available,
     is_accelerate_version,
+    is_aiter_available,
+    is_aiter_version,
+    is_av_available,
     is_better_profanity_available,
     is_bitsandbytes_available,
     is_bitsandbytes_version,
@@ -106,6 +110,7 @@ from .import_utils import (
     is_tensorboard_available,
     is_timm_available,
     is_torch_available,
+    is_torch_mlu_available,
     is_torch_npu_available,
     is_torch_version,
     is_torch_xla_available,
@@ -140,6 +145,7 @@ from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_p
 from .remote_utils import remote_decode
 from .state_dict_utils import (
     convert_all_state_dict_to_peft,
+    convert_sai_sd_control_lora_state_dict_to_peft,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_kohya,
     convert_state_dict_to_peft,

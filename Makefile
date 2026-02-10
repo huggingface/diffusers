@@ -70,6 +70,10 @@ fix-copies:
 	python utils/check_copies.py --fix_and_overwrite
 	python utils/check_dummies.py --fix_and_overwrite
 
+# Auto docstrings in modular blocks
+modular-autodoctrings:
+	python utils/modular_auto_docstring.py
+
 # Run tests for the library
 
 test:

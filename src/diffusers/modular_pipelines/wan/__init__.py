@@ -21,18 +21,16 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["encoders"] = ["WanTextEncoderStep"]
-    _import_structure["modular_blocks"] = [
-        "ALL_BLOCKS",
-        "AUTO_BLOCKS",
-        "TEXT2VIDEO_BLOCKS",
-        "WanAutoBeforeDenoiseStep",
-        "WanAutoBlocks",
-        "WanAutoBlocks",
-        "WanAutoDecodeStep",
-        "WanAutoDenoiseStep",
+    _import_structure["modular_blocks_wan"] = ["WanBlocks"]
+    _import_structure["modular_blocks_wan22"] = ["Wan22Blocks"]
+    _import_structure["modular_blocks_wan22_i2v"] = ["Wan22Image2VideoBlocks"]
+    _import_structure["modular_blocks_wan_i2v"] = ["WanImage2VideoAutoBlocks"]
+    _import_structure["modular_pipeline"] = [
+        "Wan22Image2VideoModularPipeline",
+        "Wan22ModularPipeline",
+        "WanImage2VideoModularPipeline",
+        "WanModularPipeline",
     ]
-    _import_structure["modular_pipeline"] = ["WanModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -41,17 +39,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .encoders import WanTextEncoderStep
-        from .modular_blocks import (
-            ALL_BLOCKS,
-            AUTO_BLOCKS,
-            TEXT2VIDEO_BLOCKS,
-            WanAutoBeforeDenoiseStep,
-            WanAutoBlocks,
-            WanAutoDecodeStep,
-            WanAutoDenoiseStep,
+        from .modular_blocks_wan import WanBlocks
+        from .modular_blocks_wan22 import Wan22Blocks
+        from .modular_blocks_wan22_i2v import Wan22Image2VideoBlocks
+        from .modular_blocks_wan_i2v import WanImage2VideoAutoBlocks
+        from .modular_pipeline import (
+            Wan22Image2VideoModularPipeline,
+            Wan22ModularPipeline,
+            WanImage2VideoModularPipeline,
+            WanModularPipeline,
         )
-        from .modular_pipeline import WanModularPipeline
 else:
     import sys
 
