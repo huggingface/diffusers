@@ -152,8 +152,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model.
         trained_betas (`np.ndarray`, *optional*):
             An array of betas to pass directly to the constructor without using `beta_start` and `beta_end`.
-        variance_type (`"fixed_small"`, `"fixed_small_log"`, `"fixed_large"`, `"fixed_large_log"`, `"learned"`, or `"learned_range"`, defaults to `"fixed_small"`):
-            Clip the variance when adding noise to the denoised sample.
+        variance_type (`"fixed_small"`, `"fixed_small_log"`, `"fixed_large"`, `"fixed_large_log"`, `"learned"`, `"learned_range"`, or `"zeros"`, defaults to `"fixed_small"`):
+            The type of variance to compute. If `None`, uses the variance type specified in the scheduler
+            configuration.
         clip_sample (`bool`, defaults to `True`):
             Clip the predicted sample for numerical stability.
         clip_sample_range (`float`, defaults to `1.0`):
@@ -198,6 +199,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             "fixed_large_log",
             "learned",
             "learned_range",
+            "zeros",
         ] = "fixed_small",
         clip_sample: bool = True,
         prediction_type: Literal["epsilon", "sample", "v_prediction"] = "epsilon",
@@ -554,6 +556,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             elif self.variance_type == "learned_range":
                 variance = self._get_variance(t, predicted_variance=predicted_variance)
                 variance = torch.exp(0.5 * variance) * variance_noise
+            elif self.variance_type == "zeros":
+                variance = torch.zeros_like(model_output)
             else:
                 variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * variance_noise
 
