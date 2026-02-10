@@ -320,7 +320,7 @@ class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesT
 
     @property
     def modules_to_not_convert_for_test(self):
-        return ["transformer_blocks.0"]
+        return ["norm_out.linear"]
 
 
 class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
@@ -336,7 +336,7 @@ class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
 
     @property
     def modules_to_not_convert_for_test(self):
-        return ["transformer_blocks.0"]
+        return ["norm_out.linear"]
 
 
 class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
@@ -344,7 +344,7 @@ class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin
 
     @property
     def modules_to_not_convert_for_test(self):
-        return ["transformer_blocks.0"]
+        return ["norm_out.linear"]
 
 
 class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
@@ -416,7 +416,7 @@ class TestFluxTransformerModelOpt(FluxTransformerTesterConfig, ModelOptTesterMix
 
     @property
     def modules_to_not_convert_for_test(self):
-        return ["transformer_blocks.0"]
+        return ["norm_out.linear"]
 
 
 class TestFluxTransformerModelOptCompile(FluxTransformerTesterConfig, ModelOptCompileTesterMixin):

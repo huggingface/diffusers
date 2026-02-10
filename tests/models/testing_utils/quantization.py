@@ -122,14 +122,14 @@ class QuantizationTesterMixin:
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
         raise NotImplementedError("Subclass must implement _verify_if_layer_quantized")
 
-    def _is_module_quantized(self, module):
+    def _is_module_quantized(self, module, quant_config_kwargs=None):
         """
         Check if a module is quantized. Returns True if quantized, False otherwise.
         Default implementation tries _verify_if_layer_quantized and catches exceptions.
         Subclasses can override for more efficient checking.
         """
         try:
-            self._verify_if_layer_quantized("", module, {})
+            self._verify_if_layer_quantized("", module, quant_config_kwargs or {})
             return True
         except (AssertionError, AttributeError):
             return False
@@ -269,7 +269,9 @@ class QuantizationTesterMixin:
             f"Quantized layer count mismatch: expected {expected_quantized_layers}, got {num_quantized_layers} (total linear layers: {num_linear_layers}, FP32 modules: {num_fp32_modules})"
         )
 
-    def _test_quantization_modules_to_not_convert(self, config_kwargs, modules_to_not_convert):
+    def _test_quantization_modules_to_not_convert(
+        self, config_kwargs, modules_to_not_convert, to_not_convert_key="modules_to_not_convert"
+    ):
         """
         Test that modules specified in modules_to_not_convert are not quantized.
 
@@ -279,7 +281,7 @@ class QuantizationTesterMixin:
         """
         # Create config with modules_to_not_convert
         config_kwargs_with_exclusion = config_kwargs.copy()
-        config_kwargs_with_exclusion["modules_to_not_convert"] = modules_to_not_convert
+        config_kwargs_with_exclusion[to_not_convert_key] = modules_to_not_convert
 
         model_with_exclusion = self._create_quantized_model(config_kwargs_with_exclusion)
 
@@ -291,7 +293,7 @@ class QuantizationTesterMixin:
                 if any(excluded in name for excluded in modules_to_not_convert):
                     found_excluded = True
                     # This module should NOT be quantized
-                    assert not self._is_module_quantized(module), (
+                    assert not self._is_module_quantized(module, config_kwargs_with_exclusion), (
                         f"Module {name} should not be quantized but was found to be quantized"
                     )
 
@@ -303,7 +305,7 @@ class QuantizationTesterMixin:
             if isinstance(module, torch.nn.Linear):
                 # Check if this module is NOT in the exclusion list
                 if not any(excluded in name for excluded in modules_to_not_convert):
-                    if self._is_module_quantized(module):
+                    if self._is_module_quantized(module, config_kwargs_with_exclusion):
                         found_quantized = True
                         break
 
@@ -608,7 +610,7 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
             pytest.skip("modules_to_not_convert_for_test not defined for this model")
 
         self._test_quantization_modules_to_not_convert(
-            BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"], modules_to_exclude
+            BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"], modules_to_exclude, "llm_int8_skip_modules"
         )
 
     @pytest.mark.parametrize("config_name", ["4bit_nf4", "8bit"], ids=["4bit_nf4", "8bit"])
