@@ -92,6 +92,18 @@ def main():
         help="Confidence threshold for committing tokens.",
     )
     parser.add_argument(
+        "--editing_threshold",
+        type=float,
+        default=None,
+        help="Confidence threshold for editing already-committed tokens. Set to enable post-mask editing (e.g. 0.5).",
+    )
+    parser.add_argument(
+        "--max_post_steps",
+        type=int,
+        default=0,
+        help="Maximum post-mask editing iterations per block (e.g. 16). Only used when --editing_threshold is set.",
+    )
+    parser.add_argument(
         "--sampling_method",
         type=str,
         default="multinomial",
@@ -222,6 +234,8 @@ def main():
         top_p=args.top_p,
         top_k=args.top_k,
         threshold=args.threshold,
+        editing_threshold=args.editing_threshold,
+        max_post_steps=args.max_post_steps,
         sampling_method=args.sampling_method,
         eos_early_stop=args.eos_early_stop,
         generator=generator,

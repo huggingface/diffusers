@@ -119,8 +119,6 @@ def main():
             "dtype": dtype_arg,
             "device_map": args.device,
         },
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
     )
 
     chat_kwargs = {"enable_thinking": args.enable_thinking}

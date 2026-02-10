@@ -210,6 +210,8 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
         top_k: Optional[int] = None,
         sampling_method: str = "auto",
         threshold: float = 0.95,
+        editing_threshold: Optional[float] = None,
+        max_post_steps: int = 0,
         minimal_topk: int = 1,
         eos_early_stop: bool = False,
         eos_token_id: Optional[int] = None,
@@ -246,6 +248,14 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
                 Sampling method (`auto`, `greedy`, `multinomial`).
             threshold (`float`):
                 Confidence threshold for committing tokens.
+            editing_threshold (`float`, *optional*):
+                Confidence threshold for editing already-committed (non-mask) tokens. When set, after all mask tokens
+                in a block are resolved, the pipeline continues refining: if the model predicts a different token with
+                confidence above this threshold, the existing token is replaced. Set to `None` or a negative value to
+                disable editing. Defaults to `None` (disabled).
+            max_post_steps (`int`):
+                Maximum number of additional refinement iterations after all mask tokens in a block are resolved. Only
+                used when `editing_threshold` is enabled. Defaults to `0` (no post-mask editing steps).
             minimal_topk (`int`):
                 Minimum number of tokens to commit per step.
             eos_early_stop (`bool`):
@@ -329,6 +339,7 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
         resolved_attention_mode: str = str(attention_mask_mode)
 
         use_multinomial = sampling_method == "multinomial" or (sampling_method == "auto" and float(temperature) != 0.0)
+        editing_enabled = editing_threshold is not None and editing_threshold >= 0.0
         global_step = 0
 
         for num_block in range(int(prefill_blocks), int(num_blocks)):
@@ -338,13 +349,28 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
             cur_attn_mask_2d = attn_mask_2d_full[:, :current_window_end]
             cur_position_ids = position_ids[:, :current_window_end]
 
-            for step_idx in range(int(steps)):
+            # Identify which positions in the block are prompt (non-editable).
+            block_start_pos = num_block * int(block_length)
+            prompt_mask_in_block = torch.zeros(int(block_length), device=model_device, dtype=torch.bool)
+            if block_start_pos < prompt_length:
+                prompt_end_in_block = min(prompt_length - block_start_pos, int(block_length))
+                prompt_mask_in_block[:prompt_end_in_block] = True
+
+            post_steps = 0
+            step_idx = 0
+            while step_idx < int(steps) or (editing_enabled and post_steps <= int(max_post_steps)):
                 if finished.all():
                     break
 
                 active_block = cur_x[:, -int(block_length) :] == int(mask_token_id)
-                if active_block.sum() == 0:
+                masks_remaining = active_block.sum() > 0
+
+                if not masks_remaining and not editing_enabled:
                     break
+                if not masks_remaining:
+                    post_steps += 1
+                    if post_steps > int(max_post_steps):
+                        break
 
                 logits, resolved_attention_mode = self._model_forward_logits(
                     cur_x,
@@ -364,36 +390,57 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
                     use_multinomial=use_multinomial,
                 )
 
-                num_to_transfer = int(transfer_schedule[step_idx].item())
+                # --- Mask-filling transfer ---
                 transfer_index = torch.zeros_like(x0, dtype=torch.bool)
+                if masks_remaining and step_idx < int(steps):
+                    clamped_step = min(step_idx, len(transfer_schedule) - 1)
+                    num_to_transfer = int(transfer_schedule[clamped_step].item())
 
-                confidence = torch.where(
-                    active_block, x0_p.to(dtype=torch.float32), torch.full_like(x0_p, -torch.inf, dtype=torch.float32)
-                )
+                    confidence = torch.where(
+                        active_block,
+                        x0_p.to(dtype=torch.float32),
+                        torch.full_like(x0_p, -torch.inf, dtype=torch.float32),
+                    )
 
-                for b in range(batch_size):
-                    if finished[b]:
-                        continue
+                    for b in range(batch_size):
+                        if finished[b]:
+                            continue
+                        high_conf = confidence[b] > float(threshold)
+                        if high_conf.sum().item() >= num_to_transfer:
+                            transfer_index[b] = high_conf
+                        else:
+                            k = min(num_to_transfer, int(active_block[b].sum().item()))
+                            if k > 0:
+                                _, idx = torch.topk(confidence[b], k=k)
+                                transfer_index[b, idx] = True
 
-                    high_conf = confidence[b] > float(threshold)
-                    if high_conf.sum().item() >= num_to_transfer:
-                        transfer_index[b] = high_conf
-                    else:
-                        k = min(num_to_transfer, int(active_block[b].sum().item()))
-                        if k > 0:
-                            _, idx = torch.topk(confidence[b], k=k)
-                            transfer_index[b, idx] = True
+                # --- Editing transfer (non-mask, non-prompt positions) ---
+                editing_transfer_index = torch.zeros_like(x0, dtype=torch.bool)
+                if editing_enabled:
+                    old_block_tokens = cur_x[:, -int(block_length) :]
+                    editable = (~active_block) & (~prompt_mask_in_block.unsqueeze(0))
+                    editing_conf = torch.where(
+                        editable, x0_p.to(dtype=torch.float32), torch.full_like(x0_p, -torch.inf, dtype=torch.float32)
+                    )
+                    high_conf_edit = editing_conf > float(editing_threshold)
+                    token_changed = x0 != old_block_tokens
+                    editing_transfer_index = high_conf_edit & token_changed & editable
 
-                if transfer_index.any():
+                final_transfer = transfer_index | editing_transfer_index
+                if final_transfer.any():
                     updated = cur_x[:, -int(block_length) :].clone()
-                    updated[transfer_index] = x0[transfer_index]
+                    updated[final_transfer] = x0[final_transfer]
                     cur_x[:, -int(block_length) :] = updated
+
+                # Break if no masks remain and no edits were made.
+                if not masks_remaining and not editing_transfer_index.any():
+                    break
 
                 if eos_early_stop and eos_token_id is not None:
                     for b in range(batch_size):
                         if finished[b]:
                             continue
-                        eos_in_commits = (x0[b][transfer_index[b]] == int(eos_token_id)).any().item()
+                        eos_in_commits = (x0[b][final_transfer[b]] == int(eos_token_id)).any().item()
                         if not eos_in_commits:
                             continue
                         eos_pos = (cur_x[b] == int(eos_token_id)).nonzero(as_tuple=True)
@@ -413,6 +460,8 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
                     cur_x = callback_outputs.pop("cur_x", cur_x)
 
                 global_step += 1
+                if masks_remaining:
+                    step_idx += 1
 
             x[:, :current_window_end] = cur_x
             if eos_token_id is not None and (x[:, prompt_length:current_window_end] == int(eos_token_id)).any().item():
