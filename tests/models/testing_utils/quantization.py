@@ -809,7 +809,14 @@ class TorchAoConfigMixin:
         return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
 
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
+        from torchao.dtypes import AffineQuantizedTensor
+        from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
+
         assert isinstance(module, torch.nn.Linear), f"Layer {name} is not Linear, got {type(module)}"
+        # Check if the weight is actually quantized
+        weight = module.weight
+        is_quantized = isinstance(weight, (AffineQuantizedTensor, LinearActivationQuantizedTensor))
+        assert is_quantized, f"Layer {name} weight is not quantized, got {type(weight)}"
 
 
 # int4wo requires CUDA-specific ops (_convert_weight_to_int4pack)
@@ -905,9 +912,39 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         if modules_to_exclude is None:
             pytest.skip("modules_to_not_convert_for_test not defined for this model")
 
-        self._test_quantization_modules_to_not_convert(
-            TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"], modules_to_exclude
-        )
+        # Custom implementation for torchao that skips memory footprint check
+        # because get_memory_footprint() doesn't accurately reflect torchao quantization
+        config_kwargs = TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"]
+        config_kwargs_with_exclusion = config_kwargs.copy()
+        config_kwargs_with_exclusion["modules_to_not_convert"] = modules_to_exclude
+
+        model_with_exclusion = self._create_quantized_model(config_kwargs_with_exclusion)
+
+        # Find a module that should NOT be quantized
+        found_excluded = False
+        for name, module in model_with_exclusion.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                # Check if this module is in the exclusion list
+                if any(excluded in name for excluded in modules_to_exclude):
+                    found_excluded = True
+                    # This module should NOT be quantized
+                    assert not self._is_module_quantized(module, config_kwargs_with_exclusion), (
+                        f"Module {name} should not be quantized but was found to be quantized"
+                    )
+
+        assert found_excluded, f"No linear layers found in excluded modules: {modules_to_exclude}"
+
+        # Find a module that SHOULD be quantized (not in exclusion list)
+        found_quantized = False
+        for name, module in model_with_exclusion.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                # Check if this module is NOT in the exclusion list
+                if not any(excluded in name for excluded in modules_to_exclude):
+                    if self._is_module_quantized(module, config_kwargs_with_exclusion):
+                        found_quantized = True
+                        break
+
+        assert found_quantized, "No quantized layers found outside of excluded modules"
 
     def test_torchao_device_map(self):
         """Test that device_map='auto' works correctly with quantization."""
