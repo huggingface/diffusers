@@ -168,7 +168,7 @@ def assert_tensors_close(
         max_diff = abs_diff.max().item()
 
         flat_idx = abs_diff.argmax().item()
-        max_idx = tuple(torch.unravel_index(torch.tensor(flat_idx), actual.shape).tolist())
+        max_idx = tuple(idx.item() for idx in torch.unravel_index(torch.tensor(flat_idx), actual.shape))
 
         threshold = atol + rtol * expected.abs()
         mismatched = (abs_diff > threshold).sum().item()
