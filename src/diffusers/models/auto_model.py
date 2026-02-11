@@ -104,26 +104,10 @@ class AutoModel(ConfigMixin):
 
         if isinstance(pretrained_model_name_or_path_or_dict, (str, os.PathLike)):
             pretrained_model_name_or_path = pretrained_model_name_or_path_or_dict
-            cls.config_name = "config.json"
             config = cls.load_config(pretrained_model_name_or_path, subfolder=subfolder, **hub_kwargs)
         else:
             config = pretrained_model_name_or_path_or_dict
-            pretrained_model_name_or_path = config.get("_name_or_path")
-
-        library = None
-        orig_class_name = None
-
-        if "_class_name" in config:
-            orig_class_name = config["_class_name"]
-            library = "diffusers"
-        elif "model_type" in config:
-            orig_class_name = "AutoModel"
-            library = "transformers"
-        else:
-            raise ValueError(
-                f"Couldn't find a model class associated with the config: {config}. Make sure the config "
-                "contains a `_class_name` or `model_type` key."
-            )
+            pretrained_model_name_or_path = config.get("_name_or_path", None)
 
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
         trust_remote_code = resolve_trust_remote_code(
@@ -142,18 +126,30 @@ class AutoModel(ConfigMixin):
                 **hub_kwargs,
             )
         else:
+            if "_class_name" in config:
+                class_name = config["_class_name"]
+                library = "diffusers"
+            elif "model_type" in config:
+                class_name = "AutoModel"
+                library = "transformers"
+            else:
+                raise ValueError(
+                    f"Couldn't find a model class associated with the config: {config}. Make sure the config "
+                    "contains a `_class_name` or `model_type` key."
+                )
+
             from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
 
             model_cls, _ = get_class_obj_and_candidates(
                 library_name=library,
-                class_name=orig_class_name,
+                class_name=class_name,
                 importable_classes=ALL_IMPORTABLE_CLASSES,
                 pipelines=None,
                 is_pipeline_module=False,
             )
 
         if model_cls is None:
-            raise ValueError(f"AutoModel can't find a model linked to {orig_class_name}.")
+            raise ValueError(f"AutoModel can't find a model linked to {class_name}.")
 
         return model_cls.from_config(config, **kwargs)
 
