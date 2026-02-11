@@ -23,7 +23,13 @@ from ..models.attention_processor import Attention, MochiAttention
 _ATTENTION_CLASSES = (Attention, MochiAttention, AttentionModuleMixin)
 _FEEDFORWARD_CLASSES = (FeedForward, LuminaFeedForward)
 
-_SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "single_transformer_blocks", "layers")
+_SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS = (
+    "blocks",
+    "transformer_blocks",
+    "single_transformer_blocks",
+    "layers",
+    "visual_transformer_blocks",
+)
 _TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS = ("temporal_transformer_blocks",)
 _CROSS_TRANSFORMER_BLOCK_IDENTIFIERS = ("blocks", "transformer_blocks", "layers")
 

@@ -34,6 +34,7 @@ from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve
 from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
+    MODULAR_MODEL_CARD_TEMPLATE,
     ComponentSpec,
     ConfigSpec,
     InputParam,
@@ -41,6 +42,7 @@ from .modular_pipeline_utils import (
     OutputParam,
     format_components,
     format_configs,
+    generate_modular_model_card_content,
     make_doc_string,
 )
 
@@ -52,19 +54,61 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # map regular pipeline to modular pipeline class name
+
+
+def _create_default_map_fn(pipeline_class_name: str):
+    """Create a mapping function that always returns the same pipeline class."""
+
+    def _map_fn(config_dict=None):
+        return pipeline_class_name
+
+    return _map_fn
+
+
+def _flux2_klein_map_fn(config_dict=None):
+    if config_dict is None:
+        return "Flux2KleinModularPipeline"
+
+    if "is_distilled" in config_dict and config_dict["is_distilled"]:
+        return "Flux2KleinModularPipeline"
+    else:
+        return "Flux2KleinBaseModularPipeline"
+
+
+def _wan_map_fn(config_dict=None):
+    if config_dict is None:
+        return "WanModularPipeline"
+
+    if "boundary_ratio" in config_dict and config_dict["boundary_ratio"] is not None:
+        return "Wan22ModularPipeline"
+    else:
+        return "WanModularPipeline"
+
+
+def _wan_i2v_map_fn(config_dict=None):
+    if config_dict is None:
+        return "WanImage2VideoModularPipeline"
+
+    if "boundary_ratio" in config_dict and config_dict["boundary_ratio"] is not None:
+        return "Wan22Image2VideoModularPipeline"
+    else:
+        return "WanImage2VideoModularPipeline"
+
+
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
-        ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
-        ("wan", "WanModularPipeline"),
-        ("flux", "FluxModularPipeline"),
-        ("flux-kontext", "FluxKontextModularPipeline"),
-        ("flux2", "Flux2ModularPipeline"),
-        ("flux2-klein", "Flux2KleinModularPipeline"),
-        ("qwenimage", "QwenImageModularPipeline"),
-        ("qwenimage-edit", "QwenImageEditModularPipeline"),
-        ("qwenimage-edit-plus", "QwenImageEditPlusModularPipeline"),
-        ("qwenimage-layered", "QwenImageLayeredModularPipeline"),
-        ("z-image", "ZImageModularPipeline"),
+        ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
+        ("wan", _wan_map_fn),
+        ("wan-i2v", _wan_i2v_map_fn),
+        ("flux", _create_default_map_fn("FluxModularPipeline")),
+        ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),
+        ("flux2", _create_default_map_fn("Flux2ModularPipeline")),
+        ("flux2-klein", _flux2_klein_map_fn),
+        ("qwenimage", _create_default_map_fn("QwenImageModularPipeline")),
+        ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
+        ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
+        ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
+        ("z-image", _create_default_map_fn("ZImageModularPipeline")),
     ]
 )
 
@@ -366,7 +410,8 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         """
         create a ModularPipeline, optionally accept pretrained_model_name_or_path to load from hub.
         """
-        pipeline_class_name = MODULAR_PIPELINE_MAPPING.get(self.model_name, ModularPipeline.__name__)
+        map_fn = MODULAR_PIPELINE_MAPPING.get(self.model_name, _create_default_map_fn("ModularPipeline"))
+        pipeline_class_name = map_fn()
         diffusers_module = importlib.import_module("diffusers")
         pipeline_class = getattr(diffusers_module, pipeline_class_name)
 
@@ -1545,7 +1590,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             if modular_config_dict is not None:
                 blocks_class_name = modular_config_dict.get("_blocks_class_name")
             else:
-                blocks_class_name = self.get_default_blocks_name(config_dict)
+                blocks_class_name = self.default_blocks_name
             if blocks_class_name is not None:
                 diffusers_module = importlib.import_module("diffusers")
                 blocks_class = getattr(diffusers_module, blocks_class_name)
@@ -1553,11 +1598,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             else:
                 logger.warning(f"`blocks` is `None`, no default blocks class found for {self.__class__.__name__}")
 
-        self.blocks = blocks
+        self._blocks = blocks
         self._components_manager = components_manager
         self._collection = collection
-        self._component_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_components}
-        self._config_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_configs}
+        self._component_specs = {spec.name: deepcopy(spec) for spec in self._blocks.expected_components}
+        self._config_specs = {spec.name: deepcopy(spec) for spec in self._blocks.expected_configs}
 
         # update component_specs and config_specs based on modular_model_index.json
         if modular_config_dict is not None:
@@ -1604,7 +1649,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         for name, config_spec in self._config_specs.items():
             default_configs[name] = config_spec.default
         self.register_to_config(**default_configs)
-        self.register_to_config(_blocks_class_name=self.blocks.__class__.__name__ if self.blocks is not None else None)
+        self.register_to_config(
+            _blocks_class_name=self._blocks.__class__.__name__ if self._blocks is not None else None
+        )
 
     @property
     def default_call_parameters(self) -> Dict[str, Any]:
@@ -1613,12 +1660,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             - Dictionary mapping input names to their default values
         """
         params = {}
-        for input_param in self.blocks.inputs:
+        for input_param in self._blocks.inputs:
             params[input_param.name] = input_param.default
         return params
-
-    def get_default_blocks_name(self, config_dict: Optional[Dict[str, Any]]) -> Optional[str]:
-        return self.default_blocks_name
 
     @classmethod
     def _load_pipeline_config(
@@ -1715,7 +1759,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             logger.debug(" try to determine the modular pipeline class from model_index.json")
             standard_pipeline_class = _get_pipeline_class(cls, config=config_dict)
             model_name = _get_model(standard_pipeline_class.__name__)
-            pipeline_class_name = MODULAR_PIPELINE_MAPPING.get(model_name, ModularPipeline.__name__)
+            map_fn = MODULAR_PIPELINE_MAPPING.get(model_name, _create_default_map_fn("ModularPipeline"))
+            pipeline_class_name = map_fn(config_dict)
             diffusers_module = importlib.import_module("diffusers")
             pipeline_class = getattr(diffusers_module, pipeline_class_name)
         else:
@@ -1753,9 +1798,19 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
+            # Generate modular pipeline card content
+            card_content = generate_modular_model_card_content(self.blocks)
+
             # Create a new empty model card and eventually tag it
-            model_card = load_or_create_model_card(repo_id, token=token, is_pipeline=True)
-            model_card = populate_model_card(model_card)
+            model_card = load_or_create_model_card(
+                repo_id,
+                token=token,
+                is_pipeline=True,
+                model_description=MODULAR_MODEL_CARD_TEMPLATE.format(**card_content),
+                is_modular=True,
+            )
+            model_card = populate_model_card(model_card, tags=card_content["tags"])
+
             model_card.save(os.path.join(save_directory, "README.md"))
 
         # YiYi TODO: maybe order the json file to make it more readable: configs first, then components
@@ -1776,7 +1831,15 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Returns:
             - The docstring of the pipeline blocks
         """
-        return self.blocks.doc
+        return self._blocks.doc
+
+    @property
+    def blocks(self) -> ModularPipelineBlocks:
+        """
+        Returns:
+            - A copy of the pipeline blocks
+        """
+        return deepcopy(self._blocks)
 
     def register_components(self, **kwargs):
         """
@@ -2143,6 +2206,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 name
                 for name in self._component_specs.keys()
                 if self._component_specs[name].default_creation_method == "from_pretrained"
+                and self._component_specs[name].pretrained_model_name_or_path is not None
+                and getattr(self, name, None) is None
             ]
         elif isinstance(names, str):
             names = [names]
@@ -2510,7 +2575,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         )
 
     def set_progress_bar_config(self, **kwargs):
-        for sub_block_name, sub_block in self.blocks.sub_blocks.items():
+        for sub_block_name, sub_block in self._blocks.sub_blocks.items():
             if hasattr(sub_block, "set_progress_bar_config"):
                 sub_block.set_progress_bar_config(**kwargs)
 
@@ -2564,7 +2629,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         # Add inputs to state, using defaults if not provided in the kwargs or the state
         # if same input already in the state, will override it if provided in the kwargs
-        for expected_input_param in self.blocks.inputs:
+        for expected_input_param in self._blocks.inputs:
             name = expected_input_param.name
             default = expected_input_param.default
             kwargs_type = expected_input_param.kwargs_type
@@ -2583,9 +2648,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         # Run the pipeline
         with torch.no_grad():
             try:
-                _, state = self.blocks(self, state)
+                _, state = self._blocks(self, state)
             except Exception:
-                error_msg = f"Error in block: ({self.blocks.__class__.__name__}):\n"
+                error_msg = f"Error in block: ({self._blocks.__class__.__name__}):\n"
                 logger.error(error_msg)
                 raise
 

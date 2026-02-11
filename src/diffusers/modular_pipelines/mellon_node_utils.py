@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -6,7 +7,7 @@ import os
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Union
 
-from huggingface_hub import create_repo, hf_hub_download, upload_folder
+from huggingface_hub import create_repo, hf_hub_download, upload_file
 from huggingface_hub.utils import (
     EntryNotFoundError,
     HfHubHTTPError,
@@ -15,25 +16,262 @@ from huggingface_hub.utils import (
 )
 
 from ..utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT
+from .modular_pipeline_utils import InputParam, OutputParam
 
 
 logger = logging.getLogger(__name__)
 
 
+def _name_to_label(name: str) -> str:
+    """Convert snake_case name to Title Case label."""
+    return name.replace("_", " ").title()
+
+
+# Template definitions for standard diffuser pipeline parameters
+MELLON_PARAM_TEMPLATES = {
+    # Image I/O
+    "image": {"label": "Image", "type": "image", "display": "input", "required_block_params": ["image"]},
+    "images": {"label": "Images", "type": "image", "display": "output", "required_block_params": ["images"]},
+    "control_image": {
+        "label": "Control Image",
+        "type": "image",
+        "display": "input",
+        "required_block_params": ["control_image"],
+    },
+    # Latents
+    "latents": {"label": "Latents", "type": "latents", "display": "input", "required_block_params": ["latents"]},
+    "image_latents": {
+        "label": "Image Latents",
+        "type": "latents",
+        "display": "input",
+        "required_block_params": ["image_latents"],
+    },
+    "first_frame_latents": {
+        "label": "First Frame Latents",
+        "type": "latents",
+        "display": "input",
+        "required_block_params": ["first_frame_latents"],
+    },
+    "latents_preview": {"label": "Latents Preview", "type": "latent", "display": "output"},
+    # Image Latents with Strength
+    "image_latents_with_strength": {
+        "name": "image_latents",  # name is not same as template key
+        "label": "Image Latents",
+        "type": "latents",
+        "display": "input",
+        "onChange": {"false": ["height", "width"], "true": ["strength"]},
+        "required_block_params": ["image_latents", "strength"],
+    },
+    # Embeddings
+    "embeddings": {"label": "Text Embeddings", "type": "embeddings", "display": "output"},
+    "image_embeds": {
+        "label": "Image Embeddings",
+        "type": "image_embeds",
+        "display": "output",
+        "required_block_params": ["image_embeds"],
+    },
+    # Text inputs
+    "prompt": {
+        "label": "Prompt",
+        "type": "string",
+        "display": "textarea",
+        "default": "",
+        "required_block_params": ["prompt"],
+    },
+    "negative_prompt": {
+        "label": "Negative Prompt",
+        "type": "string",
+        "display": "textarea",
+        "default": "",
+        "required_block_params": ["negative_prompt"],
+    },
+    # Numeric params
+    "guidance_scale": {
+        "label": "Guidance Scale",
+        "type": "float",
+        "display": "slider",
+        "default": 5.0,
+        "min": 1.0,
+        "max": 30.0,
+        "step": 0.1,
+    },
+    "strength": {
+        "label": "Strength",
+        "type": "float",
+        "default": 0.5,
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01,
+        "required_block_params": ["strength"],
+    },
+    "height": {
+        "label": "Height",
+        "type": "int",
+        "default": 1024,
+        "min": 64,
+        "step": 8,
+        "required_block_params": ["height"],
+    },
+    "width": {
+        "label": "Width",
+        "type": "int",
+        "default": 1024,
+        "min": 64,
+        "step": 8,
+        "required_block_params": ["width"],
+    },
+    "seed": {
+        "label": "Seed",
+        "type": "int",
+        "default": 0,
+        "min": 0,
+        "max": 4294967295,
+        "display": "random",
+        "required_block_params": ["generator"],
+    },
+    "num_inference_steps": {
+        "label": "Steps",
+        "type": "int",
+        "default": 25,
+        "min": 1,
+        "max": 100,
+        "display": "slider",
+        "required_block_params": ["num_inference_steps"],
+    },
+    "num_frames": {
+        "label": "Frames",
+        "type": "int",
+        "default": 81,
+        "min": 1,
+        "max": 480,
+        "display": "slider",
+        "required_block_params": ["num_frames"],
+    },
+    "layers": {
+        "label": "Layers",
+        "type": "int",
+        "default": 4,
+        "min": 1,
+        "max": 10,
+        "display": "slider",
+        "required_block_params": ["layers"],
+    },
+    "output_type": {
+        "label": "Output Type",
+        "type": "dropdown",
+        "default": "np",
+        "options": ["np", "pil", "pt"],
+    },
+    # ControlNet
+    "controlnet_conditioning_scale": {
+        "label": "Controlnet Conditioning Scale",
+        "type": "float",
+        "default": 0.5,
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01,
+        "required_block_params": ["controlnet_conditioning_scale"],
+    },
+    "control_guidance_start": {
+        "label": "Control Guidance Start",
+        "type": "float",
+        "default": 0.0,
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01,
+        "required_block_params": ["control_guidance_start"],
+    },
+    "control_guidance_end": {
+        "label": "Control Guidance End",
+        "type": "float",
+        "default": 1.0,
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01,
+        "required_block_params": ["control_guidance_end"],
+    },
+    # Video
+    "videos": {"label": "Videos", "type": "video", "display": "output", "required_block_params": ["videos"]},
+    # Models
+    "vae": {"label": "VAE", "type": "diffusers_auto_model", "display": "input", "required_block_params": ["vae"]},
+    "image_encoder": {
+        "label": "Image Encoder",
+        "type": "diffusers_auto_model",
+        "display": "input",
+        "required_block_params": ["image_encoder"],
+    },
+    "unet": {"label": "Denoise Model", "type": "diffusers_auto_model", "display": "input"},
+    "scheduler": {"label": "Scheduler", "type": "diffusers_auto_model", "display": "input"},
+    "controlnet": {
+        "label": "ControlNet Model",
+        "type": "diffusers_auto_model",
+        "display": "input",
+        "required_block_params": ["controlnet"],
+    },
+    "text_encoders": {
+        "label": "Text Encoders",
+        "type": "diffusers_auto_models",
+        "display": "input",
+        "required_block_params": ["text_encoder"],
+    },
+    # Bundles/Custom
+    "controlnet_bundle": {
+        "label": "ControlNet",
+        "type": "custom_controlnet",
+        "display": "input",
+        "required_block_params": "controlnet_image",
+    },
+    "ip_adapter": {"label": "IP Adapter", "type": "custom_ip_adapter", "display": "input"},
+    "guider": {
+        "label": "Guider",
+        "type": "custom_guider",
+        "display": "input",
+        "onChange": {False: ["guidance_scale"], True: []},
+    },
+    "doc": {"label": "Doc", "type": "string", "display": "output"},
+}
+
+
+class MellonParamMeta(type):
+    """Metaclass that enables MellonParam.template_name(**overrides) syntax."""
+
+    def __getattr__(cls, name: str):
+        if name in MELLON_PARAM_TEMPLATES:
+
+            def factory(default=None, **overrides):
+                template = MELLON_PARAM_TEMPLATES[name]
+                # Use template's name if specified, otherwise use the key
+                params = {"name": template.get("name", name), **template, **overrides}
+                if default is not None:
+                    params["default"] = default
+                return cls(**params)
+
+            return factory
+
+        raise AttributeError(f"type object 'MellonParam' has no attribute '{name}'")
+
+
 @dataclass(frozen=True)
-class MellonParam:
+class MellonParam(metaclass=MellonParamMeta):
     """
         Parameter definition for Mellon nodes.
 
-        Use factory methods for common params (e.g., MellonParam.seed()) or create custom ones with
-        MellonParam(name="...", label="...", type="...").
-
-        Example:
+        Usage:
     ```python
-            # Custom param
-            MellonParam(name="my_param", label="My Param", type="float", default=0.5)
-            # Output in Mellon node definition:
-            # "my_param": {"label": "My Param", "type": "float", "default": 0.5}
+        # From template (standard diffuser params)
+        MellonParam.seed()
+        MellonParam.prompt(default="a cat")
+        MellonParam.latents(display="output")
+
+        # Generic inputs (for custom blocks)
+        MellonParam.Input.slider("my_scale", default=1.0, min=0.0, max=2.0)
+        MellonParam.Input.dropdown("mode", options=["fast", "slow"])
+
+        # Generic outputs
+        MellonParam.Output.image("result_images")
+
+        # Fully custom
+        MellonParam(name="custom", label="Custom", type="float", default=0.5)
     ```
     """
 
@@ -53,577 +291,204 @@ class MellonParam:
     required_block_params: Optional[Union[str, List[str]]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dict for Mellon schema, excluding None values and name."""
+        """Convert to dict for Mellon schema, excluding None values and internal fields."""
         data = asdict(self)
         return {k: v for k, v in data.items() if v is not None and k not in ("name", "required_block_params")}
 
-    @classmethod
-    def image(cls) -> "MellonParam":
-        """
-        Image input parameter.
-
-        Mellon node definition:
-            "image": {"label": "Image", "type": "image", "display": "input"}
-        """
-        return cls(name="image", label="Image", type="image", display="input", required_block_params=["image"])
-
-    @classmethod
-    def images(cls) -> "MellonParam":
-        """
-        Images output parameter.
-
-        Mellon node definition:
-            "images": {"label": "Images", "type": "image", "display": "output"}
-        """
-        return cls(name="images", label="Images", type="image", display="output", required_block_params=["images"])
-
-    @classmethod
-    def control_image(cls, display: str = "input") -> "MellonParam":
-        """
-        Control image parameter for ControlNet.
-
-        Mellon node definition (display="input"):
-            "control_image": {"label": "Control Image", "type": "image", "display": "input"}
-        """
-        return cls(
-            name="control_image",
-            label="Control Image",
-            type="image",
-            display=display,
-            required_block_params=["control_image"],
-        )
-
-    @classmethod
-    def latents(cls, display: str = "input") -> "MellonParam":
-        """
-        Latents parameter.
-
-        Mellon node definition (display="input"):
-            "latents": {"label": "Latents", "type": "latents", "display": "input"}
-
-        Mellon node definition (display="output"):
-            "latents": {"label": "Latents", "type": "latents", "display": "output"}
-        """
-        return cls(name="latents", label="Latents", type="latents", display=display, required_block_params=["latents"])
-
-    @classmethod
-    def image_latents(cls, display: str = "input") -> "MellonParam":
-        """
-        Image latents parameter for img2img workflows.
-
-        Mellon node definition (display="input"):
-            "image_latents": {"label": "Image Latents", "type": "latents", "display": "input"}
-        """
-        return cls(
-            name="image_latents",
-            label="Image Latents",
-            type="latents",
-            display=display,
-            required_block_params=["image_latents"],
-        )
-
-    @classmethod
-    def first_frame_latents(cls, display: str = "input") -> "MellonParam":
-        """
-        First frame latents for video generation.
-
-        Mellon node definition (display="input"):
-            "first_frame_latents": {"label": "First Frame Latents", "type": "latents", "display": "input"}
-        """
-        return cls(
-            name="first_frame_latents",
-            label="First Frame Latents",
-            type="latents",
-            display=display,
-            required_block_params=["first_frame_latents"],
-        )
-
-    @classmethod
-    def image_latents_with_strength(cls) -> "MellonParam":
-        """
-        Image latents with strength-based onChange behavior. When connected, shows strength slider; when disconnected,
-        shows height/width.
-
-        Mellon node definition:
-            "image_latents": {
-                "label": "Image Latents", "type": "latents", "display": "input", "onChange": {"false": ["height",
-                "width"], "true": ["strength"]}
-            }
-        """
-        return cls(
-            name="image_latents",
-            label="Image Latents",
-            type="latents",
-            display="input",
-            onChange={"false": ["height", "width"], "true": ["strength"]},
-            required_block_params=["image_latents", "strength"],
-        )
-
-    @classmethod
-    def latents_preview(cls) -> "MellonParam":
-        """
-        Latents preview output for visualizing latents in the UI.
-
-        Mellon node definition:
-            "latents_preview": {"label": "Latents Preview", "type": "latent", "display": "output"}
-        """
-        return cls(name="latents_preview", label="Latents Preview", type="latent", display="output")
-
-    @classmethod
-    def embeddings(cls, display: str = "output") -> "MellonParam":
-        """
-        Text embeddings parameter.
-
-        Mellon node definition (display="output"):
-            "embeddings": {"label": "Text Embeddings", "type": "embeddings", "display": "output"}
-
-        Mellon node definition (display="input"):
-            "embeddings": {"label": "Text Embeddings", "type": "embeddings", "display": "input"}
-        """
-        return cls(name="embeddings", label="Text Embeddings", type="embeddings", display=display)
-
-    @classmethod
-    def image_embeds(cls, display: str = "output") -> "MellonParam":
-        """
-        Image embeddings parameter for IP-Adapter workflows.
-
-        Mellon node definition (display="output"):
-            "image_embeds": {"label": "Image Embeddings", "type": "image_embeds", "display": "output"}
-        """
-        return cls(
-            name="image_embeds",
-            label="Image Embeddings",
-            type="image_embeds",
-            display=display,
-            required_block_params=["image_embeds"],
-        )
-
-    @classmethod
-    def controlnet_conditioning_scale(cls, default: float = 0.5) -> "MellonParam":
-        """
-        ControlNet conditioning scale slider.
-
-        Mellon node definition (default=0.5):
-            "controlnet_conditioning_scale": {
-                "label": "Controlnet Conditioning Scale", "type": "float", "default": 0.5, "min": 0.0, "max": 1.0,
-                "step": 0.01
-            }
-        """
-        return cls(
-            name="controlnet_conditioning_scale",
-            label="Controlnet Conditioning Scale",
-            type="float",
-            default=default,
-            min=0.0,
-            max=1.0,
-            step=0.01,
-            required_block_params=["controlnet_conditioning_scale"],
-        )
-
-    @classmethod
-    def control_guidance_start(cls, default: float = 0.0) -> "MellonParam":
-        """
-        Control guidance start timestep.
-
-        Mellon node definition (default=0.0):
-            "control_guidance_start": {
-                "label": "Control Guidance Start", "type": "float", "default": 0.0, "min": 0.0, "max": 1.0, "step":
-                0.01
-            }
-        """
-        return cls(
-            name="control_guidance_start",
-            label="Control Guidance Start",
-            type="float",
-            default=default,
-            min=0.0,
-            max=1.0,
-            step=0.01,
-            required_block_params=["control_guidance_start"],
-        )
-
-    @classmethod
-    def control_guidance_end(cls, default: float = 1.0) -> "MellonParam":
-        """
-        Control guidance end timestep.
-
-        Mellon node definition (default=1.0):
-            "control_guidance_end": {
-                "label": "Control Guidance End", "type": "float", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01
-            }
-        """
-        return cls(
-            name="control_guidance_end",
-            label="Control Guidance End",
-            type="float",
-            default=default,
-            min=0.0,
-            max=1.0,
-            step=0.01,
-            required_block_params=["control_guidance_end"],
-        )
-
-    @classmethod
-    def prompt(cls, default: str = "") -> "MellonParam":
-        """
-        Text prompt input as textarea.
-
-        Mellon node definition (default=""):
-            "prompt": {"label": "Prompt", "type": "string", "default": "", "display": "textarea"}
-        """
-        return cls(
-            name="prompt",
-            label="Prompt",
-            type="string",
-            default=default,
-            display="textarea",
-            required_block_params=["prompt"],
-        )
-
-    @classmethod
-    def negative_prompt(cls, default: str = "") -> "MellonParam":
-        """
-        Negative prompt input as textarea.
-
-        Mellon node definition (default=""):
-            "negative_prompt": {"label": "Negative Prompt", "type": "string", "default": "", "display": "textarea"}
-        """
-        return cls(
-            name="negative_prompt",
-            label="Negative Prompt",
-            type="string",
-            default=default,
-            display="textarea",
-            required_block_params=["negative_prompt"],
-        )
-
-    @classmethod
-    def strength(cls, default: float = 0.5) -> "MellonParam":
-        """
-        Denoising strength for img2img.
-
-        Mellon node definition (default=0.5):
-            "strength": {"label": "Strength", "type": "float", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}
-        """
-        return cls(
-            name="strength",
-            label="Strength",
-            type="float",
-            default=default,
-            min=0.0,
-            max=1.0,
-            step=0.01,
-            required_block_params=["strength"],
-        )
-
-    @classmethod
-    def guidance_scale(cls, default: float = 5.0) -> "MellonParam":
-        """
-        CFG guidance scale slider.
-
-        Mellon node definition (default=5.0):
-            "guidance_scale": {
-                "label": "Guidance Scale", "type": "float", "display": "slider", "default": 5.0, "min": 1.0, "max":
-                30.0, "step": 0.1
-            }
-        """
-        return cls(
-            name="guidance_scale",
-            label="Guidance Scale",
-            type="float",
-            display="slider",
-            default=default,
-            min=1.0,
-            max=30.0,
-            step=0.1,
-        )
-
-    @classmethod
-    def height(cls, default: int = 1024) -> "MellonParam":
-        """
-        Image height in pixels.
-
-        Mellon node definition (default=1024):
-            "height": {"label": "Height", "type": "int", "default": 1024, "min": 64, "step": 8}
-        """
-        return cls(
-            name="height",
-            label="Height",
-            type="int",
-            default=default,
-            min=64,
-            step=8,
-            required_block_params=["height"],
-        )
-
-    @classmethod
-    def width(cls, default: int = 1024) -> "MellonParam":
-        """
-        Image width in pixels.
-
-        Mellon node definition (default=1024):
-            "width": {"label": "Width", "type": "int", "default": 1024, "min": 64, "step": 8}
-        """
-        return cls(
-            name="width", label="Width", type="int", default=default, min=64, step=8, required_block_params=["width"]
-        )
-
-    @classmethod
-    def seed(cls, default: int = 0) -> "MellonParam":
-        """
-        Random seed with randomize button.
-
-        Mellon node definition (default=0):
-            "seed": {
-                "label": "Seed", "type": "int", "default": 0, "min": 0, "max": 4294967295, "display": "random"
-            }
-        """
-        return cls(
-            name="seed",
-            label="Seed",
-            type="int",
-            default=default,
-            min=0,
-            max=4294967295,
-            display="random",
-            required_block_params=["generator"],
-        )
-
-    @classmethod
-    def num_inference_steps(cls, default: int = 25) -> "MellonParam":
-        """
-        Number of denoising steps slider.
-
-        Mellon node definition (default=25):
-            "num_inference_steps": {
-                "label": "Steps", "type": "int", "default": 25, "min": 1, "max": 100, "display": "slider"
-            }
-        """
-        return cls(
-            name="num_inference_steps",
-            label="Steps",
-            type="int",
-            default=default,
-            min=1,
-            max=100,
-            display="slider",
-            required_block_params=["num_inference_steps"],
-        )
-
-    @classmethod
-    def num_frames(cls, default: int = 81) -> "MellonParam":
-        """
-        Number of video frames slider.
-
-        Mellon node definition (default=81):
-            "num_frames": {"label": "Frames", "type": "int", "default": 81, "min": 1, "max": 480, "display": "slider"}
-        """
-        return cls(
-            name="num_frames",
-            label="Frames",
-            type="int",
-            default=default,
-            min=1,
-            max=480,
-            display="slider",
-            required_block_params=["num_frames"],
-        )
-
-    @classmethod
-    def layers(cls, default: int = 4) -> "MellonParam":
-        """
-        Number of layers slider (for layered diffusion).
-
-        Mellon node definition (default=4):
-            "layers": {"label": "Layers", "type": "int", "default": 4, "min": 1, "max": 10, "display": "slider"}
-        """
-        return cls(
-            name="layers",
-            label="Layers",
-            type="int",
-            default=default,
-            min=1,
-            max=10,
-            display="slider",
-            required_block_params=["layers"],
-        )
-
-    @classmethod
-    def videos(cls) -> "MellonParam":
-        """
-        Video output parameter.
-
-        Mellon node definition:
-            "videos": {"label": "Videos", "type": "video", "display": "output"}
-        """
-        return cls(name="videos", label="Videos", type="video", display="output", required_block_params=["videos"])
-
-    @classmethod
-    def vae(cls) -> "MellonParam":
-        """
-        VAE model input.
-
-        Mellon node definition:
-            "vae": {"label": "VAE", "type": "diffusers_auto_model", "display": "input"}
-
-        Note: The value received is a model info dict with keys like 'model_id', 'repo_id', 'execution_device'. Use
-        components.get_one(model_id) to retrieve the actual model.
-        """
-        return cls(
-            name="vae", label="VAE", type="diffusers_auto_model", display="input", required_block_params=["vae"]
-        )
-
-    @classmethod
-    def image_encoder(cls) -> "MellonParam":
-        """
-        Image encoder model input.
-
-        Mellon node definition:
-            "image_encoder": {"label": "Image Encoder", "type": "diffusers_auto_model", "display": "input"}
-
-        Note: The value received is a model info dict with keys like 'model_id', 'repo_id', 'execution_device'. Use
-        components.get_one(model_id) to retrieve the actual model.
-        """
-        return cls(
-            name="image_encoder",
-            label="Image Encoder",
-            type="diffusers_auto_model",
-            display="input",
-            required_block_params=["image_encoder"],
-        )
-
-    @classmethod
-    def unet(cls) -> "MellonParam":
-        """
-        Denoising model (UNet/Transformer) input.
-
-        Mellon node definition:
-            "unet": {"label": "Denoise Model", "type": "diffusers_auto_model", "display": "input"}
-
-        Note: The value received is a model info dict with keys like 'model_id', 'repo_id', 'execution_device'. Use
-        components.get_one(model_id) to retrieve the actual model.
-        """
-        return cls(name="unet", label="Denoise Model", type="diffusers_auto_model", display="input")
-
-    @classmethod
-    def scheduler(cls) -> "MellonParam":
-        """
-        Scheduler model input.
-
-        Mellon node definition:
-            "scheduler": {"label": "Scheduler", "type": "diffusers_auto_model", "display": "input"}
-
-        Note: The value received is a model info dict with keys like 'model_id', 'repo_id'. Use
-        components.get_one(model_id) to retrieve the actual scheduler.
-        """
-        return cls(name="scheduler", label="Scheduler", type="diffusers_auto_model", display="input")
-
-    @classmethod
-    def controlnet(cls) -> "MellonParam":
-        """
-        ControlNet model input.
-
-        Mellon node definition:
-            "controlnet": {"label": "ControlNet Model", "type": "diffusers_auto_model", "display": "input"}
-
-        Note: The value received is a model info dict with keys like 'model_id', 'repo_id', 'execution_device'. Use
-        components.get_one(model_id) to retrieve the actual model.
-        """
-        return cls(
-            name="controlnet",
-            label="ControlNet Model",
-            type="diffusers_auto_model",
-            display="input",
-            required_block_params=["controlnet"],
-        )
-
-    @classmethod
-    def text_encoders(cls) -> "MellonParam":
-        """
-        Text encoders dict input (multiple encoders).
-
-        Mellon node definition:
-            "text_encoders": {"label": "Text Encoders", "type": "diffusers_auto_models", "display": "input"}
-
-        Note: The value received is a dict of model info dicts:
-            {
-                'text_encoder': {'model_id': ..., 'execution_device': ..., ...}, 'tokenizer': {'model_id': ..., ...},
-                'repo_id': '...'
-            }
-        Use components.get_one(model_id) to retrieve each model.
-        """
-        return cls(
-            name="text_encoders",
-            label="Text Encoders",
-            type="diffusers_auto_models",
-            display="input",
-            required_block_params=["text_encoder"],
-        )
-
-    @classmethod
-    def controlnet_bundle(cls, display: str = "input") -> "MellonParam":
-        """
-        ControlNet bundle containing model and processed control inputs. Output from ControlNet node, input to Denoise
-        node.
-
-        Mellon node definition (display="input"):
-            "controlnet_bundle": {"label": "ControlNet", "type": "custom_controlnet", "display": "input"}
-
-        Mellon node definition (display="output"):
-            "controlnet_bundle": {"label": "ControlNet", "type": "custom_controlnet", "display": "output"}
-
-        Note: The value is a dict containing:
-            {
-                'controlnet': {'model_id': ..., ...}, # controlnet model info 'control_image': ..., # processed control
-                image/embeddings 'controlnet_conditioning_scale': ..., # and other denoise block inputs
-            }
-        """
-        return cls(
-            name="controlnet_bundle",
-            label="ControlNet",
-            type="custom_controlnet",
-            display=display,
-            required_block_params="controlnet_image",
-        )
-
-    @classmethod
-    def ip_adapter(cls) -> "MellonParam":
-        """
-        IP-Adapter input.
-
-        Mellon node definition:
-            "ip_adapter": {"label": "IP Adapter", "type": "custom_ip_adapter", "display": "input"}
-        """
-        return cls(name="ip_adapter", label="IP Adapter", type="custom_ip_adapter", display="input")
-
-    @classmethod
-    def guider(cls) -> "MellonParam":
-        """
-        Custom guider input. When connected, hides the guidance_scale slider.
-
-        Mellon node definition:
-            "guider": {
-                "label": "Guider", "type": "custom_guider", "display": "input", "onChange": {false: ["guidance_scale"],
-                true: []}
-            }
-        """
-        return cls(
-            name="guider",
-            label="Guider",
-            type="custom_guider",
-            display="input",
-            onChange={False: ["guidance_scale"], True: []},
-        )
-
-    @classmethod
-    def doc(cls) -> "MellonParam":
-        """
-        Documentation output for inspecting the underlying modular pipeline.
-
-        Mellon node definition:
-            "doc": {"label": "Doc", "type": "string", "display": "output"}
-        """
-        return cls(name="doc", label="Doc", type="string", display="output")
+    # =========================================================================
+    # Input: Generic input parameter factories (for custom blocks)
+    # =========================================================================
+    class Input:
+        """input UI elements for custom blocks."""
+
+        @classmethod
+        def image(cls, name: str) -> "MellonParam":
+            """image input."""
+            return MellonParam(name=name, label=_name_to_label(name), type="image", display="input")
+
+        @classmethod
+        def textbox(cls, name: str, default: str = "") -> "MellonParam":
+            """text input as textarea."""
+            return MellonParam(
+                name=name, label=_name_to_label(name), type="string", display="textarea", default=default
+            )
+
+        @classmethod
+        def dropdown(cls, name: str, options: List[str] = None, default: str = None) -> "MellonParam":
+            """dropdown selection."""
+            if options and not default:
+                default = options[0]
+            if not default:
+                default = ""
+            if not options:
+                options = [default]
+            return MellonParam(name=name, label=_name_to_label(name), type="string", options=options, value=default)
+
+        @classmethod
+        def slider(
+            cls, name: str, default: float = 0, min: float = None, max: float = None, step: float = None
+        ) -> "MellonParam":
+            """slider input."""
+            is_float = isinstance(default, float) or (step is not None and isinstance(step, float))
+            param_type = "float" if is_float else "int"
+            if min is None:
+                min = default
+            if max is None:
+                max = default
+            if step is None:
+                step = 0.01 if is_float else 1
+            return MellonParam(
+                name=name,
+                label=_name_to_label(name),
+                type=param_type,
+                display="slider",
+                default=default,
+                min=min,
+                max=max,
+                step=step,
+            )
+
+        @classmethod
+        def number(
+            cls, name: str, default: float = 0, min: float = None, max: float = None, step: float = None
+        ) -> "MellonParam":
+            """number input (no slider)."""
+            is_float = isinstance(default, float) or (step is not None and isinstance(step, float))
+            param_type = "float" if is_float else "int"
+            return MellonParam(
+                name=name, label=_name_to_label(name), type=param_type, default=default, min=min, max=max, step=step
+            )
+
+        @classmethod
+        def seed(cls, name: str = "seed", default: int = 0) -> "MellonParam":
+            """seed input with randomize button."""
+            return MellonParam(
+                name=name,
+                label=_name_to_label(name),
+                type="int",
+                display="random",
+                default=default,
+                min=0,
+                max=4294967295,
+            )
+
+        @classmethod
+        def checkbox(cls, name: str, default: bool = False) -> "MellonParam":
+            """boolean checkbox."""
+            return MellonParam(name=name, label=_name_to_label(name), type="boolean", value=default)
+
+        @classmethod
+        def custom_type(cls, name: str, type: str) -> "MellonParam":
+            """custom type input for node connections."""
+            return MellonParam(name=name, label=_name_to_label(name), type=type, display="input")
+
+        @classmethod
+        def model(cls, name: str) -> "MellonParam":
+            """model input for diffusers components."""
+            return MellonParam(name=name, label=_name_to_label(name), type="diffusers_auto_model", display="input")
+
+    # =========================================================================
+    # Output: Generic output parameter factories (for custom blocks)
+    # =========================================================================
+    class Output:
+        """output UI elements for custom blocks."""
+
+        @classmethod
+        def image(cls, name: str) -> "MellonParam":
+            """image output."""
+            return MellonParam(name=name, label=_name_to_label(name), type="image", display="output")
+
+        @classmethod
+        def video(cls, name: str) -> "MellonParam":
+            """video output."""
+            return MellonParam(name=name, label=_name_to_label(name), type="video", display="output")
+
+        @classmethod
+        def text(cls, name: str) -> "MellonParam":
+            """text output."""
+            return MellonParam(name=name, label=_name_to_label(name), type="string", display="output")
+
+        @classmethod
+        def custom_type(cls, name: str, type: str) -> "MellonParam":
+            """custom type output for node connections."""
+            return MellonParam(name=name, label=_name_to_label(name), type=type, display="output")
+
+        @classmethod
+        def model(cls, name: str) -> "MellonParam":
+            """model output for diffusers components."""
+            return MellonParam(name=name, label=_name_to_label(name), type="diffusers_auto_model", display="output")
+
+
+def input_param_to_mellon_param(input_param: "InputParam") -> MellonParam:
+    """
+    Convert an InputParam to a MellonParam using metadata.
+
+    Args:
+        input_param: An InputParam with optional metadata containing either:
+            - {"mellon": "<type>"} for simple types (image, textbox, slider, etc.)
+            - {"mellon": MellonParam(...)} for full control over UI configuration
+
+    Returns:
+        MellonParam instance
+    """
+    name = input_param.name
+    metadata = input_param.metadata
+    mellon_value = metadata.get("mellon") if metadata else None
+    default = input_param.default
+
+    # If it's already a MellonParam, return it directly
+    if isinstance(mellon_value, MellonParam):
+        return mellon_value
+
+    mellon_type = mellon_value
+
+    if mellon_type == "image":
+        return MellonParam.Input.image(name)
+    elif mellon_type == "textbox":
+        return MellonParam.Input.textbox(name, default=default or "")
+    elif mellon_type == "dropdown":
+        return MellonParam.Input.dropdown(name, default=default or "")
+    elif mellon_type == "slider":
+        return MellonParam.Input.slider(name, default=default or 0)
+    elif mellon_type == "number":
+        return MellonParam.Input.number(name, default=default or 0)
+    elif mellon_type == "seed":
+        return MellonParam.Input.seed(name, default=default or 0)
+    elif mellon_type == "checkbox":
+        return MellonParam.Input.checkbox(name, default=default or False)
+    elif mellon_type == "model":
+        return MellonParam.Input.model(name)
+    else:
+        # None or unknown -> custom
+        return MellonParam.Input.custom_type(name, type="custom")
+
+
+def output_param_to_mellon_param(output_param: "OutputParam") -> MellonParam:
+    """
+    Convert an OutputParam to a MellonParam using metadata.
+
+    Args:
+        output_param: An OutputParam with optional metadata={"mellon": "<type>"} where type is one of:
+            image, video, text, model. If metadata is None or unknown, maps to "custom".
+
+    Returns:
+        MellonParam instance
+    """
+    name = output_param.name
+    metadata = output_param.metadata
+    mellon_type = metadata.get("mellon") if metadata else None
+
+    if mellon_type == "image":
+        return MellonParam.Output.image(name)
+    elif mellon_type == "video":
+        return MellonParam.Output.video(name)
+    elif mellon_type == "text":
+        return MellonParam.Output.text(name)
+    elif mellon_type == "model":
+        return MellonParam.Output.model(name)
+    else:
+        # None or unknown -> custom
+        return MellonParam.Output.custom_type(name, type="custom")
 
 
 DEFAULT_NODE_SPECS = {
@@ -804,10 +669,15 @@ def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[
         params[p.name] = param_dict
         model_input_names.append(p.name)
 
-    # Process outputs
+    # Process outputs: add a prefix to the output name if it already exists as an input
     for p in node_spec.get("outputs", []):
-        params[p.name] = p.to_dict()
-        output_names.append(p.name)
+        if p.name in input_names:
+            # rename to out_<name>
+            output_name = f"out_{p.name}"
+        else:
+            output_name = p.name
+        params[output_name] = p.to_dict()
+        output_names.append(output_name)
 
     return {
         "params": params,
@@ -959,7 +829,7 @@ class MellonPipelineConfig:
         return cls.from_dict(data)
 
     def save(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
-        """Save the pipeline config to a directory."""
+        """Save the mellon pipeline config to a directory."""
         if os.path.isfile(save_directory):
             raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
 
@@ -975,15 +845,14 @@ class MellonPipelineConfig:
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
-            subfolder = kwargs.pop("subfolder", None)
 
-            upload_folder(
+            upload_file(
+                path_or_fileobj=output_path,
+                path_in_repo=self.config_name,
                 repo_id=repo_id,
-                folder_path=save_directory,
                 token=token,
                 commit_message=commit_message or "Upload MellonPipelineConfig",
                 create_pr=create_pr,
-                path_in_repo=subfolder,
             )
             logger.info(f"Pipeline config pushed to hub: {repo_id}")
 
@@ -1149,4 +1018,84 @@ class MellonPipelineConfig:
             label=label or getattr(blocks, "model_name", ""),
             default_repo=default_repo,
             default_dtype=default_dtype,
+        )
+
+    @classmethod
+    def from_custom_block(
+        cls,
+        block,
+        node_label: str = None,
+        input_types: Optional[Dict[str, str]] = None,
+        output_types: Optional[Dict[str, str]] = None,
+    ) -> "MellonPipelineConfig":
+        """
+        Create a MellonPipelineConfig from a custom block.
+
+        Args:
+            block: A block instance with `inputs`, `outputs`, and `expected_components`/`component_names` properties.
+                Each InputParam/OutputParam should have metadata={"mellon": "<type>"} where type is one of: image,
+                video, text, checkbox, number, slider, dropdown, model. If metadata is None, maps to "custom".
+            node_label: The display label for the node. Defaults to block class name with spaces.
+            input_types:
+                Optional dict mapping input param names to mellon types. Overrides the block's metadata if provided.
+                Example: {"prompt": "textbox", "image": "image"}
+            output_types:
+                Optional dict mapping output param names to mellon types. Overrides the block's metadata if provided.
+                Example: {"prompt": "text", "images": "image"}
+
+        Returns:
+            MellonPipelineConfig instance
+        """
+        if node_label is None:
+            class_name = block.__class__.__name__
+            node_label = "".join([" " + c if c.isupper() else c for c in class_name]).strip()
+
+        if input_types is None:
+            input_types = {}
+        if output_types is None:
+            output_types = {}
+
+        inputs = []
+        model_inputs = []
+        outputs = []
+
+        # Process block inputs
+        for input_param in block.inputs:
+            if input_param.name is None:
+                continue
+            if input_param.name in input_types:
+                input_param = copy.copy(input_param)
+                input_param.metadata = {"mellon": input_types[input_param.name]}
+            print(f" processing input: {input_param.name}, metadata: {input_param.metadata}")
+            inputs.append(input_param_to_mellon_param(input_param))
+
+        # Process block outputs
+        for output_param in block.outputs:
+            if output_param.name is None:
+                continue
+            if output_param.name in output_types:
+                output_param = copy.copy(output_param)
+                output_param.metadata = {"mellon": output_types[output_param.name]}
+            outputs.append(output_param_to_mellon_param(output_param))
+
+        # Process expected components (all map to model inputs)
+        component_names = block.component_names
+        for component_name in component_names:
+            model_inputs.append(MellonParam.Input.model(component_name))
+
+        # Always add doc output
+        outputs.append(MellonParam.doc())
+
+        node_spec = {
+            "inputs": inputs,
+            "model_inputs": model_inputs,
+            "outputs": outputs,
+            "required_inputs": [],
+            "required_model_inputs": [],
+            "block_name": "custom",
+        }
+
+        return cls(
+            node_specs={"custom": node_spec},
+            label=node_label,
         )
