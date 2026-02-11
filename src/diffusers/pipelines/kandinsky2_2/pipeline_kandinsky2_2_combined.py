@@ -92,7 +92,7 @@ INPAINT_EXAMPLE_DOC_STRING = """
         negative_prompt = "low quality, bad quality"
 
         original_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
         )
 
         mask = np.zeros((768, 768), dtype=np.float32)
