@@ -517,15 +517,75 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
     @classmethod
     def from_transformer(cls, controlnet, transformer):
-        controlnet.t_scale = transformer.t_scale
-        controlnet.t_embedder = transformer.t_embedder
-        controlnet.all_x_embedder = transformer.all_x_embedder
-        controlnet.cap_embedder = transformer.cap_embedder
-        controlnet.rope_embedder = transformer.rope_embedder
-        controlnet.noise_refiner = transformer.noise_refiner
-        controlnet.context_refiner = transformer.context_refiner
-        controlnet.x_pad_token = transformer.x_pad_token
-        controlnet.cap_pad_token = transformer.cap_pad_token
+        config = transformer.config
+
+        # Scalar value — immutable, direct assignment is safe
+        controlnet.t_scale = config.t_scale
+
+        # nn.Modules — instantiate matching architecture, then load weights via state_dict.
+        # This follows the same pattern used by FluxControlNetModel.from_transformer and
+        # QwenImageControlNetModel.from_transformer.
+        controlnet.t_embedder = TimestepEmbedder(min(config.dim, ADALN_EMBED_DIM), mid_size=1024)
+        controlnet.t_embedder.load_state_dict(transformer.t_embedder.state_dict())
+
+        all_x_embedder = {}
+        for patch_size, f_patch_size in zip(config.all_patch_size, config.all_f_patch_size):
+            all_x_embedder[f"{patch_size}-{f_patch_size}"] = nn.Linear(
+                f_patch_size * patch_size * patch_size * config.in_channels, config.dim, bias=True
+            )
+        controlnet.all_x_embedder = nn.ModuleDict(all_x_embedder)
+        controlnet.all_x_embedder.load_state_dict(transformer.all_x_embedder.state_dict())
+
+        controlnet.cap_embedder = nn.Sequential(
+            RMSNorm(config.cap_feat_dim, eps=config.norm_eps),
+            nn.Linear(config.cap_feat_dim, config.dim, bias=True),
+        )
+        controlnet.cap_embedder.load_state_dict(transformer.cap_embedder.state_dict())
+
+        controlnet.noise_refiner = nn.ModuleList(
+            [
+                ZImageTransformerBlock(
+                    1000 + layer_id,
+                    config.dim,
+                    config.n_heads,
+                    config.n_kv_heads,
+                    config.norm_eps,
+                    config.qk_norm,
+                    modulation=True,
+                )
+                for layer_id in range(config.n_refiner_layers)
+            ]
+        )
+        controlnet.noise_refiner.load_state_dict(transformer.noise_refiner.state_dict())
+
+        controlnet.context_refiner = nn.ModuleList(
+            [
+                ZImageTransformerBlock(
+                    layer_id,
+                    config.dim,
+                    config.n_heads,
+                    config.n_kv_heads,
+                    config.norm_eps,
+                    config.qk_norm,
+                    modulation=False,
+                )
+                for layer_id in range(config.n_refiner_layers)
+            ]
+        )
+        controlnet.context_refiner.load_state_dict(transformer.context_refiner.state_dict())
+
+        # nn.Parameters — clone to create independent copies
+        controlnet.x_pad_token = nn.Parameter(transformer.x_pad_token.data.clone())
+        controlnet.cap_pad_token = nn.Parameter(transformer.cap_pad_token.data.clone())
+
+        # RopeEmbedder — not an nn.Module, has no learnable weights.
+        # Create a fresh instance with the same config.
+        controlnet.rope_embedder = RopeEmbedder(
+            theta=config.rope_theta,
+            axes_dims=list(config.axes_dims),
+            axes_lens=list(config.axes_lens),
+        )
+
         return controlnet
 
     @staticmethod
