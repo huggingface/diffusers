@@ -17,11 +17,7 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import (
-    AutoConfig,
-    AutoTokenizer,
-    T5EncoderModel,
-)
+from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLWan,
@@ -69,8 +65,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipelineFastTests(PipelineTesterMixi
 
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(flow_shift=5.0, use_flow_sigmas=True)
-        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -161,8 +156,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipelineFastTests(SkyReelsV2Diffusio
 
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(flow_shift=5.0, use_flow_sigmas=True)
-        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)

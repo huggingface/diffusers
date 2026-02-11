@@ -18,7 +18,7 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLWan,
@@ -27,14 +27,9 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
+from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import (
-    PipelineTesterMixin,
-)
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
@@ -70,8 +65,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipelineFastTests(PipelineTesterMixi
 
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(flow_shift=5.0, use_flow_sigmas=True)
-        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
