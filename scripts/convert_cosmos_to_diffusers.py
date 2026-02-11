@@ -104,8 +104,14 @@ python scripts/convert_cosmos_to_diffusers.py \
     --transformer_type Cosmos-2.5-Transfer-General-2B \
     --transformer_ckpt_path $transformer_ckpt_path \
     --vae_type wan2.1 \
-    --output_path converted/transfer/2b/general/edge \
+    --output_path converted/transfer/2b/general/edge/pipeline \
     --save_pipeline
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/edge/models
 
 # blur
 transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/blur/ba2f44f2-c726-4fe7-949f-597069d9b91c_ema_bf16.pt
@@ -903,7 +909,7 @@ if __name__ == "__main__":
             controlnet = controlnet.to(dtype=dtype)
 
             if not args.save_pipeline:
-                transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+                transformer.save_pretrained(pathlib.Path(args.output_path) / "transformer", safe_serialization=True, max_shard_size="5GB")
                 controlnet.save_pretrained(
                     pathlib.Path(args.output_path) / "controlnet", safe_serialization=True, max_shard_size="5GB"
                 )
@@ -943,8 +949,7 @@ if __name__ == "__main__":
             if "Predict" in args.transformer_type:
                 save_pipeline_cosmos2_5_predict(args, transformer, vae)
             elif "Transfer" in args.transformer_type:
-                assert controlnet is not None
-                save_pipeline_cosmos2_5_transfer(args, transformer, controlnet, vae)
+                save_pipeline_cosmos2_5_transfer(args, transformer, None, vae)
             else:
                 raise AssertionError(f"{args.transformer_type} not supported")
         else:

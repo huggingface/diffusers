@@ -17,12 +17,12 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils import is_torchvision_available
 from ..attention import FeedForward
+from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
 from ..embeddings import Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
@@ -152,10 +152,10 @@ class CosmosAdaLayerNormZero(nn.Module):
 
 class CosmosAttnProcessor2_0:
     def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention"):
+        if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
             raise ImportError("CosmosAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
 
-    def compute_attn(
+    def __call__(
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
@@ -199,69 +199,25 @@ class CosmosAttnProcessor2_0:
         value = value.repeat_interleave(query_idx // value_idx, dim=3)
 
         # 5. Attention
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        hidden_states = dispatch_attention_fn(
+            query.transpose(1, 2),
+            key.transpose(1, 2),
+            value.transpose(1, 2),
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
         )
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3).type_as(query)
-        return hidden_states
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        hidden_states = self.compute_attn(
-            attn=attn,
-            hidden_states=hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            attention_mask=attention_mask,
-            image_rotary_emb=image_rotary_emb,
-        )
+        hidden_states = hidden_states.flatten(2, 3).type_as(query)
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
 
         return hidden_states
 
 
-class CosmosAttnProcessor2_5(CosmosAttnProcessor2_0):
+class CosmosAttnProcessor2_5:
     def __init__(self):
         if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
             raise ImportError("CosmosAttnProcessor2_5 requires PyTorch 2.0. Please upgrade PyTorch to 2.0 or newer.")
-
-    def compute_attn_i2v(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        img_context=None,
-        attention_mask=None,
-    ):
-        q_img = attn.q_img(hidden_states)
-        k_img = attn.k_img(img_context)
-        v_img = attn.v_img(img_context)
-
-        batch_size = hidden_states.shape[0]
-
-        dim_head = attn.out_dim // attn.heads
-        q_img = q_img.view(batch_size, -1, attn.heads, dim_head).transpose(1, 2)
-        k_img = k_img.view(batch_size, -1, attn.heads, dim_head).transpose(1, 2)
-        v_img = v_img.view(batch_size, -1, attn.heads, dim_head).transpose(1, 2)
-
-        q_img = attn.q_img_norm(q_img)
-        k_img = attn.k_img_norm(k_img)
-
-        q_img_idx = q_img.size(3)
-        k_img_idx = k_img.size(3)
-        v_img_idx = v_img.size(3)
-        k_img = k_img.repeat_interleave(q_img_idx // k_img_idx, dim=3)
-        v_img = v_img.repeat_interleave(q_img_idx // v_img_idx, dim=3)
-        img_out = torch.nn.functional.scaled_dot_product_attention(
-            q_img, k_img, v_img, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-        img_out = img_out.transpose(1, 2).flatten(2, 3).type_as(q_img)
-        return img_out
 
     def __call__(
         self,
@@ -277,21 +233,77 @@ class CosmosAttnProcessor2_5(CosmosAttnProcessor2_0):
         text_context, img_context = encoder_hidden_states if encoder_hidden_states else (None, None)
         text_mask, img_mask = attention_mask if attention_mask else (None, None)
 
-        attn_out = self.compute_attn(
-            attn=attn,
-            hidden_states=hidden_states,
-            encoder_hidden_states=text_context,
-            attention_mask=text_mask,
-            image_rotary_emb=image_rotary_emb,
+        if text_context is None:
+            text_context = hidden_states
+
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(text_context)
+        value = attn.to_v(text_context)
+
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+
+        if image_rotary_emb is not None:
+            from ..embeddings import apply_rotary_emb
+
+            query = apply_rotary_emb(query, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+
+        if torch.onnx.is_in_onnx_export():
+            query_idx = torch.tensor(query.size(3), device=query.device)
+            key_idx = torch.tensor(key.size(3), device=key.device)
+            value_idx = torch.tensor(value.size(3), device=value.device)
+        else:
+            query_idx = query.size(3)
+            key_idx = key.size(3)
+            value_idx = value.size(3)
+        key = key.repeat_interleave(query_idx // key_idx, dim=3)
+        value = value.repeat_interleave(query_idx // value_idx, dim=3)
+
+        attn_out = dispatch_attention_fn(
+            query.transpose(1, 2),
+            key.transpose(1, 2),
+            value.transpose(1, 2),
+            attn_mask=text_mask,
+            dropout_p=0.0,
+            is_causal=False,
         )
+        attn_out = attn_out.flatten(2, 3).type_as(query)
 
         if img_context is not None:
-            img_out = self.compute_attn_i2v(
-                attn=attn,
-                hidden_states=hidden_states,
-                img_context=img_context,
-                attention_mask=img_mask,
+            q_img = attn.q_img(hidden_states)
+            k_img = attn.k_img(img_context)
+            v_img = attn.v_img(img_context)
+
+            batch_size = hidden_states.shape[0]
+            dim_head = attn.out_dim // attn.heads
+
+            q_img = q_img.view(batch_size, -1, attn.heads, dim_head).transpose(1, 2)
+            k_img = k_img.view(batch_size, -1, attn.heads, dim_head).transpose(1, 2)
+            v_img = v_img.view(batch_size, -1, attn.heads, dim_head).transpose(1, 2)
+
+            q_img = attn.q_img_norm(q_img)
+            k_img = attn.k_img_norm(k_img)
+
+            q_img_idx = q_img.size(3)
+            k_img_idx = k_img.size(3)
+            v_img_idx = v_img.size(3)
+            k_img = k_img.repeat_interleave(q_img_idx // k_img_idx, dim=3)
+            v_img = v_img.repeat_interleave(q_img_idx // v_img_idx, dim=3)
+
+            img_out = dispatch_attention_fn(
+                q_img.transpose(1, 2),
+                k_img.transpose(1, 2),
+                v_img.transpose(1, 2),
+                attn_mask=img_mask,
+                dropout_p=0.0,
+                is_causal=False,
             )
+            img_out = img_out.flatten(2, 3).type_as(q_img)
             hidden_states = attn_out + img_out
         else:
             hidden_states = attn_out
@@ -391,7 +403,6 @@ class CosmosTransformerBlock(nn.Module):
         self.before_proj = None
         self.after_proj = None
         if before_proj:
-            # TODO: check hint_dim in i4
             self.before_proj = nn.Linear(hidden_size, hidden_size)
         if after_proj:
             self.after_proj = nn.Linear(hidden_size, hidden_size)
