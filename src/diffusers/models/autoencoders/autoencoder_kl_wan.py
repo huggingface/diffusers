@@ -962,6 +962,8 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
     """
 
     _supports_gradient_checkpointing = False
+    # Group offloading treats the top-level latent bridge and encode/decode stages as natural block boundaries.
+    # These modules encapsulate most parameters and map cleanly to the model’s major subcomponents.
     _group_offload_block_modules = ["quant_conv", "post_quant_conv", "encoder", "decoder"]
     # keys toignore when AlignDeviceHook moves inputs/outputs between devices
     # these are shared mutable state modified in-place
