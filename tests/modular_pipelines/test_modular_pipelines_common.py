@@ -648,8 +648,7 @@ class TestLoadComponentsSkipBehavior:
         # Verify only requested component was loaded.
         assert hasattr(pipe, "unet")
         assert pipe.unet is not None
-        if "vae" in pipe._component_specs:
-            assert getattr(pipe, "vae", None) is None
+        assert getattr(pipe, "vae", None) is None
 
     def test_load_components_skips_invalid_pretrained_path(self):
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
