@@ -1204,8 +1204,7 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
     # Workflow map defines the trigger conditions for each workflow.
     # How to define:
     #   - Only include required inputs and trigger inputs (inputs that determine which blocks run)
-    #   - `True` means the workflow triggers when the input is not None (most common case)
-    #   - Use specific values (e.g., `{"strength": 0.5}`) if your `select_block` logic depends on the value
+    #   - currently, only supports `True` means the workflow triggers when the input is not None
 
     _workflow_map = {
         "text2image": {"prompt": True},
