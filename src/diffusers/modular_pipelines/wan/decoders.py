@@ -29,7 +29,7 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanImageVaeDecoderStep(ModularPipelineBlocks):
+class WanVaeDecoderStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -56,7 +56,10 @@ class WanImageVaeDecoderStep(ModularPipelineBlocks):
                 required=True,
                 type_hint=torch.Tensor,
                 description="The denoised latents from the denoising step",
-            )
+            ),
+            InputParam(
+                "output_type", default="np", type_hint=str, description="The output type of the decoded videos"
+            ),
         ]
 
     @property
@@ -87,7 +90,8 @@ class WanImageVaeDecoderStep(ModularPipelineBlocks):
         latents = latents.to(vae_dtype)
         block_state.videos = components.vae.decode(latents, return_dict=False)[0]
 
-        block_state.videos = components.video_processor.postprocess_video(block_state.videos, output_type="np")
+        output_type = getattr(block_state, "output_type", "np")
+        block_state.videos = components.video_processor.postprocess_video(block_state.videos, output_type=output_type)
 
         self.set_block_state(state, block_state)
 

@@ -1,7 +1,7 @@
 import argparse
 import os
 from contextlib import nullcontext
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import safetensors.torch
 import torch
@@ -63,6 +63,8 @@ LTX_2_0_VIDEO_VAE_RENAME_DICT = {
     "up_blocks.4": "up_blocks.1",
     "up_blocks.5": "up_blocks.2.upsamplers.0",
     "up_blocks.6": "up_blocks.2",
+    "last_time_embedder": "time_embedder",
+    "last_scale_shift_table": "scale_shift_table",
     # Common
     # For all 3D ResNets
     "res_blocks": "resnets",
@@ -92,15 +94,15 @@ LTX_2_0_TEXT_ENCODER_RENAME_DICT = {
 }
 
 
-def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key: str) -> None:
+def update_state_dict_inplace(state_dict: dict[str, Any], old_key: str, new_key: str) -> None:
     state_dict[new_key] = state_dict.pop(old_key)
 
 
-def remove_keys_inplace(key: str, state_dict: Dict[str, Any]) -> None:
+def remove_keys_inplace(key: str, state_dict: dict[str, Any]) -> None:
     state_dict.pop(key)
 
 
-def convert_ltx2_transformer_adaln_single(key: str, state_dict: Dict[str, Any]) -> None:
+def convert_ltx2_transformer_adaln_single(key: str, state_dict: dict[str, Any]) -> None:
     # Skip if not a weight, bias
     if ".weight" not in key and ".bias" not in key:
         return
@@ -118,7 +120,7 @@ def convert_ltx2_transformer_adaln_single(key: str, state_dict: Dict[str, Any]) 
     return
 
 
-def convert_ltx2_audio_vae_per_channel_statistics(key: str, state_dict: Dict[str, Any]) -> None:
+def convert_ltx2_audio_vae_per_channel_statistics(key: str, state_dict: dict[str, Any]) -> None:
     if key.startswith("per_channel_statistics"):
         new_key = ".".join(["decoder", key])
         param = state_dict.pop(key)
@@ -154,7 +156,7 @@ LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP = {}
 LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP = {}
 
 
-def split_transformer_and_connector_state_dict(state_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def split_transformer_and_connector_state_dict(state_dict: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     connector_prefixes = (
         "video_embeddings_connector",
         "audio_embeddings_connector",
@@ -176,7 +178,7 @@ def split_transformer_and_connector_state_dict(state_dict: Dict[str, Any]) -> Tu
     return transformer_state_dict, connector_state_dict
 
 
-def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "test":
         # Produces a transformer of the same size as used in test_models_transformer_ltx2.py
         config = {
@@ -268,7 +270,7 @@ def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str,
     return config, rename_dict, special_keys_remap
 
 
-def get_ltx2_connectors_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def get_ltx2_connectors_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "test":
         config = {
             "model_id": "diffusers-internal-dev/dummy-ltx2",
@@ -317,7 +319,7 @@ def get_ltx2_connectors_config(version: str) -> Tuple[Dict[str, Any], Dict[str, 
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_transformer(original_state_dict: Dict[str, Any], version: str) -> dict[str, Any]:
+def convert_ltx2_transformer(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_transformer_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -345,7 +347,7 @@ def convert_ltx2_transformer(original_state_dict: Dict[str, Any], version: str) 
     return transformer
 
 
-def convert_ltx2_connectors(original_state_dict: Dict[str, Any], version: str) -> LTX2TextConnectors:
+def convert_ltx2_connectors(original_state_dict: dict[str, Any], version: str) -> LTX2TextConnectors:
     config, rename_dict, special_keys_remap = get_ltx2_connectors_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -372,7 +374,9 @@ def convert_ltx2_connectors(original_state_dict: Dict[str, Any], version: str) -
     return connectors
 
 
-def get_ltx2_video_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def get_ltx2_video_vae_config(
+    version: str, timestep_conditioning: bool = False
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "test":
         config = {
             "model_id": "diffusers-internal-dev/dummy-ltx2",
@@ -396,7 +400,7 @@ def get_ltx2_video_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, A
                 "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
                 "upsample_residual": (True, True, True),
                 "upsample_factor": (2, 2, 2),
-                "timestep_conditioning": False,
+                "timestep_conditioning": timestep_conditioning,
                 "patch_size": 4,
                 "patch_size_t": 1,
                 "resnet_norm_eps": 1e-6,
@@ -433,7 +437,7 @@ def get_ltx2_video_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, A
                 "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
                 "upsample_residual": (True, True, True),
                 "upsample_factor": (2, 2, 2),
-                "timestep_conditioning": False,
+                "timestep_conditioning": timestep_conditioning,
                 "patch_size": 4,
                 "patch_size_t": 1,
                 "resnet_norm_eps": 1e-6,
@@ -450,8 +454,10 @@ def get_ltx2_video_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, A
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_video_vae(original_state_dict: Dict[str, Any], version: str) -> dict[str, Any]:
-    config, rename_dict, special_keys_remap = get_ltx2_video_vae_config(version)
+def convert_ltx2_video_vae(
+    original_state_dict: dict[str, Any], version: str, timestep_conditioning: bool
+) -> dict[str, Any]:
+    config, rename_dict, special_keys_remap = get_ltx2_video_vae_config(version, timestep_conditioning)
     diffusers_config = config["diffusers_config"]
 
     with init_empty_weights():
@@ -476,7 +482,7 @@ def convert_ltx2_video_vae(original_state_dict: Dict[str, Any], version: str) ->
     return vae
 
 
-def get_ltx2_audio_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def get_ltx2_audio_vae_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "2.0":
         config = {
             "model_id": "diffusers-internal-dev/new-ltx-model",
@@ -505,7 +511,7 @@ def get_ltx2_audio_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, A
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_audio_vae(original_state_dict: Dict[str, Any], version: str) -> dict[str, Any]:
+def convert_ltx2_audio_vae(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_audio_vae_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -531,7 +537,7 @@ def convert_ltx2_audio_vae(original_state_dict: Dict[str, Any], version: str) ->
     return vae
 
 
-def get_ltx2_vocoder_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "2.0":
         config = {
             "model_id": "diffusers-internal-dev/new-ltx-model",
@@ -552,7 +558,7 @@ def get_ltx2_vocoder_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_vocoder(original_state_dict: Dict[str, Any], version: str) -> dict[str, Any]:
+def convert_ltx2_vocoder(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_vocoder_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -595,7 +601,7 @@ def get_ltx2_spatial_latent_upsampler_config(version: str):
 
 
 def convert_ltx2_spatial_latent_upsampler(
-    original_state_dict: Dict[str, Any], config: Dict[str, Any], dtype: torch.dtype
+    original_state_dict: dict[str, Any], config: dict[str, Any], dtype: torch.dtype
 ):
     with init_empty_weights():
         latent_upsampler = LTX2LatentUpsamplerModel(**config)
@@ -637,7 +643,7 @@ def load_hub_or_local_checkpoint(repo_id: str | None = None, filename: str | Non
     return state_dict
 
 
-def get_model_state_dict_from_combined_ckpt(combined_ckpt: Dict[str, Any], prefix: str) -> dict[str, Any]:
+def get_model_state_dict_from_combined_ckpt(combined_ckpt: dict[str, Any], prefix: str) -> dict[str, Any]:
     # Ensure that the key prefix ends with a dot (.)
     if not prefix.endswith("."):
         prefix = prefix + "."
@@ -659,10 +665,15 @@ def get_model_state_dict_from_combined_ckpt(combined_ckpt: Dict[str, Any], prefi
 def get_args():
     parser = argparse.ArgumentParser()
 
+    def none_or_str(value: str):
+        if isinstance(value, str) and value.lower() == "none":
+            return None
+        return value
+
     parser.add_argument(
         "--original_state_dict_repo_id",
         default="Lightricks/LTX-2",
-        type=str,
+        type=none_or_str,
         help="HF Hub repo id with LTX 2.0 checkpoint",
     )
     parser.add_argument(
@@ -682,7 +693,7 @@ def get_args():
     parser.add_argument(
         "--combined_filename",
         default="ltx-2-19b-dev.safetensors",
-        type=str,
+        type=none_or_str,
         help="Filename for combined checkpoint with all LTX 2.0 models (VAE, DiT, etc.)",
     )
     parser.add_argument("--vae_prefix", default="vae.", type=str)
@@ -701,22 +712,25 @@ def get_args():
     parser.add_argument(
         "--text_encoder_model_id",
         default="google/gemma-3-12b-it-qat-q4_0-unquantized",
-        type=str,
+        type=none_or_str,
         help="HF Hub id for the LTX 2.0 base text encoder model",
     )
     parser.add_argument(
         "--tokenizer_id",
         default="google/gemma-3-12b-it-qat-q4_0-unquantized",
-        type=str,
+        type=none_or_str,
         help="HF Hub id for the LTX 2.0 text tokenizer",
     )
     parser.add_argument(
         "--latent_upsampler_filename",
         default="ltx-2-spatial-upscaler-x2-1.0.safetensors",
-        type=str,
+        type=none_or_str,
         help="Latent upsampler filename",
     )
 
+    parser.add_argument(
+        "--timestep_conditioning", action="store_true", help="Whether to add timestep condition to the video VAE model"
+    )
     parser.add_argument("--vae", action="store_true", help="Whether to convert the video VAE model")
     parser.add_argument("--audio_vae", action="store_true", help="Whether to convert the audio VAE model")
     parser.add_argument("--dit", action="store_true", help="Whether to convert the DiT model")
@@ -786,7 +800,9 @@ def main(args):
             original_vae_ckpt = load_hub_or_local_checkpoint(filename=args.vae_filename)
         elif combined_ckpt is not None:
             original_vae_ckpt = get_model_state_dict_from_combined_ckpt(combined_ckpt, args.vae_prefix)
-        vae = convert_ltx2_video_vae(original_vae_ckpt, version=args.version)
+        vae = convert_ltx2_video_vae(
+            original_vae_ckpt, version=args.version, timestep_conditioning=args.timestep_conditioning
+        )
         if not args.full_pipeline and not args.upsample_pipeline:
             vae.to(vae_dtype).save_pretrained(os.path.join(args.output_path, "vae"))
 

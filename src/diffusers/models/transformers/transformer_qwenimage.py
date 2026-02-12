@@ -561,11 +561,11 @@ class QwenDoubleStreamAttnProcessor2_0:
         img_attn_output = joint_hidden_states[:, seq_txt:, :]  # Image part
 
         # Apply output projections
-        img_attn_output = attn.to_out[0](img_attn_output)
+        img_attn_output = attn.to_out[0](img_attn_output.contiguous())
         if len(attn.to_out) > 1:
             img_attn_output = attn.to_out[1](img_attn_output)  # dropout
 
-        txt_attn_output = attn.to_add_out(txt_attn_output)
+        txt_attn_output = attn.to_add_out(txt_attn_output.contiguous())
 
         return img_attn_output, txt_attn_output
 
@@ -761,11 +761,14 @@ class QwenImageTransformer2DModel(
     _no_split_modules = ["QwenImageTransformerBlock"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _repeated_blocks = ["QwenImageTransformerBlock"]
+    # Make CP plan compatible with https://github.com/huggingface/diffusers/pull/12702
     _cp_plan = {
-        "": {
+        "transformer_blocks.0": {
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
             "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "encoder_hidden_states_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        },
+        "transformer_blocks.*": {
+            "modulate_index": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
         },
         "pos_embed": {
             0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),

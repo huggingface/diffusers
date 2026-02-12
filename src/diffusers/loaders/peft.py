@@ -478,7 +478,7 @@ class PeftAdapterMixin:
         Args:
             adapter_names (`list[str]` or `str`):
                 The names of the adapters to use.
-            adapter_weights (`list[float, float]`, *optional*):
+            weights (`list[float] | float`, *optional*):
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
                 adapters.
 
@@ -495,7 +495,7 @@ class PeftAdapterMixin:
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.unet.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
+        pipeline.unet.set_adapters(["cinematic", "pixel"], weights=[0.5, 0.5])
         ```
         """
         if not USE_PEFT_BACKEND:

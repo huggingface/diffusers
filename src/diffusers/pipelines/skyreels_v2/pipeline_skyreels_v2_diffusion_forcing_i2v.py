@@ -18,7 +18,6 @@ import re
 from copy import deepcopy
 from typing import Any, Callable
 
-import ftfy
 import PIL
 import torch
 from transformers import AutoTokenizer, UMT5EncoderModel

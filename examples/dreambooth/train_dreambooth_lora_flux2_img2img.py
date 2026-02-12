@@ -127,7 +127,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# Flux DreamBooth LoRA - {repo_id}
+# Flux.2 DreamBooth LoRA - {repo_id}
 
 <Gallery />
 

@@ -467,7 +467,7 @@ class WanFirstLastFrameImageEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
-class WanVaeImageEncoderStep(ModularPipelineBlocks):
+class WanVaeEncoderStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -492,7 +492,7 @@ class WanVaeImageEncoderStep(ModularPipelineBlocks):
             InputParam("resized_image", type_hint=PIL.Image.Image, required=True),
             InputParam("height"),
             InputParam("width"),
-            InputParam("num_frames"),
+            InputParam("num_frames", type_hint=int, default=81),
             InputParam("generator"),
         ]
 
@@ -563,7 +563,51 @@ class WanVaeImageEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
-class WanFirstLastFrameVaeImageEncoderStep(ModularPipelineBlocks):
+class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
+    model_name = "wan"
+
+    @property
+    def description(self) -> str:
+        return "step that prepares the masked first frame latents and add it to the latent condition"
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("first_frame_latents", type_hint=torch.Tensor | None),
+            InputParam("num_frames", required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("image_condition_latents", type_hint=torch.Tensor | None),
+        ]
+
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        batch_size, _, _, latent_height, latent_width = block_state.first_frame_latents.shape
+
+        mask_lat_size = torch.ones(batch_size, 1, block_state.num_frames, latent_height, latent_width)
+        mask_lat_size[:, :, list(range(1, block_state.num_frames))] = 0
+
+        first_frame_mask = mask_lat_size[:, :, 0:1]
+        first_frame_mask = torch.repeat_interleave(
+            first_frame_mask, dim=2, repeats=components.vae_scale_factor_temporal
+        )
+        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
+        mask_lat_size = mask_lat_size.view(
+            batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width
+        )
+        mask_lat_size = mask_lat_size.transpose(1, 2)
+        mask_lat_size = mask_lat_size.to(block_state.first_frame_latents.device)
+        block_state.image_condition_latents = torch.concat([mask_lat_size, block_state.first_frame_latents], dim=1)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanFirstLastFrameVaeEncoderStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -589,7 +633,7 @@ class WanFirstLastFrameVaeImageEncoderStep(ModularPipelineBlocks):
             InputParam("resized_last_image", type_hint=PIL.Image.Image, required=True),
             InputParam("height"),
             InputParam("width"),
-            InputParam("num_frames"),
+            InputParam("num_frames", type_hint=int, default=81),
             InputParam("generator"),
         ]
 
@@ -662,6 +706,52 @@ class WanFirstLastFrameVaeImageEncoderStep(ModularPipelineBlocks):
             device=device,
             dtype=vae_dtype,
             latent_channels=components.num_channels_latents,
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanPrepareFirstLastFrameLatentsStep(ModularPipelineBlocks):
+    model_name = "wan"
+
+    @property
+    def description(self) -> str:
+        return "step that prepares the masked latents with first and last frames and add it to the latent condition"
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("first_last_frame_latents", type_hint=torch.Tensor | None),
+            InputParam("num_frames", type_hint=int, required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("image_condition_latents", type_hint=torch.Tensor | None),
+        ]
+
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        batch_size, _, _, latent_height, latent_width = block_state.first_last_frame_latents.shape
+
+        mask_lat_size = torch.ones(batch_size, 1, block_state.num_frames, latent_height, latent_width)
+        mask_lat_size[:, :, list(range(1, block_state.num_frames - 1))] = 0
+
+        first_frame_mask = mask_lat_size[:, :, 0:1]
+        first_frame_mask = torch.repeat_interleave(
+            first_frame_mask, dim=2, repeats=components.vae_scale_factor_temporal
+        )
+        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
+        mask_lat_size = mask_lat_size.view(
+            batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width
+        )
+        mask_lat_size = mask_lat_size.transpose(1, 2)
+        mask_lat_size = mask_lat_size.to(block_state.first_last_frame_latents.device)
+        block_state.image_condition_latents = torch.concat(
+            [mask_lat_size, block_state.first_last_frame_latents], dim=1
         )
 
         self.set_block_state(state, block_state)

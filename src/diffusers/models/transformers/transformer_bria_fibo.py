@@ -125,9 +125,9 @@ class BriaFiboAttnProcessor:
             encoder_hidden_states, hidden_states = hidden_states.split_with_sizes(
                 [encoder_hidden_states.shape[1], hidden_states.shape[1] - encoder_hidden_states.shape[1]], dim=1
             )
-            hidden_states = attn.to_out[0](hidden_states)
+            hidden_states = attn.to_out[0](hidden_states.contiguous())
             hidden_states = attn.to_out[1](hidden_states)
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states.contiguous())
 
             return hidden_states, encoder_hidden_states
         else:

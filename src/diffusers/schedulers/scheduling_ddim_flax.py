@@ -21,6 +21,7 @@ import flax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -29,6 +30,9 @@ from .scheduling_utils_flax import (
     add_noise_common,
     get_velocity_common,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -124,6 +128,10 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         prediction_type: str = "epsilon",
         dtype: jnp.dtype = jnp.float32,
     ):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         self.dtype = dtype
 
     def create_state(self, common: CommonSchedulerState | None = None) -> DDIMSchedulerState:
@@ -150,7 +158,12 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
             timesteps=timesteps,
         )
 
-    def scale_model_input(self, state: DDIMSchedulerState, sample: jnp.ndarray, timestep: int = None) -> jnp.ndarray:
+    def scale_model_input(
+        self,
+        state: DDIMSchedulerState,
+        sample: jnp.ndarray,
+        timestep: int | None = None,
+    ) -> jnp.ndarray:
         """
         Args:
             state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
@@ -187,7 +200,9 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
     def _get_variance(self, state: DDIMSchedulerState, timestep, prev_timestep):
         alpha_prod_t = state.common.alphas_cumprod[timestep]
         alpha_prod_t_prev = jnp.where(
-            prev_timestep >= 0, state.common.alphas_cumprod[prev_timestep], state.final_alpha_cumprod
+            prev_timestep >= 0,
+            state.common.alphas_cumprod[prev_timestep],
+            state.final_alpha_cumprod,
         )
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev

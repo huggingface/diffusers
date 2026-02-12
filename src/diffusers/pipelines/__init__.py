@@ -129,8 +129,8 @@ else:
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
     _import_structure["bria"] = ["BriaPipeline"]
-    _import_structure["bria_fibo"] = ["BriaFiboPipeline"]
-    _import_structure["flux2"] = ["Flux2Pipeline"]
+    _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
+    _import_structure["flux2"] = ["Flux2Pipeline", "Flux2KleinPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -155,7 +155,7 @@ else:
         "AudioLDM2UNet2DConditionModel",
     ]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
-    _import_structure["chroma"] = ["ChromaPipeline", "ChromaImg2ImgPipeline"]
+    _import_structure["chroma"] = ["ChromaPipeline", "ChromaImg2ImgPipeline", "ChromaInpaintPipeline"]
     _import_structure["cogvideo"] = [
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
@@ -167,6 +167,7 @@ else:
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["cosmos"] = [
         "Cosmos2_5_PredictBasePipeline",
+        "Cosmos2_5_TransferPipeline",
         "Cosmos2TextToImagePipeline",
         "CosmosTextToWorldPipeline",
         "CosmosVideoToWorldPipeline",
@@ -410,11 +411,12 @@ else:
         "Kandinsky5I2IPipeline",
     ]
     _import_structure["z_image"] = [
-        "ZImageImg2ImgPipeline",
-        "ZImagePipeline",
-        "ZImageControlNetPipeline",
         "ZImageControlNetInpaintPipeline",
+        "ZImageControlNetPipeline",
+        "ZImageImg2ImgPipeline",
+        "ZImageInpaintPipeline",
         "ZImageOmniPipeline",
+        "ZImagePipeline",
     ]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
@@ -597,8 +599,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
         from .bria import BriaPipeline
-        from .bria_fibo import BriaFiboPipeline
-        from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
+        from .bria_fibo import BriaFiboEditPipeline, BriaFiboPipeline
+        from .chroma import ChromaImg2ImgPipeline, ChromaInpaintPipeline, ChromaPipeline
         from .chronoedit import ChronoEditPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
@@ -630,6 +632,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .cosmos import (
             Cosmos2_5_PredictBasePipeline,
+            Cosmos2_5_TransferPipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             CosmosTextToWorldPipeline,
@@ -678,7 +681,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
-        from .flux2 import Flux2Pipeline
+        from .flux2 import Flux2KleinPipeline, Flux2Pipeline
         from .glm_image import GlmImagePipeline
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
@@ -870,6 +873,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetInpaintPipeline,
             ZImageControlNetPipeline,
             ZImageImg2ImgPipeline,
+            ZImageInpaintPipeline,
             ZImageOmniPipeline,
             ZImagePipeline,
         )

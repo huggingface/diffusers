@@ -459,7 +459,6 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMix
         >>> from diffusers import StableDiffusionLatentUpscalePipeline, StableDiffusionPipeline
         >>> import torch
 
-
         >>> pipeline = StableDiffusionPipeline.from_pretrained(
         ...     "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
         ... )

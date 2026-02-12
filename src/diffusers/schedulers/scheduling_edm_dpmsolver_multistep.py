@@ -15,6 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver and https://github.com/NVlabs/edm
 
 import math
+from typing import List, Literal
 
 import numpy as np
 import torch
@@ -50,13 +51,15 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             schedule was incorporated in this model: https://huggingface.co/stabilityai/cosxl.
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
-        solver_order (`int`, defaults to 2):
-            The DPMSolver order which can be `1` or `2` or `3`. It is recommended to use `solver_order=2` for guided
-            sampling, and `solver_order=3` for unconditional sampling.
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
             Video](https://huggingface.co/papers/2210.02303) paper).
+        rho (`float`, *optional*, defaults to 7.0):
+            The rho parameter in the Karras sigma schedule. This was set to 7.0 in the EDM paper [1].
+        solver_order (`int`, defaults to 2):
+            The DPMSolver order which can be `1` or `2` or `3`. It is recommended to use `solver_order=2` for guided
+            sampling, and `solver_order=3` for unconditional sampling.
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
@@ -93,19 +96,19 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigma_min: float = 0.002,
         sigma_max: float = 80.0,
         sigma_data: float = 0.5,
-        sigma_schedule: str = "karras",
+        sigma_schedule: Literal["karras", "exponential"] = "karras",
         num_train_timesteps: int = 1000,
-        prediction_type: str = "epsilon",
+        prediction_type: Literal["epsilon", "sample", "v_prediction"] = "epsilon",
         rho: float = 7.0,
         solver_order: int = 2,
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
-        algorithm_type: str = "dpmsolver++",
-        solver_type: str = "midpoint",
+        algorithm_type: Literal["dpmsolver++", "sde-dpmsolver++"] = "dpmsolver++",
+        solver_type: Literal["midpoint", "heun"] = "midpoint",
         lower_order_final: bool = True,
         euler_at_final: bool = False,
-        final_sigmas_type: str | None = "zero",  # "zero", "sigma_min"
+        final_sigmas_type: Literal["zero", "sigma_min"] = "zero",  # "zero", "sigma_min"
     ):
         # settings for DPM-Solver
         if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"]:
@@ -144,19 +147,19 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
-    def init_noise_sigma(self):
+    def init_noise_sigma(self) -> float:
         # standard deviation of the initial noise distribution
         return (self.config.sigma_max**2 + 1) ** 0.5
 
     @property
-    def step_index(self):
+    def step_index(self) -> int:
         """
         The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
 
     @property
-    def begin_index(self):
+    def begin_index(self) -> int:
         """
         The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
         """
@@ -273,7 +276,11 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def set_timesteps(self, num_inference_steps: int = None, device: str | torch.device = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int = None,
+        device: str | torch.device | None = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -459,13 +466,12 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def _sigma_to_alpha_sigma_t(self, sigma):
         alpha_t = torch.tensor(1)  # Inputs are pre-scaled before going into unet, so alpha_t = 1
         sigma_t = sigma
-
         return alpha_t, sigma_t
 
     def convert_model_output(
         self,
         model_output: torch.Tensor,
-        sample: torch.Tensor = None,
+        sample: torch.Tensor,
     ) -> torch.Tensor:
         """
         Convert the model output to the corresponding type the DPMSolver/DPMSolver++ algorithm needs. DPM-Solver is
@@ -496,7 +502,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def dpm_solver_first_order_update(
         self,
         model_output: torch.Tensor,
-        sample: torch.Tensor = None,
+        sample: torch.Tensor,
         noise: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
@@ -507,6 +513,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 The direct output from the learned diffusion model.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
+            noise (`torch.Tensor`, *optional*):
+                The noise tensor to add to the original samples.
 
         Returns:
             `torch.Tensor`:
@@ -536,8 +544,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     def multistep_dpm_solver_second_order_update(
         self,
-        model_output_list: list[torch.Tensor],
-        sample: torch.Tensor = None,
+        model_output_list: List[torch.Tensor],
+        sample: torch.Tensor,
         noise: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
@@ -548,6 +556,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
+            noise (`torch.Tensor`, *optional*):
+                The noise tensor to add to the original samples.
 
         Returns:
             `torch.Tensor`:
@@ -608,7 +618,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def multistep_dpm_solver_third_order_update(
         self,
         model_output_list: list[torch.Tensor],
-        sample: torch.Tensor = None,
+        sample: torch.Tensor,
     ) -> torch.Tensor:
         """
         One step for the third-order multistep DPMSolver.
@@ -660,7 +670,11 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         return x_t
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
-    def index_for_timestep(self, timestep: int | torch.Tensor, schedule_timesteps: torch.Tensor | None = None) -> int:
+    def index_for_timestep(
+        self,
+        timestep: int | torch.Tensor,
+        schedule_timesteps: torch.Tensor | None = None,
+    ) -> int:
         """
         Find the index for a given timestep in the schedule.
 
@@ -693,7 +707,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         return step_index
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
-    def _init_step_index(self, timestep):
+    def _init_step_index(self, timestep: int | torch.Tensor) -> None:
         """
         Initialize the step_index counter for the scheduler.
 
@@ -714,7 +728,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: int | torch.Tensor,
         sample: torch.Tensor,
-        generator=None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
     ) -> SchedulerOutput | tuple:
         """
@@ -855,5 +869,5 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
         return c_in
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps

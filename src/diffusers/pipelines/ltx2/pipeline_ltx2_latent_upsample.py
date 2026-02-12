@@ -75,8 +75,6 @@ EXAMPLE_DOC_STRING = """
         ...     output_type="np",
         ...     return_dict=False,
         ... )[0]
-        >>> video = (video * 255).round().astype("uint8")
-        >>> video = torch.from_numpy(video)
 
         >>> encode_video(
         ...     video[0],
@@ -226,17 +224,6 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
 
         filtered = latents * scales
         return filtered
-
-    @staticmethod
-    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2_image2video.LTX2ImageToVideoPipeline._normalize_latents
-    def _normalize_latents(
-        latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
-    ) -> torch.Tensor:
-        # Normalize latents across the channel dimension [B, C, F, H, W]
-        latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
-        latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
-        latents = (latents - latents_mean) * scaling_factor / latents_std
-        return latents
 
     @staticmethod
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._denormalize_latents
@@ -407,9 +394,6 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
             latents = self.tone_map_latents(latents, tone_map_compression_ratio)
 
         if output_type == "latent":
-            latents = self._normalize_latents(
-                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-            )
             video = latents
         else:
             if not self.vae.config.timestep_conditioning:

@@ -131,7 +131,7 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
             ),
             InputParam(
                 kwargs_type="denoiser_input_fields",
-                description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
+                description="The conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
             ),
         ]
         guider_input_names = []
