@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Union
 
 import numpy as np
 import PIL
@@ -147,7 +147,7 @@ class Flux2DecodeStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 "images",
-                type_hint=list[[PIL.Image.Image] | torch.Tensor | np.ndarray],
+                type_hint=Union[list[PIL.Image.Image], torch.Tensor, np.ndarray],
                 description="The generated images, can be a list of PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]
