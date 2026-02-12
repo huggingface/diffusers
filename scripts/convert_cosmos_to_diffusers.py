@@ -909,7 +909,9 @@ if __name__ == "__main__":
             controlnet = controlnet.to(dtype=dtype)
 
             if not args.save_pipeline:
-                transformer.save_pretrained(pathlib.Path(args.output_path) / "transformer", safe_serialization=True, max_shard_size="5GB")
+                transformer.save_pretrained(
+                    pathlib.Path(args.output_path) / "transformer", safe_serialization=True, max_shard_size="5GB"
+                )
                 controlnet.save_pretrained(
                     pathlib.Path(args.output_path) / "controlnet", safe_serialization=True, max_shard_size="5GB"
                 )
