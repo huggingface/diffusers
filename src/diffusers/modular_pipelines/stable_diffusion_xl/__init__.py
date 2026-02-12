@@ -23,18 +23,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["encoders"] = ["StableDiffusionXLTextEncoderStep"]
     _import_structure["modular_blocks"] = [
-        "ALL_BLOCKS",
-        "AUTO_BLOCKS",
-        "CONTROLNET_BLOCKS",
-        "IMAGE2IMAGE_BLOCKS",
-        "INPAINT_BLOCKS",
-        "IP_ADAPTER_BLOCKS",
-        "TEXT2IMAGE_BLOCKS",
         "StableDiffusionXLAutoBlocks",
-        "StableDiffusionXLAutoControlnetStep",
-        "StableDiffusionXLAutoDecodeStep",
-        "StableDiffusionXLAutoIPAdapterStep",
-        "StableDiffusionXLAutoVaeEncoderStep",
     ]
     _import_structure["modular_pipeline"] = ["StableDiffusionXLModularPipeline"]
 
@@ -49,18 +38,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLTextEncoderStep,
         )
         from .modular_blocks import (
-            ALL_BLOCKS,
-            AUTO_BLOCKS,
-            CONTROLNET_BLOCKS,
-            IMAGE2IMAGE_BLOCKS,
-            INPAINT_BLOCKS,
-            IP_ADAPTER_BLOCKS,
-            TEXT2IMAGE_BLOCKS,
             StableDiffusionXLAutoBlocks,
-            StableDiffusionXLAutoControlnetStep,
-            StableDiffusionXLAutoDecodeStep,
-            StableDiffusionXLAutoIPAdapterStep,
-            StableDiffusionXLAutoVaeEncoderStep,
         )
         from .modular_pipeline import StableDiffusionXLModularPipeline
 else:

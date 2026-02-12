@@ -277,6 +277,7 @@ class StableDiffusionXLCoreDenoiseStep(SequentialPipelineBlocks):
 
 
 # ip-adapter, controlnet, text2img, img2img, inpainting
+# auto_docstring
 class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
     block_classes = [
         StableDiffusionXLTextEncoderStep,
@@ -293,103 +294,29 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
         "decode",
     ]
 
+    _workflow_map = {
+        "text2image": {"prompt": True},
+        "image2image": {"image": True, "prompt": True},
+        "inpainting": {"mask_image": True, "image": True, "prompt": True},
+        "controlnet_text2image": {"control_image": True, "prompt": True},
+        "controlnet_image2image": {"control_image": True, "image": True, "prompt": True},
+        "controlnet_inpainting": {"control_image": True, "mask_image": True, "image": True, "prompt": True},
+        "controlnet_union_text2image": {"control_image": True, "control_mode": True, "prompt": True},
+        "controlnet_union_image2image": {"control_image": True, "control_mode": True, "image": True, "prompt": True},
+        "controlnet_union_inpainting": {"control_image": True, "control_mode": True, "mask_image": True, "image": True, "prompt": True},
+        "ip_adapter_text2image": {"ip_adapter_image": True, "prompt": True},
+        "ip_adapter_image2image": {"ip_adapter_image": True, "image": True, "prompt": True},
+        "ip_adapter_inpainting": {"ip_adapter_image": True, "mask_image": True, "image": True, "prompt": True},
+        "ip_adapter_controlnet_text2image": {"ip_adapter_image": True, "control_image": True, "prompt": True},
+        "ip_adapter_controlnet_image2image": {"ip_adapter_image": True, "control_image": True, "image": True, "prompt": True},
+        "ip_adapter_controlnet_inpainting": {"ip_adapter_image": True, "control_image": True, "mask_image": True, "image": True, "prompt": True},
+        "ip_adapter_controlnet_union_text2image": {"ip_adapter_image": True, "control_image": True, "control_mode": True, "prompt": True},
+        "ip_adapter_controlnet_union_image2image": {"ip_adapter_image": True, "control_image": True, "control_mode": True, "image": True, "prompt": True},
+        "ip_adapter_controlnet_union_inpainting": {"ip_adapter_image": True, "control_image": True, "control_mode": True, "mask_image": True, "image": True, "prompt": True},
+    }
+
     @property
     def description(self):
         return (
-            "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using Stable Diffusion XL.\n"
-            + "- for image-to-image generation, you need to provide either `image` or `image_latents`\n"
-            + "- for inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop` \n"
-            + "- to run the controlnet workflow, you need to provide `control_image`\n"
-            + "- to run the controlnet_union workflow, you need to provide `control_image` and `control_mode`\n"
-            + "- to run the ip_adapter workflow, you need to provide `ip_adapter_image`\n"
-            + "- for text-to-image generation, all you need to provide is `prompt`"
+            "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using Stable Diffusion XL."
         )
-
-
-# controlnet (input + denoise step)
-class StableDiffusionXLAutoControlnetStep(SequentialPipelineBlocks):
-    block_classes = [
-        StableDiffusionXLAutoControlNetInputStep,
-        StableDiffusionXLAutoControlNetDenoiseStep,
-    ]
-    block_names = ["controlnet_input", "controlnet_denoise"]
-
-    @property
-    def description(self):
-        return (
-            "Controlnet auto step that prepare the controlnet input and denoise the latents. "
-            + "It works for both controlnet and controlnet_union and supports text2img, img2img and inpainting tasks."
-            + " (it should be replace at 'denoise' step)"
-        )
-
-
-TEXT2IMAGE_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", StableDiffusionXLTextEncoderStep),
-        ("input", StableDiffusionXLInputStep),
-        ("set_timesteps", StableDiffusionXLSetTimestepsStep),
-        ("prepare_latents", StableDiffusionXLPrepareLatentsStep),
-        ("prepare_add_cond", StableDiffusionXLPrepareAdditionalConditioningStep),
-        ("denoise", StableDiffusionXLDenoiseStep),
-        ("decode", StableDiffusionXLDecodeStep),
-    ]
-)
-
-IMAGE2IMAGE_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", StableDiffusionXLTextEncoderStep),
-        ("vae_encoder", StableDiffusionXLVaeEncoderStep),
-        ("input", StableDiffusionXLInputStep),
-        ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
-        ("prepare_latents", StableDiffusionXLImg2ImgPrepareLatentsStep),
-        ("prepare_add_cond", StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep),
-        ("denoise", StableDiffusionXLDenoiseStep),
-        ("decode", StableDiffusionXLDecodeStep),
-    ]
-)
-
-INPAINT_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", StableDiffusionXLTextEncoderStep),
-        ("vae_encoder", StableDiffusionXLInpaintVaeEncoderStep),
-        ("input", StableDiffusionXLInputStep),
-        ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
-        ("prepare_latents", StableDiffusionXLInpaintPrepareLatentsStep),
-        ("prepare_add_cond", StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep),
-        ("denoise", StableDiffusionXLInpaintDenoiseStep),
-        ("decode", StableDiffusionXLInpaintDecodeStep),
-    ]
-)
-
-CONTROLNET_BLOCKS = InsertableDict(
-    [
-        ("denoise", StableDiffusionXLAutoControlnetStep),
-    ]
-)
-
-
-IP_ADAPTER_BLOCKS = InsertableDict(
-    [
-        ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
-    ]
-)
-
-AUTO_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", StableDiffusionXLTextEncoderStep),
-        ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
-        ("vae_encoder", StableDiffusionXLAutoVaeEncoderStep),
-        ("denoise", StableDiffusionXLCoreDenoiseStep),
-        ("decode", StableDiffusionXLAutoDecodeStep),
-    ]
-)
-
-
-ALL_BLOCKS = {
-    "text2img": TEXT2IMAGE_BLOCKS,
-    "img2img": IMAGE2IMAGE_BLOCKS,
-    "inpaint": INPAINT_BLOCKS,
-    "controlnet": CONTROLNET_BLOCKS,
-    "ip_adapter": IP_ADAPTER_BLOCKS,
-    "auto": AUTO_BLOCKS,
-}
