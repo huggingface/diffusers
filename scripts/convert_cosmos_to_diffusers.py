@@ -94,8 +94,14 @@ python scripts/convert_cosmos_to_diffusers.py \
     --transformer_type Cosmos-2.5-Transfer-General-2B \
     --transformer_ckpt_path $transformer_ckpt_path \
     --vae_type wan2.1 \
-    --output_path converted/transfer/2b/general/depth \
+    --output_path converted/transfer/2b/general/depth/pipeline \
     --save_pipeline
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/depth/models
 
 # edge
 transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/edge/61f5694b-0ad5-4ecd-8ad7-c8545627d125_ema_bf16.pt
@@ -120,8 +126,14 @@ python scripts/convert_cosmos_to_diffusers.py \
     --transformer_type Cosmos-2.5-Transfer-General-2B \
     --transformer_ckpt_path $transformer_ckpt_path \
     --vae_type wan2.1 \
-    --output_path converted/transfer/2b/general/blur \
+    --output_path converted/transfer/2b/general/blur/pipeline \
     --save_pipeline
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/blur/models
 
 # seg
 transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/seg/5136ef49-6d8d-42e8-8abf-7dac722a304a_ema_bf16.pt
@@ -130,8 +142,14 @@ python scripts/convert_cosmos_to_diffusers.py \
     --transformer_type Cosmos-2.5-Transfer-General-2B \
     --transformer_ckpt_path $transformer_ckpt_path \
     --vae_type wan2.1 \
-    --output_path converted/transfer/2b/general/seg \
+    --output_path converted/transfer/2b/general/seg/pipeline \
     --save_pipeline
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/seg/models
 ```
 """
 
