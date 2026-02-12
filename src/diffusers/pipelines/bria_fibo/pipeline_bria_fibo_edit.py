@@ -274,8 +274,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         prompt: Union[str, List[str]],
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 2048,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -359,7 +359,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         guidance_scale: float = 5,
         negative_prompt: Optional[Union[str, List[str]]] = None,

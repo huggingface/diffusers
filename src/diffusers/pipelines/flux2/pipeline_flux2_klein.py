@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import numpy as np
 import PIL
@@ -83,7 +83,7 @@ def retrieve_timesteps(
     scheduler,
     num_inference_steps: int | None = None,
     device: str | torch.device | None = None,
-    timesteps: Optional[List[int]] = None,
+    timesteps: list[int] | None = None,
     sigmas: list[float] | None = None,
     **kwargs,
 ):
@@ -99,15 +99,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -208,11 +208,11 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     def _get_qwen3_prompt_embeds(
         text_encoder: Qwen3ForCausalLM,
         tokenizer: Qwen2TokenizerFast,
-        prompt: Union[str, List[str]],
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
         max_sequence_length: int = 512,
-        hidden_states_layers: List[int] = (9, 18, 27),
+        hidden_states_layers: list[int] = (9, 18, 27),
     ):
         dtype = text_encoder.dtype if dtype is None else dtype
         device = text_encoder.device if device is None else device
@@ -317,7 +317,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_image_ids
     def _prepare_image_ids(
-        image_latents: List[torch.Tensor],  # [(1, C, H, W), (1, C, H, W), ...]
+        image_latents: list[torch.Tensor],  # [(1, C, H, W), (1, C, H, W), ...]
         scale: int = 10,
     ):
         r"""
@@ -327,7 +327,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         dimensions.
 
         Args:
-            image_latents (List[torch.Tensor]):
+            image_latents (list[torch.Tensor]):
                 A list of image latent feature tensors, typically of shape (C, H, W).
             scale (int, optional):
                 A factor used to define the time separation (T-coordinate) between latents. T-coordinate for the i-th
@@ -424,12 +424,12 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: torch.Tensor | None = None,
         max_sequence_length: int = 512,
-        text_encoder_out_layers: Tuple[int] = (9, 18, 27),
+        text_encoder_out_layers: tuple[int] = (9, 18, 27),
     ):
         device = device or self._execution_device
 
@@ -507,7 +507,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline.prepare_image_latents
     def prepare_image_latents(
         self,
-        images: List[torch.Tensor],
+        images: list[torch.Tensor],
         batch_size,
         generator: torch.Generator,
         device,
@@ -608,25 +608,25 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Optional[Union[List[PIL.Image.Image], PIL.Image.Image]] = None,
-        prompt: Union[str, List[str]] = None,
+        image: list[PIL.Image.Image] | PIL.Image.Image | None = None,
+        prompt: str | list[str] = None,
         height: int | None = None,
         width: int | None = None,
         num_inference_steps: int = 50,
         sigmas: list[float] | None = None,
-        guidance_scale: Optional[float] = 4.0,
+        guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: torch.Tensor | None = None,
         prompt_embeds: torch.Tensor | None = None,
-        negative_prompt_embeds: Optional[Union[str, List[str]]] = None,
+        negative_prompt_embeds: str | list[str] | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int, dict], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-        text_encoder_out_layers: Tuple[int] = (9, 18, 27),
+        text_encoder_out_layers: tuple[int] = (9, 18, 27),
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -693,7 +693,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
-            text_encoder_out_layers (`Tuple[int]`):
+            text_encoder_out_layers (`tuple[int]`):
                 Layer indices to use in the `text_encoder` to derive the final prompt embeddings.
 
         Examples:
