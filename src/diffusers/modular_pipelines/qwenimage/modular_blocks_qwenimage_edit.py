@@ -774,6 +774,10 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = EDIT_AUTO_BLOCKS.values()
     block_names = EDIT_AUTO_BLOCKS.keys()
+    _workflow_map = {
+        "edit": {"prompt": True, "image": True},
+        "edit_inpainting": {"prompt": True, "mask_image": True, "image": True},
+    }
 
     @property
     def description(self):

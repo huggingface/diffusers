@@ -30,6 +30,102 @@ from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
 
 
+QWEN_IMAGE_TEXT2IMAGE_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "QwenImageTextEncoderStep"),
+        ("denoise.input", "QwenImageTextInputsStep"),
+        ("denoise.prepare_latents", "QwenImagePrepareLatentsStep"),
+        ("denoise.set_timesteps", "QwenImageSetTimestepsStep"),
+        ("denoise.prepare_rope_inputs", "QwenImageRoPEInputsStep"),
+        ("denoise.denoise", "QwenImageDenoiseStep"),
+        ("denoise.after_denoise", "QwenImageAfterDenoiseStep"),
+        ("decode.decode", "QwenImageDecoderStep"),
+        ("decode.postprocess", "QwenImageProcessImagesOutputStep"),
+    ],
+    "image2image": [
+        ("text_encoder", "QwenImageTextEncoderStep"),
+        ("vae_encoder.preprocess", "QwenImageProcessImagesInputStep"),
+        ("vae_encoder.encode", "QwenImageVaeEncoderStep"),
+        ("denoise.input.text_inputs", "QwenImageTextInputsStep"),
+        ("denoise.input.additional_inputs", "QwenImageAdditionalInputsStep"),
+        ("denoise.prepare_latents", "QwenImagePrepareLatentsStep"),
+        ("denoise.set_timesteps", "QwenImageSetTimestepsWithStrengthStep"),
+        ("denoise.prepare_img2img_latents", "QwenImagePrepareLatentsWithStrengthStep"),
+        ("denoise.prepare_rope_inputs", "QwenImageRoPEInputsStep"),
+        ("denoise.denoise", "QwenImageDenoiseStep"),
+        ("denoise.after_denoise", "QwenImageAfterDenoiseStep"),
+        ("decode.decode", "QwenImageDecoderStep"),
+        ("decode.postprocess", "QwenImageProcessImagesOutputStep"),
+    ],
+    "inpainting": [
+        ("text_encoder", "QwenImageTextEncoderStep"),
+        ("vae_encoder.preprocess", "QwenImageInpaintProcessImagesInputStep"),
+        ("vae_encoder.encode", "QwenImageVaeEncoderStep"),
+        ("denoise.input.text_inputs", "QwenImageTextInputsStep"),
+        ("denoise.input.additional_inputs", "QwenImageAdditionalInputsStep"),
+        ("denoise.prepare_latents", "QwenImagePrepareLatentsStep"),
+        ("denoise.set_timesteps", "QwenImageSetTimestepsWithStrengthStep"),
+        ("denoise.prepare_inpaint_latents.add_noise_to_latents", "QwenImagePrepareLatentsWithStrengthStep"),
+        ("denoise.prepare_inpaint_latents.create_mask_latents", "QwenImageCreateMaskLatentsStep"),
+        ("denoise.prepare_rope_inputs", "QwenImageRoPEInputsStep"),
+        ("denoise.denoise", "QwenImageInpaintDenoiseStep"),
+        ("denoise.after_denoise", "QwenImageAfterDenoiseStep"),
+        ("decode.decode", "QwenImageDecoderStep"),
+        ("decode.postprocess", "QwenImageInpaintProcessImagesOutputStep"),
+    ],
+    "controlnet_text2image": [
+        ("text_encoder", "QwenImageTextEncoderStep"),
+        ("controlnet_vae_encoder", "QwenImageControlNetVaeEncoderStep"),
+        ("denoise.input", "QwenImageTextInputsStep"),
+        ("denoise.controlnet_input", "QwenImageControlNetInputsStep"),
+        ("denoise.prepare_latents", "QwenImagePrepareLatentsStep"),
+        ("denoise.set_timesteps", "QwenImageSetTimestepsStep"),
+        ("denoise.prepare_rope_inputs", "QwenImageRoPEInputsStep"),
+        ("denoise.controlnet_before_denoise", "QwenImageControlNetBeforeDenoiserStep"),
+        ("denoise.controlnet_denoise", "QwenImageControlNetDenoiseStep"),
+        ("denoise.after_denoise", "QwenImageAfterDenoiseStep"),
+        ("decode.decode", "QwenImageDecoderStep"),
+        ("decode.postprocess", "QwenImageProcessImagesOutputStep"),
+    ],
+    "controlnet_image2image": [
+        ("text_encoder", "QwenImageTextEncoderStep"),
+        ("vae_encoder.preprocess", "QwenImageProcessImagesInputStep"),
+        ("vae_encoder.encode", "QwenImageVaeEncoderStep"),
+        ("controlnet_vae_encoder", "QwenImageControlNetVaeEncoderStep"),
+        ("denoise.input.text_inputs", "QwenImageTextInputsStep"),
+        ("denoise.input.additional_inputs", "QwenImageAdditionalInputsStep"),
+        ("denoise.controlnet_input", "QwenImageControlNetInputsStep"),
+        ("denoise.prepare_latents", "QwenImagePrepareLatentsStep"),
+        ("denoise.set_timesteps", "QwenImageSetTimestepsWithStrengthStep"),
+        ("denoise.prepare_img2img_latents", "QwenImagePrepareLatentsWithStrengthStep"),
+        ("denoise.prepare_rope_inputs", "QwenImageRoPEInputsStep"),
+        ("denoise.controlnet_before_denoise", "QwenImageControlNetBeforeDenoiserStep"),
+        ("denoise.controlnet_denoise", "QwenImageControlNetDenoiseStep"),
+        ("denoise.after_denoise", "QwenImageAfterDenoiseStep"),
+        ("decode.decode", "QwenImageDecoderStep"),
+        ("decode.postprocess", "QwenImageProcessImagesOutputStep"),
+    ],
+    "controlnet_inpainting": [
+        ("text_encoder", "QwenImageTextEncoderStep"),
+        ("vae_encoder.preprocess", "QwenImageInpaintProcessImagesInputStep"),
+        ("vae_encoder.encode", "QwenImageVaeEncoderStep"),
+        ("controlnet_vae_encoder", "QwenImageControlNetVaeEncoderStep"),
+        ("denoise.input.text_inputs", "QwenImageTextInputsStep"),
+        ("denoise.input.additional_inputs", "QwenImageAdditionalInputsStep"),
+        ("denoise.controlnet_input", "QwenImageControlNetInputsStep"),
+        ("denoise.prepare_latents", "QwenImagePrepareLatentsStep"),
+        ("denoise.set_timesteps", "QwenImageSetTimestepsWithStrengthStep"),
+        ("denoise.prepare_inpaint_latents.add_noise_to_latents", "QwenImagePrepareLatentsWithStrengthStep"),
+        ("denoise.prepare_inpaint_latents.create_mask_latents", "QwenImageCreateMaskLatentsStep"),
+        ("denoise.prepare_rope_inputs", "QwenImageRoPEInputsStep"),
+        ("denoise.controlnet_before_denoise", "QwenImageControlNetBeforeDenoiserStep"),
+        ("denoise.controlnet_denoise", "QwenImageInpaintControlNetDenoiseStep"),
+        ("denoise.after_denoise", "QwenImageAfterDenoiseStep"),
+        ("decode.decode", "QwenImageDecoderStep"),
+        ("decode.postprocess", "QwenImageInpaintProcessImagesOutputStep"),
+    ],
+}
+
 class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
     pipeline_class = QwenImageModularPipeline
     pipeline_blocks_class = QwenImageAutoBlocks
@@ -37,6 +133,7 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuider
 
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
+    expected_workflow_blocks = QWEN_IMAGE_TEXT2IMAGE_WORKFLOWS
 
     def get_dummy_inputs(self):
         generator = self.get_generator()
@@ -55,6 +152,42 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuider
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
 
+QWEN_IMAGE_EDIT_WORKFLOWS = {
+    "edit": [
+        ("text_encoder.resize", "QwenImageEditResizeStep"),
+        ("text_encoder.encode", "QwenImageEditTextEncoderStep"),
+        ("vae_encoder.resize", "QwenImageEditResizeStep"),
+        ("vae_encoder.preprocess", "QwenImageEditProcessImagesInputStep"),
+        ("vae_encoder.encode", "QwenImageVaeEncoderStep"),
+        ("denoise.input.text_inputs", "QwenImageTextInputsStep"),
+        ("denoise.input.additional_inputs", "QwenImageAdditionalInputsStep"),
+        ("denoise.prepare_latents", "QwenImagePrepareLatentsStep"),
+        ("denoise.set_timesteps", "QwenImageSetTimestepsStep"),
+        ("denoise.prepare_rope_inputs", "QwenImageEditRoPEInputsStep"),
+        ("denoise.denoise", "QwenImageEditDenoiseStep"),
+        ("denoise.after_denoise", "QwenImageAfterDenoiseStep"),
+        ("decode.decode", "QwenImageDecoderStep"),
+        ("decode.postprocess", "QwenImageProcessImagesOutputStep"),
+    ],
+    "edit_inpainting": [
+        ("text_encoder.resize", "QwenImageEditResizeStep"),
+        ("text_encoder.encode", "QwenImageEditTextEncoderStep"),
+        ("vae_encoder.resize", "QwenImageEditResizeStep"),
+        ("vae_encoder.preprocess", "QwenImageEditInpaintProcessImagesInputStep"),
+        ("vae_encoder.encode", "QwenImageVaeEncoderStep"),
+        ("denoise.input.text_inputs", "QwenImageTextInputsStep"),
+        ("denoise.input.additional_inputs", "QwenImageAdditionalInputsStep"),
+        ("denoise.prepare_latents", "QwenImagePrepareLatentsStep"),
+        ("denoise.set_timesteps", "QwenImageSetTimestepsWithStrengthStep"),
+        ("denoise.prepare_inpaint_latents.add_noise_to_latents", "QwenImagePrepareLatentsWithStrengthStep"),
+        ("denoise.prepare_inpaint_latents.create_mask_latents", "QwenImageCreateMaskLatentsStep"),
+        ("denoise.prepare_rope_inputs", "QwenImageEditRoPEInputsStep"),
+        ("denoise.denoise", "QwenImageEditInpaintDenoiseStep"),
+        ("denoise.after_denoise", "QwenImageAfterDenoiseStep"),
+        ("decode.decode", "QwenImageDecoderStep"),
+        ("decode.postprocess", "QwenImageInpaintProcessImagesOutputStep"),
+    ],
+}
 
 class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
     pipeline_class = QwenImageEditModularPipeline
@@ -63,6 +196,7 @@ class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGu
 
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
+    expected_workflow_blocks = QWEN_IMAGE_EDIT_WORKFLOWS
 
     def get_dummy_inputs(self):
         generator = self.get_generator()
