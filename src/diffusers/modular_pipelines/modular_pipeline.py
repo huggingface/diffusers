@@ -747,7 +747,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         block = self.sub_blocks[block_name]
 
         # Recursively resolve until we hit a leaf block or a SequentialPipelineBlocks
-        if block.sub_blocks:
+        if block.sub_blocks and not isinstance(block, LoopSequentialPipelineBlocks):
             return block.get_execution_blocks(**kwargs)
 
         return block
