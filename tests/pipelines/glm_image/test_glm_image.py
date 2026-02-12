@@ -281,6 +281,86 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Should return 4 images (2 prompts × 2 images per prompt)
         self.assertEqual(len(images), 4)
 
+    def test_prompt_with_prior_token_ids(self):
+        """Test that prompt and prior_token_ids can be provided together.
+
+        When both are given, the AR generation step is skipped (prior_token_ids is used
+        directly) and prompt is used to generate prompt_embeds via the glyph encoder.
+        """
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        height, width = 32, 32
+
+        # Step 1: Run with prompt only to get prior_token_ids from AR model
+        generator = torch.Generator(device=device).manual_seed(0)
+        prior_token_ids, _, _ = pipe.generate_prior_tokens(
+            prompt="A photo of a cat",
+            height=height,
+            width=width,
+            device=torch.device(device),
+            generator=torch.Generator(device=device).manual_seed(0),
+        )
+
+        # Step 2: Run with both prompt and prior_token_ids — should not raise
+        generator = torch.Generator(device=device).manual_seed(0)
+        inputs_both = {
+            "prompt": "A photo of a cat",
+            "prior_token_ids": prior_token_ids,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 1.5,
+            "height": height,
+            "width": width,
+            "max_sequence_length": 16,
+            "output_type": "pt",
+        }
+        images = pipe(**inputs_both).images
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].shape, (3, 32, 32))
+
+    def test_check_inputs_rejects_invalid_combinations(self):
+        """Test that check_inputs correctly rejects invalid input combinations."""
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+
+        height, width = 32, 32
+
+        # Neither prompt nor prior_token_ids → error
+        with self.assertRaises(ValueError):
+            pipe.check_inputs(
+                prompt=None,
+                height=height,
+                width=width,
+                callback_on_step_end_tensor_inputs=None,
+                prompt_embeds=torch.randn(1, 16, 32),
+            )
+
+        # prior_token_ids alone without prompt or prompt_embeds → error
+        with self.assertRaises(ValueError):
+            pipe.check_inputs(
+                prompt=None,
+                height=height,
+                width=width,
+                callback_on_step_end_tensor_inputs=None,
+                prior_token_ids=torch.randint(0, 100, (1, 64)),
+            )
+
+        # prompt + prompt_embeds together → error
+        with self.assertRaises(ValueError):
+            pipe.check_inputs(
+                prompt="A cat",
+                height=height,
+                width=width,
+                callback_on_step_end_tensor_inputs=None,
+                prompt_embeds=torch.randn(1, 16, 32),
+            )
+
     @unittest.skip("Needs to be revisited.")
     def test_encode_prompt_works_in_isolation(self):
         pass
