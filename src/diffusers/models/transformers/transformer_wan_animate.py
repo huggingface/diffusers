@@ -54,7 +54,7 @@ def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, enco
         encoder_hidden_states = hidden_states
 
     if attn.fused_projections:
-        if attn.cross_attention_dim_head is None:
+        if not attn.is_cross_attention:
             # In self-attention layers, we can fuse the entire QKV projection into a single linear
             query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
         else:
@@ -502,13 +502,16 @@ class WanAnimateFaceBlockCrossAttention(nn.Module, AttentionModuleMixin):
         dim_head: int = 64,
         eps: float = 1e-6,
         cross_attention_dim_head: Optional[int] = None,
+        bias: bool = True,
         processor=None,
     ):
         super().__init__()
         self.inner_dim = dim_head * heads
         self.heads = heads
-        self.cross_attention_head_dim = cross_attention_dim_head
+        self.cross_attention_dim_head = cross_attention_dim_head
         self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
+        self.use_bias = bias
+        self.is_cross_attention = cross_attention_dim_head is not None
 
         # 1. Pre-Attention Norms for the hidden_states (video latents) and encoder_hidden_states (motion vector).
         # NOTE: this is not used in "vanilla" WanAttention
@@ -516,10 +519,10 @@ class WanAnimateFaceBlockCrossAttention(nn.Module, AttentionModuleMixin):
         self.pre_norm_kv = nn.LayerNorm(dim, eps, elementwise_affine=False)
 
         # 2. QKV and Output Projections
-        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=True)
-        self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
-        self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
-        self.to_out = torch.nn.Linear(self.inner_dim, dim, bias=True)
+        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=bias)
+        self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=bias)
+        self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=bias)
+        self.to_out = torch.nn.Linear(self.inner_dim, dim, bias=bias)
 
         # 3. QK Norm
         # NOTE: this is applied after the reshape, so only over dim_head rather than dim_head * heads
@@ -682,7 +685,10 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
             self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
             self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
 
-        self.is_cross_attention = cross_attention_dim_head is not None
+        if is_cross_attention is not None:
+            self.is_cross_attention = is_cross_attention
+        else:
+            self.is_cross_attention = cross_attention_dim_head is not None
 
         self.set_processor(processor)
 
@@ -690,7 +696,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         if getattr(self, "fused_projections", False):
             return
 
-        if self.cross_attention_dim_head is None:
+        if not self.is_cross_attention:
             concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
             concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
             out_features, in_features = concatenated_weights.shape
