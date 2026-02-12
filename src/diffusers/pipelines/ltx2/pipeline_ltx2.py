@@ -1081,6 +1081,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         audio_coords = self.transformer.audio_rope.prepare_audio_coords(
             audio_latents.shape[0], audio_num_frames, audio_latents.device
         )
+        # Duplicate the positional ids as well if using CFG
+        if self.do_classifier_free_guidance:
+            video_coords = video_coords.repeat((2,) + (1,) * (video_coords.ndim - 1))  # Repeat twice in batch dim
+            audio_coords = audio_coords.repeat((2,) + (1,) * (audio_coords.ndim - 1))
 
         # 7. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:

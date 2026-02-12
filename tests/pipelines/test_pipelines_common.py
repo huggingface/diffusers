@@ -2406,7 +2406,11 @@ class PipelineTesterMixin:
             if name not in [exclude_module_name] and isinstance(component, torch.nn.Module):
                 # `component.device` prints the `onload_device` type. We should probably override the
                 # `device` property in `ModelMixin`.
-                component_device = next(component.parameters())[0].device
+                # Skip modules with no parameters (e.g., dummy safety checkers with only buffers)
+                params = list(component.parameters())
+                if not params:
+                    continue
+                component_device = params[0].device
                 self.assertTrue(torch.device(component_device).type == torch.device(offload_device).type)
 
     @require_torch_accelerator
