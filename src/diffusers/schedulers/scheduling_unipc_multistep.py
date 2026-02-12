@@ -482,6 +482,21 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler.time_shift
     def time_shift(self, mu: float, sigma: float, t: torch.Tensor):
+        """
+        Apply time shifting to the sigmas.
+
+        Args:
+            mu (`float`):
+                The mu parameter for the time shift.
+            sigma (`float`):
+                The sigma parameter for the time shift.
+            t (`torch.Tensor`):
+                The input timesteps.
+
+        Returns:
+            `torch.Tensor`:
+                The time-shifted timesteps.
+        """
         if self.config.time_shift_type == "exponential":
             return self._time_shift_exponential(mu, sigma, t)
         elif self.config.time_shift_type == "linear":
@@ -1083,7 +1098,9 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
     def index_for_timestep(
-        self, timestep: Union[int, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self,
+        timestep: Union[int, torch.Tensor],
+        schedule_timesteps: Optional[torch.Tensor] = None,
     ) -> int:
         """
         Find the index for a given timestep in the schedule.

@@ -35,6 +35,7 @@ from diffusers import (
 from diffusers.hooks import apply_group_offloading
 from diffusers.hooks.faster_cache import FasterCacheBlockHook, FasterCacheDenoiserHook
 from diffusers.hooks.first_block_cache import FirstBlockCacheConfig
+from diffusers.hooks.mag_cache import MagCacheConfig
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.hooks.taylorseer_cache import TaylorSeerCacheConfig
 from diffusers.image_processor import VaeImageProcessor
@@ -2405,7 +2406,11 @@ class PipelineTesterMixin:
             if name not in [exclude_module_name] and isinstance(component, torch.nn.Module):
                 # `component.device` prints the `onload_device` type. We should probably override the
                 # `device` property in `ModelMixin`.
-                component_device = next(component.parameters())[0].device
+                # Skip modules with no parameters (e.g., dummy safety checkers with only buffers)
+                params = list(component.parameters())
+                if not params:
+                    continue
+                component_device = params[0].device
                 self.assertTrue(torch.device(component_device).type == torch.device(offload_device).type)
 
     @require_torch_accelerator
@@ -2973,6 +2978,59 @@ class TaylorSeerCacheTesterMixin:
         )
         assert np.allclose(original_image_slice, image_slice_fbc_disabled, atol=1e-4), (
             "Outputs from normal inference and after disabling cache should not differ."
+        )
+
+
+class MagCacheTesterMixin:
+    mag_cache_config = MagCacheConfig(
+        threshold=0.06,
+        max_skip_steps=3,
+        retention_ratio=0.2,
+        num_inference_steps=50,
+        mag_ratios=torch.ones(50),
+    )
+
+    def test_mag_cache_inference(self, expected_atol: float = 0.1):
+        device = "cpu"
+
+        def create_pipe():
+            torch.manual_seed(0)
+            num_layers = 2
+            components = self.get_dummy_components(num_layers=num_layers)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(device)
+            # Match the config steps
+            inputs["num_inference_steps"] = 50
+            return pipe(**inputs)[0]
+
+        # 1. Run inference without MagCache (Baseline)
+        pipe = create_pipe()
+        output = run_forward(pipe).flatten()
+        original_image_slice = np.concatenate((output[:8], output[-8:]))
+
+        # 2. Run inference with MagCache ENABLED
+        pipe = create_pipe()
+        pipe.transformer.enable_cache(self.mag_cache_config)
+        output = run_forward(pipe).flatten()
+        image_slice_enabled = np.concatenate((output[:8], output[-8:]))
+
+        # 3. Run inference with MagCache DISABLED
+        pipe.transformer.disable_cache()
+        output = run_forward(pipe).flatten()
+        image_slice_disabled = np.concatenate((output[:8], output[-8:]))
+
+        assert np.allclose(original_image_slice, image_slice_enabled, atol=expected_atol), (
+            "MagCache outputs should not differ too much from baseline."
+        )
+
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-4), (
+            "Outputs after disabling cache should match original inference exactly."
         )
 
 
