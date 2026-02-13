@@ -1949,7 +1949,7 @@ def _flash_split_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     attn_mask: Optional[torch.Tensor] = None,
-    seq_len: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed
+    seq_lens: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_lens is passed
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
@@ -1958,7 +1958,7 @@ def _flash_split_attention(
 ) -> torch.Tensor:
     return __split_attention(
         lambda q, k, v, mask: _flash_attention(q, k, v, mask, dropout_p, is_causal, scale, return_lse, _parallel_config),
-        query, key, value, attn_mask, seq_len,
+        query, key, value, attn_mask, seq_lens,
     )
 
 
@@ -2008,7 +2008,7 @@ def _flash_hub_split_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     attn_mask: Optional[torch.Tensor] = None,
-    seq_len: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed
+    seq_lens: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_lens is passed
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
@@ -2017,7 +2017,7 @@ def _flash_hub_split_attention(
 ) -> torch.Tensor:
     return __split_attention(
         lambda q, k, v, mask: _flash_attention_hub(q, k, v, mask, dropout_p, is_causal, scale, return_lse, _parallel_config),
-        query, key, value, attn_mask, seq_len,
+        query, key, value, attn_mask, seq_lens,
     )
 
 
@@ -2527,20 +2527,20 @@ def __split_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     attn_mask: Optional[torch.Tensor] = None,
-    seq_len: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed - both must match
+    seq_lens: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed - both must match
 ):
     batch_size, batch_seq_len = query.shape[:2]
-    if seq_len is None:
+    if seq_lens is None:
         return attn_fn(query, key, value, attn_mask)
-    if all(sample_seq_len == batch_seq_len for sample_seq_len in seq_len):
+    if all(sample_seq_len == batch_seq_len for sample_seq_len in seq_lens):
         return attn_fn(query, key, value, None)
-    if any(sample_seq_len > batch_seq_len for sample_seq_len in seq_len):
+    if any(sample_seq_len > batch_seq_len for sample_seq_len in seq_lens):
         raise ValueError("Attention sequence lengths cannot be longer than maximum sequence length")
-    if len(seq_len) != batch_size:
+    if len(seq_lens) != batch_size:
         raise ValueError("Attention sequence lengths must match the batch size")
 
     result = []
-    for index, sample_seq_len in enumerate(seq_len):
+    for index, sample_seq_len in enumerate(seq_lens):
         sliced_query = query[index, :sample_seq_len, :, :].unsqueeze(0)
         sliced_key =   key  [index, :sample_seq_len, :, :].unsqueeze(0)
         sliced_value = value[index, :sample_seq_len, :, :].unsqueeze(0)
@@ -2561,7 +2561,7 @@ def _native_split_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     attn_mask: Optional[torch.Tensor] = None,
-    seq_len: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed
+    seq_lens: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_lens is passed
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
@@ -2571,7 +2571,7 @@ def _native_split_attention(
 ) -> torch.Tensor:
     return __split_attention(
         lambda q, k, v, mask: _native_attention(q, k, v, mask, dropout_p, is_causal, scale, enable_gqa, return_lse, _parallel_config),
-        query, key, value, attn_mask, seq_len,
+        query, key, value, attn_mask, seq_lens,
     )
 
 @_AttentionBackendRegistry.register(
