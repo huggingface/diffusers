@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -55,9 +55,9 @@ class HunyuanVideo15AttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         # 1. QKV projections
         query = attn.to_q(hidden_states)
@@ -140,7 +140,7 @@ class HunyuanVideo15AttnProcessor2_0:
 class HunyuanVideo15PatchEmbed(nn.Module):
     def __init__(
         self,
-        patch_size: Union[int, Tuple[int, int, int]] = 16,
+        patch_size: int | tuple[int, int, int] = 16,
         in_chans: int = 3,
         embed_dim: int = 768,
     ) -> None:
@@ -156,7 +156,7 @@ class HunyuanVideo15PatchEmbed(nn.Module):
 
 
 class HunyuanVideo15AdaNorm(nn.Module):
-    def __init__(self, in_features: int, out_features: Optional[int] = None) -> None:
+    def __init__(self, in_features: int, out_features: int | None = None) -> None:
         super().__init__()
 
         out_features = out_features or 2 * in_features
@@ -165,7 +165,7 @@ class HunyuanVideo15AdaNorm(nn.Module):
 
     def forward(
         self, temb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         temb = self.linear(self.nonlinearity(temb))
         gate_msa, gate_mlp = temb.chunk(2, dim=1)
         gate_msa, gate_mlp = gate_msa.unsqueeze(1), gate_mlp.unsqueeze(1)
@@ -200,7 +200,7 @@ class HunyuanVideo15TimeEmbedding(nn.Module):
     def forward(
         self,
         timestep: torch.Tensor,
-        timestep_r: Optional[torch.Tensor] = None,
+        timestep_r: torch.Tensor | None = None,
     ) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=timestep.dtype))
@@ -244,7 +244,7 @@ class HunyuanVideo15IndividualTokenRefinerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         norm_hidden_states = self.norm1(hidden_states)
 
@@ -292,7 +292,7 @@ class HunyuanVideo15IndividualTokenRefiner(nn.Module):
         self,
         hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> None:
         self_attn_mask = None
         if attention_mask is not None:
@@ -341,7 +341,7 @@ class HunyuanVideo15TokenRefiner(nn.Module):
         self,
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
-        attention_mask: Optional[torch.LongTensor] = None,
+        attention_mask: torch.LongTensor | None = None,
     ) -> torch.Tensor:
         if attention_mask is None:
             pooled_projections = hidden_states.mean(dim=1)
@@ -359,7 +359,7 @@ class HunyuanVideo15TokenRefiner(nn.Module):
 
 
 class HunyuanVideo15RotaryPosEmbed(nn.Module):
-    def __init__(self, patch_size: int, patch_size_t: int, rope_dim: List[int], theta: float = 256.0) -> None:
+    def __init__(self, patch_size: int, patch_size_t: int, rope_dim: list[int], theta: float = 256.0) -> None:
         super().__init__()
 
         self.patch_size = patch_size
@@ -468,11 +468,11 @@ class HunyuanVideo15TransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: torch.Tensor | None = None,
+        freqs_cis: tuple[torch.Tensor, torch.Tensor] | None = None,
         *args,
         **kwargs,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # 1. Input normalization
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
@@ -542,7 +542,7 @@ class HunyuanVideo15Transformer3DModel(
             The dimension of the pooled projection of the text embeddings.
         rope_theta (`float`, defaults to `256.0`):
             The value of theta to use in the RoPE layer.
-        rope_axes_dim (`Tuple[int]`, defaults to `(16, 56, 56)`):
+        rope_axes_dim (`tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions of the axes to use in the RoPE layer.
     """
 
@@ -576,7 +576,7 @@ class HunyuanVideo15Transformer3DModel(
         text_embed_2_dim: int = 1472,
         image_embed_dim: int = 1152,
         rope_theta: float = 256.0,
-        rope_axes_dim: Tuple[int, ...] = (16, 56, 56),
+        rope_axes_dim: tuple[int, ...] = (16, 56, 56),
         # YiYi Notes: config based on target_size_config https://github.com/yiyixuxu/hy15/blob/main/hyvideo/pipelines/hunyuan_video_pipeline.py#L205
         target_size: int = 640,  # did not name sample_size since it is in pixel spaces
         task_type: str = "i2v",
@@ -627,13 +627,13 @@ class HunyuanVideo15Transformer3DModel(
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        timestep_r: Optional[torch.LongTensor] = None,
-        encoder_hidden_states_2: Optional[torch.Tensor] = None,
-        encoder_attention_mask_2: Optional[torch.Tensor] = None,
-        image_embeds: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        timestep_r: torch.LongTensor | None = None,
+        encoder_hidden_states_2: torch.Tensor | None = None,
+        encoder_attention_mask_2: torch.Tensor | None = None,
+        image_embeds: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.config.patch_size_t, self.config.patch_size, self.config.patch_size
         post_patch_num_frames = num_frames // p_t

@@ -15,7 +15,7 @@
 import functools
 import math
 from math import prod
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 import torch
@@ -96,10 +96,10 @@ def get_timestep_embedding(
 
 def apply_rotary_emb_qwen(
     x: torch.Tensor,
-    freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
+    freqs_cis: torch.Tensor | tuple[torch.Tensor],
     use_real: bool = True,
     use_real_unbind_dim: int = -1,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
     to the given query or key 'x' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
@@ -109,10 +109,10 @@ def apply_rotary_emb_qwen(
     Args:
         x (`torch.Tensor`):
             Query or key tensor to apply rotary embeddings. [B, S, H, D] xk (torch.Tensor): Key tensor to apply
-        freqs_cis (`Tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
+        freqs_cis (`tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
+        tuple[torch.Tensor, torch.Tensor]: tuple of modified query tensor and key tensor with rotary embeddings.
     """
     if use_real:
         cos, sin = freqs_cis  # [S, D]
@@ -143,8 +143,8 @@ def apply_rotary_emb_qwen(
 
 
 def compute_text_seq_len_from_mask(
-    encoder_hidden_states: torch.Tensor, encoder_hidden_states_mask: Optional[torch.Tensor]
-) -> Tuple[int, Optional[torch.Tensor], Optional[torch.Tensor]]:
+    encoder_hidden_states: torch.Tensor, encoder_hidden_states_mask: torch.Tensor | None
+) -> tuple[int, torch.Tensor | None, torch.Tensor | None]:
     """
     Compute text sequence length without assuming contiguous masks. Returns length for RoPE and a normalized bool mask.
     """
@@ -194,7 +194,7 @@ class QwenTimestepProjEmbeddings(nn.Module):
 
 
 class QwenEmbedRope(nn.Module):
-    def __init__(self, theta: int, axes_dim: List[int], scale_rope=False):
+    def __init__(self, theta: int, axes_dim: list[int], scale_rope=False):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
@@ -232,16 +232,16 @@ class QwenEmbedRope(nn.Module):
 
     def forward(
         self,
-        video_fhw: Union[Tuple[int, int, int], List[Tuple[int, int, int]]],
-        txt_seq_lens: Optional[List[int]] = None,
+        video_fhw: tuple[int, int, int, list[tuple[int, int, int]]],
+        txt_seq_lens: list[int] | None = None,
         device: torch.device = None,
-        max_txt_seq_len: Optional[Union[int, torch.Tensor]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        max_txt_seq_len: int | torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
-            video_fhw (`Tuple[int, int, int]` or `List[Tuple[int, int, int]]`):
+            video_fhw (`tuple[int, int, int]` or `list[tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video.
-            txt_seq_lens (`List[int]`, *optional*, **Deprecated**):
+            txt_seq_lens (`list[int]`, *optional*, **Deprecated**):
                 Deprecated parameter. Use `max_txt_seq_len` instead. If provided, the maximum value will be used.
             device: (`torch.device`, *optional*):
                 The device on which to perform the RoPE computation.
@@ -329,7 +329,7 @@ class QwenEmbedRope(nn.Module):
 
 
 class QwenEmbedLayer3DRope(nn.Module):
-    def __init__(self, theta: int, axes_dim: List[int], scale_rope=False):
+    def __init__(self, theta: int, axes_dim: list[int], scale_rope=False):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
@@ -366,13 +366,13 @@ class QwenEmbedLayer3DRope(nn.Module):
 
     def forward(
         self,
-        video_fhw: Union[Tuple[int, int, int], List[Tuple[int, int, int]]],
-        max_txt_seq_len: Union[int, torch.Tensor],
+        video_fhw: tuple[int, int, int, list[tuple[int, int, int]]],
+        max_txt_seq_len: int | torch.Tensor,
         device: torch.device = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
-            video_fhw (`Tuple[int, int, int]` or `List[Tuple[int, int, int]]`):
+            video_fhw (`tuple[int, int, int]` or `list[tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video, or a list of layer
                 structures.
             max_txt_seq_len (`int` or `torch.Tensor`):
@@ -490,8 +490,8 @@ class QwenDoubleStreamAttnProcessor2_0:
         hidden_states: torch.FloatTensor,  # Image stream
         encoder_hidden_states: torch.FloatTensor = None,  # Text stream
         encoder_hidden_states_mask: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        attention_mask: torch.FloatTensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.FloatTensor:
         if encoder_hidden_states is None:
             raise ValueError("QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)")
@@ -663,10 +663,10 @@ class QwenImageTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_mask: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        modulate_index: Optional[List[int]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
+        modulate_index: list[int] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # Get modulation parameters for both streams
         img_mod_params = self.img_mod(temb)  # [B, 6*dim]
 
@@ -753,7 +753,7 @@ class QwenImageTransformer2DModel(
             `encoder_hidden_states`).
         guidance_embeds (`bool`, defaults to `False`):
             Whether to use guidance embeddings for guidance-distilled variant of the model.
-        axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
+        axes_dims_rope (`tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions to use for the rotary positional embeddings.
     """
 
@@ -782,13 +782,13 @@ class QwenImageTransformer2DModel(
         self,
         patch_size: int = 2,
         in_channels: int = 64,
-        out_channels: Optional[int] = 16,
+        out_channels: int | None = 16,
         num_layers: int = 60,
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
         joint_attention_dim: int = 3584,
         guidance_embeds: bool = False,  # TODO: this should probably be removed
-        axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
+        axes_dims_rope: tuple[int, int, int] = (16, 56, 56),
         zero_cond_t: bool = False,
         use_additional_t_cond: bool = False,
         use_layer3d_rope: bool = False,
@@ -836,14 +836,14 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states: torch.Tensor = None,
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        img_shapes: Optional[List[Tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[List[int]] = None,
+        img_shapes: list[tuple[int, int, int]] | None = None,
+        txt_seq_lens: list[int] | None = None,
         guidance: torch.Tensor = None,  # TODO: this should probably be removed
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
         controlnet_block_samples=None,
         additional_t_cond=None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> torch.Tensor | Transformer2DModelOutput:
         """
         The [`QwenTransformer2DModel`] forward method.
 
@@ -858,9 +858,9 @@ class QwenImageTransformer2DModel(
                 (not just contiguous valid tokens followed by padding) since it's applied element-wise in attention.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            img_shapes (`List[Tuple[int, int, int]]`, *optional*):
+            img_shapes (`list[tuple[int, int, int]]`, *optional*):
                 Image shapes for RoPE computation.
-            txt_seq_lens (`List[int]`, *optional*, **Deprecated**):
+            txt_seq_lens (`list[int]`, *optional*, **Deprecated**):
                 Deprecated parameter. Use `encoder_hidden_states_mask` instead. If provided, the maximum value will be
                 used to compute RoPE sequence length.
             guidance (`torch.Tensor`, *optional*):

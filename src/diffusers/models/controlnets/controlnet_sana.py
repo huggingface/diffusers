@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import torch
 from torch import nn
@@ -35,7 +35,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class SanaControlNetOutput(BaseOutput):
-    controlnet_block_samples: Tuple[torch.Tensor]
+    controlnet_block_samples: tuple[torch.Tensor]
 
 
 class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
@@ -47,13 +47,13 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
     def __init__(
         self,
         in_channels: int = 32,
-        out_channels: Optional[int] = 32,
+        out_channels: int | None = 32,
         num_attention_heads: int = 70,
         attention_head_dim: int = 32,
         num_layers: int = 7,
-        num_cross_attention_heads: Optional[int] = 20,
-        cross_attention_head_dim: Optional[int] = 112,
-        cross_attention_dim: Optional[int] = 2240,
+        num_cross_attention_heads: int | None = 20,
+        cross_attention_head_dim: int | None = 112,
+        cross_attention_dim: int | None = 2240,
         caption_channels: int = 2304,
         mlp_ratio: float = 2.5,
         dropout: float = 0.0,
@@ -62,7 +62,7 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         patch_size: int = 1,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
-        interpolation_scale: Optional[int] = None,
+        interpolation_scale: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -125,11 +125,11 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         timestep: torch.LongTensor,
         controlnet_cond: torch.Tensor,
         conditioning_scale: float = 1.0,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor, ...] | Transformer2DModelOutput:
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.

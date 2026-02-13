@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -40,7 +40,7 @@ class GLUMBTempConv(nn.Module):
         in_channels: int,
         out_channels: int,
         expand_ratio: float = 4,
-        norm_type: Optional[str] = None,
+        norm_type: str | None = None,
         residual_connection: bool = True,
     ) -> None:
         super().__init__()
@@ -103,9 +103,9 @@ class SanaLinearAttnProcessor3_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         original_dtype = hidden_states.dtype
 
@@ -176,7 +176,7 @@ class WanRotaryPosEmbed(nn.Module):
     def __init__(
         self,
         attention_head_dim: int,
-        patch_size: Tuple[int, int, int],
+        patch_size: tuple[int, int, int],
         max_seq_len: int,
         theta: float = 10000.0,
     ):
@@ -290,8 +290,8 @@ class SanaAttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
@@ -358,15 +358,15 @@ class SanaVideoTransformerBlock(nn.Module):
         num_attention_heads: int = 20,
         attention_head_dim: int = 112,
         dropout: float = 0.0,
-        num_cross_attention_heads: Optional[int] = 20,
-        cross_attention_head_dim: Optional[int] = 112,
-        cross_attention_dim: Optional[int] = 2240,
+        num_cross_attention_heads: int | None = 20,
+        cross_attention_head_dim: int | None = 112,
+        cross_attention_dim: int | None = 2240,
         attention_bias: bool = True,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
         attention_out_bias: bool = True,
         mlp_ratio: float = 3.0,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
+        qk_norm: str | None = "rms_norm_across_heads",
         rope_max_seq_len: int = 1024,
     ) -> None:
         super().__init__()
@@ -409,14 +409,14 @@ class SanaVideoTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        timestep: torch.LongTensor | None = None,
         frames: int = None,
         height: int = None,
         width: int = None,
-        rotary_emb: Optional[torch.Tensor] = None,
+        rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
 
@@ -503,25 +503,25 @@ class SanaVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
     def __init__(
         self,
         in_channels: int = 16,
-        out_channels: Optional[int] = 16,
+        out_channels: int | None = 16,
         num_attention_heads: int = 20,
         attention_head_dim: int = 112,
         num_layers: int = 20,
-        num_cross_attention_heads: Optional[int] = 20,
-        cross_attention_head_dim: Optional[int] = 112,
-        cross_attention_dim: Optional[int] = 2240,
+        num_cross_attention_heads: int | None = 20,
+        cross_attention_head_dim: int | None = 112,
+        cross_attention_dim: int | None = 2240,
         caption_channels: int = 2304,
         mlp_ratio: float = 2.5,
         dropout: float = 0.0,
         attention_bias: bool = False,
         sample_size: int = 30,
-        patch_size: Tuple[int, int, int] = (1, 2, 2),
+        patch_size: tuple[int, int, int] = (1, 2, 2),
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
-        interpolation_scale: Optional[int] = None,
+        interpolation_scale: int | None = None,
         guidance_embeds: bool = False,
         guidance_embeds_scale: float = 0.1,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
+        qk_norm: str | None = "rms_norm_across_heads",
         rope_max_seq_len: int = 1024,
     ) -> None:
         super().__init__()
@@ -576,13 +576,13 @@ class SanaVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         timestep: torch.Tensor,
-        guidance: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_block_samples: Optional[Tuple[torch.Tensor]] = None,
+        guidance: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        controlnet_block_samples: tuple[torch.Tensor] | None = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor, ...] | Transformer2DModelOutput:
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.

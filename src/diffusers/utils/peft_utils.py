@@ -18,7 +18,6 @@ PEFT utilities: Utilities related to peft library
 import collections
 import functools
 import importlib
-from typing import Optional
 
 from packaging import version
 
@@ -124,7 +123,7 @@ def scale_lora_layers(model, weight):
             module.scale_layer(weight)
 
 
-def unscale_lora_layers(model, weight: Optional[float] = None):
+def unscale_lora_layers(model, weight: float | None = None):
     """
     Removes the previously passed weight given to the LoRA layers of the model.
 

@@ -363,6 +363,4 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
 
     @property
     def outputs(self):
-        return [
-            OutputParam.template("images"),
-        ]
+        return [OutputParam.template("images")]

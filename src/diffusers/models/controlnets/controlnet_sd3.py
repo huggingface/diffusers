@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -36,7 +36,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class SD3ControlNetOutput(BaseOutput):
-    controlnet_block_samples: Tuple[torch.Tensor]
+    controlnet_block_samples: tuple[torch.Tensor]
 
 
 class SD3ControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
@@ -69,7 +69,7 @@ class SD3ControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMix
             The maximum latent height/width of positional embeddings.
         extra_conditioning_channels (`int`, defaults to `0`):
             The number of extra channels to use for conditioning for patch embedding.
-        dual_attention_layers (`Tuple[int, ...]`, defaults to `()`):
+        dual_attention_layers (`tuple[int, ...]`, defaults to `()`):
             The number of dual-stream transformer blocks to use.
         qk_norm (`str`, *optional*, defaults to `None`):
             The normalization to use for query and key in the attention layer. If `None`, no normalization is used.
@@ -99,9 +99,9 @@ class SD3ControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMix
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
         extra_conditioning_channels: int = 0,
-        dual_attention_layers: Tuple[int, ...] = (),
-        qk_norm: Optional[str] = None,
-        pos_embed_type: Optional[str] = "sincos",
+        dual_attention_layers: tuple[int, ...] = (),
+        qk_norm: str | None = None,
+        pos_embed_type: str | None = "sincos",
         use_pos_embed: bool = True,
         force_zeros_for_pooled_projection: bool = True,
     ):
@@ -175,7 +175,7 @@ class SD3ControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMix
         self.gradient_checkpointing = False
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(self, chunk_size: int | None = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -278,9 +278,9 @@ class SD3ControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMix
         encoder_hidden_states: torch.Tensor = None,
         pooled_projections: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> torch.Tensor | Transformer2DModelOutput:
         """
         The [`SD3Transformer2DModel`] forward method.
 
@@ -382,7 +382,7 @@ class SD3MultiControlNetModel(ModelMixin):
     compatible with `SD3ControlNetModel`.
 
     Args:
-        controlnets (`List[SD3ControlNetModel]`):
+        controlnets (`list[SD3ControlNetModel]`):
             Provides additional conditioning to the unet during the denoising process. You must set multiple
             `SD3ControlNetModel` as a list.
     """
@@ -394,14 +394,14 @@ class SD3MultiControlNetModel(ModelMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        controlnet_cond: List[torch.tensor],
-        conditioning_scale: List[float],
+        controlnet_cond: list[torch.tensor],
+        conditioning_scale: list[float],
         pooled_projections: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[SD3ControlNetOutput, Tuple]:
+    ) -> SD3ControlNetOutput | tuple:
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             block_samples = controlnet(
                 hidden_states=hidden_states,
