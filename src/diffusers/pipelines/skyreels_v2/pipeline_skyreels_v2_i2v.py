@@ -157,7 +157,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixi
     def __init__(
         self,
         tokenizer: AutoTokenizer,
-        text_encoder: Union[T5EncoderModel, UMT5EncoderModel],
+        text_encoder: T5EncoderModel | UMT5EncoderModel,
         image_encoder: CLIPVisionModelWithProjection,
         image_processor: CLIPProcessor,
         transformer: SkyReelsV2Transformer3DModel,

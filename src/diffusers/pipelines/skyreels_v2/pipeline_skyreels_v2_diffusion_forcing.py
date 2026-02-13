@@ -153,7 +153,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
     def __init__(
         self,
         tokenizer: AutoTokenizer,
-        text_encoder: Union[T5EncoderModel, UMT5EncoderModel],
+        text_encoder: T5EncoderModel | UMT5EncoderModel,
         transformer: SkyReelsV2Transformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
