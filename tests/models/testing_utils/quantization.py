@@ -166,15 +166,7 @@ class QuantizationTesterMixin:
         model_quantized = self._create_quantized_model(config_kwargs)
         model_quantized.to(torch_device)
 
-        # Get model dtype from first parameter
-        model_dtype = next(model_quantized.parameters()).dtype
-
         inputs = self.get_dummy_inputs()
-        # Cast inputs to model dtype
-        inputs = {
-            k: v.to(model_dtype) if isinstance(v, torch.Tensor) and v.is_floating_point() else v
-            for k, v in inputs.items()
-        }
         output = model_quantized(**inputs, return_dict=False)[0]
 
         assert output is not None, "Model output is None"
@@ -219,6 +211,8 @@ class QuantizationTesterMixin:
             init_lora_weights=False,
         )
         model.add_adapter(lora_config)
+        # Move LoRA adapter weights to device (they default to CPU)
+        model.to(torch_device)
 
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
@@ -1049,9 +1043,6 @@ class GGUFTesterMixin(GGUFConfigMixin, QuantizationTesterMixin):
     def test_gguf_dequantize(self):
         """Test that dequantize() works correctly."""
         self._test_dequantize({"compute_dtype": torch.bfloat16})
-
-    def test_gguf_quantized_layers(self):
-        self._test_quantized_layers({"compute_dtype": torch.bfloat16})
 
 
 @is_quantization

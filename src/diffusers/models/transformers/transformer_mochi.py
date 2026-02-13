@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -104,7 +104,7 @@ class MochiRMSNormZero(nn.Module):
 
     def forward(
         self, hidden_states: torch.Tensor, emb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         hidden_states_dtype = hidden_states.dtype
 
         emb = self.linear(self.silu(emb))
@@ -205,8 +205,8 @@ class MochiTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
 
         if not self.context_pre_only:
@@ -268,8 +268,8 @@ class MochiRoPE(nn.Module):
         num_frames: int,
         height: int,
         width: int,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ) -> torch.Tensor:
         scale = (self.target_area / (height * width)) ** 0.5
 
@@ -297,9 +297,9 @@ class MochiRoPE(nn.Module):
         num_frames: int,
         height: int,
         width: int,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         pos = self._get_positions(num_frames, height, width, device, dtype)
         rope_cos, rope_sin = self._create_rope(pos_frequencies, pos)
         return rope_cos, rope_sin
@@ -348,7 +348,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         num_layers: int = 48,
         pooled_projection_dim: int = 1536,
         in_channels: int = 12,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         qk_norm: str = "rms_norm",
         text_embed_dim: int = 4096,
         time_embed_dim: int = 256,
@@ -410,7 +410,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_attention_mask: torch.Tensor,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         if attention_kwargs is not None:

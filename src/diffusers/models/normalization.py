@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import numbers
-from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -41,8 +40,8 @@ class AdaLayerNorm(nn.Module):
     def __init__(
         self,
         embedding_dim: int,
-        num_embeddings: Optional[int] = None,
-        output_dim: Optional[int] = None,
+        num_embeddings: int | None = None,
+        output_dim: int | None = None,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-5,
         chunk_dim: int = 0,
@@ -62,7 +61,7 @@ class AdaLayerNorm(nn.Module):
         self.norm = nn.LayerNorm(output_dim // 2, norm_eps, norm_elementwise_affine)
 
     def forward(
-        self, x: torch.Tensor, timestep: Optional[torch.Tensor] = None, temb: Optional[torch.Tensor] = None
+        self, x: torch.Tensor, timestep: torch.Tensor | None = None, temb: torch.Tensor | None = None
     ) -> torch.Tensor:
         if self.emb is not None:
             temb = self.emb(timestep)
@@ -116,8 +115,8 @@ class SD35AdaLayerNormZeroX(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, ...]:
+        emb: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, ...]:
         emb = self.linear(self.silu(emb))
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, shift_msa2, scale_msa2, gate_msa2 = emb.chunk(
             9, dim=1
@@ -137,7 +136,7 @@ class AdaLayerNormZero(nn.Module):
         num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
-    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None, norm_type="layer_norm", bias=True):
+    def __init__(self, embedding_dim: int, num_embeddings: int | None = None, norm_type="layer_norm", bias=True):
         super().__init__()
         if num_embeddings is not None:
             self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
@@ -158,11 +157,11 @@ class AdaLayerNormZero(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        timestep: Optional[torch.Tensor] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-        hidden_dtype: Optional[torch.dtype] = None,
-        emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        timestep: torch.Tensor | None = None,
+        class_labels: torch.LongTensor | None = None,
+        hidden_dtype: torch.dtype | None = None,
+        emb: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.emb is not None:
             emb = self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)
         emb = self.linear(self.silu(emb))
@@ -195,8 +194,8 @@ class AdaLayerNormZeroSingle(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        emb: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         emb = self.linear(self.silu(emb))
         shift_msa, scale_msa, gate_msa = emb.chunk(3, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
@@ -224,8 +223,8 @@ class LuminaRMSNormZero(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        emb: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         emb = self.linear(self.silu(emb))
         scale_msa, gate_msa, scale_mlp, gate_mlp = emb.chunk(4, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None])
@@ -257,10 +256,10 @@ class AdaLayerNormSingle(nn.Module):
     def forward(
         self,
         timestep: torch.Tensor,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        batch_size: Optional[int] = None,
-        hidden_dtype: Optional[torch.dtype] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        added_cond_kwargs: dict[str, torch.Tensor] | None = None,
+        batch_size: int | None = None,
+        hidden_dtype: torch.dtype | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # No modulation happening here.
         added_cond_kwargs = added_cond_kwargs or {"resolution": None, "aspect_ratio": None}
         embedded_timestep = self.emb(timestep, **added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_dtype)
@@ -280,7 +279,7 @@ class AdaGroupNorm(nn.Module):
     """
 
     def __init__(
-        self, embedding_dim: int, out_dim: int, num_groups: int, act_fn: Optional[str] = None, eps: float = 1e-5
+        self, embedding_dim: int, out_dim: int, num_groups: int, act_fn: str | None = None, eps: float = 1e-5
     ):
         super().__init__()
         self.num_groups = num_groups
@@ -366,7 +365,7 @@ class LuminaLayerNormContinuous(nn.Module):
         eps=1e-5,
         bias=True,
         norm_type="layer_norm",
-        out_dim: Optional[int] = None,
+        out_dim: int | None = None,
     ):
         super().__init__()
 
@@ -422,8 +421,8 @@ class CogView3PlusAdaLayerNormZeroTextImage(nn.Module):
         self,
         x: torch.Tensor,
         context: torch.Tensor,
-        emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        emb: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         emb = self.linear(self.silu(emb))
         (
             shift_msa,
@@ -463,7 +462,7 @@ class CogVideoXLayerNormZero(nn.Module):
 
     def forward(
         self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         shift, scale, gate, enc_shift, enc_scale, enc_gate = self.linear(self.silu(temb)).chunk(6, dim=1)
         hidden_states = self.norm(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
         encoder_hidden_states = self.norm(encoder_hidden_states) * (1 + enc_scale)[:, None, :] + enc_shift[:, None, :]
@@ -632,7 +631,7 @@ class LpNorm(nn.Module):
 
 def get_normalization(
     norm_type: str = "batch_norm",
-    num_features: Optional[int] = None,
+    num_features: int | None = None,
     eps: float = 1e-5,
     elementwise_affine: bool = True,
     bias: bool = True,

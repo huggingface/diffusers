@@ -11,8 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
 import json
-from typing import Dict, List, Optional, Union
 
 import safetensors
 import torch
@@ -114,7 +115,7 @@ class TextualInversionLoaderMixin:
     Load Textual Inversion tokens and embeddings to the tokenizer and text encoder.
     """
 
-    def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):  # noqa: F821
+    def maybe_convert_prompt(self, prompt: str | list[str], tokenizer: "PreTrainedTokenizer"):  # noqa: F821
         r"""
         Processes prompts that include a special token corresponding to a multi-vector textual inversion embedding to
         be replaced with multiple special tokens each corresponding to one of the vectors. If the prompt has no textual
@@ -129,14 +130,14 @@ class TextualInversionLoaderMixin:
         Returns:
             `str` or list of `str`: The converted prompt
         """
-        if not isinstance(prompt, List):
+        if not isinstance(prompt, list):
             prompts = [prompt]
         else:
             prompts = prompt
 
         prompts = [self._maybe_convert_prompt(p, tokenizer) for p in prompts]
 
-        if not isinstance(prompt, List):
+        if not isinstance(prompt, list):
             return prompts[0]
 
         return prompts
@@ -265,10 +266,10 @@ class TextualInversionLoaderMixin:
     @validate_hf_hub_args
     def load_textual_inversion(
         self,
-        pretrained_model_name_or_path: Union[str, List[str], Dict[str, torch.Tensor], List[Dict[str, torch.Tensor]]],
-        token: Optional[Union[str, List[str]]] = None,
-        tokenizer: Optional["PreTrainedTokenizer"] = None,  # noqa: F821
-        text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
+        pretrained_model_name_or_path: str | list[str] | dict[str, torch.Tensor] | list[dict[str, torch.Tensor]],
+        token: str | list[str] | None = None,
+        tokenizer: "PreTrainedTokenizer" | None = None,  # noqa: F821
+        text_encoder: "PreTrainedModel" | None = None,  # noqa: F821
         **kwargs,
     ):
         r"""
@@ -276,7 +277,7 @@ class TextualInversionLoaderMixin:
         Automatic1111 formats are supported).
 
         Parameters:
-            pretrained_model_name_or_path (`str` or `os.PathLike` or `List[str or os.PathLike]` or `Dict` or `List[Dict]`):
+            pretrained_model_name_or_path (`str` or `os.PathLike` or `list[str or os.PathLike]` or `Dict` or `list[Dict]`):
                 Can be either one of the following or a list of them:
 
                     - A string, the *model id* (for example `sd-concepts-library/low-poly-hd-logos-icons`) of a
@@ -287,7 +288,7 @@ class TextualInversionLoaderMixin:
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
-            token (`str` or `List[str]`, *optional*):
+            token (`str` or `list[str]`, *optional*):
                 Override the token to use for the textual inversion weights. If `pretrained_model_name_or_path` is a
                 list, then `token` must also be a list of equal length.
             text_encoder ([`~transformers.CLIPTextModel`], *optional*):
@@ -301,14 +302,14 @@ class TextualInversionLoaderMixin:
                     - The saved textual inversion file is in 🤗 Diffusers format, but was saved under a specific weight
                       name such as `text_inv.bin`.
                     - The saved textual inversion file is in the Automatic1111 format.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
@@ -460,9 +461,9 @@ class TextualInversionLoaderMixin:
 
     def unload_textual_inversion(
         self,
-        tokens: Optional[Union[str, List[str]]] = None,
-        tokenizer: Optional["PreTrainedTokenizer"] = None,
-        text_encoder: Optional["PreTrainedModel"] = None,
+        tokens: str | list[str] | None = None,
+        tokenizer: "PreTrainedTokenizer" | None = None,
+        text_encoder: "PreTrainedModel" | None = None,
     ):
         r"""
         Unload Textual Inversion embeddings from the text encoder of [`StableDiffusionPipeline`]

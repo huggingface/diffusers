@@ -21,7 +21,7 @@ import importlib
 import re
 import types
 from fnmatch import fnmatch
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from packaging import version
 
@@ -119,7 +119,7 @@ if (
     _update_torch_safe_globals()
 
 
-def fuzzy_match_size(config_name: str) -> Optional[str]:
+def fuzzy_match_size(config_name: str) -> str | None:
     """
     Extract the size digit from strings like "4weight", "8weight". Returns the digit as an integer if found, otherwise
     None.
@@ -271,7 +271,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             f"dtype you are using should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
         )
 
-    def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         max_memory = {key: val * 0.9 for key, val in max_memory.items()}
         return max_memory
 
@@ -280,7 +280,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         model: "ModelMixin",
         param_value: "torch.Tensor",
         param_name: str,
-        state_dict: Dict[str, Any],
+        state_dict: dict[str, Any],
         **kwargs,
     ) -> bool:
         param_device = kwargs.pop("param_device", None)
@@ -301,8 +301,8 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         param_value: "torch.Tensor",
         param_name: str,
         target_device: "torch.device",
-        state_dict: Dict[str, Any],
-        unexpected_keys: List[str],
+        state_dict: dict[str, Any],
+        unexpected_keys: list[str],
         **kwargs,
     ):
         r"""
@@ -365,7 +365,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         self,
         model: "ModelMixin",
         device_map,
-        keep_in_fp32_modules: List[str] = [],
+        keep_in_fp32_modules: list[str] = [],
         **kwargs,
     ):
         self.modules_to_not_convert = self.quantization_config.modules_to_not_convert

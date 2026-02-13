@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import torch
 
@@ -9,7 +9,7 @@ from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
 
 
-def gumbel_noise(t: torch.Tensor, generator: Optional[torch.Generator] = None) -> torch.Tensor:
+def gumbel_noise(t: torch.Tensor, generator: torch.Generator | None = None) -> torch.Tensor:
     """
     Generate Gumbel noise for sampling.
 
@@ -32,7 +32,7 @@ def mask_by_random_topk(
     mask_len: torch.Tensor,
     probs: torch.Tensor,
     temperature: float = 1.0,
-    generator: Optional[torch.Generator] = None,
+    generator: torch.Generator | None = None,
 ) -> torch.Tensor:
     """
     Mask tokens by selecting the top-k lowest confidence scores with temperature-based randomness.
@@ -73,7 +73,7 @@ class AmusedSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Generator | None = None
 
 
 class AmusedScheduler(SchedulerMixin, ConfigMixin):
@@ -96,8 +96,8 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
 
     order = 1
 
-    temperatures: Optional[torch.Tensor]
-    timesteps: Optional[torch.Tensor]
+    temperatures: torch.Generator | None
+    timesteps: torch.Generator | None
 
     @register_to_config
     def __init__(
@@ -111,23 +111,9 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int,
-        temperature: Union[float, Tuple[float, float], List[float]] = (2, 0),
-        device: Optional[Union[str, torch.device]] = None,
-    ) -> None:
-        """
-        Set the discrete timesteps used for the diffusion chain (to be run before inference).
-
-        Args:
-            num_inference_steps (`int`):
-                The number of diffusion steps used when generating samples with a pre-trained model.
-            temperature (`Union[float, Tuple[float, float], List[float]]`, *optional*, defaults to `(2, 0)`):
-                Temperature parameter(s) for controlling the randomness of sampling. If a tuple or list is provided,
-                temperatures will be linearly interpolated between the first and second values across all timesteps. If
-                a single value is provided, temperatures will be linearly interpolated from that value to 0.01.
-            device (`str` or `torch.device`, *optional*):
-                The device to which the timesteps and temperatures should be moved to. If `None`, the timesteps are not
-                moved.
-        """
+        temperature: int | tuple[int, int] | list[int] = (2, 0),
+        device: str | torch.device = None,
+    ):
         self.timesteps = torch.arange(num_inference_steps, device=device).flip(0)
 
         if isinstance(temperature, (tuple, list)):
@@ -141,35 +127,9 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.LongTensor,
         starting_mask_ratio: float = 1.0,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[AmusedSchedulerOutput, Tuple[torch.Tensor, torch.Tensor]]:
-        """
-        Predict the sample at the previous timestep by masking tokens based on confidence scores.
-
-        Args:
-            model_output (`torch.Tensor`):
-                The direct output from the learned diffusion model. Typically of shape `(batch_size, num_tokens,
-                codebook_size)` or `(batch_size, codebook_size, height, width)` for 2D inputs.
-            timestep (`int`):
-                The current discrete timestep in the diffusion chain.
-            sample (`torch.LongTensor`):
-                A current instance of a sample created by the diffusion process. Contains token IDs, with masked
-                positions indicated by `mask_token_id`.
-            starting_mask_ratio (`float`, *optional*, defaults to 1.0):
-                A multiplier applied to the mask ratio schedule. Values less than 1.0 will result in fewer tokens being
-                masked at each step.
-            generator (`torch.Generator`, *optional*):
-                A random number generator for reproducible sampling.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether to return an [`~schedulers.scheduling_amused.AmusedSchedulerOutput`] or a plain tuple.
-
-        Returns:
-            [`~schedulers.scheduling_amused.AmusedSchedulerOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~schedulers.scheduling_amused.AmusedSchedulerOutput`] is returned,
-                otherwise a tuple is returned where the first element is the sample tensor (`prev_sample`) and the
-                second element is the predicted original sample tensor (`pred_original_sample`).
-        """
+    ) -> AmusedSchedulerOutput | tuple:
         two_dim_input = sample.ndim == 3 and model_output.ndim == 4
 
         if two_dim_input:
@@ -234,7 +194,7 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
         self,
         sample: torch.LongTensor,
         timesteps: int,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> torch.LongTensor:
         """
         Add noise to a sample by randomly masking tokens according to the masking schedule.
