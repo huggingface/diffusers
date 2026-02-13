@@ -78,12 +78,67 @@ python scripts/convert_cosmos_to_diffusers.py \
     --save_pipeline
 ```
 
+# Cosmos 2.5 Transfer
+
+Download checkpoint
+```bash
+hf download nvidia/Cosmos-Transfer2.5-2B
+```
+
+Convert checkpoint
+```bash
+# depth
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/depth/626e6618-bfcd-4d9a-a077-1409e2ce353f_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/depth \
+    --save_pipeline
+
+# edge
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/edge/61f5694b-0ad5-4ecd-8ad7-c8545627d125_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/edge/pipeline \
+    --save_pipeline
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/edge/models
+
+# blur
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/blur/ba2f44f2-c726-4fe7-949f-597069d9b91c_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/blur \
+    --save_pipeline
+
+# seg
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/seg/5136ef49-6d8d-42e8-8abf-7dac722a304a_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/general/seg \
+    --save_pipeline
+```
 """
 
 import argparse
 import pathlib
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import torch
 from accelerate import init_empty_weights
@@ -95,6 +150,7 @@ from diffusers import (
     AutoencoderKLWan,
     Cosmos2TextToImagePipeline,
     Cosmos2VideoToWorldPipeline,
+    CosmosControlNetModel,
     CosmosTextToWorldPipeline,
     CosmosTransformer3DModel,
     CosmosVideoToWorldPipeline,
@@ -103,6 +159,7 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers.pipelines.cosmos.pipeline_cosmos2_5_predict import Cosmos2_5_PredictBasePipeline
+from diffusers.pipelines.cosmos.pipeline_cosmos2_5_transfer import Cosmos2_5_TransferPipeline
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
@@ -356,7 +413,61 @@ TRANSFORMER_CONFIGS = {
         "crossattn_proj_in_channels": 100352,
         "encoder_hidden_states_channels": 1024,
     },
+    "Cosmos-2.5-Transfer-General-2B": {
+        "in_channels": 16 + 1,
+        "out_channels": 16,
+        "num_attention_heads": 16,
+        "attention_head_dim": 128,
+        "num_layers": 28,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (1.0, 3.0, 3.0),
+        "concat_padding_mask": True,
+        "extra_pos_embed_type": None,
+        "use_crossattn_projection": True,
+        "crossattn_proj_in_channels": 100352,
+        "encoder_hidden_states_channels": 1024,
+        "controlnet_block_every_n": 7,
+        "img_context_dim_in": 1152,
+        "img_context_dim_out": 2048,
+        "img_context_num_tokens": 256,
+    },
 }
+
+CONTROLNET_CONFIGS = {
+    "Cosmos-2.5-Transfer-General-2B": {
+        "n_controlnet_blocks": 4,
+        "model_channels": 2048,
+        "in_channels": 130,
+        "latent_channels": 18,  # (16 latent + 1 condition_mask) + 1 padding_mask = 18
+        "num_attention_heads": 16,
+        "attention_head_dim": 128,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "patch_size": (1, 2, 2),
+        "max_size": (128, 240, 240),
+        "rope_scale": (1.0, 3.0, 3.0),
+        "extra_pos_embed_type": None,
+        "img_context_dim_in": 1152,
+        "img_context_dim_out": 2048,
+        "use_crossattn_projection": True,
+        "crossattn_proj_in_channels": 100352,
+        "encoder_hidden_states_channels": 1024,
+    },
+}
+
+CONTROLNET_KEYS_RENAME_DICT = {
+    **TRANSFORMER_KEYS_RENAME_DICT_COSMOS_2_0,
+    "blocks": "blocks",
+    "control_embedder.proj.1": "patch_embed.proj",
+}
+
+
+CONTROLNET_SPECIAL_KEYS_REMAP = {**TRANSFORMER_SPECIAL_KEYS_REMAP_COSMOS_2_0}
 
 VAE_KEYS_RENAME_DICT = {
     "down.0": "down_blocks.0",
@@ -447,9 +558,12 @@ def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
     return state_dict
 
 
-def convert_transformer(transformer_type: str, ckpt_path: str, weights_only: bool = True):
+def convert_transformer(
+    transformer_type: str,
+    state_dict: Optional[Dict[str, Any]] = None,
+    weights_only: bool = True,
+):
     PREFIX_KEY = "net."
-    original_state_dict = get_state_dict(torch.load(ckpt_path, map_location="cpu", weights_only=weights_only))
 
     if "Cosmos-1.0" in transformer_type:
         TRANSFORMER_KEYS_RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT_COSMOS_1_0
@@ -467,23 +581,29 @@ def convert_transformer(transformer_type: str, ckpt_path: str, weights_only: boo
         config = TRANSFORMER_CONFIGS[transformer_type]
         transformer = CosmosTransformer3DModel(**config)
 
-    for key in list(original_state_dict.keys()):
+    old2new = {}
+    new2old = {}
+    for key in list(state_dict.keys()):
         new_key = key[:]
         if new_key.startswith(PREFIX_KEY):
             new_key = new_key.removeprefix(PREFIX_KEY)
         for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
         print(key, "->", new_key, flush=True)
-        update_state_dict_(original_state_dict, key, new_key)
+        assert new_key not in new2old, f"new key {new_key} already mapped"
+        assert key not in old2new, f"old key {key} already mapped"
+        old2new[key] = new_key
+        new2old[new_key] = key
+        update_state_dict_(state_dict, key, new_key)
 
-    for key in list(original_state_dict.keys()):
+    for key in list(state_dict.keys()):
         for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
             if special_key not in key:
                 continue
-            handler_fn_inplace(key, original_state_dict)
+            handler_fn_inplace(key, state_dict)
 
     expected_keys = set(transformer.state_dict().keys())
-    mapped_keys = set(original_state_dict.keys())
+    mapped_keys = set(state_dict.keys())
     missing_keys = expected_keys - mapped_keys
     unexpected_keys = mapped_keys - expected_keys
     if missing_keys:
@@ -497,8 +617,84 @@ def convert_transformer(transformer_type: str, ckpt_path: str, weights_only: boo
             print(k)
         sys.exit(2)
 
-    transformer.load_state_dict(original_state_dict, strict=True, assign=True)
+    transformer.load_state_dict(state_dict, strict=True, assign=True)
     return transformer
+
+
+def convert_controlnet(
+    transformer_type: str,
+    control_state_dict: Dict[str, Any],
+    base_state_dict: Dict[str, Any],
+    weights_only: bool = True,
+):
+    """
+    Convert controlnet weights.
+
+    Args:
+        transformer_type: The type of transformer/controlnet
+        control_state_dict: State dict containing controlnet-specific weights
+        base_state_dict: State dict containing base transformer weights (for shared modules)
+        weights_only: Whether to use weights_only loading
+    """
+    if transformer_type not in CONTROLNET_CONFIGS:
+        raise AssertionError(f"{transformer_type} does not define a ControlNet config")
+
+    PREFIX_KEY = "net."
+
+    # Process control-specific keys
+    for key in list(control_state_dict.keys()):
+        new_key = key[:]
+        if new_key.startswith(PREFIX_KEY):
+            new_key = new_key.removeprefix(PREFIX_KEY)
+        for replace_key, rename_key in CONTROLNET_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        update_state_dict_(control_state_dict, key, new_key)
+
+    for key in list(control_state_dict.keys()):
+        for special_key, handler_fn_inplace in CONTROLNET_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, control_state_dict)
+
+    # Copy shared weights from base transformer to controlnet
+    # These are the duplicated modules: patch_embed_base, time_embed, learnable_pos_embed, img_context_proj, crossattn_proj
+    shared_module_mappings = {
+        # transformer key prefix -> controlnet key prefix
+        "patch_embed.": "patch_embed_base.",
+        "time_embed.": "time_embed.",
+        "learnable_pos_embed.": "learnable_pos_embed.",
+        "img_context_proj.": "img_context_proj.",
+        "crossattn_proj.": "crossattn_proj.",
+    }
+
+    for key in list(base_state_dict.keys()):
+        for transformer_prefix, controlnet_prefix in shared_module_mappings.items():
+            if key.startswith(transformer_prefix):
+                controlnet_key = controlnet_prefix + key[len(transformer_prefix) :]
+                control_state_dict[controlnet_key] = base_state_dict[key].clone()
+                print(f"Copied shared weight: {key} -> {controlnet_key}", flush=True)
+                break
+
+    cfg = CONTROLNET_CONFIGS[transformer_type]
+    controlnet = CosmosControlNetModel(**cfg)
+
+    expected_keys = set(controlnet.state_dict().keys())
+    mapped_keys = set(control_state_dict.keys())
+    missing_keys = expected_keys - mapped_keys
+    unexpected_keys = mapped_keys - expected_keys
+    if missing_keys:
+        print(f"WARNING: missing controlnet keys ({len(missing_keys)}):", file=sys.stderr, flush=True)
+        for k in sorted(missing_keys):
+            print(k, file=sys.stderr)
+        sys.exit(3)
+    if unexpected_keys:
+        print(f"WARNING: unexpected controlnet keys ({len(unexpected_keys)}):", file=sys.stderr, flush=True)
+        for k in sorted(unexpected_keys):
+            print(k, file=sys.stderr)
+        sys.exit(4)
+
+    controlnet.load_state_dict(control_state_dict, strict=True, assign=True)
+    return controlnet
 
 
 def convert_vae(vae_type: str):
@@ -586,7 +782,7 @@ def save_pipeline_cosmos_2_0(args, transformer, vae):
     pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
 
-def save_pipeline_cosmos2_5(args, transformer, vae):
+def save_pipeline_cosmos2_5_predict(args, transformer, vae):
     text_encoder_path = args.text_encoder_path or "nvidia/Cosmos-Reason1-7B"
     tokenizer_path = args.tokenizer_path or "Qwen/Qwen2.5-VL-7B-Instruct"
 
@@ -607,6 +803,35 @@ def save_pipeline_cosmos2_5(args, transformer, vae):
         text_encoder=text_encoder,
         tokenizer=tokenizer,
         transformer=transformer,
+        vae=vae,
+        scheduler=scheduler,
+        safety_checker=lambda *args, **kwargs: None,
+    )
+    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+
+
+def save_pipeline_cosmos2_5_transfer(args, transformer, controlnet, vae):
+    text_encoder_path = args.text_encoder_path or "nvidia/Cosmos-Reason1-7B"
+    tokenizer_path = args.tokenizer_path or "Qwen/Qwen2.5-VL-7B-Instruct"
+
+    text_encoder = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        text_encoder_path, torch_dtype="auto", device_map="cpu"
+    )
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+
+    scheduler = UniPCMultistepScheduler(
+        use_karras_sigmas=True,
+        use_flow_sigmas=True,
+        prediction_type="flow_prediction",
+        sigma_max=200.0,
+        sigma_min=0.01,
+    )
+
+    pipe = Cosmos2_5_TransferPipeline(
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        transformer=transformer,
+        controlnet=controlnet,
         vae=vae,
         scheduler=scheduler,
         safety_checker=lambda *args, **kwargs: None,
@@ -642,18 +867,61 @@ if __name__ == "__main__":
     args = get_args()
 
     transformer = None
+    controlnet = None
     dtype = DTYPE_MAPPING[args.dtype]
 
     if args.save_pipeline:
         assert args.transformer_ckpt_path is not None
         assert args.vae_type is not None
 
+    raw_state_dict = None
     if args.transformer_ckpt_path is not None:
         weights_only = "Cosmos-1.0" in args.transformer_type
-        transformer = convert_transformer(args.transformer_type, args.transformer_ckpt_path, weights_only)
-        transformer = transformer.to(dtype=dtype)
-        if not args.save_pipeline:
-            transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+        raw_state_dict = get_state_dict(
+            torch.load(args.transformer_ckpt_path, map_location="cpu", weights_only=weights_only)
+        )
+
+    if raw_state_dict is not None:
+        if "Transfer" in args.transformer_type:
+            base_state_dict = {}
+            control_state_dict = {}
+            for k, v in raw_state_dict.items():
+                plain_key = k.removeprefix("net.") if k.startswith("net.") else k
+                if "control" in plain_key.lower():
+                    control_state_dict[k] = v
+                else:
+                    base_state_dict[k] = v
+            assert len(base_state_dict.keys() & control_state_dict.keys()) == 0
+
+            # Convert transformer first to get the processed base state dict
+            transformer = convert_transformer(
+                args.transformer_type, state_dict=base_state_dict, weights_only=weights_only
+            )
+            transformer = transformer.to(dtype=dtype)
+
+            # Get converted transformer state dict to copy shared weights to controlnet
+            converted_base_state_dict = transformer.state_dict()
+
+            # Convert controlnet with both control-specific and shared weights from transformer
+            controlnet = convert_controlnet(
+                args.transformer_type, control_state_dict, converted_base_state_dict, weights_only=weights_only
+            )
+            controlnet = controlnet.to(dtype=dtype)
+
+            if not args.save_pipeline:
+                transformer.save_pretrained(
+                    pathlib.Path(args.output_path) / "transformer", safe_serialization=True, max_shard_size="5GB"
+                )
+                controlnet.save_pretrained(
+                    pathlib.Path(args.output_path) / "controlnet", safe_serialization=True, max_shard_size="5GB"
+                )
+        else:
+            transformer = convert_transformer(
+                args.transformer_type, state_dict=raw_state_dict, weights_only=weights_only
+            )
+            transformer = transformer.to(dtype=dtype)
+            if not args.save_pipeline:
+                transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
     if args.vae_type is not None:
         if "Cosmos-1.0" in args.transformer_type:
@@ -667,6 +935,8 @@ if __name__ == "__main__":
 
         if not args.save_pipeline:
             vae.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+    else:
+        vae = None
 
     if args.save_pipeline:
         if "Cosmos-1.0" in args.transformer_type:
@@ -678,6 +948,11 @@ if __name__ == "__main__":
             assert args.tokenizer_path is not None
             save_pipeline_cosmos_2_0(args, transformer, vae)
         elif "Cosmos-2.5" in args.transformer_type:
-            save_pipeline_cosmos2_5(args, transformer, vae)
+            if "Predict" in args.transformer_type:
+                save_pipeline_cosmos2_5_predict(args, transformer, vae)
+            elif "Transfer" in args.transformer_type:
+                save_pipeline_cosmos2_5_transfer(args, transformer, None, vae)
+            else:
+                raise AssertionError(f"{args.transformer_type} not supported")
         else:
             raise AssertionError(f"{args.transformer_type} not supported")

@@ -42,7 +42,7 @@ def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, enco
         encoder_hidden_states = hidden_states
 
     if attn.fused_projections:
-        if attn.cross_attention_dim_head is None:
+        if not attn.is_cross_attention:
             # In self-attention layers, we can fuse the entire QKV projection into a single linear
             query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
         else:
@@ -134,7 +134,8 @@ class WanAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
-                parallel_config=self._parallel_config,
+                # Reference: https://github.com/huggingface/diffusers/pull/12909
+                parallel_config=None,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -147,7 +148,8 @@ class WanAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            parallel_config=self._parallel_config,
+            # Reference: https://github.com/huggingface/diffusers/pull/12909
+            parallel_config=(self._parallel_config if encoder_hidden_states is None else None),
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -212,7 +214,10 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
             self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
             self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
 
-        self.is_cross_attention = cross_attention_dim_head is not None
+        if is_cross_attention is not None:
+            self.is_cross_attention = is_cross_attention
+        else:
+            self.is_cross_attention = cross_attention_dim_head is not None
 
         self.set_processor(processor)
 
@@ -220,7 +225,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         if getattr(self, "fused_projections", False):
             return
 
-        if self.cross_attention_dim_head is None:
+        if not self.is_cross_attention:
             concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
             concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
             out_features, in_features = concatenated_weights.shape
@@ -552,9 +557,11 @@ class WanTransformer3DModel(
         "blocks.0": {
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
-        "blocks.*": {
-            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-        },
+        # Reference: https://github.com/huggingface/diffusers/pull/12909
+        # We need to disable the splitting of encoder_hidden_states because the image_encoder
+        # (Wan 2.1 I2V) consistently generates 257 tokens for image_embed. This causes the shape
+        # of encoder_hidden_states—whose token count is always 769 (512 + 257) after concatenation
+        # —to be indivisible by the number of devices in the CP.
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         "": {
             "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),

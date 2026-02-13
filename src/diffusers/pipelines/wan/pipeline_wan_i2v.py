@@ -637,6 +637,22 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
 
+        patch_size = (
+            self.transformer.config.patch_size
+            if self.transformer is not None
+            else self.transformer_2.config.patch_size
+        )
+        h_multiple_of = self.vae_scale_factor_spatial * patch_size[1]
+        w_multiple_of = self.vae_scale_factor_spatial * patch_size[2]
+        calc_height = height // h_multiple_of * h_multiple_of
+        calc_width = width // w_multiple_of * w_multiple_of
+        if height != calc_height or width != calc_width:
+            logger.warning(
+                f"`height` and `width` must be multiples of ({h_multiple_of}, {w_multiple_of}) for proper patchification. "
+                f"Adjusting ({height}, {width}) -> ({calc_height}, {calc_width})."
+            )
+            height, width = calc_height, calc_width
+
         if self.config.boundary_ratio is not None and guidance_scale_2 is None:
             guidance_scale_2 = guidance_scale
 

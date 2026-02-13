@@ -574,7 +574,6 @@ class QwenDoubleStreamAttnProcessor2_0:
             if encoder_hidden_states_len is not None:
                 attention_kwargs['seq_len'] = [text_sample_len + image_seq_len for text_sample_len in encoder_hidden_states_len]
 
-        # Compute joint attention
         joint_hidden_states = dispatch_attention_fn(
             joint_query,
             joint_key,
@@ -596,11 +595,11 @@ class QwenDoubleStreamAttnProcessor2_0:
         txt_attn_output = joint_hidden_states[:, image_seq_len:, :]  # Text part
 
         # Apply output projections
-        img_attn_output = attn.to_out[0](img_attn_output)
+        img_attn_output = attn.to_out[0](img_attn_output.contiguous())
         if len(attn.to_out) > 1:
             img_attn_output = attn.to_out[1](img_attn_output)  # dropout
 
-        txt_attn_output = attn.to_add_out(txt_attn_output)
+        txt_attn_output = attn.to_add_out(txt_attn_output.contiguous())
 
         return img_attn_output, txt_attn_output
 
@@ -798,11 +797,14 @@ class QwenImageTransformer2DModel(
     _no_split_modules = ["QwenImageTransformerBlock"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _repeated_blocks = ["QwenImageTransformerBlock"]
+    # Make CP plan compatible with https://github.com/huggingface/diffusers/pull/12702
     _cp_plan = {
-        "": {
+        "transformer_blocks.0": {
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
             "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "encoder_hidden_states_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        },
+        "transformer_blocks.*": {
+            "modulate_index": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
         },
         "pos_embed": {
             0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
@@ -954,8 +956,6 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
         # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
-        if encoder_hidden_states_mask is not None and torch.all(encoder_hidden_states_mask):
-            encoder_hidden_states_mask = None
         text_seq_len, text_seq_len_per_sample, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
             encoder_hidden_states, encoder_hidden_states_mask
         )
@@ -971,17 +971,27 @@ class QwenImageTransformer2DModel(
 
         image_rotary_emb = self.pos_embed(img_shapes, max_txt_seq_len=text_seq_len, device=hidden_states.device)
 
+        # Construct joint attention mask once to avoid reconstructing in every block
+        # This eliminates 60 GPU syncs during training while maintaining torch.compile compatibility
+        block_attention_kwargs = attention_kwargs.copy() if attention_kwargs is not None else {}
+        if encoder_hidden_states_mask is not None:
+            # Build joint mask: [text_mask, all_ones_for_image]
+            batch_size, image_seq_len = hidden_states.shape[:2]
+            image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
+            joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
+            block_attention_kwargs["attention_mask"] = joint_attention_mask
+
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    encoder_hidden_states_mask,
+                    None,  # Don't pass encoder_hidden_states_mask (using attention_mask instead)
                     temb,
                     image_rotary_emb,
                     text_seq_len_per_sample,
-                    attention_kwargs,
+                    block_attention_kwargs,
                     modulate_index,
                 )
 
@@ -989,11 +999,11 @@ class QwenImageTransformer2DModel(
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    encoder_hidden_states_mask=encoder_hidden_states_mask,
+                    encoder_hidden_states_mask=None,  # Don't pass (using attention_mask instead)
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
                     encoder_hidden_states_len=text_seq_len_per_sample,
-                    joint_attention_kwargs=attention_kwargs,
+                    joint_attention_kwargs=block_attention_kwargs,
                     modulate_index=modulate_index,
                 )
 

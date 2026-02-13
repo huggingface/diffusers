@@ -457,7 +457,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                     - Shorthands: `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`,
                       `float8_e4m3_tensor`, `float8_e4m3_row`,
 
-                - **Floating point X-bit quantization:**
+                - **Floating point X-bit quantization:** (in torchao <= 0.14.1, not supported in torchao >= 0.15.0)
                     - Full function names: `fpx_weight_only`
                     - Shorthands: `fpX_eAwB`, where `X` is the number of bits (between `1` to `7`), `A` is the number
                       of exponent bits and `B` is the number of mantissa bits. The constraint of `X == A + B + 1` must
@@ -531,11 +531,17 @@ class TorchAoConfig(QuantizationConfigMixin):
             TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
 
             if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
-                is_floating_quant_type = self.quant_type.startswith("float") or self.quant_type.startswith("fp")
-                if is_floating_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
+                is_floatx_quant_type = self.quant_type.startswith("fp")
+                is_float_quant_type = self.quant_type.startswith("float") or is_floatx_quant_type
+                if is_float_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
                     raise ValueError(
                         f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
                         f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
+                    )
+                elif is_floatx_quant_type and not is_torchao_version("<=", "0.14.1"):
+                    raise ValueError(
+                        f"Requested quantization type: {self.quant_type} is only supported in torchao <= 0.14.1. "
+                        f"Please downgrade to torchao <= 0.14.1 to use this quantization type."
                     )
 
                 raise ValueError(
@@ -617,12 +623,11 @@ class TorchAoConfig(QuantizationConfigMixin):
         """
 
         if is_torchao_available():
-            # TODO(aryan): Support autoquant and sparsify
+            # TODO(aryan): Support sparsify
             from torchao.quantization import (
                 float8_dynamic_activation_float8_weight,
                 float8_static_activation_float8_weight,
                 float8_weight_only,
-                fpx_weight_only,
                 int4_weight_only,
                 int8_dynamic_activation_int4_weight,
                 int8_dynamic_activation_int8_weight,
@@ -630,6 +635,8 @@ class TorchAoConfig(QuantizationConfigMixin):
                 uintx_weight_only,
             )
 
+            if is_torchao_version("<=", "0.14.1"):
+                from torchao.quantization import fpx_weight_only
             # TODO(aryan): Add a note on how to use PerAxis and PerGroup observers
             from torchao.quantization.observer import PerRow, PerTensor
 
@@ -650,18 +657,21 @@ class TorchAoConfig(QuantizationConfigMixin):
                 return types
 
             def generate_fpx_quantization_types(bits: int):
-                types = {}
+                if is_torchao_version("<=", "0.14.1"):
+                    types = {}
 
-                for ebits in range(1, bits):
-                    mbits = bits - ebits - 1
-                    types[f"fp{bits}_e{ebits}m{mbits}"] = partial(fpx_weight_only, ebits=ebits, mbits=mbits)
+                    for ebits in range(1, bits):
+                        mbits = bits - ebits - 1
+                        types[f"fp{bits}_e{ebits}m{mbits}"] = partial(fpx_weight_only, ebits=ebits, mbits=mbits)
 
-                non_sign_bits = bits - 1
-                default_ebits = (non_sign_bits + 1) // 2
-                default_mbits = non_sign_bits - default_ebits
-                types[f"fp{bits}"] = partial(fpx_weight_only, ebits=default_ebits, mbits=default_mbits)
+                    non_sign_bits = bits - 1
+                    default_ebits = (non_sign_bits + 1) // 2
+                    default_mbits = non_sign_bits - default_ebits
+                    types[f"fp{bits}"] = partial(fpx_weight_only, ebits=default_ebits, mbits=default_mbits)
 
-                return types
+                    return types
+                else:
+                    raise ValueError("Floating point X-bit quantization is not supported in torchao >= 0.15.0")
 
             INT4_QUANTIZATION_TYPES = {
                 # int4 weight + bfloat16/float16 activation
@@ -710,14 +720,14 @@ class TorchAoConfig(QuantizationConfigMixin):
                 **generate_float8dq_types(torch.float8_e4m3fn),
                 # float8 weight + float8 activation (static)
                 "float8_static_activation_float8_weight": float8_static_activation_float8_weight,
-                # For fpx, only x <= 8 is supported by default. Other dtypes can be explored by users directly
-                # fpx weight + bfloat16/float16 activation
-                **generate_fpx_quantization_types(3),
-                **generate_fpx_quantization_types(4),
-                **generate_fpx_quantization_types(5),
-                **generate_fpx_quantization_types(6),
-                **generate_fpx_quantization_types(7),
             }
+
+            if is_torchao_version("<=", "0.14.1"):
+                FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(3))
+                FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(4))
+                FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(5))
+                FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(6))
+                FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(7))
 
             UINTX_QUANTIZATION_DTYPES = {
                 "uintx_weight_only": uintx_weight_only,

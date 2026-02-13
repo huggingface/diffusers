@@ -22,7 +22,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_npu_available, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -130,9 +130,9 @@ class FluxAttnProcessor:
             encoder_hidden_states, hidden_states = hidden_states.split_with_sizes(
                 [encoder_hidden_states.shape[1], hidden_states.shape[1] - encoder_hidden_states.shape[1]], dim=1
             )
-            hidden_states = attn.to_out[0](hidden_states)
+            hidden_states = attn.to_out[0](hidden_states.contiguous())
             hidden_states = attn.to_out[1](hidden_states)
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states.contiguous())
 
             return hidden_states, encoder_hidden_states
         else:
@@ -717,11 +717,7 @@ class FluxTransformer2DModel(
             img_ids = img_ids[0]
 
         ids = torch.cat((txt_ids, img_ids), dim=0)
-        if is_torch_npu_available():
-            freqs_cos, freqs_sin = self.pos_embed(ids.cpu())
-            image_rotary_emb = (freqs_cos.npu(), freqs_sin.npu())
-        else:
-            image_rotary_emb = self.pos_embed(ids)
+        image_rotary_emb = self.pos_embed(ids)
 
         if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
             ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")

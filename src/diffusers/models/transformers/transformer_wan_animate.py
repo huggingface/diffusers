@@ -54,7 +54,7 @@ def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, enco
         encoder_hidden_states = hidden_states
 
     if attn.fused_projections:
-        if attn.cross_attention_dim_head is None:
+        if not attn.is_cross_attention:
             # In self-attention layers, we can fuse the entire QKV projection into a single linear
             query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
         else:
@@ -166,9 +166,11 @@ class MotionConv2d(nn.Module):
             # NOTE: the original implementation uses a 2D upfirdn operation with the upsampling and downsampling rates
             # set to 1, which should be equivalent to a 2D convolution
             expanded_kernel = self.blur_kernel[None, None, :, :].expand(self.in_channels, 1, -1, -1)
+            x = x.to(expanded_kernel.dtype)
             x = F.conv2d(x, expanded_kernel, padding=self.blur_padding, groups=self.in_channels)
 
         # Main Conv2D with scaling
+        x = x.to(self.weight.dtype)
         x = F.conv2d(x, self.weight * self.scale, bias=self.bias, stride=self.stride, padding=self.padding)
 
         # Activation with fused bias, if using
@@ -500,13 +502,16 @@ class WanAnimateFaceBlockCrossAttention(nn.Module, AttentionModuleMixin):
         dim_head: int = 64,
         eps: float = 1e-6,
         cross_attention_dim_head: Optional[int] = None,
+        bias: bool = True,
         processor=None,
     ):
         super().__init__()
         self.inner_dim = dim_head * heads
         self.heads = heads
-        self.cross_attention_head_dim = cross_attention_dim_head
+        self.cross_attention_dim_head = cross_attention_dim_head
         self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
+        self.use_bias = bias
+        self.is_cross_attention = cross_attention_dim_head is not None
 
         # 1. Pre-Attention Norms for the hidden_states (video latents) and encoder_hidden_states (motion vector).
         # NOTE: this is not used in "vanilla" WanAttention
@@ -514,10 +519,10 @@ class WanAnimateFaceBlockCrossAttention(nn.Module, AttentionModuleMixin):
         self.pre_norm_kv = nn.LayerNorm(dim, eps, elementwise_affine=False)
 
         # 2. QKV and Output Projections
-        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=True)
-        self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
-        self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
-        self.to_out = torch.nn.Linear(self.inner_dim, dim, bias=True)
+        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=bias)
+        self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=bias)
+        self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=bias)
+        self.to_out = torch.nn.Linear(self.inner_dim, dim, bias=bias)
 
         # 3. QK Norm
         # NOTE: this is applied after the reshape, so only over dim_head rather than dim_head * heads
@@ -609,7 +614,8 @@ class WanAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
-                parallel_config=self._parallel_config,
+                # Reference: https://github.com/huggingface/diffusers/pull/12909
+                parallel_config=None,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -622,7 +628,8 @@ class WanAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            parallel_config=self._parallel_config,
+            # Reference: https://github.com/huggingface/diffusers/pull/12909
+            parallel_config=(self._parallel_config if encoder_hidden_states is None else None),
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -678,7 +685,10 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
             self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
             self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
 
-        self.is_cross_attention = cross_attention_dim_head is not None
+        if is_cross_attention is not None:
+            self.is_cross_attention = is_cross_attention
+        else:
+            self.is_cross_attention = cross_attention_dim_head is not None
 
         self.set_processor(processor)
 
@@ -686,7 +696,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         if getattr(self, "fused_projections", False):
             return
 
-        if self.cross_attention_dim_head is None:
+        if not self.is_cross_attention:
             concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
             concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
             out_features, in_features = concatenated_weights.shape
@@ -767,7 +777,7 @@ class WanImageEmbedding(torch.nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.transformers.transformer_wan.WanTimeTextImageEmbedding
+# Modified from diffusers.models.transformers.transformer_wan.WanTimeTextImageEmbedding
 class WanTimeTextImageEmbedding(nn.Module):
     def __init__(
         self,
@@ -801,10 +811,12 @@ class WanTimeTextImageEmbedding(nn.Module):
         if timestep_seq_len is not None:
             timestep = timestep.unflatten(0, (-1, timestep_seq_len))
 
-        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
-        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
-            timestep = timestep.to(time_embedder_dtype)
-        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
+        if self.time_embedder.linear_1.weight.dtype.is_floating_point:
+            time_embedder_dtype = self.time_embedder.linear_1.weight.dtype
+        else:
+            time_embedder_dtype = encoder_hidden_states.dtype
+
+        temb = self.time_embedder(timestep.to(time_embedder_dtype)).type_as(encoder_hidden_states)
         timestep_proj = self.time_proj(self.act_fn(temb))
 
         encoder_hidden_states = self.text_embedder(encoder_hidden_states)

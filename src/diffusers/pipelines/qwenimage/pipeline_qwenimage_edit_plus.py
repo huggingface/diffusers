@@ -323,6 +323,9 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
         prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
 
+        if prompt_embeds_mask is not None and prompt_embeds_mask.all():
+            prompt_embeds_mask = None
+
         return prompt_embeds, prompt_embeds_mask
 
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit.QwenImageEditPipeline.check_inputs
@@ -662,6 +665,13 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+
+        # QwenImageEditPlusPipeline does not currently support batch_size > 1
+        if batch_size > 1:
+            raise ValueError(
+                f"QwenImageEditPlusPipeline currently only supports batch_size=1, but received batch_size={batch_size}. "
+                "Please process prompts one at a time."
+            )
 
         device = self._execution_device
         # 3. Preprocess image

@@ -22,6 +22,7 @@ import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -30,6 +31,9 @@ from .scheduling_utils_flax import (
     add_noise_common,
     get_velocity_common,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -42,7 +46,12 @@ class DDPMSchedulerState:
     num_inference_steps: Optional[int] = None
 
     @classmethod
-    def create(cls, common: CommonSchedulerState, init_noise_sigma: jnp.ndarray, timesteps: jnp.ndarray):
+    def create(
+        cls,
+        common: CommonSchedulerState,
+        init_noise_sigma: jnp.ndarray,
+        timesteps: jnp.ndarray,
+    ):
         return cls(common=common, init_noise_sigma=init_noise_sigma, timesteps=timesteps)
 
 
@@ -105,6 +114,10 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         prediction_type: str = "epsilon",
         dtype: jnp.dtype = jnp.float32,
     ):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         self.dtype = dtype
 
     def create_state(self, common: Optional[CommonSchedulerState] = None) -> DDPMSchedulerState:
@@ -123,7 +136,10 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
 
     def scale_model_input(
-        self, state: DDPMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+        self,
+        state: DDPMSchedulerState,
+        sample: jnp.ndarray,
+        timestep: Optional[int] = None,
     ) -> jnp.ndarray:
         """
         Args:

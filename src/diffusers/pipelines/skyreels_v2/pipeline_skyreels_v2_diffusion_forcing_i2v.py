@@ -18,7 +18,6 @@ import re
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import ftfy
 import PIL
 import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
@@ -966,25 +965,28 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                         )
                         timestep[:, valid_interval_start:prefix_video_latents_frames] = addnoise_condition
 
-                    noise_pred = self.transformer(
-                        hidden_states=latent_model_input,
-                        timestep=timestep,
-                        encoder_hidden_states=prompt_embeds,
-                        enable_diffusion_forcing=True,
-                        fps=fps_embeds,
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )[0]
-                    if self.do_classifier_free_guidance:
-                        noise_uncond = self.transformer(
+                    with self.transformer.cache_context("cond"):
+                        noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
-                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_hidden_states=prompt_embeds,
                             enable_diffusion_forcing=True,
                             fps=fps_embeds,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
+
+                    if self.do_classifier_free_guidance:
+                        with self.transformer.cache_context("uncond"):
+                            noise_uncond = self.transformer(
+                                hidden_states=latent_model_input,
+                                timestep=timestep,
+                                encoder_hidden_states=negative_prompt_embeds,
+                                enable_diffusion_forcing=True,
+                                fps=fps_embeds,
+                                attention_kwargs=attention_kwargs,
+                                return_dict=False,
+                            )[0]
                         noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
                     update_mask_i = step_update_mask[i]

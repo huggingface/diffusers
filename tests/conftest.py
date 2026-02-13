@@ -32,6 +32,24 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "big_accelerator: marks tests as requiring big accelerator resources")
+    config.addinivalue_line("markers", "lora: marks tests for LoRA/PEFT functionality")
+    config.addinivalue_line("markers", "ip_adapter: marks tests for IP Adapter functionality")
+    config.addinivalue_line("markers", "training: marks tests for training functionality")
+    config.addinivalue_line("markers", "attention: marks tests for attention processor functionality")
+    config.addinivalue_line("markers", "memory: marks tests for memory optimization functionality")
+    config.addinivalue_line("markers", "cpu_offload: marks tests for CPU offloading functionality")
+    config.addinivalue_line("markers", "group_offload: marks tests for group offloading functionality")
+    config.addinivalue_line("markers", "compile: marks tests for torch.compile functionality")
+    config.addinivalue_line("markers", "single_file: marks tests for single file checkpoint loading")
+    config.addinivalue_line("markers", "quantization: marks tests for quantization functionality")
+    config.addinivalue_line("markers", "bitsandbytes: marks tests for BitsAndBytes quantization functionality")
+    config.addinivalue_line("markers", "quanto: marks tests for Quanto quantization functionality")
+    config.addinivalue_line("markers", "torchao: marks tests for TorchAO quantization functionality")
+    config.addinivalue_line("markers", "gguf: marks tests for GGUF quantization functionality")
+    config.addinivalue_line("markers", "modelopt: marks tests for NVIDIA ModelOpt quantization functionality")
+    config.addinivalue_line("markers", "context_parallel: marks tests for context parallel inference functionality")
+    config.addinivalue_line("markers", "slow: mark test as slow")
+    config.addinivalue_line("markers", "nightly: mark test as nightly")
 
 
 def pytest_addoption(parser):
