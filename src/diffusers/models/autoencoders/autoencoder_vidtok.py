@@ -100,7 +100,6 @@ class FSQRegularizer(nn.Module):
 
     def codes_to_indices(self, zhat: torch.Tensor) -> torch.Tensor:
         r"""Converts a `code` to an index in the codebook."""
-        assert zhat.shape[-1] == self.codebook_dim
         half_width = self._levels // 2
         zhat = (zhat * half_width) + half_width
         return (zhat * self._basis).sum(dim=-1).to(torch.int32)
@@ -140,12 +139,11 @@ class FSQRegularizer(nn.Module):
         b, n, _ = z.shape
         z = z.reshape(b, n, self.num_codebooks, -1)
 
-        with torch.autocast("cuda", enabled=False):
-            orig_dtype = z.dtype
-            z = z.float()
-            codes = self.quantize(z)
-            indices = self.codes_to_indices(codes)
-            codes = codes.type(orig_dtype)
+        orig_dtype = z.dtype
+        z = z.float()
+        codes = self.quantize(z)
+        indices = self.codes_to_indices(codes)
+        codes = codes.type(orig_dtype)
 
         codes = codes.reshape(b, n, -1)
         out = self.project_out(codes)
@@ -240,8 +238,7 @@ class VidTokCausalConv1d(nn.Module):
         self.causal_cache = None
         self.cache_offset = 0
 
-    def forward(self, x):
-        r"""The forward method of the `VidTokCausalConv1d` class."""
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.is_first_chunk:
             first_frame_pad = x[:, :, :1].repeat((1, 1, self.time_pad))
         else:
@@ -300,7 +297,6 @@ class VidTokCausalConv3d(nn.Module):
         self.cache_offset = 0
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        r"""The forward method of the `VidTokCausalConv3d` class."""
         if self.is_first_chunk:
             first_frame_pad = x[:, :, :1, :, :].repeat((1, 1, self.time_pad, 1, 1))
         else:
@@ -334,7 +330,6 @@ class VidTokDownsample3D(nn.Module):
             self.causal_cache = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        r"""The forward method of the `VidTokDownsample3D` class."""
         alpha = torch.sigmoid(self.mix_factor)
         if self.is_causal:
             pad = (0, 0, 0, 0, 1, 0)
@@ -380,7 +375,6 @@ class VidTokUpsample3D(nn.Module):
             self.interpolation_mode = "nearest"
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        r"""The forward method of the `VidTokUpsample3D` class."""
         alpha = torch.sigmoid(self.mix_factor)
         if not self.is_causal:
             xlst = [
@@ -418,42 +412,12 @@ class VidTokUpsample3D(nn.Module):
 
 
 class VidTokAttnBlock(nn.Module):
-    r"""A 2D self-attention block used in VidTok Model."""
-
-    def __init__(self, in_channels: int):
-        super().__init__()
-        self.in_channels = in_channels
-        self.norm = VidTokLayerNorm(dim=in_channels, eps=1e-6)
-        self.q = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.k = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.v = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.proj_out = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-
-    def attention(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        r"""Implement self-attention."""
-        hidden_states = self.norm(hidden_states)
-        q = self.q(hidden_states)
-        k = self.k(hidden_states)
-        v = self.v(hidden_states)
-        b, c, h, w = q.shape
-        q, k, v = [x.permute(0, 2, 3, 1).reshape(b, -1, c).unsqueeze(1).contiguous() for x in [q, k, v]]
-        hidden_states = F.scaled_dot_product_attention(q, k, v)  # scale is dim ** -0.5 per default
-        return hidden_states.squeeze(1).reshape(b, h, w, c).permute(0, 3, 1, 2)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        r"""The forward method of the `VidTokAttnBlock` class."""
-        hidden_states = x
-        hidden_states = self.attention(hidden_states)
-        hidden_states = self.proj_out(hidden_states)
-        return x + hidden_states
-
-
-class VidTokAttnBlockWrapper(VidTokAttnBlock):
     r"""A 3D self-attention block used in VidTok Model."""
 
     def __init__(self, in_channels: int, is_causal: bool = True):
-        super().__init__(in_channels)
+        super().__init__()
         make_conv_cls = VidTokCausalConv3d if is_causal else nn.Conv3d
+        self.norm = VidTokLayerNorm(dim=in_channels, eps=1e-6)
         self.q = make_conv_cls(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.k = make_conv_cls(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
         self.v = make_conv_cls(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
@@ -469,6 +433,12 @@ class VidTokAttnBlockWrapper(VidTokAttnBlock):
         q, k, v = [x.permute(0, 2, 3, 4, 1).reshape(b, t, -1, c).contiguous() for x in [q, k, v]]
         hidden_states = F.scaled_dot_product_attention(q, k, v)  # scale is dim ** -0.5 per default
         return hidden_states.reshape(b, t, h, w, c).permute(0, 4, 1, 2, 3)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        hidden_states = x
+        hidden_states = self.attention(hidden_states)
+        hidden_states = self.proj_out(hidden_states)
+        return x + hidden_states
 
 
 class VidTokResnetBlock(nn.Module):
@@ -513,7 +483,6 @@ class VidTokResnetBlock(nn.Module):
                 self.nin_shortcut = make_conv_cls(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x: torch.Tensor, temb: Optional[torch.Tensor]) -> torch.Tensor:
-        r"""The forward method of the `VidTokResnetBlock` class."""
         hidden_states = x
         hidden_states = self.norm1(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
@@ -652,7 +621,7 @@ class VidTokEncoder3D(nn.Module):
             btype="3d",
             is_causal=self.is_causal,
         )
-        self.mid.attn_1 = VidTokAttnBlockWrapper(block_in, is_causal=self.is_causal)
+        self.mid.attn_1 = VidTokAttnBlock(block_in, is_causal=self.is_causal)
         self.mid.block_2 = VidTokResnetBlock(
             in_channels=block_in,
             out_channels=block_in,
@@ -675,7 +644,6 @@ class VidTokEncoder3D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        r"""The forward method of the `VidTokEncoder3D` class."""
         temb = None
         B, _, T, H, W = x.shape
         hs = [self.conv_in(x)]
@@ -812,7 +780,7 @@ class VidTokDecoder3D(nn.Module):
             btype="3d",
             is_causal=self.is_causal,
         )
-        self.mid.attn_1 = VidTokAttnBlockWrapper(block_in, is_causal=self.is_causal)
+        self.mid.attn_1 = VidTokAttnBlock(block_in, is_causal=self.is_causal)
         self.mid.block_2 = VidTokResnetBlock(
             in_channels=block_in,
             out_channels=block_in,
@@ -886,7 +854,6 @@ class VidTokDecoder3D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
-        r"""The forward method of the `VidTokDecoder3D` class."""
         temb = None
         B, _, T, H, W = z.shape
         hidden_states = self.conv_in(z)
@@ -1047,10 +1014,18 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
         self.temporal_compression_ratio = 2 ** len(self.encoder.tempo_ds)
 
         self.regularizer = regularizer
-        assert self.regularizer in ["kl", "fsq"], f"Invalid regularizer: {self.regtype}. Only support 'kl' and 'fsq'."
-
+        if self.regularizer not in ["kl", "fsq"]:
+            raise ValueError(f"Invalid regularizer: {self.regularizer}. Only `kl` and `fsq` are supported.")
+        
         if self.regularizer == "fsq":
-            assert z_channels == int(math.log(codebook_size, 8)) and double_z is False
+            if z_channels != int(math.log(codebook_size, 8)):
+                raise ValueError(
+                    f"When using the `fsq` regularizer, `z_channels` must be {int(math.log(codebook_size, 8))}, the"
+                    f" log base 8 of the `codebook_size` {codebook_size}, but got {z_channels}."
+                )
+            if double_z:
+                raise ValueError(f"When using the `fsq` regularizer, `double_z` must be `False`.")
+
             self.regularization = FSQRegularizer(levels=[8] * z_channels)
 
         self.use_slicing = False
@@ -1143,7 +1118,7 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
         return self.encoder(x)
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor) -> Union[AutoencoderKLOutput, Tuple[torch.Tensor]]:
+    def encode(self, x: torch.Tensor) -> Union[AutoencoderKLOutput, Tuple[torch.Tensor, torch.Tensor]]:
         r"""
         Encode a batch of images into latents.
 
@@ -1453,7 +1428,6 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
     ) -> Union[torch.Tensor, DecoderOutput]:
-        r"""The forward method of the `AutoencoderVidTok` class."""
         x = sample
         res = 1 if self.is_causal else 0
         if self.is_causal:
