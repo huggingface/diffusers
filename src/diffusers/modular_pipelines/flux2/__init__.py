@@ -21,45 +21,11 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["encoders"] = [
-        "Flux2TextEncoderStep",
-        "Flux2RemoteTextEncoderStep",
-        "Flux2VaeEncoderStep",
-    ]
-    _import_structure["before_denoise"] = [
-        "Flux2SetTimestepsStep",
-        "Flux2PrepareLatentsStep",
-        "Flux2RoPEInputsStep",
-        "Flux2PrepareImageLatentsStep",
-    ]
-    _import_structure["denoise"] = [
-        "Flux2LoopDenoiser",
-        "Flux2LoopAfterDenoiser",
-        "Flux2DenoiseLoopWrapper",
-        "Flux2DenoiseStep",
-    ]
-    _import_structure["decoders"] = ["Flux2DecodeStep"]
-    _import_structure["inputs"] = [
-        "Flux2ProcessImagesInputStep",
-        "Flux2TextInputStep",
-    ]
-    _import_structure["modular_blocks_flux2"] = [
-        "ALL_BLOCKS",
-        "AUTO_BLOCKS",
-        "REMOTE_AUTO_BLOCKS",
-        "TEXT2IMAGE_BLOCKS",
-        "IMAGE_CONDITIONED_BLOCKS",
-        "Flux2AutoBlocks",
-        "Flux2AutoVaeEncoderStep",
-        "Flux2CoreDenoiseStep",
-        "Flux2VaeEncoderSequentialStep",
-    ]
-    _import_structure["modular_blocks_flux2_klein"] = ["Flux2KleinAutoBlocks", "Flux2KleinBaseAutoBlocks"]
-    _import_structure["modular_pipeline"] = [
-        "Flux2ModularPipeline",
-        "Flux2KleinModularPipeline",
-        "Flux2KleinBaseModularPipeline",
-    ]
+    _import_structure["encoders"] = ["Flux2RemoteTextEncoderStep"]
+    _import_structure["modular_blocks_flux2"] = ["Flux2AutoBlocks"]
+    _import_structure["modular_blocks_flux2_klein_base"] = ["Flux2KleinBaseAutoBlocks"]
+    _import_structure["modular_blocks_flux2_klein"] = ["Flux2KleinAutoBlocks"]
+    _import_structure["modular_pipeline"] = ["Flux2ModularPipeline", "Flux2KleinModularPipeline", "Flux2KleinBaseModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -68,43 +34,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .before_denoise import (
-            Flux2PrepareImageLatentsStep,
-            Flux2PrepareLatentsStep,
-            Flux2RoPEInputsStep,
-            Flux2SetTimestepsStep,
-        )
-        from .decoders import Flux2DecodeStep
-        from .denoise import (
-            Flux2DenoiseLoopWrapper,
-            Flux2DenoiseStep,
-            Flux2LoopAfterDenoiser,
-            Flux2LoopDenoiser,
-        )
-        from .encoders import (
-            Flux2RemoteTextEncoderStep,
-            Flux2TextEncoderStep,
-            Flux2VaeEncoderStep,
-        )
-        from .inputs import (
-            Flux2ProcessImagesInputStep,
-            Flux2TextInputStep,
-        )
-        from .modular_blocks_flux2 import (
-            ALL_BLOCKS,
-            AUTO_BLOCKS,
-            IMAGE_CONDITIONED_BLOCKS,
-            REMOTE_AUTO_BLOCKS,
-            TEXT2IMAGE_BLOCKS,
-            Flux2AutoBlocks,
-            Flux2AutoVaeEncoderStep,
-            Flux2CoreDenoiseStep,
-            Flux2VaeEncoderSequentialStep,
-        )
-        from .modular_blocks_flux2_klein import (
-            Flux2KleinAutoBlocks,
-            Flux2KleinBaseAutoBlocks,
-        )
+        from .encoders import Flux2RemoteTextEncoderStep
+        from .modular_blocks_flux2 import Flux2AutoBlocks
+        from .modular_blocks_flux2_klein_base import Flux2KleinBaseAutoBlocks
+        from .modular_blocks_flux2_klein import Flux2KleinAutoBlocks
         from .modular_pipeline import Flux2KleinBaseModularPipeline, Flux2KleinModularPipeline, Flux2ModularPipeline
 else:
     import sys

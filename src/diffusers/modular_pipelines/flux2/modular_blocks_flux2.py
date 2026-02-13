@@ -51,6 +51,7 @@ Flux2VaeEncoderBlocks = InsertableDict(
 )
 
 
+# auto_docstring
 class Flux2VaeEncoderSequentialStep(SequentialPipelineBlocks):
     model_name = "flux2"
 
@@ -62,6 +63,7 @@ class Flux2VaeEncoderSequentialStep(SequentialPipelineBlocks):
         return "VAE encoder step that preprocesses, encodes, and prepares image latents for Flux2 conditioning."
 
 
+# auto_docstring
 class Flux2AutoVaeEncoderStep(AutoPipelineBlocks):
     block_classes = [Flux2VaeEncoderSequentialStep]
     block_names = ["img_conditioning"]
@@ -91,6 +93,7 @@ Flux2CoreDenoiseBlocks = InsertableDict(
 )
 
 
+# auto_docstring
 class Flux2CoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "flux2"
 
@@ -100,15 +103,7 @@ class Flux2CoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return (
-            "Core denoise step that performs the denoising process for Flux2-dev.\n"
-            " - `Flux2TextInputStep` (input) standardizes the text inputs (prompt_embeds) for the denoising step.\n"
-            " - `Flux2PrepareImageLatentsStep` (prepare_image_latents) prepares the image latents and image_latent_ids for the denoising step.\n"
-            " - `Flux2PrepareLatentsStep` (prepare_latents) prepares the initial latents (latents) and latent_ids for the denoising step.\n"
-            " - `Flux2SetTimestepsStep` (set_timesteps) sets the timesteps for the denoising step.\n"
-            " - `Flux2PrepareGuidanceStep` (prepare_guidance) prepares the guidance tensor for the denoising step.\n"
-            " - `Flux2RoPEInputsStep` (prepare_rope_inputs) prepares the RoPE inputs (txt_ids) for the denoising step.\n"
-            " - `Flux2DenoiseStep` (denoise) iteratively denoises the latents.\n"
-            " - `Flux2UnpackLatentsStep` (after_denoise) unpacks the latents from the denoising step.\n"
+            "Core denoise step that performs the denoising process for Flux2-dev."
         )
 
     @property
@@ -131,29 +126,21 @@ AUTO_BLOCKS = InsertableDict(
     ]
 )
 
-
-REMOTE_AUTO_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", Flux2RemoteTextEncoderStep()),
-        ("vae_encoder", Flux2AutoVaeEncoderStep()),
-        ("denoise", Flux2CoreDenoiseStep()),
-        ("decode", Flux2DecodeStep()),
-    ]
-)
-
-
+# auto_docstring
 class Flux2AutoBlocks(SequentialPipelineBlocks):
     model_name = "flux2"
 
     block_classes = AUTO_BLOCKS.values()
     block_names = AUTO_BLOCKS.keys()
+    _workflow_map = {
+        "text2image": {"prompt": True},
+        "image_conditioned": {"image": True, "prompt": True},
+    }
 
     @property
     def description(self):
         return (
-            "Auto Modular pipeline for text-to-image and image-conditioned generation using Flux2.\n"
-            "- For text-to-image generation, all you need to provide is `prompt`.\n"
-            "- For image-conditioned generation, you need to provide `image` (list of PIL images)."
+            "Auto Modular pipeline for text-to-image and image-conditioned generation using Flux2."
         )
 
     @property
@@ -165,42 +152,3 @@ class Flux2AutoBlocks(SequentialPipelineBlocks):
                 description="The images from the decoding step.",
             )
         ]
-
-
-TEXT2IMAGE_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", Flux2TextEncoderStep()),
-        ("text_input", Flux2TextInputStep()),
-        ("prepare_latents", Flux2PrepareLatentsStep()),
-        ("set_timesteps", Flux2SetTimestepsStep()),
-        ("prepare_guidance", Flux2PrepareGuidanceStep()),
-        ("prepare_rope_inputs", Flux2RoPEInputsStep()),
-        ("denoise", Flux2DenoiseStep()),
-        ("after_denoise", Flux2UnpackLatentsStep()),
-        ("decode", Flux2DecodeStep()),
-    ]
-)
-
-IMAGE_CONDITIONED_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", Flux2TextEncoderStep()),
-        ("text_input", Flux2TextInputStep()),
-        ("preprocess_images", Flux2ProcessImagesInputStep()),
-        ("vae_encoder", Flux2VaeEncoderStep()),
-        ("prepare_image_latents", Flux2PrepareImageLatentsStep()),
-        ("prepare_latents", Flux2PrepareLatentsStep()),
-        ("set_timesteps", Flux2SetTimestepsStep()),
-        ("prepare_guidance", Flux2PrepareGuidanceStep()),
-        ("prepare_rope_inputs", Flux2RoPEInputsStep()),
-        ("denoise", Flux2DenoiseStep()),
-        ("after_denoise", Flux2UnpackLatentsStep()),
-        ("decode", Flux2DecodeStep()),
-    ]
-)
-
-ALL_BLOCKS = {
-    "text2image": TEXT2IMAGE_BLOCKS,
-    "image_conditioned": IMAGE_CONDITIONED_BLOCKS,
-    "auto": AUTO_BLOCKS,
-    "remote": REMOTE_AUTO_BLOCKS,
-}
