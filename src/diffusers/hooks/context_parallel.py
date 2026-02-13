@@ -15,7 +15,7 @@ import copy
 import functools
 import inspect
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Type, Union
+from typing import Type
 
 import torch
 import torch.distributed as dist
@@ -45,7 +45,7 @@ _CONTEXT_PARALLEL_OUTPUT_HOOK_TEMPLATE = "cp_output---{}"
 # TODO(aryan): consolidate with ._helpers.TransformerBlockMetadata
 @dataclass
 class ModuleForwardMetadata:
-    cached_parameter_indices: Dict[str, int] = None
+    cached_parameter_indices: dict[str, int] = None
     _cls: Type = None
 
     def _get_parameter_from_args_kwargs(self, identifier: str, args=(), kwargs=None):
@@ -81,7 +81,7 @@ class ModuleForwardMetadata:
 def apply_context_parallel(
     module: torch.nn.Module,
     parallel_config: ContextParallelConfig,
-    plan: Dict[str, ContextParallelModelPlan],
+    plan: dict[str, ContextParallelModelPlan],
 ) -> None:
     """Apply context parallel on a model."""
     logger.debug(f"Applying context parallel with CP mesh: {parallel_config._mesh} and plan: {plan}")
@@ -110,7 +110,7 @@ def apply_context_parallel(
             registry.register_hook(hook, hook_name)
 
 
-def remove_context_parallel(module: torch.nn.Module, plan: Dict[str, ContextParallelModelPlan]) -> None:
+def remove_context_parallel(module: torch.nn.Module, plan: dict[str, ContextParallelModelPlan]) -> None:
     for module_id, cp_model_plan in plan.items():
         submodule = _get_submodule_by_name(module, module_id)
         if not isinstance(submodule, list):
@@ -328,7 +328,7 @@ class PartitionAnythingSharder:
 
 
 @functools.lru_cache(maxsize=64)
-def _fill_gather_shapes(shape: Tuple[int], gather_dims: Tuple[int], dim: int, world_size: int) -> List[List[int]]:
+def _fill_gather_shapes(shape: tuple[int], gather_dims: tuple[int], dim: int, world_size: int) -> list[list[int]]:
     gather_shapes = []
     for i in range(world_size):
         rank_shape = list(copy.deepcopy(shape))
@@ -355,13 +355,13 @@ def _all_gather_anything(tensor: torch.Tensor, dim: int, group: dist.device_mesh
     return gathered_tensor
 
 
-def _get_submodule_by_name(model: torch.nn.Module, name: str) -> Union[torch.nn.Module, List[torch.nn.Module]]:
+def _get_submodule_by_name(model: torch.nn.Module, name: str) -> torch.nn.Module | list[torch.nn.Module]:
     if name.count("*") > 1:
         raise ValueError("Wildcard '*' can only be used once in the name")
     return _find_submodule_by_name(model, name)
 
 
-def _find_submodule_by_name(model: torch.nn.Module, name: str) -> Union[torch.nn.Module, List[torch.nn.Module]]:
+def _find_submodule_by_name(model: torch.nn.Module, name: str) -> torch.nn.Module | list[torch.nn.Module]:
     if name == "":
         return model
     first_atom, remaining_name = name.split(".", 1) if "." in name else (name, "")

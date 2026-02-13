@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import unittest
-from typing import Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -44,13 +43,13 @@ enable_full_determinism()
 
 
 class RemoteAutoencoderKLMixin:
-    shape: Tuple[int, ...] = None
-    out_hw: Tuple[int, int] = None
+    shape: tuple[int, ...] = None
+    out_hw: tuple[int, int] = None
     endpoint: str = None
     dtype: torch.dtype = None
     scaling_factor: float = None
     shift_factor: float = None
-    processor_cls: Union[VaeImageProcessor, VideoProcessor] = None
+    processor_cls: VaeImageProcessor | VideoProcessor = None
     output_pil_slice: torch.Tensor = None
     output_pt_slice: torch.Tensor = None
     partial_postprocess_return_pt_slice: torch.Tensor = None

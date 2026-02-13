@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -83,7 +83,7 @@ class FusedLeakyReLU(nn.Module):
     Fused LeakyRelu with scale factor and channel-wise bias.
     """
 
-    def __init__(self, negative_slope: float = 0.2, scale: float = 2**0.5, bias_channels: Optional[int] = None):
+    def __init__(self, negative_slope: float = 0.2, scale: float = 2**0.5, bias_channels: int | None = None):
         super().__init__()
         self.negative_slope = negative_slope
         self.scale = scale
@@ -117,7 +117,7 @@ class MotionConv2d(nn.Module):
         stride: int = 1,
         padding: int = 0,
         bias: bool = True,
-        blur_kernel: Optional[Tuple[int, ...]] = None,
+        blur_kernel: tuple[int, ...] | None = None,
         blur_upsample_factor: int = 1,
         use_activation: bool = True,
     ):
@@ -231,7 +231,7 @@ class MotionEncoderResBlock(nn.Module):
         out_channels: int,
         kernel_size: int = 3,
         kernel_size_skip: int = 1,
-        blur_kernel: Tuple[int, ...] = (1, 3, 3, 1),
+        blur_kernel: tuple[int, ...] = (1, 3, 3, 1),
         downsample_factor: int = 2,
     ):
         super().__init__()
@@ -288,7 +288,7 @@ class WanAnimateMotionEncoder(nn.Module):
         motion_dim: int = 20,
         out_dim: int = 512,
         motion_blocks: int = 5,
-        channels: Optional[Dict[str, int]] = None,
+        channels: dict[str, int] | None = None,
     ):
         super().__init__()
         self.size = size
@@ -435,8 +435,8 @@ class WanAnimateFaceBlockAttnProcessor:
         self,
         attn: "WanAnimateFaceBlockCrossAttention",
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         # encoder_hidden_states corresponds to the motion vec
         # attention_mask corresponds to the motion mask (if any)
@@ -501,7 +501,7 @@ class WanAnimateFaceBlockCrossAttention(nn.Module, AttentionModuleMixin):
         heads: int = 8,
         dim_head: int = 64,
         eps: float = 1e-6,
-        cross_attention_dim_head: Optional[int] = None,
+        cross_attention_dim_head: int | None = None,
         bias: bool = True,
         processor=None,
     ):
@@ -537,8 +537,8 @@ class WanAnimateFaceBlockCrossAttention(nn.Module, AttentionModuleMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask)
@@ -559,9 +559,9 @@ class WanAttnProcessor:
         self,
         attn: "WanAttention",
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -654,8 +654,8 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         dim_head: int = 64,
         eps: float = 1e-5,
         dropout: float = 0.0,
-        added_kv_proj_dim: Optional[int] = None,
-        cross_attention_dim_head: Optional[int] = None,
+        added_kv_proj_dim: int | None = None,
+        cross_attention_dim_head: int | None = None,
         processor=None,
         is_cross_attention=None,
     ):
@@ -744,9 +744,9 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         **kwargs,
     ) -> torch.Tensor:
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
@@ -785,8 +785,8 @@ class WanTimeTextImageEmbedding(nn.Module):
         time_freq_dim: int,
         time_proj_dim: int,
         text_embed_dim: int,
-        image_embed_dim: Optional[int] = None,
-        pos_embed_seq_len: Optional[int] = None,
+        image_embed_dim: int | None = None,
+        pos_embed_seq_len: int | None = None,
     ):
         super().__init__()
 
@@ -804,8 +804,8 @@ class WanTimeTextImageEmbedding(nn.Module):
         self,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        timestep_seq_len: Optional[int] = None,
+        encoder_hidden_states_image: torch.Tensor | None = None,
+        timestep_seq_len: int | None = None,
     ):
         timestep = self.timesteps_proj(timestep)
         if timestep_seq_len is not None:
@@ -831,7 +831,7 @@ class WanRotaryPosEmbed(nn.Module):
     def __init__(
         self,
         attention_head_dim: int,
-        patch_size: Tuple[int, int, int],
+        patch_size: tuple[int, int, int],
         max_seq_len: int,
         theta: float = 10000.0,
     ):
@@ -902,7 +902,7 @@ class WanTransformerBlock(nn.Module):
         qk_norm: str = "rms_norm_across_heads",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
-        added_kv_proj_dim: Optional[int] = None,
+        added_kv_proj_dim: int | None = None,
     ):
         super().__init__()
 
@@ -987,7 +987,7 @@ class WanAnimateTransformer3DModel(
     A Transformer model for video-like data used in the WanAnimate model.
 
     Args:
-        patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
+        patch_size (`tuple[int]`, defaults to `(1, 2, 2)`):
             3D patch dimensions for video embedding (t_patch, h_patch, w_patch).
         num_attention_heads (`int`, defaults to `40`):
             Fixed length for text embeddings.
@@ -1005,7 +1005,7 @@ class WanAnimateTransformer3DModel(
             Intermediate dimension in feed-forward network.
         num_layers (`int`, defaults to `40`):
             The number of layers of transformer blocks to use.
-        window_size (`Tuple[int]`, defaults to `(-1, -1)`):
+        window_size (`tuple[int]`, defaults to `(-1, -1)`):
             Window size for local attention (-1 indicates global attention).
         cross_attn_norm (`bool`, defaults to `True`):
             Enable cross-attention normalization.
@@ -1036,24 +1036,24 @@ class WanAnimateTransformer3DModel(
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int] = (1, 2, 2),
+        patch_size: tuple[int] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
-        in_channels: Optional[int] = 36,
-        latent_channels: Optional[int] = 16,
-        out_channels: Optional[int] = 16,
+        in_channels: int | None = 36,
+        latent_channels: int | None = 16,
+        out_channels: int | None = 16,
         text_dim: int = 4096,
         freq_dim: int = 256,
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
+        qk_norm: str | None = "rms_norm_across_heads",
         eps: float = 1e-6,
-        image_dim: Optional[int] = 1280,
-        added_kv_proj_dim: Optional[int] = None,
+        image_dim: int | None = 1280,
+        added_kv_proj_dim: int | None = None,
         rope_max_seq_len: int = 1024,
-        pos_embed_seq_len: Optional[int] = None,
-        motion_encoder_channel_sizes: Optional[Dict[str, int]] = None,  # Start of Wan Animate-specific args
+        pos_embed_seq_len: int | None = None,
+        motion_encoder_channel_sizes: dict[str, int] | None = None,  # Start of Wan Animate-specific args
         motion_encoder_size: int = 512,
         motion_style_dim: int = 512,
         motion_dim: int = 20,
@@ -1152,13 +1152,13 @@ class WanAnimateTransformer3DModel(
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        pose_hidden_states: Optional[torch.Tensor] = None,
-        face_pixel_values: Optional[torch.Tensor] = None,
-        motion_encode_batch_size: Optional[int] = None,
+        encoder_hidden_states_image: torch.Tensor | None = None,
+        pose_hidden_states: torch.Tensor | None = None,
+        face_pixel_values: torch.Tensor | None = None,
+        motion_encode_batch_size: int | None = None,
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        attention_kwargs: dict[str, Any] | None = None,
+    ) -> torch.Tensor | dict[str, torch.Tensor]:
         """
         Forward pass of Wan2.2-Animate transformer model.
 

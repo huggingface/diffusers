@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
 import torch
 
@@ -64,11 +66,11 @@ class SkipLayerGuidance(BaseGuidance):
             The fraction of the total number of denoising steps after which skip layer guidance starts.
         skip_layer_guidance_stop (`float`, defaults to `0.2`):
             The fraction of the total number of denoising steps after which skip layer guidance stops.
-        skip_layer_guidance_layers (`int` or `List[int]`, *optional*):
+        skip_layer_guidance_layers (`int` or `list[int]`, *optional*):
             The layer indices to apply skip layer guidance to. Can be a single integer or a list of integers. If not
             provided, `skip_layer_config` must be provided. The recommended values are `[7, 8, 9]` for Stable Diffusion
             3.5 Medium.
-        skip_layer_config (`LayerSkipConfig` or `List[LayerSkipConfig]`, *optional*):
+        skip_layer_config (`LayerSkipConfig` or `list[LayerSkipConfig]`, *optional*):
             The configuration for the skip layer guidance. Can be a single `LayerSkipConfig` or a list of
             `LayerSkipConfig`. If not provided, `skip_layer_guidance_layers` must be provided.
         guidance_rescale (`float`, defaults to `0.0`):
@@ -94,8 +96,8 @@ class SkipLayerGuidance(BaseGuidance):
         skip_layer_guidance_scale: float = 2.8,
         skip_layer_guidance_start: float = 0.01,
         skip_layer_guidance_stop: float = 0.2,
-        skip_layer_guidance_layers: Optional[Union[int, List[int]]] = None,
-        skip_layer_config: Union[LayerSkipConfig, List[LayerSkipConfig], Dict[str, Any]] = None,
+        skip_layer_guidance_layers: int | list[int] | None = None,
+        skip_layer_config: LayerSkipConfig | list[LayerSkipConfig] | dict[str, Any] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -165,7 +167,7 @@ class SkipLayerGuidance(BaseGuidance):
             for hook_name in self._skip_layer_hook_names:
                 registry.remove_hook(hook_name, recurse=True)
 
-    def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
+    def prepare_inputs(self, data: dict[str, tuple[torch.Tensor, torch.Tensor]]) -> list["BlockState"]:
         if self.num_conditions == 1:
             tuple_indices = [0]
             input_predictions = ["pred_cond"]
@@ -184,8 +186,8 @@ class SkipLayerGuidance(BaseGuidance):
         return data_batches
 
     def prepare_inputs_from_block_state(
-        self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
-    ) -> List["BlockState"]:
+        self, data: "BlockState", input_fields: dict[str, str | tuple[str, str]]
+    ) -> list["BlockState"]:
         if self.num_conditions == 1:
             tuple_indices = [0]
             input_predictions = ["pred_cond"]
@@ -206,8 +208,8 @@ class SkipLayerGuidance(BaseGuidance):
     def forward(
         self,
         pred_cond: torch.Tensor,
-        pred_uncond: Optional[torch.Tensor] = None,
-        pred_cond_skip: Optional[torch.Tensor] = None,
+        pred_uncond: torch.Tensor | None = None,
+        pred_cond_skip: torch.Tensor | None = None,
     ) -> GuiderOutput:
         pred = None
 
