@@ -21,22 +21,10 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modular_blocks_qwenimage"] = [
-        "AUTO_BLOCKS",
-        "QwenImageAutoBlocks",
-    ]
-    _import_structure["modular_blocks_qwenimage_edit"] = [
-        "EDIT_AUTO_BLOCKS",
-        "QwenImageEditAutoBlocks",
-    ]
-    _import_structure["modular_blocks_qwenimage_edit_plus"] = [
-        "EDIT_PLUS_AUTO_BLOCKS",
-        "QwenImageEditPlusAutoBlocks",
-    ]
-    _import_structure["modular_blocks_qwenimage_layered"] = [
-        "LAYERED_AUTO_BLOCKS",
-        "QwenImageLayeredAutoBlocks",
-    ]
+    _import_structure["modular_blocks_qwenimage"] = ["QwenImageAutoBlocks"]
+    _import_structure["modular_blocks_qwenimage_edit"] = ["QwenImageEditAutoBlocks"]
+    _import_structure["modular_blocks_qwenimage_edit_plus"] = ["QwenImageEditPlusAutoBlocks"]
+    _import_structure["modular_blocks_qwenimage_layered"] = ["QwenImageLayeredAutoBlocks"]
     _import_structure["modular_pipeline"] = [
         "QwenImageEditModularPipeline",
         "QwenImageEditPlusModularPipeline",
@@ -51,22 +39,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modular_blocks_qwenimage import (
-            AUTO_BLOCKS,
-            QwenImageAutoBlocks,
-        )
-        from .modular_blocks_qwenimage_edit import (
-            EDIT_AUTO_BLOCKS,
-            QwenImageEditAutoBlocks,
-        )
-        from .modular_blocks_qwenimage_edit_plus import (
-            EDIT_PLUS_AUTO_BLOCKS,
-            QwenImageEditPlusAutoBlocks,
-        )
-        from .modular_blocks_qwenimage_layered import (
-            LAYERED_AUTO_BLOCKS,
-            QwenImageLayeredAutoBlocks,
-        )
+        from .modular_blocks_qwenimage import QwenImageAutoBlocks
+        from .modular_blocks_qwenimage_edit import QwenImageEditAutoBlocks
+        from .modular_blocks_qwenimage_edit_plus import QwenImageEditPlusAutoBlocks
+        from .modular_blocks_qwenimage_layered import QwenImageLayeredAutoBlocks
         from .modular_pipeline import (
             QwenImageEditModularPipeline,
             QwenImageEditPlusModularPipeline,
