@@ -216,21 +216,28 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
                 getattr(block_state, "prompt_embeds_mask", None),
                 getattr(block_state, "negative_prompt_embeds_mask", None),
             ),
+            "nag_negative_prompt_embeds": getattr(block_state, "nag_negative_prompt_embeds", None),
+            "nag_negative_prompt_embeds_mask": getattr(block_state, "nag_negative_prompt_embeds_mask", None),
         }
 
         transformer_args = set(inspect.signature(components.transformer.forward).parameters.keys())
-        additional_cond_kwargs = {}
-        for field_name, field_value in block_state.denoiser_input_fields.items():
-            if field_name in transformer_args and field_name not in guider_inputs:
-                additional_cond_kwargs[field_name] = field_value
-        block_state.additional_cond_kwargs.update(additional_cond_kwargs)
+        block_state.additional_cond_kwargs.update(
+            {
+                k: v
+                for k, v in block_state.denoiser_input_fields.items()
+                if k in transformer_args and k not in guider_inputs
+            }
+        )
 
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         guider_state = components.guider.prepare_inputs(guider_inputs)
 
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
-            cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
+            cond_kwargs = {
+                "encoder_hidden_states": guider_state_batch.encoder_hidden_states,
+                "encoder_hidden_states_mask": guider_state_batch.encoder_hidden_states_mask,
+            }
 
             # YiYi TODO: add cache context
             guider_state_batch.noise_pred = components.transformer(

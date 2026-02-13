@@ -673,6 +673,8 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
+          nag_negative_prompt (`str`, *optional*):
+              The prompt or prompts used as the negative attention context for Normalized Attention Guidance (NAG).
           max_sequence_length (`int`, *optional*, defaults to 1024):
               Maximum sequence length for prompt encoding.
 
@@ -685,6 +687,10 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
               The negative prompt embeddings.
           negative_prompt_embeds_mask (`Tensor`):
               The negative prompt embeddings mask.
+          nag_negative_prompt_embeds (`Tensor`):
+              The NAG negative prompt embeddings.
+          nag_negative_prompt_embeds_mask (`Tensor`):
+              The NAG negative prompt embeddings mask.
     """
 
     model_name = "qwenimage"
@@ -717,6 +723,7 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
         return [
             InputParam.template("prompt"),
             InputParam.template("negative_prompt"),
+            InputParam.template("nag_negative_prompt"),
             InputParam.template("max_sequence_length", default=1024),
         ]
 
@@ -727,6 +734,8 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
             OutputParam.template("prompt_embeds_mask"),
             OutputParam.template("negative_prompt_embeds"),
             OutputParam.template("negative_prompt_embeds_mask"),
+            OutputParam.template("nag_negative_prompt_embeds"),
+            OutputParam.template("nag_negative_prompt_embeds_mask"),
         ]
 
     @staticmethod
@@ -750,6 +759,11 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
 
         device = components._execution_device
         self.check_inputs(block_state.prompt, block_state.negative_prompt, block_state.max_sequence_length)
+        max_sequence_length = (
+            self.tokenizer_max_length
+            if block_state.max_sequence_length is None
+            else min(block_state.max_sequence_length, self.tokenizer_max_length)
+        )
 
         block_state.prompt_embeds, block_state.prompt_embeds_mask = get_qwen_prompt_embeds(
             components.text_encoder,
@@ -761,8 +775,8 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
             device=device,
         )
 
-        block_state.prompt_embeds = block_state.prompt_embeds[:, : block_state.max_sequence_length]
-        block_state.prompt_embeds_mask = block_state.prompt_embeds_mask[:, : block_state.max_sequence_length]
+        block_state.prompt_embeds = block_state.prompt_embeds[:, :max_sequence_length]
+        block_state.prompt_embeds_mask = block_state.prompt_embeds_mask[:, :max_sequence_length]
 
         block_state.negative_prompt_embeds = None
         block_state.negative_prompt_embeds_mask = None
@@ -777,11 +791,25 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
                 tokenizer_max_length=self.tokenizer_max_length,
                 device=device,
             )
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds[
-                :, : block_state.max_sequence_length
-            ]
-            block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask[
-                :, : block_state.max_sequence_length
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds[:, :max_sequence_length]
+            block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask[:, :max_sequence_length]
+
+        block_state.nag_negative_prompt_embeds = None
+        block_state.nag_negative_prompt_embeds_mask = None
+        nag_negative_prompt = getattr(block_state, "nag_negative_prompt", None)
+        if nag_negative_prompt is not None:
+            block_state.nag_negative_prompt_embeds, block_state.nag_negative_prompt_embeds_mask = get_qwen_prompt_embeds(
+                components.text_encoder,
+                components.tokenizer,
+                prompt=nag_negative_prompt,
+                prompt_template_encode=self.prompt_template_encode,
+                prompt_template_encode_start_idx=self.prompt_template_encode_start_idx,
+                tokenizer_max_length=self.tokenizer_max_length,
+                device=device,
+            )
+            block_state.nag_negative_prompt_embeds = block_state.nag_negative_prompt_embeds[:, :max_sequence_length]
+            block_state.nag_negative_prompt_embeds_mask = block_state.nag_negative_prompt_embeds_mask[
+                :, :max_sequence_length
             ]
 
         self.set_block_state(state, block_state)
