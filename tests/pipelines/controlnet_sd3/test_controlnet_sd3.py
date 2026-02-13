@@ -15,7 +15,6 @@
 
 import gc
 import unittest
-from typing import Optional
 
 import numpy as np
 import torch
@@ -70,7 +69,7 @@ class StableDiffusion3ControlNetPipelineFastTests(unittest.TestCase, PipelineTes
     test_group_offloading = True
 
     def get_dummy_components(
-        self, num_controlnet_layers: int = 3, qk_norm: Optional[str] = "rms_norm", use_dual_attention=False
+        self, num_controlnet_layers: int = 3, qk_norm: str | None = "rms_norm", use_dual_attention=False
     ):
         torch.manual_seed(0)
         transformer = SD3Transformer2DModel(

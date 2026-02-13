@@ -15,7 +15,6 @@
 import json
 import os
 import re
-from typing import Dict, List, Optional, Union
 
 from sentencepiece import SentencePieceProcessor
 from transformers import PreTrainedTokenizer
@@ -61,7 +60,7 @@ class SPTokenizer:
         else:
             return self.sp_model.EncodeAsPieces(s)
 
-    def encode(self, s: str, bos: bool = False, eos: bool = False) -> List[int]:
+    def encode(self, s: str, bos: bool = False, eos: bool = False) -> list[int]:
         assert isinstance(s, str)
         t = self.sp_model.encode(s)
         if bos:
@@ -70,7 +69,7 @@ class SPTokenizer:
             t = t + [self.eos_id]
         return t
 
-    def decode(self, t: List[int]) -> str:
+    def decode(self, t: list[int]) -> str:
         text, buffer = "", []
         for token in t:
             if token in self.index_special_tokens:
@@ -84,7 +83,7 @@ class SPTokenizer:
             text += self.sp_model.decode(buffer)
         return text
 
-    def decode_tokens(self, tokens: List[str]) -> str:
+    def decode_tokens(self, tokens: list[str]) -> str:
         text = self.sp_model.DecodePieces(tokens)
         return text
 
@@ -192,7 +191,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         """Converts an index (integer) in a token (str) using the vocab."""
         return self.tokenizer.convert_id_to_token(index)
 
-    def convert_tokens_to_string(self, tokens: List[str]) -> str:
+    def convert_tokens_to_string(self, tokens: list[str]) -> str:
         return self.tokenizer.decode_tokens(tokens)
 
     def save_vocabulary(self, save_directory, filename_prefix=None):
@@ -206,7 +205,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
                 An optional prefix to add to the named of the saved files.
 
         Returns:
-            `Tuple(str)`: Paths to the files saved.
+            `tuple(str)`: Paths to the files saved.
         """
         if os.path.isdir(save_directory):
             vocab_file = os.path.join(save_directory, self.vocab_files_names["vocab_file"])
@@ -246,8 +245,8 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         return self.batch_encode_plus([input_ids], return_tensors="pt", is_split_into_words=True)
 
     def build_inputs_with_special_tokens(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
-    ) -> List[int]:
+        self, token_ids_0: list[int], token_ids_1: list[int] | None = None
+    ) -> list[int]:
         """
         Build model inputs from a sequence or a pair of sequence for sequence classification tasks by concatenating and
         adding special tokens. A BERT sequence has the following format:
@@ -256,13 +255,13 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
         - pair of sequences: `[CLS] A [SEP] B [SEP]`
 
         Args:
-            token_ids_0 (`List[int]`):
-                List of IDs to which the special tokens will be added.
-            token_ids_1 (`List[int]`, *optional*):
+            token_ids_0 (`list[int]`):
+                list of IDs to which the special tokens will be added.
+            token_ids_1 (`list[int]`, *optional*):
                 Optional second list of IDs for sequence pairs.
 
         Returns:
-            `List[int]`: List of [input IDs](../glossary#input-ids) with the appropriate special tokens.
+            `list[int]`: list of [input IDs](../glossary#input-ids) with the appropriate special tokens.
         """
         prefix_tokens = self.get_prefix_tokens()
         token_ids_0 = prefix_tokens + token_ids_0
@@ -272,19 +271,19 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
 
     def _pad(
         self,
-        encoded_inputs: Union[Dict[str, EncodedInput], BatchEncoding],
-        max_length: Optional[int] = None,
+        encoded_inputs: dict[str, EncodedInput] | BatchEncoding,
+        max_length: int | None = None,
         padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
-        pad_to_multiple_of: Optional[int] = None,
-        return_attention_mask: Optional[bool] = None,
-        padding_side: Optional[bool] = None,
+        pad_to_multiple_of: int | None = None,
+        return_attention_mask: bool | None = None,
+        padding_side: bool | None = None,
     ) -> dict:
         """
         Pad encoded inputs (on left/right and up to predefined length or max length in the batch)
 
         Args:
             encoded_inputs:
-                Dictionary of tokenized inputs (`List[int]`) or batch of tokenized inputs (`List[List[int]]`).
+                Dictionary of tokenized inputs (`list[int]`) or batch of tokenized inputs (`list[list[int]]`).
             max_length: maximum length of the returned list and optionally padding length (see below).
                 Will truncate by taking into account the special tokens.
             padding_strategy: PaddingStrategy to use for padding.

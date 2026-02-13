@@ -21,7 +21,6 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
@@ -72,7 +71,7 @@ MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
 
 
-def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
+def http_user_agent(user_agent: dict | str | None = None) -> str:
     """
     Formats a user-agent string with basic info about a request.
     """
@@ -98,15 +97,15 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
 
 def load_or_create_model_card(
     repo_id_or_path: str = None,
-    token: Optional[str] = None,
+    token: str | None = None,
     is_pipeline: bool = False,
     from_training: bool = False,
-    model_description: Optional[str] = None,
+    model_description: str | None = None,
     base_model: str = None,
-    prompt: Optional[str] = None,
-    license: Optional[str] = None,
-    widget: Optional[List[dict]] = None,
-    inference: Optional[bool] = None,
+    prompt: str | None = None,
+    license: str | None = None,
+    widget: list[dict] | None = None,
+    inference: bool | None = None,
     is_modular: bool = False,
 ) -> ModelCard:
     """
@@ -129,7 +128,7 @@ def load_or_create_model_card(
         prompt (`str`, *optional*): Prompt used for training. Useful for DreamBooth-like training.
         license: (`str`, *optional*): License of the output artifact. Helpful when using
             `load_or_create_model_card` from a training script.
-        widget (`List[dict]`, *optional*): Widget to accompany a gallery template.
+        widget (`list[dict]`, *optional*): Widget to accompany a gallery template.
         inference: (`bool`, optional): Whether to turn on inference widget. Helpful when using
             `load_or_create_model_card` from a training script.
         is_modular: (`bool`, optional): Boolean flag to denote if the model card is for a modular pipeline.
@@ -174,7 +173,7 @@ def load_or_create_model_card(
     return model_card
 
 
-def populate_model_card(model_card: ModelCard, tags: Union[str, List[str]] = None) -> ModelCard:
+def populate_model_card(model_card: ModelCard, tags: str | list[str] | None = None) -> ModelCard:
     """Populates the `model_card` with library name and optional tags."""
     if model_card.data.library_name is None:
         model_card.data.library_name = "diffusers"
@@ -190,7 +189,7 @@ def populate_model_card(model_card: ModelCard, tags: Union[str, List[str]] = Non
     return model_card
 
 
-def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str] = None):
+def extract_commit_hash(resolved_file: str | None, commit_hash: str | None = None):
     """
     Extracts the commit hash from a resolved filename toward a cache file.
     """
@@ -204,7 +203,7 @@ def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str]
     return commit_hash if REGEX_COMMIT_HASH.match(commit_hash) else None
 
 
-def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
+def _add_variant(weights_name: str, variant: str | None = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
         splits = splits[:-1] + [variant] + splits[-1:]
@@ -215,19 +214,19 @@ def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
 
 @validate_hf_hub_args
 def _get_model_file(
-    pretrained_model_name_or_path: Union[str, Path],
+    pretrained_model_name_or_path: str | Path,
     *,
     weights_name: str,
-    subfolder: Optional[str] = None,
-    cache_dir: Optional[str] = None,
+    subfolder: str | None = None,
+    cache_dir: str | None = None,
     force_download: bool = False,
-    proxies: Optional[Dict] = None,
+    proxies: dict | None = None,
     local_files_only: bool = False,
-    token: Optional[str] = None,
-    user_agent: Optional[Union[Dict, str]] = None,
-    revision: Optional[str] = None,
-    commit_hash: Optional[str] = None,
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    token: str | None = None,
+    user_agent: dict | str | None = None,
+    revision: str | None = None,
+    commit_hash: str | None = None,
+    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
@@ -355,7 +354,7 @@ def _get_checkpoint_shard_files(
     user_agent=None,
     revision=None,
     subfolder="",
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     """
     For a given model:
@@ -456,7 +455,7 @@ def _get_checkpoint_shard_files(
     return cached_filenames, sharded_metadata
 
 
-def _check_legacy_sharding_variant_format(folder: str = None, filenames: List[str] = None, variant: str = None):
+def _check_legacy_sharding_variant_format(folder: str = None, filenames: list[str] = None, variant: str = None):
     if filenames and folder:
         raise ValueError("Both `filenames` and `folder` cannot be provided.")
     if not filenames:
@@ -476,12 +475,12 @@ class PushToHubMixin:
 
     def _upload_folder(
         self,
-        working_dir: Union[str, os.PathLike],
+        working_dir: str | os.PathLike,
         repo_id: str,
-        token: Optional[str] = None,
-        commit_message: Optional[str] = None,
+        token: str | None = None,
+        commit_message: str | None = None,
         create_pr: bool = False,
-        subfolder: Optional[str] = None,
+        subfolder: str | None = None,
     ):
         """
         Uploads all files in `working_dir` to `repo_id`.
@@ -507,13 +506,13 @@ class PushToHubMixin:
     def push_to_hub(
         self,
         repo_id: str,
-        commit_message: Optional[str] = None,
-        private: Optional[bool] = None,
-        token: Optional[str] = None,
+        commit_message: str | None = None,
+        private: bool | None = None,
+        token: str | None = None,
         create_pr: bool = False,
         safe_serialization: bool = True,
-        variant: Optional[str] = None,
-        subfolder: Optional[str] = None,
+        variant: str | None = None,
+        subfolder: str | None = None,
     ) -> str:
         """
         Upload model, scheduler, or pipeline files to the 🤗 Hugging Face Hub.

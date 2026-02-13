@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 from PIL import Image
 from tqdm.auto import tqdm
@@ -39,7 +37,7 @@ class EDICTPipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def _encode_prompt(
-        self, prompt: str, negative_prompt: Optional[str] = None, do_classifier_free_guidance: bool = False
+        self, prompt: str, negative_prompt: str | None = None, do_classifier_free_guidance: bool = False
     ):
         text_inputs = self.tokenizer(
             prompt,
@@ -141,7 +139,7 @@ class EDICTPipeline(DiffusionPipeline):
         text_embeds: torch.Tensor,
         timesteps: torch.Tensor,
         guidance_scale: float,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ):
         do_classifier_free_guidance = guidance_scale > 1.0
 
@@ -194,9 +192,9 @@ class EDICTPipeline(DiffusionPipeline):
         guidance_scale: float = 3.0,
         num_inference_steps: int = 50,
         strength: float = 0.8,
-        negative_prompt: Optional[str] = None,
-        generator: Optional[torch.Generator] = None,
-        output_type: Optional[str] = "pil",
+        negative_prompt: str | None = None,
+        generator: torch.Generator | None = None,
+        output_type: str | None = "pil",
     ):
         do_classifier_free_guidance = guidance_scale > 1.0
 

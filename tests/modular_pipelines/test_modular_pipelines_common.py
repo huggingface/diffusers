@@ -1,6 +1,6 @@
 import gc
 import tempfile
-from typing import Callable, Union
+from typing import Callable
 
 import pytest
 import torch
@@ -46,7 +46,7 @@ class ModularPipelineTesterMixin:
         return generator
 
     @property
-    def pipeline_class(self) -> Union[Callable, ModularPipeline]:
+    def pipeline_class(self) -> Callable | ModularPipeline:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_class = ClassNameOfPipeline` in the child test class. "
             "See existing pipeline tests for reference."
@@ -59,7 +59,7 @@ class ModularPipelineTesterMixin:
         )
 
     @property
-    def pipeline_blocks_class(self) -> Union[Callable, ModularPipelineBlocks]:
+    def pipeline_blocks_class(self) -> Callable | ModularPipelineBlocks:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_blocks_class = ClassNameOfPipelineBlocks` in the child test class. "
             "See existing pipeline tests for reference."

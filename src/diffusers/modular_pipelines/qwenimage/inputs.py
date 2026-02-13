@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple
 
 import torch
 
@@ -78,7 +77,7 @@ def repeat_tensor_to_batch_size(
     return input_tensor
 
 
-def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: int) -> Tuple[int, int]:
+def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: int) -> tuple[int, int]:
     """Calculate image dimensions from latent tensor dimensions.
 
     This function converts latent space dimensions to image space dimensions by multiplying the latent height and width
@@ -91,7 +90,7 @@ def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: in
             Typically 8 for most VAEs (image is 8x larger than latents in each dimension)
 
     Returns:
-        Tuple[int, int]: The calculated image dimensions as (height, width)
+        tuple[int, int]: The calculated image dimensions as (height, width)
 
     Raises:
         ValueError: If latents tensor doesn't have 4 or 5 dimensions
@@ -164,7 +163,7 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         return summary_section + placement_section
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("num_images_per_prompt"),
             InputParam.template("prompt_embeds"),
@@ -174,7 +173,7 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(name="batch_size", type_hint=int, description="The batch size of the prompt embeddings"),
             OutputParam(name="dtype", type_hint=torch.dtype, description="The data type of the prompt embeddings"),
@@ -300,8 +299,8 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
 
     def __init__(
         self,
-        image_latent_inputs: Optional[List[InputParam]] = None,
-        additional_batch_inputs: Optional[List[InputParam]] = None,
+        image_latent_inputs: list[InputParam] | None = None,
+        additional_batch_inputs: list[InputParam] | None = None,
     ):
         # by default, process `image_latents`
         if image_latent_inputs is None:
@@ -350,13 +349,13 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
         return summary_section + inputs_info + placement_section
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         inputs = [
             InputParam.template("num_images_per_prompt"),
             InputParam.template("batch_size"),
@@ -369,7 +368,7 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
         return inputs
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         outputs = [
             OutputParam(
                 name="image_height",
@@ -514,8 +513,8 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
 
     def __init__(
         self,
-        image_latent_inputs: Optional[List[InputParam]] = None,
-        additional_batch_inputs: Optional[List[InputParam]] = None,
+        image_latent_inputs: list[InputParam] | None = None,
+        additional_batch_inputs: list[InputParam] | None = None,
     ):
         if image_latent_inputs is None:
             image_latent_inputs = [InputParam.template("image_latents")]
@@ -564,13 +563,13 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
         return summary_section + inputs_info + placement_section
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         inputs = [
             InputParam.template("num_images_per_prompt"),
             InputParam.template("batch_size"),
@@ -584,16 +583,16 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
         return inputs
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         outputs = [
             OutputParam(
                 name="image_height",
-                type_hint=List[int],
+                type_hint=list[int],
                 description="The image heights calculated from the image latents dimension",
             ),
             OutputParam(
                 name="image_width",
-                type_hint=List[int],
+                type_hint=list[int],
                 description="The image widths calculated from the image latents dimension",
             ),
         ]
@@ -744,8 +743,8 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
 
     def __init__(
         self,
-        image_latent_inputs: Optional[List[InputParam]] = None,
-        additional_batch_inputs: Optional[List[InputParam]] = None,
+        image_latent_inputs: list[InputParam] | None = None,
+        additional_batch_inputs: list[InputParam] | None = None,
     ):
         if image_latent_inputs is None:
             image_latent_inputs = [InputParam.template("image_latents")]
@@ -793,13 +792,13 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
         return summary_section + inputs_info + placement_section
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("pachifier", QwenImageLayeredPachifier, default_creation_method="from_config"),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         inputs = [
             InputParam.template("num_images_per_prompt"),
             InputParam.template("batch_size"),
@@ -811,7 +810,7 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
         return inputs
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         outputs = [
             OutputParam(
                 name="image_height",
@@ -945,7 +944,7 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
         return "prepare the `control_image_latents` for controlnet. Insert after all the other inputs steps."
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="control_image_latents",
@@ -960,7 +959,7 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="control_image_latents",
