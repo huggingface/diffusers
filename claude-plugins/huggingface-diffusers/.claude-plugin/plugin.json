@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "huggingface-diffusers",
   "version": "1.0.0",
   "description": "Claude Code plugin that helps users navigate Diffusers capabilities and generate correct starting recipes.",
