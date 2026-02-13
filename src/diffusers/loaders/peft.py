@@ -478,7 +478,7 @@ class PeftAdapterMixin:
         Args:
             adapter_names (`list[str]` or `str`):
                 The names of the adapters to use.
-            weights (`list[float] | float`, *optional*):
+            weights (`Union[List[float], float]`, *optional*):
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
                 adapters.
 
