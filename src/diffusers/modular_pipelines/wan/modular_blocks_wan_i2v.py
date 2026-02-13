@@ -177,6 +177,7 @@ class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 
 
 # wan2.1 Image2Video Auto Blocks
+# auto_docstring
 class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
     model_name = "wan-i2v"
     block_classes = [
@@ -194,10 +195,13 @@ class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
         "decode",
     ]
 
+    _workflow_map = {
+        "image2video": {"image": True, "prompt": True},
+        "flf2v": {"last_image": True, "image": True, "prompt": True},
+    }
+
     @property
     def description(self):
         return (
-            "Auto Modular pipeline for image-to-video using Wan.\n"
-            + "- for I2V workflow, all you need to provide is `image`"
-            + "- for FLF2V workflow, all you need to provide is `last_image` and `image`"
+            "Auto Modular pipeline for image-to-video using Wan."
         )

@@ -40,6 +40,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # ====================
 
 
+# auto_docstring
 class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
     block_classes = [WanImageResizeStep, WanVaeEncoderStep, WanPrepareFirstFrameLatentsStep]
@@ -56,6 +57,7 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
 
 
 # inputs (text + image_condition_latents) -> set_timesteps -> prepare_latents -> denoise (latents)
+# auto_docstring
 class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
     block_classes = [
@@ -91,6 +93,7 @@ class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 # ====================
 
 
+# auto_docstring
 class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
     model_name = "wan-i2v"
     block_classes = [

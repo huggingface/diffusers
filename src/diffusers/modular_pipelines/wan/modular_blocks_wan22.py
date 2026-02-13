@@ -38,6 +38,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # inputs(text) -> set_timesteps -> prepare_latents -> denoise
 
 
+# auto_docstring
 class Wan22CoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "wan"
     block_classes = [
@@ -65,6 +66,8 @@ class Wan22CoreDenoiseStep(SequentialPipelineBlocks):
 # ====================
 
 
+
+# auto_docstring
 class Wan22Blocks(SequentialPipelineBlocks):
     model_name = "wan"
     block_classes = [
