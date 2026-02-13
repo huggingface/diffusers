@@ -436,7 +436,7 @@ def _check_shape(
 
 
 def _check_attention_backend_requirements(backend: AttentionBackendName) -> None:
-    if backend in [AttentionBackendName.FLASH, AttentionBackendName.FLASH_VARLEN]:
+    if backend in [AttentionBackendName.FLASH, AttentionBackendName.FLASH_SPLIT, AttentionBackendName.FLASH_VARLEN]:
         if not _CAN_USE_FLASH_ATTN:
             raise RuntimeError(
                 f"Flash Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `flash-attn>={_REQUIRED_FLASH_VERSION}`."
@@ -450,6 +450,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
 
     elif backend in [
         AttentionBackendName.FLASH_HUB,
+        AttentionBackendName.FLASH_HUB_SPLIT,
         AttentionBackendName.FLASH_VARLEN_HUB,
         AttentionBackendName._FLASH_3_HUB,
         AttentionBackendName._FLASH_3_VARLEN_HUB,
