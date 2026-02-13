@@ -421,7 +421,7 @@ class CosmosTransformerBlock(nn.Module):
         controlnet_residual: Optional[torch.Tensor] = None,
         latents: Optional[torch.Tensor] = None,
         block_idx: Optional[int] = None,
-    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if self.before_proj is not None:
             hidden_states = self.before_proj(hidden_states) + latents
 
