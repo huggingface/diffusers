@@ -13,12 +13,12 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -26,6 +26,9 @@ from .scheduling_utils_flax import (
     FlaxSchedulerOutput,
     broadcast_to_shape_from_left,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -36,13 +39,22 @@ class EulerDiscreteSchedulerState:
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
     sigmas: jnp.ndarray
-    num_inference_steps: Optional[int] = None
+    num_inference_steps: int = None
 
     @classmethod
     def create(
-        cls, common: CommonSchedulerState, init_noise_sigma: jnp.ndarray, timesteps: jnp.ndarray, sigmas: jnp.ndarray
+        cls,
+        common: CommonSchedulerState,
+        init_noise_sigma: jnp.ndarray,
+        timesteps: jnp.ndarray,
+        sigmas: jnp.ndarray,
     ):
-        return cls(common=common, init_noise_sigma=init_noise_sigma, timesteps=timesteps, sigmas=sigmas)
+        return cls(
+            common=common,
+            init_noise_sigma=init_noise_sigma,
+            timesteps=timesteps,
+            sigmas=sigmas,
+        )
 
 
 @dataclass
@@ -94,14 +106,18 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         prediction_type: str = "epsilon",
         timestep_spacing: str = "linspace",
         dtype: jnp.dtype = jnp.float32,
     ):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> EulerDiscreteSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> EulerDiscreteSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 
@@ -146,7 +162,10 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         return sample
 
     def set_timesteps(
-        self, state: EulerDiscreteSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self,
+        state: EulerDiscreteSchedulerState,
+        num_inference_steps: int,
+        shape: tuple = (),
     ) -> EulerDiscreteSchedulerState:
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -159,7 +178,12 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         """
 
         if self.config.timestep_spacing == "linspace":
-            timesteps = jnp.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=self.dtype)
+            timesteps = jnp.linspace(
+                self.config.num_train_timesteps - 1,
+                0,
+                num_inference_steps,
+                dtype=self.dtype,
+            )
         elif self.config.timestep_spacing == "leading":
             step_ratio = self.config.num_train_timesteps // num_inference_steps
             timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(float)
@@ -193,7 +217,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[FlaxEulerDiscreteSchedulerOutput, Tuple]:
+    ) -> FlaxEulerDiscreteSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

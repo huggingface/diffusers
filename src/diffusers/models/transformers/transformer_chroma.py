@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 import torch
@@ -45,7 +45,7 @@ class ChromaAdaLayerNormZeroPruned(nn.Module):
         num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
-    def __init__(self, embedding_dim: int, num_embeddings: Optional[int] = None, norm_type="layer_norm", bias=True):
+    def __init__(self, embedding_dim: int, num_embeddings: int | None = None, norm_type="layer_norm", bias=True):
         super().__init__()
         if num_embeddings is not None:
             self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
@@ -64,11 +64,11 @@ class ChromaAdaLayerNormZeroPruned(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        timestep: Optional[torch.Tensor] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-        hidden_dtype: Optional[torch.dtype] = None,
-        emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        timestep: torch.Tensor | None = None,
+        class_labels: torch.LongTensor | None = None,
+        hidden_dtype: torch.dtype | None = None,
+        emb: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.emb is not None:
             emb = self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.flatten(1, 2).chunk(6, dim=1)
@@ -98,8 +98,8 @@ class ChromaAdaLayerNormZeroSinglePruned(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        emb: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         shift_msa, scale_msa, gate_msa = emb.flatten(1, 2).chunk(3, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
         return x, gate_msa
@@ -243,9 +243,9 @@ class ChromaSingleTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor:
         residual = hidden_states
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
@@ -309,10 +309,10 @@ class ChromaTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         temb_img, temb_txt = temb[:, :6], temb[:, 6:]
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb_img)
 
@@ -399,7 +399,7 @@ class ChromaTransformer2DModel(
         joint_attention_dim (`int`, defaults to `4096`):
             The number of dimensions to use for the joint attention (embedding/channel dimension of
             `encoder_hidden_states`).
-        axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
+        axes_dims_rope (`tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions to use for the rotary positional embeddings.
     """
 
@@ -413,13 +413,13 @@ class ChromaTransformer2DModel(
         self,
         patch_size: int = 1,
         in_channels: int = 64,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         num_layers: int = 19,
         num_single_layers: int = 38,
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
         joint_attention_dim: int = 4096,
-        axes_dims_rope: Tuple[int, ...] = (16, 56, 56),
+        axes_dims_rope: tuple[int, ...] = (16, 56, 56),
         approximator_num_channels: int = 64,
         approximator_hidden_dim: int = 5120,
         approximator_layers: int = 5,
@@ -481,12 +481,12 @@ class ChromaTransformer2DModel(
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
         attention_mask: torch.Tensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         controlnet_block_samples=None,
         controlnet_single_block_samples=None,
         return_dict: bool = True,
         controlnet_blocks_repeat: bool = False,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> torch.Tensor | Transformer2DModelOutput:
         """
         The [`FluxTransformer2DModel`] forward method.
 
