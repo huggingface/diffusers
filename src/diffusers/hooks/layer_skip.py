@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import asdict, dataclass
-from typing import Callable, List, Optional
+from typing import Callable
 
 import torch
 
@@ -43,7 +43,7 @@ class LayerSkipConfig:
     Configuration for skipping internal transformer blocks when executing a transformer model.
 
     Args:
-        indices (`List[int]`):
+        indices (`list[int]`):
             The indices of the layer to skip. This is typically the first layer in the transformer block.
         fqn (`str`, defaults to `"auto"`):
             The fully qualified name identifying the stack of transformer blocks. Typically, this is
@@ -63,7 +63,7 @@ class LayerSkipConfig:
             skipped layers are fully retained, which is equivalent to not skipping any layers.
     """
 
-    indices: List[int]
+    indices: list[int]
     fqn: str = "auto"
     skip_attention: bool = True
     skip_attention_scores: bool = False
@@ -196,7 +196,7 @@ def apply_layer_skip(module: torch.nn.Module, config: LayerSkipConfig) -> None:
     _apply_layer_skip_hook(module, config)
 
 
-def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, name: Optional[str] = None) -> None:
+def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, name: str | None = None) -> None:
     name = name or _LAYER_SKIP_HOOK
 
     if config.skip_attention and config.skip_attention_scores:

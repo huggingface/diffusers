@@ -357,13 +357,13 @@ class ComposableStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin)
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
-        weights: Optional[str] = "",
+        weights: str | None = "",
     ):
         r"""
         Function invoked when calling the pipeline for generation.
