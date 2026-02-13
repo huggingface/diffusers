@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
         >>> frame_rate = 24.0
-        >>> video = pipe(
+        >>> video, audio = pipe(
         ...     image=image,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
