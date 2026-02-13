@@ -145,7 +145,7 @@ class HunyuanVideo15AttnBlock(nn.Module):
             frames, height * width, query.dtype, query.device, batch_size=batch_size
         )
 
-        x = nn.functional.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)
+        x = nn.functional.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask.unsqueeze(1))
 
         # batch_size, 1, frames * height * width, channels
 
