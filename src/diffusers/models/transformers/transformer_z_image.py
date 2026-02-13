@@ -788,10 +788,10 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         feats = pad_sequence(feats, batch_first=True, padding_value=0.0)
         freqs_cis = pad_sequence(freqs_cis, batch_first=True, padding_value=0.0)[:, : feats.shape[1]]
 
-        # Attention mask
+        # Attention mask (exclude inner padding from attention)
         attn_mask = torch.zeros((bsz, max_seqlen), dtype=torch.bool, device=device)
         for i, seq_len in enumerate(item_seqlens):
-            attn_mask[i, :seq_len] = 1
+            attn_mask[i, :seq_len] = ~inner_pad_mask[i]
 
         # Noise mask
         noise_mask_tensor = None
@@ -802,7 +802,10 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 padding_value=0,
             )[:, : feats.shape[1]]
 
-        return feats, freqs_cis, attn_mask, item_seqlens, noise_mask_tensor
+        # Pad inner_pad_mask to batch for downstream use
+        batched_inner_pad_mask = pad_sequence(inner_pad_mask, batch_first=True, padding_value=True)[:, : feats.shape[1]]
+
+        return feats, freqs_cis, attn_mask, item_seqlens, noise_mask_tensor, batched_inner_pad_mask
 
     def _build_unified_sequence(
         self,
@@ -810,14 +813,17 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         x_freqs: torch.Tensor,
         x_seqlens: List[int],
         x_noise_mask: Optional[List[List[int]]],
+        x_inner_pad_mask: torch.Tensor,
         cap: torch.Tensor,
         cap_freqs: torch.Tensor,
         cap_seqlens: List[int],
         cap_noise_mask: Optional[List[List[int]]],
+        cap_inner_pad_mask: torch.Tensor,
         siglip: Optional[torch.Tensor],
         siglip_freqs: Optional[torch.Tensor],
         siglip_seqlens: Optional[List[int]],
         siglip_noise_mask: Optional[List[List[int]]],
+        siglip_inner_pad_mask: Optional[torch.Tensor],
         omni_mode: bool,
         device: torch.device,
     ):
@@ -828,6 +834,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         unified = []
         unified_freqs = []
         unified_noise_mask = []
+        unified_pad_mask = []
 
         for i in range(bsz):
             x_len, cap_len = x_seqlens[i], cap_seqlens[i]
@@ -845,16 +852,29 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                             cap_noise_mask[i] + x_noise_mask[i] + siglip_noise_mask[i], dtype=torch.long, device=device
                         )
                     )
+                    unified_pad_mask.append(
+                        torch.cat([
+                            cap_inner_pad_mask[i][:cap_len],
+                            x_inner_pad_mask[i][:x_len],
+                            siglip_inner_pad_mask[i][:sig_len],
+                        ])
+                    )
                 else:
                     unified.append(torch.cat([cap[i][:cap_len], x[i][:x_len]]))
                     unified_freqs.append(torch.cat([cap_freqs[i][:cap_len], x_freqs[i][:x_len]]))
                     unified_noise_mask.append(
                         torch.tensor(cap_noise_mask[i] + x_noise_mask[i], dtype=torch.long, device=device)
                     )
+                    unified_pad_mask.append(
+                        torch.cat([cap_inner_pad_mask[i][:cap_len], x_inner_pad_mask[i][:x_len]])
+                    )
             else:
                 # Basic: [x, cap]
                 unified.append(torch.cat([x[i][:x_len], cap[i][:cap_len]]))
                 unified_freqs.append(torch.cat([x_freqs[i][:x_len], cap_freqs[i][:cap_len]]))
+                unified_pad_mask.append(
+                    torch.cat([x_inner_pad_mask[i][:x_len], cap_inner_pad_mask[i][:cap_len]])
+                )
 
         # Compute unified seqlens
         if omni_mode:
@@ -871,10 +891,11 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         unified = pad_sequence(unified, batch_first=True, padding_value=0.0)
         unified_freqs = pad_sequence(unified_freqs, batch_first=True, padding_value=0.0)
 
-        # Attention mask
+        # Attention mask (exclude inner padding from attention)
+        unified_pad_mask_batched = pad_sequence(unified_pad_mask, batch_first=True, padding_value=True)
         attn_mask = torch.zeros((bsz, max_seqlen), dtype=torch.bool, device=device)
         for i, seq_len in enumerate(unified_seqlens):
-            attn_mask[i, :seq_len] = 1
+            attn_mask[i, :seq_len] = ~unified_pad_mask_batched[i, :seq_len]
 
         # Noise mask
         noise_mask_tensor = None
@@ -948,7 +969,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         # X embed & refine
         x_seqlens = [len(xi) for xi in x]
         x = self.all_x_embedder[f"{patch_size}-{f_patch_size}"](torch.cat(x, dim=0))  # embed
-        x, x_freqs, x_mask, _, x_noise_tensor = self._prepare_sequence(
+        x, x_freqs, x_mask, _, x_noise_tensor, x_batched_pad_mask = self._prepare_sequence(
             list(x.split(x_seqlens, dim=0)), x_pos_ids, x_pad_mask, self.x_pad_token, x_noise_mask, device
         )
 
@@ -964,7 +985,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         # Cap embed & refine
         cap_seqlens = [len(ci) for ci in cap_feats]
         cap_feats = self.cap_embedder(torch.cat(cap_feats, dim=0))  # embed
-        cap_feats, cap_freqs, cap_mask, _, _ = self._prepare_sequence(
+        cap_feats, cap_freqs, cap_mask, _, _, cap_batched_pad_mask = self._prepare_sequence(
             list(cap_feats.split(cap_seqlens, dim=0)), cap_pos_ids, cap_pad_mask, self.cap_pad_token, None, device
         )
 
@@ -976,11 +997,11 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             )
 
         # Siglip embed & refine
-        siglip_seqlens = siglip_freqs = None
+        siglip_seqlens = siglip_freqs = siglip_batched_pad_mask = None
         if omni_mode and siglip_feats[0] is not None and self.siglip_embedder is not None:
             siglip_seqlens = [len(si) for si in siglip_feats]
             siglip_feats = self.siglip_embedder(torch.cat(siglip_feats, dim=0))  # embed
-            siglip_feats, siglip_freqs, siglip_mask, _, _ = self._prepare_sequence(
+            siglip_feats, siglip_freqs, siglip_mask, _, _, siglip_batched_pad_mask = self._prepare_sequence(
                 list(siglip_feats.split(siglip_seqlens, dim=0)),
                 siglip_pos_ids,
                 siglip_pad_mask,
@@ -1002,14 +1023,17 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             x_freqs,
             x_seqlens,
             x_noise_mask,
+            x_batched_pad_mask,
             cap_feats,
             cap_freqs,
             cap_seqlens,
             cap_noise_mask,
+            cap_batched_pad_mask,
             siglip_feats,
             siglip_freqs,
             siglip_seqlens,
             siglip_noise_mask,
+            siglip_batched_pad_mask,
             omni_mode,
             device,
         )
