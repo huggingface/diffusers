@@ -2998,6 +2998,8 @@ def convert_lumina2_to_diffusers(checkpoint, **kwargs):
         "cap_embedder": "time_caption_embed.caption_embedder",
         "t_embedder.mlp.0": "time_caption_embed.timestep_embedder.linear_1",
         "t_embedder.mlp.2": "time_caption_embed.timestep_embedder.linear_2",
+        "clip_text_pooled_proj": "time_caption_embed.clip_text_pooled_proj",
+        "time_text_embed": "time_caption_embed.time_text_embed",
         "attention": "attn",
         ".out.": ".to_out.0.",
         "k_norm": "norm_k",
