@@ -958,7 +958,6 @@ class QwenImageTransformer2DModel(
                     None,  # Don't pass encoder_hidden_states_mask (using attention_mask instead)
                     temb,
                     image_rotary_emb,
-                    text_seq_len_per_sample,
                     block_attention_kwargs,
                     modulate_index,
                 )
