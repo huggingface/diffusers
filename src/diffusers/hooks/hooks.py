@@ -40,11 +40,14 @@ class StateManager:
         self._current_context = None
 
     def get_state(self):
-        if self._current_context is None:
-            raise ValueError("No context is set. Please set a context before retrieving the state.")
-        if self._current_context not in self._state_cache.keys():
-            self._state_cache[self._current_context] = self._state_cls(*self._init_args, **self._init_kwargs)
-        return self._state_cache[self._current_context]
+        context = self._current_context
+        if context is None:
+            # Fallback to default context for backward compatibility with
+            # pipelines that don't call cache_context()
+            context = "_default"
+        if context not in self._state_cache:
+            self._state_cache[context] = self._state_cls(*self._init_args, **self._init_kwargs)
+        return self._state_cache[context]
 
     def set_context(self, name: str) -> None:
         self._current_context = name
