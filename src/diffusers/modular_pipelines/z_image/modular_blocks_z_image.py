@@ -36,8 +36,12 @@ from .encoders import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# z-image
-# text2image
+# ====================
+# 1. DENOISE
+# ====================
+
+# text2image: inputs(text) -> set_timesteps -> prepare_latents -> denoise
+# auto_docstring
 class ZImageCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         ZImageTextInputStep,
@@ -59,8 +63,8 @@ class ZImageCoreDenoiseStep(SequentialPipelineBlocks):
         )
 
 
-# z-image: image2image
-## denoise
+# image2image: inputs(text + image_latents) -> prepare_latents -> set_timesteps -> set_timesteps_with_strength -> prepare_latents_with_image -> denoise 
+# auto_docstring
 class ZImageImage2ImageCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         ZImageTextInputStep,
@@ -96,7 +100,7 @@ class ZImageImage2ImageCoreDenoiseStep(SequentialPipelineBlocks):
         )
 
 
-## auto blocks
+# auto_docstring
 class ZImageAutoDenoiseStep(AutoPipelineBlocks):
     block_classes = [
         ZImageImage2ImageCoreDenoiseStep,
@@ -117,6 +121,7 @@ class ZImageAutoDenoiseStep(AutoPipelineBlocks):
         )
 
 
+# auto_docstring
 class ZImageAutoVaeImageEncoderStep(AutoPipelineBlocks):
     block_classes = [ZImageVaeImageEncoderStep]
     block_names = ["vae_encoder"]
@@ -130,6 +135,7 @@ class ZImageAutoVaeImageEncoderStep(AutoPipelineBlocks):
         +" - if `image` is not provided, step will be skipped."
 
 
+# auto_docstring
 class ZImageAutoBlocks(SequentialPipelineBlocks):
     block_classes = [
         ZImageTextEncoderStep,
@@ -138,54 +144,12 @@ class ZImageAutoBlocks(SequentialPipelineBlocks):
         ZImageVaeDecoderStep,
     ]
     block_names = ["text_encoder", "vae_encoder", "denoise", "decode"]
+    _workflow_map = {
+        "text2image": {"prompt": True},
+        "image2image": {"image": True, "prompt": True},
+    }
 
     @property
     def description(self) -> str:
-        return "Auto Modular pipeline for text-to-image and image-to-image using ZImage.\n"
-        +" - for text-to-image generation, all you need to provide is `prompt`\n"
-        +" - for image-to-image generation, you need to provide `image`\n"
-        +" - if `image` is not provided, step will be skipped."
+        return "Auto Modular pipeline for text-to-image and image-to-image using ZImage."
 
-
-# presets
-TEXT2IMAGE_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", ZImageTextEncoderStep),
-        ("input", ZImageTextInputStep),
-        ("prepare_latents", ZImagePrepareLatentsStep),
-        ("set_timesteps", ZImageSetTimestepsStep),
-        ("denoise", ZImageDenoiseStep),
-        ("decode", ZImageVaeDecoderStep),
-    ]
-)
-
-IMAGE2IMAGE_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", ZImageTextEncoderStep),
-        ("vae_encoder", ZImageVaeImageEncoderStep),
-        ("input", ZImageTextInputStep),
-        ("additional_inputs", ZImageAdditionalInputsStep(image_latent_inputs=["image_latents"])),
-        ("prepare_latents", ZImagePrepareLatentsStep),
-        ("set_timesteps", ZImageSetTimestepsStep),
-        ("set_timesteps_with_strength", ZImageSetTimestepsWithStrengthStep),
-        ("prepare_latents_with_image", ZImagePrepareLatentswithImageStep),
-        ("denoise", ZImageDenoiseStep),
-        ("decode", ZImageVaeDecoderStep),
-    ]
-)
-
-
-AUTO_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", ZImageTextEncoderStep),
-        ("vae_encoder", ZImageAutoVaeImageEncoderStep),
-        ("denoise", ZImageAutoDenoiseStep),
-        ("decode", ZImageVaeDecoderStep),
-    ]
-)
-
-ALL_BLOCKS = {
-    "text2image": TEXT2IMAGE_BLOCKS,
-    "image2image": IMAGE2IMAGE_BLOCKS,
-    "auto": AUTO_BLOCKS,
-}
