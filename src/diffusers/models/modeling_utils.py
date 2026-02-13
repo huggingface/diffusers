@@ -675,6 +675,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant: Optional[str] = None,
         max_shard_size: Union[int, str] = "10GB",
         push_to_hub: bool = False,
+        use_flashpack: bool = False,
         **kwargs,
     ):
         """
@@ -707,6 +708,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                Whether to save the model in [FlashPack](https://github.com/fal-ai/flashpack) format.
+                FlashPack is a binary format that allows for faster loading.
+                Requires the `flashpack` library to be installed.
             kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
@@ -734,7 +739,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         )
 
         os.makedirs(save_directory, exist_ok=True)
-
+        if use_flashpack:
+            if not is_main_process:
+                return
+            from ..utils.flashpack_utils import save_flashpack
+            save_flashpack(
+                self,
+                save_directory,
+                variant=variant,
+            )
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
             private = kwargs.pop("private", None)
@@ -939,6 +952,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 If set to `None`, the `safetensors` weights are downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model is forcibly loaded from `safetensors`
                 weights. If set to `False`, `safetensors` weights are not loaded.
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                If set to `True`, the model is first loaded from  `flashpack` (https://github.com/fal-ai/flashpack) weights if a compatible `.flashpack` file
+                is found. If flashpack is unavailable or the `.flashpack` file cannot be used, automatic fallback to
+                the standard loading path (for example, `safetensors`).
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
@@ -982,6 +999,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        use_flashpack = kwargs.pop("use_flashpack", False)
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
@@ -1199,26 +1217,78 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
 
             model = load_flax_checkpoint_in_pytorch_model(model, resolved_model_file)
+
         else:
-            # in the case it is sharded, we have already the index
-            if is_sharded:
-                resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
-                    pretrained_model_name_or_path,
-                    index_file,
-                    cache_dir=cache_dir,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    user_agent=user_agent,
-                    revision=revision,
-                    subfolder=subfolder or "",
-                    dduf_entries=dduf_entries,
-                )
-            elif use_safetensors:
+            flashpack_file = None
+            if use_flashpack:
                 try:
+                    flashpack_file = _get_model_file(
+                        pretrained_model_name_or_path,
+                        weights_name=_add_variant("model.flashpack", variant),
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        token=token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        user_agent=user_agent,
+                        commit_hash=commit_hash,
+                        dduf_entries=dduf_entries,
+                    )
+                except EnvironmentError:
+                    flashpack_file = None
+
+            if flashpack_file is None:
+                if use_flashpack:
+                    logger.warning(
+                        "use_flashpack=True but no compatible `.flashpack` weights were found. "
+                        "Falling back to standard loading (safetensors / PyTorch)."
+                    )
+                # in the case it is sharded, we have already the index
+                if is_sharded:
+                    resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
+                        pretrained_model_name_or_path,
+                        index_file,
+                        cache_dir=cache_dir,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        token=token,
+                        user_agent=user_agent,
+                        revision=revision,
+                        subfolder=subfolder or "",
+                        dduf_entries=dduf_entries,
+                    )
+                elif use_safetensors:
+                    logger.warning("Trying to load model weights with safetensors format.")
+                    try:
+                        resolved_model_file = _get_model_file(
+                            pretrained_model_name_or_path,
+                            weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
+                            cache_dir=cache_dir,
+                            force_download=force_download,
+                            proxies=proxies,
+                            local_files_only=local_files_only,
+                            token=token,
+                            revision=revision,
+                            subfolder=subfolder,
+                            user_agent=user_agent,
+                            commit_hash=commit_hash,
+                            dduf_entries=dduf_entries,
+                        )
+
+                    except IOError as e:
+                        logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
+                        if not allow_pickle:
+                            raise
+                        logger.warning(
+                            "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
+                        )
+                    
+                if resolved_model_file is None and not is_sharded:
                     resolved_model_file = _get_model_file(
                         pretrained_model_name_or_path,
-                        weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
+                        weights_name=_add_variant(WEIGHTS_NAME, variant),
                         cache_dir=cache_dir,
                         force_download=force_download,
                         proxies=proxies,
@@ -1231,32 +1301,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         dduf_entries=dduf_entries,
                     )
 
-                except IOError as e:
-                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
-                    if not allow_pickle:
-                        raise
-                    logger.warning(
-                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
-                    )
-
-            if resolved_model_file is None and not is_sharded:
-                resolved_model_file = _get_model_file(
-                    pretrained_model_name_or_path,
-                    weights_name=_add_variant(WEIGHTS_NAME, variant),
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    user_agent=user_agent,
-                    commit_hash=commit_hash,
-                    dduf_entries=dduf_entries,
-                )
-
-        if not isinstance(resolved_model_file, list):
-            resolved_model_file = [resolved_model_file]
+            if not isinstance(resolved_model_file, list):
+                resolved_model_file = [resolved_model_file]
 
         # set dtype to instantiate the model under:
         # 1. If torch_dtype is not None, we use that dtype
@@ -1279,6 +1325,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if dtype_orig is not None:
             torch.set_default_dtype(dtype_orig)
+
+        if flashpack_file is not None:
+            from ..utils.flashpack_utils import load_flashpack
+            # Even when using FlashPack, we preserve `low_cpu_mem_usage` behavior by initializing
+            # the model with meta tensors. Since FlashPack cannot write into meta tensors, we
+            # explicitly materialize parameters before loading to ensure correctness and parity
+            # with the standard loading path.
+            if any(p.device.type == "meta" for p in model.parameters()):
+                 model.to_empty(device="cpu")
+            load_flashpack(model, flashpack_file)
+            model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+            model.eval()
+
+            if output_loading_info:
+                return model, {
+                    "missing_keys": [],
+                    "unexpected_keys": [],
+                    "mismatched_keys": [],
+                    "error_msgs": [],
+                }
+
+            return model
 
         state_dict = None
         if not is_sharded:
@@ -1327,7 +1395,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             keep_in_fp32_modules=keep_in_fp32_modules,
             dduf_entries=dduf_entries,
             is_parallel_loading_enabled=is_parallel_loading_enabled,
-            disable_mmap=disable_mmap,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1372,8 +1439,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if output_loading_info:
             return model, loading_info
+        
+        logger.warning(f"Model till end {pretrained_model_name_or_path} loaded successfully")
 
         return model
+
 
     # Adapted from `transformers`.
     @wraps(torch.nn.Module.cuda)
