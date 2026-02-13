@@ -2,12 +2,12 @@ import gc
 import unittest
 
 import numpy as np
-import pytest
 import torch
 
 from diffusers import FluxPipeline, FluxPriorReduxPipeline
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     numpy_cosine_similarity_distance,
@@ -19,7 +19,6 @@ from diffusers.utils.testing_utils import (
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxReduxSlowTests(unittest.TestCase):
     pipeline_class = FluxPriorReduxPipeline
     repo_id = "black-forest-labs/FLUX.1-Redux-dev"

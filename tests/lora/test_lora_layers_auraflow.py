@@ -23,7 +23,8 @@ from diffusers import (
     AuraFlowTransformer2DModel,
     FlowMatchEulerDiscreteScheduler,
 )
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     floats_tensor,
     is_peft_available,
     require_peft_backend,
@@ -35,14 +36,13 @@ if is_peft_available():
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
 class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = AuraFlowPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {
@@ -75,6 +75,8 @@ class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     text_encoder_cls, text_encoder_id = UMT5EncoderModel, "hf-internal-testing/tiny-random-umt5"
     text_encoder_target_modules = ["q", "k", "v", "o"]
     denoiser_target_modules = ["to_q", "to_k", "to_v", "to_out.0", "linear_1"]
+
+    supports_text_encoder_loras = False
 
     @property
     def output_shape(self):
@@ -113,24 +115,4 @@ class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @unittest.skip("Not supported in AuraFlow.")
     def test_modify_padding_mode(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in AuraFlow.")
-    def test_simple_inference_with_partial_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in AuraFlow.")
-    def test_simple_inference_with_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in AuraFlow.")
-    def test_simple_inference_with_text_lora_and_scale(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in AuraFlow.")
-    def test_simple_inference_with_text_lora_fused(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in AuraFlow.")
-    def test_simple_inference_with_text_lora_save_load(self):
         pass

@@ -67,3 +67,101 @@ config = FasterCacheConfig(
 )
 pipeline.transformer.enable_cache(config)
 ```
+
+## FirstBlockCache
+
+[FirstBlock Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) checks how much the early layers of the denoiser changes from one timestep to the next. If the change is small, the model skips the expensive later layers and reuses the previous output.
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.hooks import apply_first_block_cache, FirstBlockCacheConfig
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "Qwen/Qwen-Image", torch_dtype=torch.bfloat16
+)
+apply_first_block_cache(pipeline.transformer, FirstBlockCacheConfig(threshold=0.2))
+```
+## TaylorSeer Cache
+
+[TaylorSeer Cache](https://huggingface.co/papers/2403.06923) accelerates diffusion inference by using Taylor series expansions to approximate and cache intermediate activations across denoising steps. The method predicts future outputs based on past computations, reusing them at specified intervals to reduce redundant calculations.
+
+This caching mechanism delivers strong results with minimal additional memory overhead. For detailed performance analysis, see [our findings here](https://github.com/huggingface/diffusers/pull/12648#issuecomment-3610615080).
+
+To enable TaylorSeer Cache, create a [`TaylorSeerCacheConfig`] and pass it to your pipeline's transformer:
+
+- `cache_interval`: Number of steps to reuse cached outputs before performing a full forward pass
+- `disable_cache_before_step`: Initial steps that use full computations to gather data for approximations
+- `max_order`: Approximation accuracy (in theory, higher values improve quality but increase memory usage but we recommend it should be set to `1`)
+
+```python
+import torch
+from diffusers import FluxPipeline, TaylorSeerCacheConfig
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+config = TaylorSeerCacheConfig(
+    cache_interval=5,
+    max_order=1,
+    disable_cache_before_step=10,
+    taylor_factors_dtype=torch.bfloat16,
+)
+pipe.transformer.enable_cache(config)
+```
+
+## MagCache
+
+[MagCache](https://github.com/Zehong-Ma/MagCache) accelerates inference by skipping transformer blocks based on the magnitude of the residual update. It observes that the magnitude of updates (Output - Input) decays predictably over the diffusion process. By accumulating an "error budget" based on pre-computed magnitude ratios, it dynamically decides when to skip computation and reuse the previous residual.
+
+MagCache relies on **Magnitude Ratios** (`mag_ratios`), which describe this decay curve. These ratios are specific to the model checkpoint and scheduler.
+
+### Usage
+
+To use MagCache, you typically follow a two-step process: **Calibration** and **Inference**.
+
+1.  **Calibration**: Run inference once with `calibrate=True`. The hook will measure the residual magnitudes and print the calculated ratios to the console.
+2.  **Inference**: Pass these ratios to `MagCacheConfig` to enable acceleration.
+
+```python
+import torch
+from diffusers import FluxPipeline, MagCacheConfig
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-schnell",
+    torch_dtype=torch.bfloat16
+).to("cuda")
+
+# 1. Calibration Step
+# Run full inference to measure model behavior.
+calib_config = MagCacheConfig(calibrate=True, num_inference_steps=4)
+pipe.transformer.enable_cache(calib_config)
+
+# Run a prompt to trigger calibration
+pipe("A cat playing chess", num_inference_steps=4)
+# Logs will print something like: "MagCache Calibration Results: [1.0, 1.37, 0.97, 0.87]"
+
+# 2. Inference Step
+# Apply the specific ratios obtained from calibration for optimized speed.
+# Note: For Flux models, you can also import defaults: 
+# from diffusers.hooks.mag_cache import FLUX_MAG_RATIOS
+mag_config = MagCacheConfig(
+    mag_ratios=[1.0, 1.37, 0.97, 0.87],
+    num_inference_steps=4
+)
+
+pipe.transformer.enable_cache(mag_config) 
+
+image = pipe("A cat playing chess", num_inference_steps=4).images[0]
+```
+
+> [!NOTE]
+> `mag_ratios` represent the model's intrinsic magnitude decay curve. Ratios calibrated for a high number of steps (e.g., 50) can be reused for lower step counts (e.g., 20). The implementation uses interpolation to map the curve to the current number of inference steps.
+
+> [!TIP]
+> For pipelines that run Classifier-Free Guidance sequentially (like Kandinsky 5.0), the calibration log might print two arrays: one for the Conditional pass and one for the Unconditional pass. In most cases, you should use the first array (Conditional).
+
+> [!TIP]
+> For pipelines that run Classifier-Free Guidance in a **batched** manner (like SDXL or Flux), the `hidden_states` processed by the model contain both conditional and unconditional branches concatenated together. The calibration process automatically accounts for this, producing a single array of ratios that represents the joint behavior. You can use this resulting array directly without modification.

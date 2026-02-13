@@ -51,9 +51,6 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     Args:
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
-        timestep_spacing (`str`, defaults to `"linspace"`):
-            The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
-            Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         shift (`float`, defaults to 1.0):
             The shift value for the timestep schedule.
     """
@@ -102,7 +99,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
@@ -111,7 +108,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         sample: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
-        noise: Optional[torch.FloatTensor] = None,
+        noise: torch.FloatTensor,
     ) -> torch.FloatTensor:
         """
         Forward process in flow-matching
@@ -119,8 +116,10 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`):
                 The input sample.
-            timestep (`int`, *optional*):
+            timestep (`float` or `torch.FloatTensor`):
                 The current timestep in the diffusion chain.
+            noise (`torch.FloatTensor`):
+                The noise tensor.
 
         Returns:
             `torch.FloatTensor`:
@@ -130,14 +129,19 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
+
         sample = sigma * noise + (1.0 - sigma) * sample
 
         return sample
 
-    def _sigma_to_t(self, sigma):
+    def _sigma_to_t(self, sigma: float) -> float:
         return sigma * self.config.num_train_timesteps
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        device: Union[str, torch.device] = None,
+    ) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -150,7 +154,9 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
 
         timesteps = np.linspace(
-            self._sigma_to_t(self.sigma_max), self._sigma_to_t(self.sigma_min), num_inference_steps
+            self._sigma_to_t(self.sigma_max),
+            self._sigma_to_t(self.sigma_min),
+            num_inference_steps,
         )
 
         sigmas = timesteps / self.config.num_train_timesteps
@@ -171,7 +177,24 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
 
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self,
+        timestep: Union[float, torch.FloatTensor],
+        schedule_timesteps: Optional[torch.FloatTensor] = None,
+    ) -> int:
+        """
+        Find the index of a given timestep in the timestep schedule.
+
+        Args:
+            timestep (`float` or `torch.FloatTensor`):
+                The timestep value to find in the schedule.
+            schedule_timesteps (`torch.FloatTensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule.
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -185,7 +208,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return indices[pos].item()
 
-    def _init_step_index(self, timestep):
+    def _init_step_index(self, timestep: Union[float, torch.FloatTensor]) -> None:
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
@@ -194,7 +217,10 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = self._begin_index
 
     @property
-    def state_in_first_order(self):
+    def state_in_first_order(self) -> bool:
+        """
+        Returns whether the scheduler is in the first-order state.
+        """
         return self.dt is None
 
     def step(
@@ -216,13 +242,19 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.FloatTensor`):
                 The direct output from learned diffusion model.
-            timestep (`float`):
+            timestep (`float` or `torch.FloatTensor`):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
             s_churn (`float`):
-            s_tmin  (`float`):
-            s_tmax  (`float`):
+                Stochasticity parameter that controls the amount of noise added during sampling. Higher values increase
+                randomness.
+            s_tmin (`float`):
+                Minimum timestep threshold for applying stochasticity. Only timesteps above this value will have noise
+                added.
+            s_tmax (`float`):
+                Maximum timestep threshold for applying stochasticity. Only timesteps below this value will have noise
+                added.
             s_noise (`float`, defaults to 1.0):
                 Scaling factor for noise added to the sample.
             generator (`torch.Generator`, *optional*):
@@ -271,7 +303,10 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if gamma > 0:
             noise = randn_tensor(
-                model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
+                model_output.shape,
+                dtype=model_output.dtype,
+                device=model_output.device,
+                generator=generator,
             )
             eps = noise * s_noise
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
@@ -317,5 +352,5 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return FlowMatchHeunDiscreteSchedulerOutput(prev_sample=prev_sample)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps

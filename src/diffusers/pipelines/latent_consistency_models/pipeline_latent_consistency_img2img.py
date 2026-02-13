@@ -186,8 +186,8 @@ class LatentConsistencyModelImg2ImgPipeline(
             supports [`LCMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for
+            more details about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
         requires_safety_checker (`bool`, *optional*, defaults to `True`):
@@ -881,10 +881,14 @@ class LatentConsistencyModelImg2ImgPipeline(
         image = self.image_processor.preprocess(image)
 
         # 5. Prepare timesteps
+        if XLA_AVAILABLE:
+            timestep_device = "cpu"
+        else:
+            timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
-            device,
+            timestep_device,
             timesteps,
             original_inference_steps=original_inference_steps,
             strength=strength,

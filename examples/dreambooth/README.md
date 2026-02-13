@@ -19,8 +19,9 @@ cd diffusers
 pip install -e .
 ```
 
-Then cd in the example folder and run
+Install the requirements in the `examples/dreambooth` folder as shown below.
 ```bash
+cd examples/dreambooth
 pip install -r requirements.txt
 ```
 
@@ -330,7 +331,7 @@ For this example we want to directly store the trained LoRA embeddings on the Hu
 we need to be logged in and add the `--push_to_hub` flag.
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 Now we can start training!

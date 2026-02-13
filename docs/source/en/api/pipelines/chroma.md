@@ -19,24 +19,22 @@ specific language governing permissions and limitations under the License.
 
 Chroma is a text to image generation model based on Flux.
 
-Original model checkpoints for Chroma can be found [here](https://huggingface.co/lodestones/Chroma).
+Original model checkpoints for Chroma can be found here:
+* High-resolution finetune: [lodestones/Chroma1-HD](https://huggingface.co/lodestones/Chroma1-HD)
+* Base model: [lodestones/Chroma1-Base](https://huggingface.co/lodestones/Chroma1-Base)
+* Original repo with progress checkpoints: [lodestones/Chroma](https://huggingface.co/lodestones/Chroma) (loading this repo with `from_pretrained` will load a Diffusers-compatible version of the `unlocked-v37` checkpoint)
 
-<Tip>
-
-Chroma can use all the same optimizations as Flux.
-
-</Tip>
+> [!TIP]
+> Chroma can use all the same optimizations as Flux.
 
 ## Inference
-
-The Diffusers version of Chroma is based on the [`unlocked-v37`](https://huggingface.co/lodestones/Chroma/blob/main/chroma-unlocked-v37.safetensors) version of the original model, which is available in the [Chroma repository](https://huggingface.co/lodestones/Chroma).
 
 ```python
 import torch
 from diffusers import ChromaPipeline
 
-pipe = ChromaPipeline.from_pretrained("lodestones/Chroma", torch_dtype=torch.bfloat16)
-pipe.enabe_model_cpu_offload()
+pipe = ChromaPipeline.from_pretrained("lodestones/Chroma1-HD", torch_dtype=torch.bfloat16)
+pipe.enable_model_cpu_offload()
 
 prompt = [
     "A high-fashion close-up portrait of a blonde woman in clear sunglasses. The image uses a bold teal and red color split for dramatic lighting. The background is a simple teal-green. The photo is sharp and well-composed, and is designed for viewing with anaglyph 3D glasses for optimal effect. It looks professionally done."
@@ -66,10 +64,10 @@ Then run the following example
 import torch
 from diffusers import ChromaTransformer2DModel, ChromaPipeline
 
-model_id = "lodestones/Chroma"
+model_id = "lodestones/Chroma1-HD"
 dtype = torch.bfloat16
 
-transformer = ChromaTransformer2DModel.from_single_file("https://huggingface.co/lodestones/Chroma/blob/main/chroma-unlocked-v37.safetensors", torch_dtype=dtype)
+transformer = ChromaTransformer2DModel.from_single_file("https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors", torch_dtype=dtype)
 
 pipe = ChromaPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=dtype)
 pipe.enable_model_cpu_offload()
@@ -101,3 +99,9 @@ image.save("chroma-single-file.png")
 [[autodoc]] ChromaImg2ImgPipeline
 	- all
 	- __call__
+
+## ChromaInpaintPipeline
+
+[[autodoc]] ChromaInpaintPipeline
+  - all
+  - __call__

@@ -25,7 +25,6 @@ import torch.nn as nn
 from huggingface_hub import model_info
 from huggingface_hub.constants import HF_HUB_OFFLINE
 
-from ..hooks.group_offloading import _is_group_offload_enabled, _maybe_remove_and_reapply_group_offloading
 from ..models.modeling_utils import ModelMixin, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -331,6 +330,8 @@ def _load_lora_into_text_encoder(
     hotswap: bool = False,
     metadata=None,
 ):
+    from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+
     if not USE_PEFT_BACKEND:
         raise ValueError("PEFT backend is required for this method.")
 
@@ -442,6 +443,8 @@ def _func_optionally_disable_offloading(_pipeline):
         tuple:
             A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` or `is_group_offload` is True.
     """
+    from ..hooks.group_offloading import _is_group_offload_enabled
+
     is_model_cpu_offload = False
     is_sequential_cpu_offload = False
     is_group_offload = False
@@ -467,7 +470,7 @@ def _func_optionally_disable_offloading(_pipeline):
             for _, component in _pipeline.components.items():
                 if not isinstance(component, nn.Module) or not hasattr(component, "_hf_hook"):
                     continue
-            remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+                remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
     return (is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload)
 
@@ -541,11 +544,7 @@ class LoraBaseMixin:
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
+        > [!WARNING] > This is an experimental API.
 
         Args:
             components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
@@ -625,11 +624,7 @@ class LoraBaseMixin:
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
 
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
+        > [!WARNING] > This is an experimental API.
 
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
@@ -751,7 +746,11 @@ class LoraBaseMixin:
         # Decompose weights into weights for denoiser and text encoders.
         _component_adapter_weights = {}
         for component in self._lora_loadable_modules:
-            model = getattr(self, component)
+            model = getattr(self, component, None)
+            # To guard for cases like Wan. In Wan2.1 and WanVace, we have a single denoiser.
+            # Whereas in Wan 2.2, we have two denoisers.
+            if model is None:
+                continue
 
             for adapter_name, weights in zip(adapter_names, adapter_weights):
                 if isinstance(weights, dict):
@@ -934,6 +933,27 @@ class LoraBaseMixin:
         Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in case
         you want to load multiple adapters and free some GPU memory.
 
+        After offloading the LoRA adapters to CPU, as long as the rest of the model is still on GPU, the LoRA adapters
+        can no longer be used for inference, as that would cause a device mismatch. Remember to set the device back to
+        GPU before using those LoRA adapters for inference.
+
+        ```python
+        >>> pipe.load_lora_weights(path_1, adapter_name="adapter-1")
+        >>> pipe.load_lora_weights(path_2, adapter_name="adapter-2")
+        >>> pipe.set_adapters("adapter-1")
+        >>> image_1 = pipe(**kwargs)
+        >>> # switch to adapter-2, offload adapter-1
+        >>> pipeline.set_lora_device(adapter_names=["adapter-1"], device="cpu")
+        >>> pipeline.set_lora_device(adapter_names=["adapter-2"], device="cuda:0")
+        >>> pipe.set_adapters("adapter-2")
+        >>> image_2 = pipe(**kwargs)
+        >>> # switch back to adapter-1, offload adapter-2
+        >>> pipeline.set_lora_device(adapter_names=["adapter-2"], device="cpu")
+        >>> pipeline.set_lora_device(adapter_names=["adapter-1"], device="cuda:0")
+        >>> pipe.set_adapters("adapter-1")
+        >>> ...
+        ```
+
         Args:
             adapter_names (`List[str]`):
                 List of adapters to send device to.
@@ -949,6 +969,10 @@ class LoraBaseMixin:
                 for module in model.modules():
                     if isinstance(module, BaseTunerLayer):
                         for adapter_name in adapter_names:
+                            if adapter_name not in module.lora_A:
+                                # it is sufficient to check lora_A
+                                continue
+
                             module.lora_A[adapter_name].to(device)
                             module.lora_B[adapter_name].to(device)
                             # this is a param, not a module, so device placement is not in-place -> re-assign
@@ -1031,6 +1055,41 @@ class LoraBaseMixin:
         save_path = Path(save_directory, weight_name).as_posix()
         save_function(state_dict, save_path)
         logger.info(f"Model weights saved in {save_path}")
+
+    @classmethod
+    def _save_lora_weights(
+        cls,
+        save_directory: Union[str, os.PathLike],
+        lora_layers: Dict[str, Dict[str, Union[torch.nn.Module, torch.Tensor]]],
+        lora_metadata: Dict[str, Optional[dict]],
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+    ):
+        """
+        Helper method to pack and save LoRA weights and metadata. This method centralizes the saving logic for all
+        pipeline types.
+        """
+        state_dict = {}
+        final_lora_adapter_metadata = {}
+
+        for prefix, layers in lora_layers.items():
+            state_dict.update(cls.pack_weights(layers, prefix))
+
+        for prefix, metadata in lora_metadata.items():
+            if metadata:
+                final_lora_adapter_metadata.update(_pack_dict_with_prefix(metadata, prefix))
+
+        cls.write_lora_layers(
+            state_dict=state_dict,
+            save_directory=save_directory,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+            lora_adapter_metadata=final_lora_adapter_metadata if final_lora_adapter_metadata else None,
+        )
 
     @classmethod
     def _optionally_disable_offloading(cls, _pipeline):

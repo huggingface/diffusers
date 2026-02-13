@@ -19,20 +19,20 @@ import torch
 from transformers import Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
+
+from ..testing_utils import IS_GITHUB_ACTIONS, floats_tensor, require_peft_backend
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
 class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = SanaPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler(shift=7.0)
-    scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
+    scheduler_kwargs = {"shift": 7.0}
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 4,
@@ -74,6 +74,8 @@ class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     vae_cls = AutoencoderDC
     tokenizer_cls, tokenizer_id = GemmaTokenizer, "hf-internal-testing/dummy-gemma"
     text_encoder_cls, text_encoder_id = Gemma2Model, "hf-internal-testing/dummy-gemma-for-diffusers"
+
+    supports_text_encoder_loras = False
 
     @property
     def output_shape(self):
@@ -117,22 +119,6 @@ class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_partial_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora_and_scale(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora_fused(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora_save_load(self):
-        pass
+    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_inference_denoiser(self):
+        return super().test_layerwise_casting_inference_denoiser()

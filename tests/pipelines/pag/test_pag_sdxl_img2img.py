@@ -38,7 +38,8 @@ from diffusers import (
     StableDiffusionXLPAGImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -47,7 +48,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,

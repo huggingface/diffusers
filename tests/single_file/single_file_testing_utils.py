@@ -1,3 +1,4 @@
+import gc
 import tempfile
 from io import BytesIO
 
@@ -7,8 +8,12 @@ from huggingface_hub import hf_hub_download, snapshot_download
 
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.models.attention_processor import AttnProcessor
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
+    backend_empty_cache,
+    nightly,
     numpy_cosine_similarity_distance,
+    require_torch_accelerator,
     torch_device,
 )
 
@@ -44,6 +49,93 @@ def download_diffusers_config(repo_id, tmpdir):
         local_dir=tmpdir,
     )
     return path
+
+
+@nightly
+@require_torch_accelerator
+class SingleFileModelTesterMixin:
+    def setup_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def teardown_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def test_single_file_model_config(self):
+        pretrained_kwargs = {}
+        single_file_kwargs = {}
+
+        if hasattr(self, "subfolder") and self.subfolder:
+            pretrained_kwargs["subfolder"] = self.subfolder
+
+        if hasattr(self, "torch_dtype") and self.torch_dtype:
+            pretrained_kwargs["torch_dtype"] = self.torch_dtype
+            single_file_kwargs["torch_dtype"] = self.torch_dtype
+
+        model = self.model_class.from_pretrained(self.repo_id, **pretrained_kwargs)
+        model_single_file = self.model_class.from_single_file(self.ckpt_path, **single_file_kwargs)
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
+        for param_name, param_value in model_single_file.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs between pretrained loading and single file loading"
+            )
+
+    def test_single_file_model_parameters(self):
+        pretrained_kwargs = {}
+        single_file_kwargs = {}
+
+        if hasattr(self, "subfolder") and self.subfolder:
+            pretrained_kwargs["subfolder"] = self.subfolder
+
+        if hasattr(self, "torch_dtype") and self.torch_dtype:
+            pretrained_kwargs["torch_dtype"] = self.torch_dtype
+            single_file_kwargs["torch_dtype"] = self.torch_dtype
+
+        model = self.model_class.from_pretrained(self.repo_id, **pretrained_kwargs)
+        model_single_file = self.model_class.from_single_file(self.ckpt_path, **single_file_kwargs)
+
+        state_dict = model.state_dict()
+        state_dict_single_file = model_single_file.state_dict()
+
+        assert set(state_dict.keys()) == set(state_dict_single_file.keys()), (
+            "Model parameters keys differ between pretrained and single file loading"
+        )
+
+        for key in state_dict.keys():
+            param = state_dict[key]
+            param_single_file = state_dict_single_file[key]
+
+            assert param.shape == param_single_file.shape, (
+                f"Parameter shape mismatch for {key}: "
+                f"pretrained {param.shape} vs single file {param_single_file.shape}"
+            )
+
+            assert torch.allclose(param, param_single_file, rtol=1e-5, atol=1e-5), (
+                f"Parameter values differ for {key}: "
+                f"max difference {torch.max(torch.abs(param - param_single_file)).item()}"
+            )
+
+    def test_checkpoint_altered_keys_loading(self):
+        # Test loading with checkpoints that have altered keys
+        if not hasattr(self, "alternate_keys_ckpt_paths") or not self.alternate_keys_ckpt_paths:
+            return
+
+        for ckpt_path in self.alternate_keys_ckpt_paths:
+            backend_empty_cache(torch_device)
+
+            single_file_kwargs = {}
+            if hasattr(self, "torch_dtype") and self.torch_dtype:
+                single_file_kwargs["torch_dtype"] = self.torch_dtype
+
+            model = self.model_class.from_single_file(ckpt_path, **single_file_kwargs)
+
+            del model
+            gc.collect()
+            backend_empty_cache(torch_device)
 
 
 class SDSingleFileTesterMixin:

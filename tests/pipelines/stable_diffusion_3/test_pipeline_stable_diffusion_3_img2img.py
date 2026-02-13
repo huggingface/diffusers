@@ -3,7 +3,6 @@ import random
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
@@ -14,7 +13,8 @@ from diffusers import (
     StableDiffusion3Img2ImgPipeline,
 )
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     floats_tensor,
@@ -23,7 +23,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
@@ -129,37 +128,22 @@ class StableDiffusion3Img2ImgPipelineFastTests(PipelineLatentTesterMixin, unitte
         }
         return inputs
 
-    def test_stable_diffusion_3_img2img_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+    def test_inference(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
 
         inputs = self.get_dummy_inputs(torch_device)
-        output_same_prompt = pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
+        generated_slice = image.flatten()
+        generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
 
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["prompt_2"] = "a different prompt"
-        inputs["prompt_3"] = "another different prompt"
-        output_different_prompts = pipe(**inputs).images[0]
+        # fmt: off
+        expected_slice = np.array([0.4564, 0.5486, 0.4868, 0.5923, 0.3775, 0.5543, 0.4807, 0.4177, 0.3778, 0.5957, 0.5726, 0.4333, 0.6312, 0.5062, 0.4838, 0.5984])
+        # fmt: on
 
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
-
-        # Outputs should be different here
-        assert max_diff > 1e-2
-
-    def test_stable_diffusion_3_img2img_different_negative_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_same_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["negative_prompt_2"] = "deformed"
-        inputs["negative_prompt_3"] = "blurry"
-        output_different_prompts = pipe(**inputs).images[0]
-
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
-
-        # Outputs should be different here
-        assert max_diff > 1e-2
+        self.assertTrue(
+            np.allclose(generated_slice, expected_slice, atol=1e-3), "Output does not match expected slice."
+        )
 
     @unittest.skip("Skip for now.")
     def test_multi_vae(self):
@@ -168,7 +152,6 @@ class StableDiffusion3Img2ImgPipelineFastTests(PipelineLatentTesterMixin, unitte
 
 @slow
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
     pipeline_class = StableDiffusion3Img2ImgPipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
@@ -209,112 +192,16 @@ class StableDiffusion3Img2ImgPipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs(torch_device)
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
+
+        # fmt: off
         expected_slices = Expectations(
             {
-                ("xpu", 3): np.array(
-                    [
-                        0.5117,
-                        0.4421,
-                        0.3852,
-                        0.5044,
-                        0.4219,
-                        0.3262,
-                        0.5024,
-                        0.4329,
-                        0.3276,
-                        0.4978,
-                        0.4412,
-                        0.3355,
-                        0.4983,
-                        0.4338,
-                        0.3279,
-                        0.4893,
-                        0.4241,
-                        0.3129,
-                        0.4875,
-                        0.4253,
-                        0.3030,
-                        0.4961,
-                        0.4267,
-                        0.2988,
-                        0.5029,
-                        0.4255,
-                        0.3054,
-                        0.5132,
-                        0.4248,
-                        0.3222,
-                    ]
-                ),
-                ("cuda", 7): np.array(
-                    [
-                        0.5435,
-                        0.4673,
-                        0.5732,
-                        0.4438,
-                        0.3557,
-                        0.4912,
-                        0.4331,
-                        0.3491,
-                        0.4915,
-                        0.4287,
-                        0.347,
-                        0.4849,
-                        0.4355,
-                        0.3469,
-                        0.4871,
-                        0.4431,
-                        0.3538,
-                        0.4912,
-                        0.4521,
-                        0.3643,
-                        0.5059,
-                        0.4587,
-                        0.373,
-                        0.5166,
-                        0.4685,
-                        0.3845,
-                        0.5264,
-                        0.4746,
-                        0.3914,
-                        0.5342,
-                    ]
-                ),
-                ("cuda", 8): np.array(
-                    [
-                        0.5146,
-                        0.4385,
-                        0.3826,
-                        0.5098,
-                        0.4150,
-                        0.3218,
-                        0.5142,
-                        0.4312,
-                        0.3298,
-                        0.5127,
-                        0.4431,
-                        0.3411,
-                        0.5171,
-                        0.4424,
-                        0.3374,
-                        0.5088,
-                        0.4348,
-                        0.3242,
-                        0.5073,
-                        0.4380,
-                        0.3174,
-                        0.5132,
-                        0.4397,
-                        0.3115,
-                        0.5132,
-                        0.4343,
-                        0.3118,
-                        0.5219,
-                        0.4328,
-                        0.3256,
-                    ]
-                ),
+                ("xpu", 3): np.array([0.5117, 0.4421, 0.3852, 0.5044, 0.4219, 0.3262, 0.5024, 0.4329, 0.3276, 0.4978, 0.4412, 0.3355, 0.4983, 0.4338, 0.3279, 0.4893, 0.4241, 0.3129, 0.4875, 0.4253, 0.3030, 0.4961, 0.4267, 0.2988, 0.5029, 0.4255, 0.3054, 0.5132, 0.4248, 0.3222]),
+                ("cuda", 7): np.array([0.5435, 0.4673, 0.5732, 0.4438, 0.3557, 0.4912, 0.4331, 0.3491, 0.4915, 0.4287, 0.347, 0.4849, 0.4355, 0.3469, 0.4871, 0.4431, 0.3538, 0.4912, 0.4521, 0.3643, 0.5059, 0.4587, 0.373, 0.5166, 0.4685, 0.3845, 0.5264, 0.4746, 0.3914, 0.5342]),
+                ("cuda", 8): np.array([0.5146, 0.4385, 0.3826, 0.5098, 0.4150, 0.3218, 0.5142, 0.4312, 0.3298, 0.5127, 0.4431, 0.3411, 0.5171, 0.4424, 0.3374, 0.5088, 0.4348, 0.3242, 0.5073, 0.4380, 0.3174, 0.5132, 0.4397, 0.3115, 0.5132, 0.4343, 0.3118, 0.5219, 0.4328, 0.3256]),
             }
         )
+        # fmt: on
 
         expected_slice = expected_slices.get_expectation()
 
