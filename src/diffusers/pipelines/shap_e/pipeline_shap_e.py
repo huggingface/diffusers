@@ -14,7 +14,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -82,7 +81,7 @@ class ShapEPipelineOutput(BaseOutput):
             A list of images for 3D rendering.
     """
 
-    images: Union[List[List[PIL.Image.Image]], List[List[np.ndarray]]]
+    images: list[list[PIL.Image.Image]] | list[list[np.ndarray]]
 
 
 class ShapEPipeline(DiffusionPipeline):
@@ -195,25 +194,25 @@ class ShapEPipeline(DiffusionPipeline):
         prompt: str,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
         guidance_scale: float = 4.0,
         frame_size: int = 64,
-        output_type: Optional[str] = "pil",  # pil, np, latent, mesh
+        output_type: str | None = "pil",  # pil, np, latent, mesh
         return_dict: bool = True,
     ):
         """
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):

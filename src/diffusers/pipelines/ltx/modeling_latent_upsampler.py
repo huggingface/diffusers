@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import torch
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -21,7 +19,7 @@ from ...models.modeling_utils import ModelMixin
 
 
 class ResBlock(torch.nn.Module):
-    def __init__(self, channels: int, mid_channels: Optional[int] = None, dims: int = 3):
+    def __init__(self, channels: int, mid_channels: int | None = None, dims: int = 3):
         super().__init__()
         if mid_channels is None:
             mid_channels = channels
