@@ -491,7 +491,7 @@ class QwenDoubleStreamAttnProcessor2_0:
         encoder_hidden_states: torch.FloatTensor = None,  # Text stream
         encoder_hidden_states_mask: torch.FloatTensor = None,
         attention_mask: torch.FloatTensor | None = None,
-        seq_lens: List[int] | None = None,
+        seq_lens: list[int] | None = None,
         image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.FloatTensor:
         if encoder_hidden_states is None:
