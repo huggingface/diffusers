@@ -1952,7 +1952,7 @@ def _flash_split_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     attn_mask: Optional[torch.Tensor] = None,
-    seq_lens: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_lens is passed
+    seq_lens: Optional[list[int]] = None, #attn_mask is ignored if seq_lens is passed
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
@@ -2011,7 +2011,7 @@ def _flash_hub_split_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     attn_mask: Optional[torch.Tensor] = None,
-    seq_lens: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_lens is passed
+    seq_lens: Optional[list[int]] = None, #attn_mask is ignored if seq_lens is passed
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
@@ -2530,7 +2530,7 @@ def __split_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     attn_mask: Optional[torch.Tensor] = None,
-    seq_lens: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed - both must match
+    seq_lens: Optional[list[int]] = None, #attn_mask is ignored if seq_len is passed - both must match
 ):
     batch_size, batch_seq_len = query.shape[:2]
     if seq_lens is None:
@@ -2564,7 +2564,7 @@ def _native_split_attention(
     key: torch.Tensor,
     value: torch.Tensor,
     attn_mask: Optional[torch.Tensor] = None,
-    seq_lens: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_lens is passed
+    seq_lens: Optional[list[int]] = None, #attn_mask is ignored if seq_lens is passed
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
