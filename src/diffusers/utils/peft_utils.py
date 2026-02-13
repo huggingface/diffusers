@@ -301,12 +301,8 @@ def apply_lora_scale(kwargs_name: str = "joint_attention_kwargs"):
                 attention_kwargs = attention_kwargs.copy()
                 kwargs[kwargs_name] = attention_kwargs
                 lora_scale = attention_kwargs.pop("scale", 1.0)
-            else:
-                if (
-                    not USE_PEFT_BACKEND
-                    and attention_kwargs is not None
-                    and attention_kwargs.get("scale", None) is not None
-                ):
+
+                if not USE_PEFT_BACKEND and lora_scale != 1.0:
                     logger.warning(
                         f"Passing `scale` via `{kwargs_name}` when not using the PEFT backend is ineffective."
                     )
