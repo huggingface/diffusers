@@ -15,7 +15,7 @@
 import copy
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import numpy as np
 import PIL.Image
@@ -112,7 +112,7 @@ class LTX2VideoCondition:
             The strength of the conditioning effect. A value of `1.0` means the conditioning effect is fully applied.
     """
 
-    frames: Union[PIL.Image.Image, List[PIL.Image.Image], np.ndarray, torch.Tensor]
+    frames: PIL.Image.Image | list[PIL.Image.Image] | np.ndarray | torch.Tensor
     index: int = 0
     strength: float = 1.0
 
@@ -251,7 +251,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         vae: AutoencoderKLLTX2Video,
         audio_vae: AutoencoderKLLTX2Audio,
         text_encoder: Gemma3ForConditionalGeneration,
-        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+        tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
         vocoder: LTX2Vocoder,
@@ -726,13 +726,13 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
 
     def preprocess_conditions(
         self,
-        conditions: Optional[Union[LTX2VideoCondition, List[LTX2VideoCondition]]] = None,
+        conditions: LTX2VideoCondition | list[LTX2VideoCondition] | None = None,
         height: int = 512,
         width: int = 768,
         num_frames: int = 121,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         index_type: str = "latent",
-    ) -> Tuple[List[torch.Tensor], List[float], List[int]]:
+    ) -> tuple[list[torch.Tensor], list[float], list[int]]:
         """
         Preprocesses the condition images/videos to torch tensors.
 
@@ -809,12 +809,12 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         self,
         latents: torch.Tensor,
         conditioning_mask: torch.Tensor,
-        condition_latents: List[torch.Tensor],
-        condition_strengths: List[float],
-        condition_indices: List[int],
+        condition_latents: list[torch.Tensor],
+        condition_strengths: list[float],
+        condition_indices: list[int],
         latent_height: int,
         latent_width: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Applies visual conditioning frames to an initial latent.
 
@@ -850,18 +850,18 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
 
     def prepare_latents(
         self,
-        conditions: Optional[Union[LTX2VideoCondition, List[LTX2VideoCondition]]] = None,
+        conditions: LTX2VideoCondition | list[LTX2VideoCondition] | None = None,
         batch_size: int = 1,
         num_channels_latents: int = 128,
         height: int = 512,
         width: int = 768,
         num_frames: int = 121,
         noise_scale: float = 1.0,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         latent_height = height // self.vae_spatial_compression_ratio
         latent_width = width // self.vae_spatial_compression_ratio
         latent_num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
@@ -1012,34 +1012,34 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        conditions: Union[LTX2VideoCondition, List[LTX2VideoCondition]] = None,
-        prompt: Union[str, List[str]] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        conditions: LTX2VideoCondition | list[LTX2VideoCondition] | None = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] | None = None,
         height: int = 512,
         width: int = 768,
         num_frames: int = 121,
         frame_rate: float = 24.0,
         num_inference_steps: int = 40,
-        sigmas: Optional[List[float]] = None,
-        timesteps: List[int] = None,
+        sigmas: list[float] | None = None,
+        timesteps: list[float] | None = None,
         guidance_scale: float = 4.0,
         guidance_rescale: float = 0.0,
-        noise_scale: Optional[float] = None,
-        num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        audio_latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        decode_timestep: Union[float, List[float]] = 0.0,
-        decode_noise_scale: Optional[Union[float, List[float]]] = None,
-        output_type: Optional[str] = "pil",
+        noise_scale: float | None = None,
+        num_videos_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        audio_latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        decode_timestep: float | list[float] = 0.0,
+        decode_noise_scale: float | list[float] | None = None,
+        output_type: str = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 1024,
     ):
         r"""
