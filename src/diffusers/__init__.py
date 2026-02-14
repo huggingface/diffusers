@@ -295,9 +295,16 @@ else:
     _import_structure["modular_pipelines"].extend(
         [
             "ComponentsManager",
-            "ComponentSpec",
             "ModularPipeline",
             "ModularPipelineBlocks",
+            "SequentialPipelineBlocks",
+            "AutoPipelineBlocks",
+            "ConditionalPipelineBlocks",
+            "LoopSequentialPipelineBlocks",
+            "ComponentSpec",
+            "ConfigSpec",
+            "InputParam",
+            "OutputParam",
         ]
     )
     _import_structure["optimization"] = [
@@ -1063,7 +1070,19 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageTransformer2DModel,
             attention_backend,
         )
-        from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
+        from .modular_pipelines import (
+            ComponentsManager,
+            ModularPipeline,
+            ModularPipelineBlocks,
+            AutoPipelineBlocks,
+            SequentialPipelineBlocks,
+            ConditionalPipelineBlocks,
+            LoopSequentialPipelineBlocks,
+            ComponentSpec,
+            ConfigSpec,
+            InputParam,
+            OutputParam,
+        )
         from .optimization import (
             get_constant_schedule,
             get_constant_schedule_with_warmup,
