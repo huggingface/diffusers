@@ -19,7 +19,7 @@ import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, List, Optional, Union
 
 import torch
 from huggingface_hub import create_repo
@@ -403,7 +403,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     def init_pipeline(
         self,
-        pretrained_model_name_or_path: str | os.PathLike | None = None,
+        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
         components_manager: ComponentsManager | None = None,
         collection: str | None = None,
     ) -> "ModularPipeline":
