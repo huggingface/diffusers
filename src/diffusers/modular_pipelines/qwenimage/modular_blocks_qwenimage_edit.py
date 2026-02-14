@@ -720,8 +720,8 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
 
 
       Supported workflows:
-        - `edit`: requires `prompt`, `image`
-        - `edit_inpainting`: requires `prompt`, `mask_image`, `image`
+        - `image_conditioned`: requires `prompt`, `image`
+        - `image_conditioned_inpainting`: requires `prompt`, `mask_image`, `image`
 
       Components:
           image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
