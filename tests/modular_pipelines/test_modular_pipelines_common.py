@@ -371,6 +371,7 @@ class ModularPipelineTesterMixin:
             for i, ((actual_name, actual_block), (expected_name, expected_class_name)) in enumerate(
                 zip(actual_blocks, expected_blocks)
             ):
+                assert actual_name == expected_name
                 assert actual_block.__class__.__name__ == expected_class_name, (
                     f"Workflow '{workflow_name}': block '{actual_name}' has type "
                     f"{actual_block.__class__.__name__}, expected {expected_class_name}"
