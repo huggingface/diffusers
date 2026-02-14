@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -39,9 +38,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
     order = 1
 
     @register_to_config
-    def __init__(
-        self, num_train_timesteps: int = 1000, trained_betas: Optional[Union[np.ndarray, List[float]]] = None
-    ):
+    def __init__(self, num_train_timesteps: int = 1000, trained_betas: np.ndarray | list[float] | None = None):
         # set `betas`, `alphas`, `timesteps`
         self.set_timesteps(num_train_timesteps)
 
@@ -83,7 +80,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -113,7 +110,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(
-        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
     ) -> int:
         """
         Find the index of a given timestep in the timestep schedule.
@@ -143,7 +140,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
         """
         Initialize the step index for the scheduler based on the given timestep.
 
@@ -161,10 +158,10 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the linear multistep method. It performs one forward pass multiple times to approximate the solution.

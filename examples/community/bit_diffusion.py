@@ -231,9 +231,9 @@ class BitDiffusion(DiffusionPipeline):
         height: Optional[int] = 256,
         width: Optional[int] = 256,
         num_inference_steps: Optional[int] = 50,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         batch_size: Optional[int] = 1,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         **kwargs,
     ) -> Union[Tuple, ImagePipelineOutput]:

@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import flax
 import jax
@@ -37,9 +36,9 @@ logger = logging.get_logger(__name__)
 @flax.struct.dataclass
 class ScoreSdeVeSchedulerState:
     # setable values
-    timesteps: Optional[jnp.ndarray] = None
-    discrete_sigmas: Optional[jnp.ndarray] = None
-    sigmas: Optional[jnp.ndarray] = None
+    timesteps: jnp.ndarray | None = None
+    discrete_sigmas: jnp.ndarray | None = None
+    sigmas: jnp.ndarray | None = None
 
     @classmethod
     def create(cls):
@@ -62,7 +61,7 @@ class FlaxSdeVeOutput(FlaxSchedulerOutput):
 
     state: ScoreSdeVeSchedulerState
     prev_sample: jnp.ndarray
-    prev_sample_mean: Optional[jnp.ndarray] = None
+    prev_sample_mean: jnp.ndarray | None = None
 
 
 class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
@@ -122,7 +121,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         self,
         state: ScoreSdeVeSchedulerState,
         num_inference_steps: int,
-        shape: Tuple = (),
+        shape: tuple = (),
         sampling_eps: float = None,
     ) -> ScoreSdeVeSchedulerState:
         """
@@ -187,7 +186,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         key: jax.Array,
         return_dict: bool = True,
-    ) -> Union[FlaxSdeVeOutput, Tuple]:
+    ) -> FlaxSdeVeOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -246,7 +245,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         key: jax.Array,
         return_dict: bool = True,
-    ) -> Union[FlaxSdeVeOutput, Tuple]:
+    ) -> FlaxSdeVeOutput | tuple:
         """
         Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
         after making the prediction for the previous timestep.

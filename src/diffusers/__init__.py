@@ -221,6 +221,7 @@ else:
             "ControlNetModel",
             "ControlNetUnionModel",
             "ControlNetXSAdapter",
+            "CosmosControlNetModel",
             "CosmosTransformer3DModel",
             "DiTTransformer2DModel",
             "EasyAnimateTransformer3DModel",
@@ -293,10 +294,17 @@ else:
     )
     _import_structure["modular_pipelines"].extend(
         [
+            "AutoPipelineBlocks",
             "ComponentsManager",
             "ComponentSpec",
+            "ConditionalPipelineBlocks",
+            "ConfigSpec",
+            "InputParam",
+            "LoopSequentialPipelineBlocks",
             "ModularPipeline",
             "ModularPipelineBlocks",
+            "OutputParam",
+            "SequentialPipelineBlocks",
         ]
     )
     _import_structure["optimization"] = [
@@ -485,6 +493,7 @@ else:
             "CogView4Pipeline",
             "ConsisIDPipeline",
             "Cosmos2_5_PredictBasePipeline",
+            "Cosmos2_5_TransferPipeline",
             "Cosmos2TextToImagePipeline",
             "Cosmos2VideoToWorldPipeline",
             "CosmosTextToWorldPipeline",
@@ -992,6 +1001,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ControlNetModel,
             ControlNetUnionModel,
             ControlNetXSAdapter,
+            CosmosControlNetModel,
             CosmosTransformer3DModel,
             DiTTransformer2DModel,
             EasyAnimateTransformer3DModel,
@@ -1060,7 +1070,19 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageTransformer2DModel,
             attention_backend,
         )
-        from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
+        from .modular_pipelines import (
+            AutoPipelineBlocks,
+            ComponentsManager,
+            ComponentSpec,
+            ConditionalPipelineBlocks,
+            ConfigSpec,
+            InputParam,
+            LoopSequentialPipelineBlocks,
+            ModularPipeline,
+            ModularPipelineBlocks,
+            OutputParam,
+            SequentialPipelineBlocks,
+        )
         from .optimization import (
             get_constant_schedule,
             get_constant_schedule_with_warmup,
@@ -1226,6 +1248,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView4Pipeline,
             ConsisIDPipeline,
             Cosmos2_5_PredictBasePipeline,
+            Cosmos2_5_TransferPipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             CosmosTextToWorldPipeline,
