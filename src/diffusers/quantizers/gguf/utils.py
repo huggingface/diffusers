@@ -79,7 +79,8 @@ MMQ_QUANT_TYPES = STANDARD_QUANT_TYPES | KQUANT_TYPES
 def _fused_mul_mat_gguf(x: torch.Tensor, qweight: torch.Tensor, qweight_type: int) -> torch.Tensor:
     # there is no need to call any kernel for fp16/bf16
     if qweight_type in UNQUANTIZED_TYPES:
-        return x @ qweight.T
+        weight = dequantize_gguf_tensor(qweight)
+        return x @ weight.T
 
     # TODO(Isotr0py): GGUF's MMQ and MMVQ implementation are designed for
     # contiguous batching and inefficient with diffusers' batching,

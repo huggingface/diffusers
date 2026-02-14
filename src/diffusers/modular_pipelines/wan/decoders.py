@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Tuple, Union
+from typing import Any
 
 import numpy as np
 import PIL
@@ -29,11 +29,11 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanImageVaeDecoderStep(ModularPipelineBlocks):
+class WanVaeDecoderStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLWan),
             ComponentSpec(
@@ -49,22 +49,25 @@ class WanImageVaeDecoderStep(ModularPipelineBlocks):
         return "Step that decodes the denoised latents into images"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam(
                 "latents",
                 required=True,
                 type_hint=torch.Tensor,
                 description="The denoised latents from the denoising step",
-            )
+            ),
+            InputParam(
+                "output_type", default="np", type_hint=str, description="The output type of the decoded videos"
+            ),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "videos",
-                type_hint=Union[List[List[PIL.Image.Image]], List[torch.Tensor], List[np.ndarray]],
+                type_hint=list[list[PIL.Image.Image]] | list[torch.Tensor] | list[np.ndarray],
                 description="The generated videos, can be a PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]
@@ -87,7 +90,8 @@ class WanImageVaeDecoderStep(ModularPipelineBlocks):
         latents = latents.to(vae_dtype)
         block_state.videos = components.vae.decode(latents, return_dict=False)[0]
 
-        block_state.videos = components.video_processor.postprocess_video(block_state.videos, output_type="np")
+        output_type = getattr(block_state, "output_type", "np")
+        block_state.videos = components.video_processor.postprocess_video(block_state.videos, output_type=output_type)
 
         self.set_block_state(state, block_state)
 

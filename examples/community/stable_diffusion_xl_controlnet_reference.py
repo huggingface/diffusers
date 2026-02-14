@@ -345,7 +345,7 @@ class StableDiffusionXLControlNetReferencePipeline(StableDiffusionXLControlNetPi
         negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
         ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
