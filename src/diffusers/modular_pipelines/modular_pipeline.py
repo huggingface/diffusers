@@ -359,11 +359,11 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     # currently only SequentialPipelineBlocks support workflows
     @property
-    def workflow_names(self):
+    def available_workflows(self):
         """
         Returns a list of available workflow names. Must be implemented by subclasses that define `_workflow_map`.
         """
-        raise NotImplementedError(f"`workflow_names` is not implemented for {self.__class__.__name__}")
+        raise NotImplementedError(f"`available_workflows` is not implemented for {self.__class__.__name__}")
 
     def get_workflow(self, workflow_name: str):
         """
@@ -939,7 +939,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return expected_configs
 
     @property
-    def workflow_names(self):
+    def available_workflows(self):
         if self._workflow_map is None:
             raise NotImplementedError(
                 f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
