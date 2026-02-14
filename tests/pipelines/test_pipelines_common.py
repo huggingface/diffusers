@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 import uuid
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict
 
 import numpy as np
 import PIL.Image
@@ -1072,7 +1072,7 @@ class PipelineTesterMixin:
         return generator
 
     @property
-    def pipeline_class(self) -> Union[Callable, DiffusionPipeline]:
+    def pipeline_class(self) -> Callable | DiffusionPipeline:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_class = ClassNameOfPipeline` in the child test class. "
             "See existing pipeline tests for reference."
@@ -2406,7 +2406,11 @@ class PipelineTesterMixin:
             if name not in [exclude_module_name] and isinstance(component, torch.nn.Module):
                 # `component.device` prints the `onload_device` type. We should probably override the
                 # `device` property in `ModelMixin`.
-                component_device = next(component.parameters())[0].device
+                # Skip modules with no parameters (e.g., dummy safety checkers with only buffers)
+                params = list(component.parameters())
+                if not params:
+                    continue
+                component_device = params[0].device
                 self.assertTrue(torch.device(component_device).type == torch.device(offload_device).type)
 
     @require_torch_accelerator
