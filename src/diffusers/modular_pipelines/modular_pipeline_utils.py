@@ -18,7 +18,7 @@ import warnings
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from types import UnionType
-from typing import Any, Dict, List, Literal, Tuple, Type, Union, get_args, get_origin
+from typing import Any, Literal, Type, Union, get_args, get_origin
 
 import PIL.Image
 import torch
@@ -972,7 +972,7 @@ def make_doc_string(
     return output
 
 
-def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
+def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> list[InputParam]:
     """
     Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if current
     default value is None and new default value is not None. Warns if multiple non-None default values exist for the
@@ -1015,7 +1015,7 @@ def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> Li
     return list(combined_dict.values())
 
 
-def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) -> List[OutputParam]:
+def combine_outputs(*named_output_lists: list[tuple[str, list[OutputParam]]]) -> list[OutputParam]:
     """
     Combines multiple lists of OutputParam objects from different blocks. For duplicate outputs, keeps the first
     occurrence of each output name.
@@ -1038,7 +1038,7 @@ def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) ->
     return list(combined_dict.values())
 
 
-def generate_modular_model_card_content(blocks) -> Dict[str, Any]:
+def generate_modular_model_card_content(blocks) -> dict[str, Any]:
     """
     Generate model card content for a modular pipeline.
 
