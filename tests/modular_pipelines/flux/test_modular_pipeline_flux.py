@@ -33,6 +33,20 @@ from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
+
+FLUX_TEXT2IMAGE_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("input", "FluxTextInputStep"),
+        ("prepare_latents", "FluxPrepareLatentsStep"),
+        ("set_timesteps", "FluxSetTimestepsStep"),
+        ("prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise", "FluxDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ]
+}
+
+
 class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
@@ -40,6 +54,7 @@ class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_params = frozenset(["prompt"])
+    expected_workflow_blocks = FLUX_TEXT2IMAGE_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
@@ -59,6 +74,20 @@ class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
         super().test_float16_inference(9e-2)
 
 
+FLUX_IMAGE2IMAGE_WORKFLOWS = {
+    "image2image": [
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("vae_encoder", "FluxVaeEncoderStep"),
+        ("input", "FluxImg2ImgInputStep"),
+        ("prepare_latents", "FluxPrepareLatentsStep"),
+        ("set_timesteps", "FluxImg2ImgSetTimestepsStep"),
+        ("prepare_img2img_latents", "FluxImg2ImgPrepareLatentsStep"),
+        ("prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise", "FluxDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ]
+}
+
 class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
@@ -66,6 +95,7 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
+    expected_workflow_blocks = FLUX_IMAGE2IMAGE_WORKFLOWS
 
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
         pipeline = super().get_pipeline(components_manager, torch_dtype)
@@ -124,6 +154,31 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     def test_float16_inference(self):
         super().test_float16_inference(8e-2)
 
+FLUX_KONTEXT_WORKFLOWS = {
+    "text2image": [
+        [
+            ("text_encoder", "FluxTextEncoderStep"),
+            ("input", "FluxKontextInputStep"),
+            ("prepare_latents", "FluxPrepareLatentsStep"),
+            ("set_timesteps", "FluxSetTimestepsStep"),
+            ("prepare_rope_inputs", "FluxKontextRoPEInputsStep"),
+            ("denoise", "FluxKontextDenoiseStep"),
+            ("decode", "FluxDecodeStep"),
+        ]
+    ],
+    "image2image": [
+        [
+            ("text_encoder", "FluxTextEncoderStep"),
+            ("vae_encoder", "FluxVaeEncoderStep"),
+            ("input", "FluxKontextInputStep"),
+            ("prepare_latents", "FluxPrepareLatentsStep"),
+            ("set_timesteps", "FluxSetTimestepsStep"),
+            ("prepare_rope_inputs", "FluxKontextRoPEInputsStep"),
+            ("denoise", "FluxKontextDenoiseStep"),
+            ("decode", "FluxDecodeStep"),
+        ]
+    ]
+}
 
 class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxKontextModularPipeline
@@ -132,6 +187,7 @@ class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
+    expected_workflow_blocks = FLUX_KONTEXT_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)

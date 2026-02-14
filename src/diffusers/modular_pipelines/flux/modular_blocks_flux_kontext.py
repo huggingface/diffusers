@@ -218,18 +218,3 @@ class FluxKontextAutoBlocks(SequentialPipelineBlocks):
             "Modular pipeline for image-to-image using Flux Kontext."
         )
 
-
-
-# FLUX_KONTEXT_BLOCKS = InsertableDict(
-#     [
-#         ("text_encoder", FluxTextEncoderStep()),
-#         ("vae_encoder", FluxVaeEncoderStep(sample_mode="argmax")),
-#         ("input", FluxKontextInputStep()),
-#         ("prepare_latents", FluxPrepareLatentsStep()),
-#         ("set_timesteps", FluxSetTimestepsStep()),
-#         ("prepare_rope_inputs", FluxKontextRoPEInputsStep()),
-#         ("denoise", FluxKontextDenoiseStep()),
-#         ("decode", FluxDecodeStep()),
-#     ]
-# )
-

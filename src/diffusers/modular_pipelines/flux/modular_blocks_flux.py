@@ -207,7 +207,7 @@ class FluxAutoBlocks(SequentialPipelineBlocks):
 
     _workflow_map = {
         "text2image": {"prompt": True},
-        "img2img": {"image": True, "prompt": True},
+        "image2image": {"image": True, "prompt": True},
     }
 
     @property
@@ -215,30 +215,3 @@ class FluxAutoBlocks(SequentialPipelineBlocks):
         return (
             "Auto Modular pipeline for text-to-image and image-to-image using Flux."
         )
-
-
-# TEXT2IMAGE_BLOCKS = InsertableDict(
-#     [
-#         ("text_encoder", FluxTextEncoderStep()),
-#         ("input", FluxTextInputStep()),
-#         ("prepare_latents", FluxPrepareLatentsStep()),
-#         ("set_timesteps", FluxSetTimestepsStep()),
-#         ("prepare_rope_inputs", FluxRoPEInputsStep()),
-#         ("denoise", FluxDenoiseStep()),
-#         ("decode", FluxDecodeStep()),
-#     ]
-# )
-
-# IMAGE2IMAGE_BLOCKS = InsertableDict(
-#     [
-#         ("text_encoder", FluxTextEncoderStep()),
-#         ("vae_encoder", FluxVaeEncoderStep()),
-#         ("input", FluxImg2ImgInputStep()),
-#         ("prepare_latents", FluxPrepareLatentsStep()),
-#         ("set_timesteps", FluxImg2ImgSetTimestepsStep()),
-#         ("prepare_img2img_latents", FluxImg2ImgPrepareLatentsStep()),
-#         ("prepare_rope_inputs", FluxRoPEInputsStep()),
-#         ("denoise", FluxDenoiseStep()),
-#         ("decode", FluxDecodeStep()),
-#     ]
-# )

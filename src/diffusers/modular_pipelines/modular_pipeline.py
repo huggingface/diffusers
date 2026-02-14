@@ -19,7 +19,7 @@ import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 import torch
 from huggingface_hub import create_repo
