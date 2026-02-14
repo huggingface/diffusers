@@ -25,7 +25,7 @@ This guide will show you how to create a [`~modular_pipelines.ModularPipelineBlo
 
 A [`~modular_pipelines.ModularPipelineBlocks`] requires `inputs`, and `intermediate_outputs`.
 
-- `inputs` are values a block reads from the [`~modular_pipelines.PipelineState`] to perform its computation. These can be values provided by a user (like a prompt or image) or values produced by a previous block (like encoded image_latents). 
+- `inputs` are values a block reads from the [`~modular_pipelines.PipelineState`] to perform its computation. These can be values provided by a user (like a prompt or image) or values produced by a previous block (like encoded `image_latents`). 
 
     Use `InputParam` to define `inputs`.
 
@@ -41,7 +41,7 @@ class ImageEncodeStep(ModularPipelineBlocks):
     ...
 ```
 
--- `intermediate_outputs` are new values created by a block and added to the [`~modular_pipelines.PipelineState`]. The `intermediate_outputs` are available as `inputs` for subsequent blocks or available as the final output from running the pipeline.
+- `intermediate_outputs` are new values created by a block and added to the [`~modular_pipelines.PipelineState`]. The `intermediate_outputs` are available as `inputs` for subsequent blocks or available as the final output from running the pipeline.
 
     Use `OutputParam` to define `intermediate_outputs`.
 

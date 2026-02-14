@@ -82,7 +82,7 @@ image.save("modular_inpaint_out.png")
 </hfoption>
 </hfoptions>
 
-This guide will show you how to create a [`ModularPipeline`], manage the components in it, and run it.
+This guide will show you how to create a [`ModularPipeline`], manage its components, and run the pipeline.
 
 ## Creating a pipeline
 
@@ -246,7 +246,7 @@ import torch
 pipeline.load_components(torch_dtype=torch.float16)
 ```
 
-You can also load specific components by name. The example below only loads the text_encoder.
+You can also load specific components by name. The example below only loads the `text_encoder`.
 
 ```py
 pipeline.load_components(names=["text_encoder"], torch_dtype=torch.float16)
@@ -284,7 +284,7 @@ pipeline.load_components(torch_dtype=torch.bfloat16)
 pipeline.load_components(torch_dtype={"transformer": torch.bfloat16, "default": torch.float32})
 ```
 
-Note that [`~ModularPipeline.load_components`] only loads components that haven't been loaded yet and have a valid loading spec. This means if you've already set a component on the pipeline, calling [`~ModularPipeline.load_components`] again won't reload it.
+[`~ModularPipeline.load_components`] only loads components that haven't been loaded yet and have a valid loading spec. This means if you've already set a component on the pipeline, calling [`~ModularPipeline.load_components`] again won't reload it.
 
 ## Updating components
 

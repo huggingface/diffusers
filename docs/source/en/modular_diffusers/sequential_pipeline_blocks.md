@@ -91,7 +91,7 @@ class ImageEncoderBlock(ModularPipelineBlocks):
 </hfoption>
 </hfoptions>
 
-Connect the two blocks by defining a [~modular_pipelines.SequentialPipelineBlocks]. List the block instances in `block_classes` and their corresponding names in `block_names`. The blocks are executed in the order they appear in `block_classes`, and data flows from one block to the next through [~modular_pipelines.PipelineState].
+Connect the two blocks by defining a [`~modular_pipelines.SequentialPipelineBlocks`]. List the block instances in `block_classes` and their corresponding names in `block_names`. The blocks are executed in the order they appear in `block_classes`, and data flows from one block to the next through [`~modular_pipelines.PipelineState`].
 
 ```py
 class ImageProcessingStep(SequentialPipelineBlocks):
@@ -111,7 +111,7 @@ class ImageProcessingStep(SequentialPipelineBlocks):
         )
 ```
 
-When you create a [~modular_pipelines.SequentialPipelineBlocks], properties like `inputs`, `intermediate_outputs`, and `expected_components` are automatically aggregated from the sub-blocks, so there is no need to define them again.
+When you create a [`~modular_pipelines.SequentialPipelineBlocks`], properties like `inputs`, `intermediate_outputs`, and `expected_components` are automatically aggregated from the sub-blocks, so there is no need to define them again.
 
 There are a few properties you should set:
 
@@ -122,7 +122,7 @@ There are a few properties you should set:
 These properties, together with the aggregated `inputs`, `intermediate_outputs`, and `expected_components`, are used to automatically generate the `doc` property.
 
 
-Inspect the sub-blocks through the `sub_blocks` property, and use `doc` for a full summary of the block's inputs, outputs, and components.
+Print the `ImageProcessingStep` block to inspect its sub-blocks, and use `doc` for a full summary of the block's inputs, outputs, and components.
 
 
 ```py

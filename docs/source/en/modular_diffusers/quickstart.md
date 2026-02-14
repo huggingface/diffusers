@@ -41,7 +41,7 @@ image
 > [!TIP]
 > `ComponentsManager` with `enable_auto_cpu_offload` automatically moves models between CPU and GPU as needed, reducing memory usage for large models like Qwen-Image. Learn more in the [ComponentsManager](./components_manager) guide.
 >
-> If you don't need offloading, simply remove the `components_manager` argument and move the pipeline to your device manually with `pipe.to("cuda")`.
+> If you don't need offloading, remove the `components_manager` argument and move the pipeline to your device manually with `to("cuda")`.
 
 Learn more about creating and loading pipelines in the [Creating a pipeline](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#creating-a-pipeline) and [Loading components](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#loading-components) guides.
 
@@ -213,7 +213,7 @@ class SequentialPipelineBlocks
 ```
 
 
-The extracted workflow is a [`SequentialPipelineBlocks`](./sequential_pipeline_blocks) and it currently requires `control_image` as input. Let's insert the canny block at the beginning so the pipeline accepts a regular image instead.
+The extracted workflow is a [`SequentialPipelineBlocks`](./sequential_pipeline_blocks) and it currently requires `control_image` as input. Insert the canny block at the beginning so the pipeline accepts a regular image instead.
 ```py
 # Insert canny at the beginning
 blocks.sub_blocks.insert("canny", canny_block, 0)
@@ -240,7 +240,7 @@ class SequentialPipelineBlocks
 
 Now the pipeline takes `image` as input instead of `control_image`. Because blocks in a sequence share data automatically, the canny block's output (`control_image`) flows to the denoise block that needs it, and the canny block's input (`image`) becomes a pipeline input since no earlier block provides it.
 
-Create a pipeline from the modified blocks and load a ControlNet model. The ControlNet isn't part of the original model repository, so we load it separately and add it with [`~ModularPipeline.update_components`].
+Create a pipeline from the modified blocks and load a ControlNet model. The ControlNet isn't part of the original model repository, so load it separately and add it with [`~ModularPipeline.update_components`].
 ```py
 pipeline = blocks.init_pipeline("Qwen/Qwen-Image", components_manager=manager)
 

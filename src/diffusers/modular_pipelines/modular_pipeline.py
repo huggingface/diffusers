@@ -2076,7 +2076,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         Examples:
             ```python
-            # Update pretrrained model
+            # Update pre-trained model
             pipeline.update_components(unet=new_unet_model, text_encoder=new_text_encoder)
 
             # Update configuration values
