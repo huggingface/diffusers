@@ -502,6 +502,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                         text_input_ids,
                         attention_mask=attention_mask,
                     )
+                    # Extract the pooler output if it's a BaseModelOutputWithPooling (Transformers v5+)
+                    # otherwise use it directly (Transformers v4)
+                    if hasattr(prompt_embeds, "pooler_output"):
+                        prompt_embeds = prompt_embeds.pooler_output
                     # append the seq-len dim: (bs, hidden_size) -> (bs, seq_len, hidden_size)
                     prompt_embeds = prompt_embeds[:, None, :]
                     # make sure that we attend to this single hidden-state
@@ -610,6 +614,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                         uncond_input_ids,
                         attention_mask=negative_attention_mask,
                     )
+                    # Extract the pooler output if it's a BaseModelOutputWithPooling (Transformers v5+)
+                    # otherwise use it directly (Transformers v4)
+                    if hasattr(negative_prompt_embeds, "pooler_output"):
+                        negative_prompt_embeds = negative_prompt_embeds.pooler_output
                     # append the seq-len dim: (bs, hidden_size) -> (bs, seq_len, hidden_size)
                     negative_prompt_embeds = negative_prompt_embeds[:, None, :]
                     # make sure that we attend to this single hidden-state
