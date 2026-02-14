@@ -36,11 +36,11 @@ from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 FLUX_TEXT2IMAGE_WORKFLOWS = {
     "text2image": [
         ("text_encoder", "FluxTextEncoderStep"),
-        ("input", "FluxTextInputStep"),
-        ("prepare_latents", "FluxPrepareLatentsStep"),
-        ("set_timesteps", "FluxSetTimestepsStep"),
-        ("prepare_rope_inputs", "FluxRoPEInputsStep"),
-        ("denoise", "FluxDenoiseStep"),
+        ("denoise.input", "FluxTextInputStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise.denoise", "FluxDenoiseStep"),
         ("decode", "FluxDecodeStep"),
     ]
 }
@@ -78,13 +78,13 @@ FLUX_IMAGE2IMAGE_WORKFLOWS = {
         ("text_encoder", "FluxTextEncoderStep"),
         ("vae_encoder.preprocess", "FluxProcessImagesInputStep"),
         ("vae_encoder.encode", "FluxVaeEncoderStep"),
-        ("input", "FluxTextInputStep"),
-        ("additional_inputs", "FluxAdditionalInputsStep"),
-        ("prepare_latents", "FluxPrepareLatentsStep"),
-        ("set_timesteps", "FluxImg2ImgSetTimestepsStep"),
-        ("prepare_img2img_latents", "FluxImg2ImgPrepareLatentsStep"),
-        ("prepare_rope_inputs", "FluxRoPEInputsStep"),
-        ("denoise", "FluxDenoiseStep"),
+        ("denoise.input.text_inputs", "FluxTextInputStep"),
+        ("denoise.input.additional_inputs", "FluxAdditionalInputsStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_img2img_latents", "FluxImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise.denoise", "FluxDenoiseStep"),
         ("decode", "FluxDecodeStep"),
     ]
 }
