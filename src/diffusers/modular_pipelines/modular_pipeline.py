@@ -19,7 +19,7 @@ import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from huggingface_hub import create_repo
@@ -680,7 +680,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
         return all_triggers
 
-    def select_block(self, **kwargs) -> Optional[str]:
+    def select_block(self, **kwargs) -> str | None:
         """
         Select the block to run based on the trigger inputs. Subclasses must implement this method to define the logic
         for selecting the block.
@@ -724,7 +724,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             logger.error(error_msg)
             raise
 
-    def get_execution_blocks(self, **kwargs) -> Optional["ModularPipelineBlocks"]:
+    def get_execution_blocks(self, **kwargs) -> "ModularPipelineBlocks" | None:
         """
         Get the block(s) that would execute given the inputs.
 
