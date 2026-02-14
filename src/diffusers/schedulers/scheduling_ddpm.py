@@ -16,7 +16,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -42,13 +42,13 @@ class DDPMSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 def betas_for_alpha_bar(
     num_diffusion_timesteps: int,
     max_beta: float = 0.999,
-    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
+    alpha_transform_type: Literal["cosine", "exp", "laplace"] = "cosine",
 ) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -62,8 +62,8 @@ def betas_for_alpha_bar(
             The number of betas to produce.
         max_beta (`float`, defaults to `0.999`):
             The maximum beta to use; use values lower than 1 to avoid numerical instability.
-        alpha_transform_type (`"cosine"` or `"exp"`, defaults to `"cosine"`):
-            The type of noise schedule for `alpha_bar`. Choose from `cosine` or `exp`.
+        alpha_transform_type (`str`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine`, `exp`, or `laplace`.
 
     Returns:
         `torch.Tensor`:
@@ -190,9 +190,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: Literal["linear", "scaled_linear", "squaredcos_cap_v2", "sigmoid"] = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        trained_betas: np.ndarray | list[float] | None = None,
         variance_type: Literal[
-            "fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"
+            "fixed_small",
+            "fixed_small_log",
+            "fixed_large",
+            "fixed_large_log",
+            "learned",
+            "learned_range",
         ] = "fixed_small",
         clip_sample: bool = True,
         prediction_type: Literal["epsilon", "sample", "v_prediction"] = "epsilon",
@@ -210,7 +215,15 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            self.betas = (
+                torch.linspace(
+                    beta_start**0.5,
+                    beta_end**0.5,
+                    num_train_timesteps,
+                    dtype=torch.float32,
+                )
+                ** 2
+            )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -241,7 +254,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.variance_type = variance_type
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -260,20 +273,20 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
-        timesteps: Optional[List[int]] = None,
+        num_inference_steps: int = None,
+        device: str | torch.device = None,
+        timesteps: list[int] | None = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
-            num_inference_steps (`int`):
+            num_inference_steps (`int`, *optional*):
                 The number of diffusion steps used when generating samples with a pre-trained model. If used,
                 `timesteps` must be `None`.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps is used. If `timesteps` is passed,
                 `num_inference_steps` must be `None`.
@@ -335,10 +348,16 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
     def _get_variance(
         self,
         t: int,
-        predicted_variance: Optional[torch.Tensor] = None,
-        variance_type: Optional[
-            Literal["fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"]
-        ] = None,
+        predicted_variance: torch.Tensor | None = None,
+        variance_type: Literal[
+            "fixed_small",
+            "fixed_small_log",
+            "fixed_large",
+            "fixed_large_log",
+            "learned",
+            "learned_range",
+        ]
+        | None = None,
     ) -> torch.Tensor:
         """
         Compute the variance for a given timestep according to the specified variance type.
@@ -444,9 +463,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: int,
         sample: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[DDPMSchedulerOutput, Tuple]:
+    ) -> DDPMSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -472,7 +491,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         prev_t = self.previous_timestep(t)
 
-        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
+        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in [
+            "learned",
+            "learned_range",
+        ]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
         else:
             predicted_variance = None
@@ -521,7 +543,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         if t > 0:
             device = model_output.device
             variance_noise = randn_tensor(
-                model_output.shape, generator=generator, device=device, dtype=model_output.dtype
+                model_output.shape,
+                generator=generator,
+                device=device,
+                dtype=model_output.dtype,
             )
             if self.variance_type == "fixed_small_log":
                 variance = self._get_variance(t, predicted_variance=predicted_variance) * variance_noise
@@ -620,7 +645,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
     def __len__(self) -> int:
         return self.config.num_train_timesteps
 
-    def previous_timestep(self, timestep: int) -> int:
+    def previous_timestep(self, timestep: int) -> int | torch.Tensor:
         """
         Compute the previous timestep in the diffusion chain.
 
@@ -629,7 +654,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 The current timestep.
 
         Returns:
-            `int`:
+            `int` or `torch.Tensor`:
                 The previous timestep.
         """
         if self.custom_timesteps or self.num_inference_steps:

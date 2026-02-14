@@ -27,7 +27,7 @@ from collections import OrderedDict
 from contextlib import ExitStack, contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, ContextManager, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, ContextManager, Type
 
 import safetensors
 import torch
@@ -83,7 +83,7 @@ class ContextManagers:
     in the `fastcore` library.
     """
 
-    def __init__(self, context_managers: List[ContextManager]):
+    def __init__(self, context_managers: list[ContextManager]):
         self.context_managers = context_managers
         self.stack = ExitStack()
 
@@ -145,7 +145,7 @@ def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
     except StopIteration:
         # For torch.nn.DataParallel compatibility in PyTorch 1.5
 
-        def find_tensor_attributes(module: torch.nn.Module) -> List[Tuple[str, Tensor]]:
+        def find_tensor_attributes(module: torch.nn.Module) -> list[tuple[str, Tensor]]:
             tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
             return tuples
 
@@ -193,7 +193,7 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
         return last_dtype
 
     # For nn.DataParallel compatibility in PyTorch > 1.5
-    def find_tensor_attributes(module: nn.Module) -> List[Tuple[str, Tensor]]:
+    def find_tensor_attributes(module: nn.Module) -> list[tuple[str, Tensor]]:
         tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
         return tuples
 
@@ -282,7 +282,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         return any(hasattr(m, "gradient_checkpointing") and m.gradient_checkpointing for m in self.modules())
 
-    def enable_gradient_checkpointing(self, gradient_checkpointing_func: Optional[Callable] = None) -> None:
+    def enable_gradient_checkpointing(self, gradient_checkpointing_func: Callable | None = None) -> None:
         """
         Activates gradient checkpointing for the current model (may be referred to as *activation checkpointing* or
         *checkpoint activations* in other frameworks).
@@ -351,7 +351,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self.set_use_npu_flash_attention(False)
 
     def set_use_xla_flash_attention(
-        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None, **kwargs
+        self, use_xla_flash_attention: bool, partition_spec: Callable | None = None, **kwargs
     ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_xla_flash_attention method
@@ -367,7 +367,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_flash_attention(module)
 
-    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None, **kwargs):
+    def enable_xla_flash_attention(self, partition_spec: Callable | None = None, **kwargs):
         r"""
         Enable the flash attention pallals kernel for torch_xla.
         """
@@ -379,9 +379,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_xla_flash_attention(False)
 
-    def set_use_memory_efficient_attention_xformers(
-        self, valid: bool, attention_op: Optional[Callable] = None
-    ) -> None:
+    def set_use_memory_efficient_attention_xformers(self, valid: bool, attention_op: Callable | None = None) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_memory_efficient_attention_xformers method
         # gets the message
@@ -396,7 +394,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_mem_eff(module)
 
-    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None) -> None:
+    def enable_xformers_memory_efficient_attention(self, attention_op: Callable | None = None) -> None:
         r"""
         Enable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
 
@@ -437,9 +435,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def enable_layerwise_casting(
         self,
         storage_dtype: torch.dtype = torch.float8_e4m3fn,
-        compute_dtype: Optional[torch.dtype] = None,
-        skip_modules_pattern: Optional[Tuple[str, ...]] = None,
-        skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+        compute_dtype: torch.dtype | None = None,
+        skip_modules_pattern: tuple[str, ...] | None = None,
+        skip_modules_classes: tuple[Type[torch.nn.Module], ...] | None = None,
         non_blocking: bool = False,
     ) -> None:
         r"""
@@ -475,11 +473,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The dtype to which the model should be cast for storage.
             compute_dtype (`torch.dtype`):
                 The dtype to which the model weights should be cast during the forward pass.
-            skip_modules_pattern (`Tuple[str, ...]`, *optional*):
+            skip_modules_pattern (`tuple[str, ...]`, *optional*):
                 A list of patterns to match the names of the modules to skip during the layerwise casting process. If
                 set to `None`, default skip patterns are used to ignore certain internal layers of modules and PEFT
                 layers.
-            skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, *optional*):
+            skip_modules_classes (`tuple[Type[torch.nn.Module], ...]`, *optional*):
                 A list of module classes to skip during the layerwise casting process.
             non_blocking (`bool`, *optional*, defaults to `False`):
                 If `True`, the weight casting operations are non-blocking.
@@ -524,14 +522,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         onload_device: torch.device,
         offload_device: torch.device = torch.device("cpu"),
         offload_type: str = "block_level",
-        num_blocks_per_group: Optional[int] = None,
+        num_blocks_per_group: int | None = None,
         non_blocking: bool = False,
         use_stream: bool = False,
         record_stream: bool = False,
         low_cpu_mem_usage=False,
-        offload_to_disk_path: Optional[str] = None,
-        block_modules: Optional[str] = None,
-        exclude_kwargs: Optional[str] = None,
+        offload_to_disk_path: str | None = None,
+        block_modules: str | None = None,
+        exclude_kwargs: str | None = None,
     ) -> None:
         r"""
         Activates group offloading for the current model.
@@ -670,12 +668,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         is_main_process: bool = True,
-        save_function: Optional[Callable] = None,
+        save_function: Callable | None = None,
         safe_serialization: bool = True,
-        variant: Optional[str] = None,
-        max_shard_size: Union[int, str] = "10GB",
+        variant: str | None = None,
+        max_shard_size: int | str = "10GB",
         push_to_hub: bool = False,
         use_flashpack: bool = False,
         **kwargs,
@@ -710,7 +708,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         if os.path.isfile(save_directory):
@@ -859,7 +857,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs) -> Self:
+    def from_pretrained(cls, pretrained_model_name_or_path: str | os.PathLike | None, **kwargs) -> Self:
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
 
@@ -875,7 +873,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       with [`~ModelMixin.save_pretrained`].
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             torch_dtype (`torch.dtype`, *optional*):
@@ -883,7 +881,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info (`bool`, *optional*, defaults to `False`):
@@ -905,7 +903,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`Union[int, str, torch.device]` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`int | str | torch.device` or `dict[str, int | str | torch.device]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device. Defaults to `None`, meaning that the model will be loaded on CPU.
@@ -1012,9 +1010,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
-        dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
+        dduf_entries: dict[str, DDUFEntry] | None = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
-        parallel_config: Optional[Union[ParallelConfig, ContextParallelConfig]] = kwargs.pop("parallel_config", None)
+        parallel_config: ParallelConfig | ContextParallelConfig | None = kwargs.pop("parallel_config", None)
         use_flashpack = kwargs.pop("use_flashpack", False)
         flashpack_kwargs = kwargs.pop("flashpack_kwargs", {})
 
@@ -1603,8 +1601,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def enable_parallelism(
         self,
         *,
-        config: Union[ParallelConfig, ContextParallelConfig],
-        cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None,
+        config: ParallelConfig | ContextParallelConfig,
+        cp_plan: dict[str, ContextParallelModelPlan] | None = None,
     ):
         logger.warning(
             "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
@@ -1692,20 +1690,20 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         cls,
         model,
         state_dict: OrderedDict,
-        resolved_model_file: List[str],
-        pretrained_model_name_or_path: Union[str, os.PathLike],
-        loaded_keys: List[str],
+        resolved_model_file: list[str],
+        pretrained_model_name_or_path: str | os.PathLike,
+        loaded_keys: list[str],
         ignore_mismatched_sizes: bool = False,
         assign_to_params_buffers: bool = False,
-        hf_quantizer: Optional[DiffusersQuantizer] = None,
+        hf_quantizer: DiffusersQuantizer | None = None,
         low_cpu_mem_usage: bool = True,
-        dtype: Optional[Union[str, torch.dtype]] = None,
-        keep_in_fp32_modules: Optional[List[str]] = None,
-        device_map: Union[str, int, torch.device, Dict[str, Union[int, str, torch.device]]] = None,
-        offload_state_dict: Optional[bool] = None,
-        offload_folder: Optional[Union[str, os.PathLike]] = None,
-        dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
-        is_parallel_loading_enabled: Optional[bool] = False,
+        dtype: str | torch.dtype | None = None,
+        keep_in_fp32_modules: list[str] | None = None,
+        device_map: str | int | torch.device | dict[str, str | int | torch.device] = None,
+        offload_state_dict: bool | None = None,
+        offload_folder: str | os.PathLike | None = None,
+        dduf_entries: dict[str, DDUFEntry] | None = None,
+        is_parallel_loading_enabled: bool | None = False,
         disable_mmap: bool = False,
     ):
         model_state_dict = model.state_dict()
@@ -1869,7 +1867,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The device map value. Options are ["auto", "balanced", "balanced_low_0", "sequential"]
 
         Returns:
-            `List[str]`: List of modules that should not be split
+            `list[str]`: list of modules that should not be split
         """
         _no_split_modules = set()
         modules_to_check = [self]
@@ -2090,7 +2088,7 @@ class LegacyModelMixin(ModelMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: str | os.PathLike | None, **kwargs):
         # To prevent dependency import problem.
         from .model_loading_utils import _fetch_remapped_cls_from_config
 

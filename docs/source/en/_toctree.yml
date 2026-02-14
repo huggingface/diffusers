@@ -114,6 +114,8 @@
     title: Guiders
   - local: modular_diffusers/custom_blocks
     title: Building Custom Blocks
+  - local: modular_diffusers/mellon
+    title: Using Custom Blocks with Mellon
   title: Modular Diffusers
 - isExpanded: false
   sections:
@@ -496,6 +498,8 @@
         title: Bria 3.2
       - local: api/pipelines/bria_fibo
         title: Bria Fibo
+      - local: api/pipelines/bria_fibo_edit
+        title: Bria Fibo Edit
       - local: api/pipelines/chroma
         title: Chroma
       - local: api/pipelines/cogview3

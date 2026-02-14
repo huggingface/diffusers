@@ -14,7 +14,6 @@
 # limitations under the License.
 
 from functools import partial
-from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -75,21 +74,21 @@ class ResnetBlockCondNorm2D(nn.Module):
         self,
         *,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         conv_shortcut: bool = False,
         dropout: float = 0.0,
         temb_channels: int = 512,
         groups: int = 32,
-        groups_out: Optional[int] = None,
+        groups_out: int | None = None,
         eps: float = 1e-6,
         non_linearity: str = "swish",
         time_embedding_norm: str = "ada_group",  # ada_group, spatial
         output_scale_factor: float = 1.0,
-        use_in_shortcut: Optional[bool] = None,
+        use_in_shortcut: bool | None = None,
         up: bool = False,
         down: bool = False,
         conv_shortcut_bias: bool = True,
-        conv_2d_out_channels: Optional[int] = None,
+        conv_2d_out_channels: int | None = None,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -221,24 +220,24 @@ class ResnetBlock2D(nn.Module):
         self,
         *,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         conv_shortcut: bool = False,
         dropout: float = 0.0,
         temb_channels: int = 512,
         groups: int = 32,
-        groups_out: Optional[int] = None,
+        groups_out: int | None = None,
         pre_norm: bool = True,
         eps: float = 1e-6,
         non_linearity: str = "swish",
         skip_time_act: bool = False,
         time_embedding_norm: str = "default",  # default, scale_shift,
-        kernel: Optional[torch.Tensor] = None,
+        kernel: torch.Tensor | None = None,
         output_scale_factor: float = 1.0,
-        use_in_shortcut: Optional[bool] = None,
+        use_in_shortcut: bool | None = None,
         up: bool = False,
         down: bool = False,
         conv_shortcut_bias: bool = True,
-        conv_2d_out_channels: Optional[int] = None,
+        conv_2d_out_channels: int | None = None,
     ):
         super().__init__()
         if time_embedding_norm == "ada_group":
@@ -366,7 +365,12 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
-            input_tensor = self.conv_shortcut(input_tensor.contiguous())
+            # Only use contiguous() during training to avoid DDP gradient stride mismatch warning.
+            # In inference mode (eval or no_grad), skip contiguous() for better performance, especially on CPU.
+            # Issue: https://github.com/huggingface/diffusers/issues/12975
+            if self.training:
+                input_tensor = input_tensor.contiguous()
+            input_tensor = self.conv_shortcut(input_tensor)
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
@@ -401,7 +405,7 @@ class Conv1dBlock(nn.Module):
         self,
         inp_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int]],
+        kernel_size: int | tuple[int, int],
         n_groups: int = 8,
         activation: str = "mish",
     ):
@@ -438,7 +442,7 @@ class ResidualTemporalBlock1D(nn.Module):
         inp_channels: int,
         out_channels: int,
         embed_dim: int,
-        kernel_size: Union[int, Tuple[int, int]] = 5,
+        kernel_size: int | tuple[int, int] = 5,
         activation: str = "mish",
     ):
         super().__init__()
@@ -482,7 +486,7 @@ class TemporalConvLayer(nn.Module):
     def __init__(
         self,
         in_dim: int,
-        out_dim: Optional[int] = None,
+        out_dim: int | None = None,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
     ):
@@ -554,7 +558,7 @@ class TemporalResnetBlock(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         temb_channels: int = 512,
         eps: float = 1e-6,
     ):
@@ -653,10 +657,10 @@ class SpatioTemporalResBlock(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         temb_channels: int = 512,
         eps: float = 1e-6,
-        temporal_eps: Optional[float] = None,
+        temporal_eps: float | None = None,
         merge_factor: float = 0.5,
         merge_strategy="learned_with_images",
         switch_spatial_to_temporal_mix: bool = False,
@@ -686,8 +690,8 @@ class SpatioTemporalResBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        image_only_indicator: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
+        image_only_indicator: torch.Tensor | None = None,
     ):
         num_frames = image_only_indicator.shape[-1]
         hidden_states = self.spatial_res_block(hidden_states, temb)
@@ -785,7 +789,7 @@ class AlphaBlender(nn.Module):
         self,
         x_spatial: torch.Tensor,
         x_temporal: torch.Tensor,
-        image_only_indicator: Optional[torch.Tensor] = None,
+        image_only_indicator: torch.Tensor | None = None,
     ) -> torch.Tensor:
         alpha = self.get_alpha(image_only_indicator, x_spatial.ndim)
         alpha = alpha.to(x_spatial.dtype)

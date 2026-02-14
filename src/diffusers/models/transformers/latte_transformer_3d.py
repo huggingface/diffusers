@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import torch
 from torch import nn
 
@@ -73,16 +71,16 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         self,
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
-        in_channels: Optional[int] = None,
-        out_channels: Optional[int] = None,
+        in_channels: int | None = None,
+        out_channels: int | None = None,
         num_layers: int = 1,
         dropout: float = 0.0,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
         attention_bias: bool = False,
         sample_size: int = 64,
-        patch_size: Optional[int] = None,
+        patch_size: int | None = None,
         activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
+        num_embeds_ada_norm: int | None = None,
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
@@ -168,9 +166,9 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        timestep: Optional[torch.LongTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        timestep: torch.LongTensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
         enable_temporal_attentions: bool = True,
         return_dict: bool = True,
     ):
