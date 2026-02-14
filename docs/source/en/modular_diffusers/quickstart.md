@@ -116,7 +116,6 @@ The output returns:
 
 This pipeline supports multiple workflows and adapts its behavior based on the inputs you provide. For example, if you pass `image` to the pipeline, it runs an image-to-image workflow instead of text-to-image. Learn more about how this works under the hood in the [AutoPipelineBlocks](https://huggingface.co/docs/diffusers/modular_diffusers/auto_pipeline_blocks) guide.
 
-Let's see this in action with an example.
 ```py
 from diffusers.utils import load_image
 
@@ -128,7 +127,7 @@ image = pipe(
 ).images[0]
 ```
 
-Use `get_workflow()` to extract the blocks for a specific workflow. Pass the workflow name (e.g., `"image2image"`, `"inpainting"`, `"controlnet_text2image"`) to get only the blocks relevant to that workflow. This is useful when you want to customize or debug a specific workflow.
+Use `get_workflow()` to extract the blocks for a specific workflow. Pass the workflow name (e.g., `"image2image"`, `"inpainting"`, `"controlnet_text2image"`) to get only the blocks relevant to that workflow. This is useful when you want to customize or debug a specific workflow. You can check `pipe.blocks.available_workflows` to see all available workflows.
 ```py
 img2img_blocks = pipe.blocks.get_workflow("image2image")
 ```
