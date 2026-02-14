@@ -1075,7 +1075,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                 raise
         return pipeline, state
 
-    # used for `trigger_inputs` property
+    # used for `__repr__`
     def _get_trigger_inputs(self):
         """
         Returns a set of all unique trigger input values found in the blocks.
