@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List
-
-import PIL.Image
-import torch
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
@@ -47,6 +43,29 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # auto_docstring
 class Flux2KleinVaeEncoderSequentialStep(SequentialPipelineBlocks):
+    """
+    VAE encoder step that preprocesses and encodes the image inputs into their latent representations.
+
+      Components:
+          image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`)
+
+      Inputs:
+          image (`None`, *optional*):
+              TODO: Add description.
+          height (`None`, *optional*):
+              TODO: Add description.
+          width (`None`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          condition_images (`list`):
+              TODO: Add description.
+          image_latents (`list`):
+              List of latent representations for each reference image
+    """
+
     model_name = "flux2-klein"
 
     block_classes = [Flux2ProcessImagesInputStep(), Flux2VaeEncoderStep()]
@@ -59,6 +78,32 @@ class Flux2KleinVaeEncoderSequentialStep(SequentialPipelineBlocks):
 
 # auto_docstring
 class Flux2KleinAutoVaeEncoderStep(AutoPipelineBlocks):
+    """
+    VAE encoder step that encodes the image inputs into their latent representations.
+      This is an auto pipeline block that works for image conditioning tasks.
+       - `Flux2KleinVaeEncoderSequentialStep` is used when `image` is provided.
+       - If `image` is not provided, step will be skipped.
+
+      Components:
+          image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`)
+
+      Inputs:
+          image (`None`, *optional*):
+              TODO: Add description.
+          height (`None`, *optional*):
+              TODO: Add description.
+          width (`None`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          condition_images (`list`):
+              TODO: Add description.
+          image_latents (`list`):
+              List of latent representations for each reference image
+    """
+
     model_name = "flux2-klein"
 
     block_classes = [Flux2KleinVaeEncoderSequentialStep]
@@ -93,6 +138,44 @@ Flux2KleinCoreDenoiseBlocks = InsertableDict(
 
 # auto_docstring
 class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    Core denoise step that performs the denoising process for Flux2-Klein (distilled model), for text-to-image
+    generation.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
+
+      Inputs:
+          num_images_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              Pre-generated text embeddings. Can be generated from text_encoder step.
+          height (`int`, *optional*):
+              TODO: Add description.
+          width (`int`, *optional*):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          timesteps (`None`, *optional*):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          joint_attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          image_latents (`Tensor`, *optional*):
+              Packed image latents for conditioning. Shape: (B, img_seq_len, C)
+          image_latent_ids (`Tensor`, *optional*):
+              Position IDs for image latents. Shape: (B, img_seq_len, 4)
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "flux2-klein"
 
     block_classes = Flux2KleinCoreDenoiseBlocks.values()
@@ -105,11 +188,7 @@ class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam(
-                name="latents",
-                type_hint=torch.Tensor,
-                description="The latents from the denoising step.",
-            )
+            OutputParam.template("latents"),
         ]
 
 
@@ -128,6 +207,41 @@ Flux2KleinImageConditionedCoreDenoiseBlocks = InsertableDict(
 
 # auto_docstring
 class Flux2KleinImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    Core denoise step that performs the denoising process for Flux2-Klein (distilled model) with image conditioning.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
+
+      Inputs:
+          num_images_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              Pre-generated text embeddings. Can be generated from text_encoder step.
+          image_latents (`list`, *optional*):
+              TODO: Add description.
+          height (`int`, *optional*):
+              TODO: Add description.
+          width (`int`, *optional*):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          timesteps (`None`, *optional*):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          joint_attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "flux2-klein"
 
     block_classes = Flux2KleinImageConditionedCoreDenoiseBlocks.values()
@@ -140,16 +254,52 @@ class Flux2KleinImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam(
-                name="latents",
-                type_hint=torch.Tensor,
-                description="The latents from the denoising step.",
-            )
+            OutputParam.template("latents"),
         ]
 
 
 # auto_docstring
 class Flux2KleinAutoCoreDenoiseStep(AutoPipelineBlocks):
+    """
+    Auto core denoise step that performs the denoising process for Flux2-Klein.
+      This is an auto pipeline block that works for text-to-image and image-conditioned generation.
+       - `Flux2KleinCoreDenoiseStep` is used for text-to-image generation.
+       - `Flux2KleinImageConditionedCoreDenoiseStep` is used for image-conditioned generation.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
+
+      Inputs:
+          num_images_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              Pre-generated text embeddings. Can be generated from text_encoder step.
+          image_latents (`list`, *optional*):
+              TODO: Add description.
+          height (`int`, *optional*):
+              TODO: Add description.
+          width (`int`, *optional*):
+              TODO: Add description.
+          latents (`Tensor | NoneType`):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`None`):
+              TODO: Add description.
+          timesteps (`None`):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          joint_attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          image_latent_ids (`Tensor`, *optional*):
+              Position IDs for image latents. Shape: (B, img_seq_len, 4)
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "flux2-klein"
     block_classes = [Flux2KleinImageConditionedCoreDenoiseStep, Flux2KleinCoreDenoiseStep]
     block_names = ["image_conditioned", "text2image"]
@@ -172,6 +322,60 @@ class Flux2KleinAutoCoreDenoiseStep(AutoPipelineBlocks):
 
 # auto_docstring
 class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
+    """
+    Auto blocks that perform the text-to-image and image-conditioned generation using Flux2-Klein.
+
+      Supported workflows:
+        - `text2image`: requires `prompt`
+        - `image_conditioned`: requires `image`, `prompt`
+
+      Components:
+          text_encoder (`Qwen3ForCausalLM`) tokenizer (`Qwen2TokenizerFast`) image_processor (`Flux2ImageProcessor`)
+          vae (`AutoencoderKLFlux2`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer
+          (`Flux2Transformer2DModel`)
+
+      Configs:
+          is_distilled (default: True)
+
+      Inputs:
+          prompt (`None`, *optional*):
+              TODO: Add description.
+          max_sequence_length (`int`, *optional*, defaults to 512):
+              TODO: Add description.
+          text_encoder_out_layers (`tuple`, *optional*, defaults to (9, 18, 27)):
+              TODO: Add description.
+          image (`None`, *optional*):
+              TODO: Add description.
+          height (`None`, *optional*):
+              TODO: Add description.
+          width (`None`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          num_images_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          image_latents (`list`, *optional*):
+              TODO: Add description.
+          latents (`Tensor | NoneType`):
+              TODO: Add description.
+          num_inference_steps (`None`):
+              TODO: Add description.
+          timesteps (`None`):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          joint_attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          image_latent_ids (`Tensor`, *optional*):
+              Position IDs for image latents. Shape: (B, img_seq_len, 4)
+          output_type (`None`, *optional*, defaults to pil):
+              TODO: Add description.
+
+      Outputs:
+          images (`list`):
+              Generated images.
+    """
+
     model_name = "flux2-klein"
     block_classes = [
         Flux2KleinTextEncoderStep(),
@@ -192,9 +396,5 @@ class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [
-            OutputParam(
-                name="images",
-                type_hint=List[PIL.Image.Image],
-                description="The images from the decoding step.",
-            )
+            OutputParam.template("images"),
         ]

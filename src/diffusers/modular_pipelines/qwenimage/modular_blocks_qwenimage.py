@@ -119,7 +119,7 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
       Inputs:
           mask_image (`Image`):
               Mask image for inpainting.
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -135,7 +135,7 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
               The processed image
           processed_mask_image (`Tensor`):
               The processed mask image
-          mask_overlay_kwargs (`Dict`):
+          mask_overlay_kwargs (`dict`):
               The kwargs for the postprocess step to apply the mask overlay
           image_latents (`Tensor`):
               The latent representation of the input image.
@@ -164,7 +164,7 @@ class QwenImageImg2ImgVaeEncoderStep(SequentialPipelineBlocks):
           image_processor (`VaeImageProcessor`) vae (`AutoencoderKLQwenImage`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -476,9 +476,9 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -553,11 +553,11 @@ class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           strength (`float`, *optional*, defaults to 0.9):
               Strength for img2img/inpainting.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -632,11 +632,11 @@ class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           strength (`float`, *optional*, defaults to 0.9):
               Strength for img2img/inpainting.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -712,7 +712,7 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           control_guidance_start (`float`, *optional*, defaults to 0.0):
               When to start applying ControlNet.
@@ -720,7 +720,7 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
               When to stop applying ControlNet.
           controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
               Scale for ControlNet conditioning.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -802,7 +802,7 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           strength (`float`, *optional*, defaults to 0.9):
               Strength for img2img/inpainting.
@@ -812,7 +812,7 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
               When to stop applying ControlNet.
           controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
               Scale for ControlNet conditioning.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -894,7 +894,7 @@ class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           strength (`float`, *optional*, defaults to 0.9):
               Strength for img2img/inpainting.
@@ -904,7 +904,7 @@ class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
               When to stop applying ControlNet.
           controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
               Scale for ControlNet conditioning.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -1032,7 +1032,7 @@ class QwenImageDecodeStep(SequentialPipelineBlocks):
               Output format: 'pil', 'np', 'pt'.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images. (tensor output of the vae decoder.)
     """
 
@@ -1061,12 +1061,12 @@ class QwenImageInpaintDecodeStep(SequentialPipelineBlocks):
               step.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          mask_overlay_kwargs (`Dict`, *optional*):
+          mask_overlay_kwargs (`dict`, *optional*):
               The kwargs for the postprocess step to apply the mask overlay. generated in
               InpaintProcessImagesInputStep.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images. (tensor output of the vae decoder.)
     """
 
@@ -1138,7 +1138,7 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
               Maximum sequence length for prompt encoding.
           mask_image (`Image`, *optional*):
               Mask image for inpainting.
-          image (`Union[Image, List]`, *optional*):
+          image (`Image | list`, *optional*):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -1164,9 +1164,9 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
               Pre-generated noisy latents for image generation.
           num_inference_steps (`int`):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -1187,12 +1187,12 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
               Scale for ControlNet conditioning.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          mask_overlay_kwargs (`Dict`, *optional*):
+          mask_overlay_kwargs (`dict`, *optional*):
               The kwargs for the postprocess step to apply the mask overlay. generated in
               InpaintProcessImagesInputStep.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images.
     """
 

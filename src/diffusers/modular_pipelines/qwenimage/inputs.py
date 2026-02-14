@@ -496,9 +496,9 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
 
       Outputs:
-          image_height (`List`):
+          image_height (`list`):
               The image heights calculated from the image latents dimension
-          image_width (`List`):
+          image_width (`list`):
               The image widths calculated from the image latents dimension
           height (`int`):
               if not provided, updated to image height

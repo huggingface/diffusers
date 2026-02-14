@@ -504,6 +504,10 @@ OUTPUT_PARAM_TEMPLATES = {
         "type_hint": list[PIL.Image.Image],
         "description": "Generated images.",
     },
+    "videos": {
+        "type_hint": list[PIL.Image.Image],
+        "description": "The generated videos.",
+    },
     "latents": {
         "type_hint": torch.Tensor,
         "description": "Denoised latents.",
