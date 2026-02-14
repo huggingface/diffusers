@@ -294,17 +294,17 @@ else:
     )
     _import_structure["modular_pipelines"].extend(
         [
-            "ComponentsManager",
-            "ModularPipeline",
-            "ModularPipelineBlocks",
-            "SequentialPipelineBlocks",
             "AutoPipelineBlocks",
-            "ConditionalPipelineBlocks",
-            "LoopSequentialPipelineBlocks",
+            "ComponentsManager",
             "ComponentSpec",
+            "ConditionalPipelineBlocks",
             "ConfigSpec",
             "InputParam",
+            "LoopSequentialPipelineBlocks",
+            "ModularPipeline",
+            "ModularPipelineBlocks",
             "OutputParam",
+            "SequentialPipelineBlocks",
         ]
     )
     _import_structure["optimization"] = [
@@ -1071,17 +1071,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             attention_backend,
         )
         from .modular_pipelines import (
-            ComponentsManager,
-            ModularPipeline,
-            ModularPipelineBlocks,
             AutoPipelineBlocks,
-            SequentialPipelineBlocks,
-            ConditionalPipelineBlocks,
-            LoopSequentialPipelineBlocks,
+            ComponentsManager,
             ComponentSpec,
+            ConditionalPipelineBlocks,
             ConfigSpec,
             InputParam,
+            LoopSequentialPipelineBlocks,
+            ModularPipeline,
+            ModularPipelineBlocks,
             OutputParam,
+            SequentialPipelineBlocks,
         )
         from .optimization import (
             get_constant_schedule,
