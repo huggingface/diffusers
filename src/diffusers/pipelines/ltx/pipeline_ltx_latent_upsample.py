@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
-
 import torch
 
 from ...image_processor import PipelineImageInput
@@ -31,7 +29,7 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -65,12 +63,12 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
 
     def prepare_latents(
         self,
-        video: Optional[torch.Tensor] = None,
+        video: torch.Tensor | None = None,
         batch_size: int = 1,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -243,16 +241,16 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        video: Optional[List[PipelineImageInput]] = None,
+        video: list[PipelineImageInput] | None = None,
         height: int = 512,
         width: int = 704,
-        latents: Optional[torch.Tensor] = None,
-        decode_timestep: Union[float, List[float]] = 0.0,
-        decode_noise_scale: Optional[Union[float, List[float]]] = None,
+        latents: torch.Tensor | None = None,
+        decode_timestep: float | list[float] = 0.0,
+        decode_noise_scale: float | list[float] | None = None,
         adain_factor: float = 0.0,
         tone_map_compression_ratio: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ):
         self.check_inputs(

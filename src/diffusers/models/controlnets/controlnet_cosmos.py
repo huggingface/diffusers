@@ -65,8 +65,8 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         patch_size: Tuple[int, int, int] = (1, 2, 2),
         max_size: Tuple[int, int, int] = (128, 240, 240),
         rope_scale: Tuple[float, float, float] = (2.0, 1.0, 1.0),
-        extra_pos_embed_type: Optional[str] = None,
-        img_context_dim_in: Optional[int] = None,
+        extra_pos_embed_type: str | None = None,
+        img_context_dim_in: int | None = None,
         img_context_dim_out: int = 2048,
         use_crossattn_projection: bool = False,
         crossattn_proj_in_channels: int = 1024,
@@ -127,7 +127,7 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         self.gradient_checkpointing = False
 
-    def _expand_conditioning_scale(self, conditioning_scale: Union[float, List[float]]) -> List[float]:
+    def _expand_conditioning_scale(self, conditioning_scale: float | list[float]) -> List[float]:
         if isinstance(conditioning_scale, list):
             scales = conditioning_scale
         else:
@@ -150,10 +150,10 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: Union[Optional[torch.Tensor], Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]],
         condition_mask: torch.Tensor,
-        conditioning_scale: Union[float, List[float]] = 1.0,
-        padding_mask: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        fps: Optional[int] = None,
+        conditioning_scale: float | list[float] = 1.0,
+        padding_mask: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        fps: int | None = None,
         return_dict: bool = True,
     ) -> Union[CosmosControlNetOutput, Tuple[List[torch.Tensor]]]:
         """

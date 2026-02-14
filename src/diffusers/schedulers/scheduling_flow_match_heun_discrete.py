@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -107,7 +106,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def scale_noise(
         self,
         sample: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
+        timestep: float | torch.FloatTensor,
         noise: torch.FloatTensor,
     ) -> torch.FloatTensor:
         """
@@ -140,7 +139,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
     ) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -179,8 +178,8 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def index_for_timestep(
         self,
-        timestep: Union[float, torch.FloatTensor],
-        schedule_timesteps: Optional[torch.FloatTensor] = None,
+        timestep: float | torch.FloatTensor,
+        schedule_timesteps: torch.FloatTensor | None = None,
     ) -> int:
         """
         Find the index of a given timestep in the timestep schedule.
@@ -208,7 +207,7 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return indices[pos].item()
 
-    def _init_step_index(self, timestep: Union[float, torch.FloatTensor]) -> None:
+    def _init_step_index(self, timestep: float | torch.FloatTensor) -> None:
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
@@ -226,15 +225,15 @@ class FlowMatchHeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
+        timestep: float | torch.FloatTensor,
         sample: torch.FloatTensor,
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
         s_tmax: float = float("inf"),
         s_noise: float = 1.0,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[FlowMatchHeunDiscreteSchedulerOutput, Tuple]:
+    ) -> FlowMatchHeunDiscreteSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

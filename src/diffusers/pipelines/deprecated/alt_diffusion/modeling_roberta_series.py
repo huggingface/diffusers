@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 import torch
 from torch import nn
@@ -18,22 +17,22 @@ class TransformationModelOutput(ModelOutput):
         last_hidden_state (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`):
             Sequence of hidden-states at the output of the last layer of the model.
         hidden_states (`tuple(torch.Tensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
-            Tuple of `torch.Tensor` (one for the output of the embeddings, if the model has an embedding layer, + one
+            tuple of `torch.Tensor` (one for the output of the embeddings, if the model has an embedding layer, + one
             for the output of each layer) of shape `(batch_size, sequence_length, hidden_size)`.
 
             Hidden-states of the model at the output of each layer plus the optional initial embedding outputs.
         attentions (`tuple(torch.Tensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
-            Tuple of `torch.Tensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            tuple of `torch.Tensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
             sequence_length)`.
 
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
     """
 
-    projection_state: Optional[torch.Tensor] = None
+    projection_state: torch.Tensor | None = None
     last_hidden_state: torch.Tensor = None
-    hidden_states: Optional[Tuple[torch.Tensor]] = None
-    attentions: Optional[Tuple[torch.Tensor]] = None
+    hidden_states: tuple[torch.Tensor] | None = None
+    attentions: tuple[torch.Tensor] | None = None
 
 
 class RobertaSeriesConfig(XLMRobertaConfig):
@@ -73,17 +72,17 @@ class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
 
     def forward(
         self,
-        input_ids: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        token_type_ids: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
+        input_ids: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        token_type_ids: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
+        head_mask: torch.Tensor | None = None,
+        inputs_embeds: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        output_attentions: bool | None = None,
+        return_dict: bool | None = None,
+        output_hidden_states: bool | None = None,
     ):
         r""" """
 

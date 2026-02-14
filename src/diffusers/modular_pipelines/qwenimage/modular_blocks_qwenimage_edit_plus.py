@@ -404,6 +404,4 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
 
     @property
     def outputs(self):
-        return [
-            OutputParam.template("images"),
-        ]
+        return [OutputParam.template("images")]

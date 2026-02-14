@@ -1,5 +1,3 @@
-from typing import List, Optional, Union
-
 import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -161,13 +159,13 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_INTERPOLATE_DOC_STRING)
     def interpolate(
         self,
-        images_and_prompts: List[Union[str, PIL.Image.Image, torch.Tensor]],
-        weights: List[float],
+        images_and_prompts: list[str | PIL.Image.Image | torch.Tensor],
+        weights: list[float],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        negative_prior_prompt: Optional[str] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        negative_prior_prompt: str | None = None,
         negative_prompt: str = "",
         guidance_scale: float = 4.0,
         device=None,
@@ -176,16 +174,16 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         Function invoked when using the prior pipeline for interpolation.
 
         Args:
-            images_and_prompts (`List[Union[str, PIL.Image.Image, torch.Tensor]]`):
+            images_and_prompts (`list[str | PIL.Image.Image | torch.Tensor]`):
                 list of prompts and images to guide the image generation.
-            weights: (`List[float]`):
+            weights: (`list[float]`):
                 list of weights for each condition in `images_and_prompts`
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -195,7 +193,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
             negative_prior_prompt (`str`, *optional*):
                 The prompt not to guide the prior diffusion process. Ignored when not using guidance (i.e., ignored if
                 `guidance_scale` is less than `1`).
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt not to guide the image generation. Ignored when not using guidance (i.e., ignored if
                 `guidance_scale` is less than `1`).
             guidance_scale (`float`, *optional*, defaults to 4.0):
@@ -249,7 +247,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
 
     def _encode_image(
         self,
-        image: Union[torch.Tensor, List[PIL.Image.Image]],
+        image: torch.Tensor | list[PIL.Image.Image],
         device,
         num_images_per_prompt,
     ):
@@ -341,7 +339,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif type(prompt) is not type(negative_prompt):
@@ -402,22 +400,22 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[torch.Tensor, List[torch.Tensor], PIL.Image.Image, List[PIL.Image.Image]],
+        prompt: str | list[str],
+        image: torch.Tensor | list[torch.Tensor] | PIL.Image.Image | list[PIL.Image.Image],
         strength: float = 0.3,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: str | list[str] | None = None,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         guidance_scale: float = 4.0,
-        output_type: Optional[str] = "pt",  # pt only
+        output_type: str | None = "pt",  # pt only
         return_dict: bool = True,
     ):
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
             strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to transform the reference `emb`. Must be between 0 and 1. `image`
@@ -425,7 +423,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
                 denoising steps depends on the amount of noise initially added.
             emb (`torch.Tensor`):
                 The image embedding.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -433,7 +431,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             guidance_scale (`float`, *optional*, defaults to 4.0):
@@ -480,7 +478,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        if not isinstance(image, List):
+        if not isinstance(image, list):
             image = [image]
 
         if isinstance(image[0], torch.Tensor):

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union
 
 import torch
 from transformers import AutoProcessor, Mistral3ForConditionalGeneration, Qwen2TokenizerFast, Qwen3ForCausalLM
@@ -29,7 +28,7 @@ from .modular_pipeline import Flux2KleinModularPipeline, Flux2ModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def format_text_input(prompts: List[str], system_message: str = None):
+def format_text_input(prompts: list[str], system_message: str = None):
     """Format prompts for Mistral3 chat template."""
     cleaned_txt = [prompt.replace("[IMG]", "") for prompt in prompts]
 
@@ -47,7 +46,7 @@ def format_text_input(prompts: List[str], system_message: str = None):
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -71,22 +70,22 @@ class Flux2TextEncoderStep(ModularPipelineBlocks):
         return "Text Encoder step that generates text embeddings using Mistral3 to guide the image generation"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_encoder", Mistral3ForConditionalGeneration),
             ComponentSpec("tokenizer", AutoProcessor),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("prompt"),
             InputParam("max_sequence_length", type_hint=int, default=512, required=False),
-            InputParam("text_encoder_out_layers", type_hint=Tuple[int], default=(10, 20, 30), required=False),
+            InputParam("text_encoder_out_layers", type_hint=tuple[int], default=(10, 20, 30), required=False),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "prompt_embeds",
@@ -106,14 +105,14 @@ class Flux2TextEncoderStep(ModularPipelineBlocks):
     def _get_mistral_3_prompt_embeds(
         text_encoder: Mistral3ForConditionalGeneration,
         tokenizer: AutoProcessor,
-        prompt: Union[str, List[str]],
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
         max_sequence_length: int = 512,
         # fmt: off
         system_message: str = "You are an AI that reasons about image descriptions. You give structured responses focusing on object relationships, object attribution and actions without speculation.",
         # fmt: on
-        hidden_states_layers: Tuple[int] = (10, 20, 30),
+        hidden_states_layers: tuple[int] = (10, 20, 30),
     ):
         dtype = text_encoder.dtype if dtype is None else dtype
         device = text_encoder.device if device is None else device
@@ -187,17 +186,17 @@ class Flux2RemoteTextEncoderStep(ModularPipelineBlocks):
         return "Text Encoder step that generates text embeddings using a remote API endpoint"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return []
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("prompt"),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "prompt_embeds",
@@ -255,28 +254,28 @@ class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
         return "Text Encoder step that generates text embeddings using Qwen3 to guide the image generation"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_encoder", Qwen3ForCausalLM),
             ComponentSpec("tokenizer", Qwen2TokenizerFast),
         ]
 
     @property
-    def expected_configs(self) -> List[ConfigSpec]:
+    def expected_configs(self) -> list[ConfigSpec]:
         return [
             ConfigSpec(name="is_distilled", default=True),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("prompt"),
             InputParam("max_sequence_length", type_hint=int, default=512, required=False),
-            InputParam("text_encoder_out_layers", type_hint=Tuple[int], default=(9, 18, 27), required=False),
+            InputParam("text_encoder_out_layers", type_hint=tuple[int], default=(9, 18, 27), required=False),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "prompt_embeds",
@@ -298,11 +297,11 @@ class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
     def _get_qwen3_prompt_embeds(
         text_encoder: Qwen3ForCausalLM,
         tokenizer: Qwen2TokenizerFast,
-        prompt: Union[str, List[str]],
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
         max_sequence_length: int = 512,
-        hidden_states_layers: List[int] = (9, 18, 27),
+        hidden_states_layers: list[int] = (9, 18, 27),
     ):
         dtype = text_encoder.dtype if dtype is None else dtype
         device = text_encoder.device if device is None else device
@@ -384,7 +383,7 @@ class Flux2KleinBaseTextEncoderStep(ModularPipelineBlocks):
         return "Text Encoder step that generates text embeddings using Qwen3 to guide the image generation"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_encoder", Qwen3ForCausalLM),
             ComponentSpec("tokenizer", Qwen2TokenizerFast),
@@ -397,21 +396,21 @@ class Flux2KleinBaseTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def expected_configs(self) -> List[ConfigSpec]:
+    def expected_configs(self) -> list[ConfigSpec]:
         return [
             ConfigSpec(name="is_distilled", default=False),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("prompt"),
             InputParam("max_sequence_length", type_hint=int, default=512, required=False),
-            InputParam("text_encoder_out_layers", type_hint=Tuple[int], default=(9, 18, 27), required=False),
+            InputParam("text_encoder_out_layers", type_hint=tuple[int], default=(9, 18, 27), required=False),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "prompt_embeds",
@@ -439,11 +438,11 @@ class Flux2KleinBaseTextEncoderStep(ModularPipelineBlocks):
     def _get_qwen3_prompt_embeds(
         text_encoder: Qwen3ForCausalLM,
         tokenizer: Qwen2TokenizerFast,
-        prompt: Union[str, List[str]],
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
         max_sequence_length: int = 512,
-        hidden_states_layers: List[int] = (9, 18, 27),
+        hidden_states_layers: list[int] = (9, 18, 27),
     ):
         dtype = text_encoder.dtype if dtype is None else dtype
         device = text_encoder.device if device is None else device
@@ -538,22 +537,22 @@ class Flux2VaeEncoderStep(ModularPipelineBlocks):
         return "VAE Encoder step that encodes preprocessed images into latent representations for Flux2."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [ComponentSpec("vae", AutoencoderKLFlux2)]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
-            InputParam("condition_images", type_hint=List[torch.Tensor]),
+            InputParam("condition_images", type_hint=list[torch.Tensor]),
             InputParam("generator"),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "image_latents",
-                type_hint=List[torch.Tensor],
+                type_hint=list[torch.Tensor],
                 description="List of latent representations for each reference image",
             ),
         ]
