@@ -19,7 +19,7 @@ import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, Union
+from typing import Any
 
 import torch
 from huggingface_hub import create_repo
@@ -403,7 +403,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     def init_pipeline(
         self,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
+        pretrained_model_name_or_path: str | os.PathLike | None = None,
         components_manager: ComponentsManager | None = None,
         collection: str | None = None,
     ) -> "ModularPipeline":
@@ -2136,7 +2136,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             config_to_register[name] = new_value
         self.register_to_config(**config_to_register)
 
-    def load_components(self, names: Optional[Union[List[str], str]] = None, **kwargs):
+    def load_components(self, names: list[str] | str | None = None, **kwargs):
         """
         Load selected components from specs.
 
