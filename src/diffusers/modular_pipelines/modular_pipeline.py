@@ -685,6 +685,11 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         Select the block to run based on the trigger inputs. Subclasses must implement this method to define the logic
         for selecting the block.
 
+        Note: When trigger inputs include intermediate outputs from earlier blocks, the selection logic should only
+        depend on the presence or absence of the input (i.e., whether it is None or not), not on its actual value. This
+        is because `get_execution_blocks()` resolves conditions statically by propagating intermediate output names
+        without their runtime values.
+
         Args:
             **kwargs: Trigger input names and their values from the state.
 
@@ -1102,6 +1107,12 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     def get_execution_blocks(self, **kwargs) -> "SequentialPipelineBlocks":
         """
         Get the blocks that would execute given the specified inputs.
+
+        As the traversal walks through sequential blocks, intermediate outputs from resolved blocks are added to the
+        active inputs. This means conditional blocks that depend on intermediates (e.g., "run img2img if image_latents
+        is present") will resolve correctly, as long as the condition is based on presence/absence (None or not None),
+        not on the actual value.
+
 
         Args:
             **kwargs: Input names and values. Only trigger inputs affect block selection.

@@ -45,6 +45,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # wan2.1 I2V (first frame only)
+# auto_docstring
 class WanImage2VideoImageEncoderStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
     block_classes = [WanImageResizeStep, WanImageEncoderStep]
@@ -56,6 +57,7 @@ class WanImage2VideoImageEncoderStep(SequentialPipelineBlocks):
 
 
 # wan2.1 FLF2V (first and last frame)
+# auto_docstring
 class WanFLF2VImageEncoderStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
     block_classes = [WanImageResizeStep, WanImageCropResizeStep, WanFirstLastFrameImageEncoderStep]
@@ -67,6 +69,7 @@ class WanFLF2VImageEncoderStep(SequentialPipelineBlocks):
 
 
 # wan2.1 Auto Image Encoder
+# auto_docstring
 class WanAutoImageEncoderStep(AutoPipelineBlocks):
     block_classes = [WanFLF2VImageEncoderStep, WanImage2VideoImageEncoderStep]
     block_names = ["flf2v_image_encoder", "image2video_image_encoder"]
@@ -90,6 +93,7 @@ class WanAutoImageEncoderStep(AutoPipelineBlocks):
 
 
 # wan2.1 I2V (first frame only)
+# auto_docstring
 class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
     block_classes = [WanImageResizeStep, WanVaeEncoderStep, WanPrepareFirstFrameLatentsStep]
@@ -101,6 +105,7 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
 
 
 # wan2.1 FLF2V (first and last frame)
+# auto_docstring
 class WanFLF2VVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
     block_classes = [
@@ -117,6 +122,7 @@ class WanFLF2VVaeEncoderStep(SequentialPipelineBlocks):
 
 
 # wan2.1 Auto Vae Encoder
+# auto_docstring
 class WanAutoVaeEncoderStep(AutoPipelineBlocks):
     model_name = "wan-i2v"
     block_classes = [WanFLF2VVaeEncoderStep, WanImage2VideoVaeEncoderStep]
@@ -141,6 +147,7 @@ class WanAutoVaeEncoderStep(AutoPipelineBlocks):
 
 # wan2.1 I2V core denoise (support both I2V and FLF2V)
 # inputs (text + image_condition_latents) -> set_timesteps -> prepare_latents -> denoise (latents)
+# auto_docstring
 class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "wan-i2v"
     block_classes = [
@@ -160,15 +167,7 @@ class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "denoise block that takes encoded text and image latent conditions and runs the denoising process.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `WanTextInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `WanAdditionalInputsStep` is used to adjust the batch size of the latent conditions\n"
-            + " - `WanSetTimestepsStep` is used to set the timesteps\n"
-            + " - `WanPrepareLatentsStep` is used to prepare the latents\n"
-            + " - `WanImage2VideoDenoiseStep` is used to denoise the latents\n"
-        )
+        return "denoise block that takes encoded text and image latent conditions and runs the denoising process."
 
 
 # ====================

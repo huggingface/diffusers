@@ -50,14 +50,7 @@ class WanCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "denoise block that takes encoded conditions and runs the denoising process.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `WanTextInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `WanSetTimestepsStep` is used to set the timesteps\n"
-            + " - `WanPrepareLatentsStep` is used to prepare the latents\n"
-            + " - `WanDenoiseStep` is used to denoise the latents\n"
-        )
+        return "denoise block that takes encoded conditions and runs the denoising process."
 
 
 # ====================
@@ -77,9 +70,4 @@ class WanBlocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Modular pipeline blocks for Wan2.1.\n"
-            + "- `WanTextEncoderStep` is used to encode the text\n"
-            + "- `WanCoreDenoiseStep` is used to denoise the latents\n"
-            + "- `WanVaeDecoderStep` is used to decode the latents to images"
-        )
+        return "Modular pipeline blocks for Wan2.1."

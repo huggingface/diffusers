@@ -42,20 +42,12 @@ from .inputs import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-Flux2VaeEncoderBlocks = InsertableDict(
-    [
-        ("preprocess", Flux2ProcessImagesInputStep()),
-        ("encode", Flux2VaeEncoderStep()),
-    ]
-)
-
-
 # auto_docstring
 class Flux2VaeEncoderSequentialStep(SequentialPipelineBlocks):
     model_name = "flux2"
 
-    block_classes = Flux2VaeEncoderBlocks.values()
-    block_names = Flux2VaeEncoderBlocks.keys()
+    block_classes = [Flux2ProcessImagesInputStep(), Flux2VaeEncoderStep()]
+    block_names = ["preprocess", "encode"]
 
     @property
     def description(self) -> str:
@@ -151,6 +143,7 @@ class Flux2ImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
 
 class Flux2AutoCoreDenoiseStep(AutoPipelineBlocks):
     model_name = "flux2"
+
     block_classes = [Flux2ImageConditionedCoreDenoiseStep, Flux2CoreDenoiseStep]
     block_names = ["image_conditioned", "text2image"]
     block_trigger_inputs = ["image_latents", None]

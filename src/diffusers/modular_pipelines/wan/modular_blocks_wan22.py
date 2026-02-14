@@ -51,14 +51,7 @@ class Wan22CoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "denoise block that takes encoded conditions and runs the denoising process.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `WanTextInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `WanSetTimestepsStep` is used to set the timesteps\n"
-            + " - `WanPrepareLatentsStep` is used to prepare the latents\n"
-            + " - `Wan22DenoiseStep` is used to denoise the latents in wan2.2\n"
-        )
+        return "denoise block that takes encoded conditions and runs the denoising process."
 
 
 # ====================
@@ -82,9 +75,4 @@ class Wan22Blocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Modular pipeline for text-to-video using Wan2.2.\n"
-            + " - `WanTextEncoderStep` encodes the text\n"
-            + " - `Wan22CoreDenoiseStep` denoes the latents\n"
-            + " - `WanVaeDecoderStep` decodes the latents to video frames\n"
-        )
+        return "Modular pipeline for text-to-video using Wan2.2."

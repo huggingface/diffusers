@@ -53,14 +53,7 @@ class ZImageCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "denoise block that takes encoded conditions and runs the denoising process.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `ZImageTextInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `ZImagePrepareLatentsStep` is used to prepare the latents\n"
-            + " - `ZImageSetTimestepsStep` is used to set the timesteps\n"
-            + " - `ZImageDenoiseStep` is used to denoise the latents\n"
-        )
+        return "denoise block that takes encoded conditions and runs the denoising process."
 
 
 # image2image: inputs(text + image_latents) -> prepare_latents -> set_timesteps -> set_timesteps_with_strength -> prepare_latents_with_image -> denoise
@@ -87,17 +80,7 @@ class ZImageImage2ImageCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "denoise block that takes encoded text and image latent conditions and runs the denoising process.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `ZImageTextInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `ZImageAdditionalInputsStep` is used to adjust the batch size of the latent conditions\n"
-            + " - `ZImagePrepareLatentsStep` is used to prepare the latents\n"
-            + " - `ZImageSetTimestepsStep` is used to set the timesteps\n"
-            + " - `ZImageSetTimestepsWithStrengthStep` is used to set the timesteps with strength\n"
-            + " - `ZImagePrepareLatentswithImageStep` is used to prepare the latents with image\n"
-            + " - `ZImageDenoiseStep` is used to denoise the latents\n"
-        )
+        return "denoise block that takes encoded text and image latent conditions and runs the denoising process."
 
 
 # auto_docstring

@@ -45,8 +45,9 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 ################
 
 
+# auto_docstring
 class Flux2KleinVaeEncoderSequentialStep(SequentialPipelineBlocks):
-    model_name = "flux2"
+    model_name = "flux2-klein"
 
     block_classes = [Flux2ProcessImagesInputStep(), Flux2VaeEncoderStep()]
     block_names = ["preprocess", "encode"]
@@ -56,7 +57,10 @@ class Flux2KleinVaeEncoderSequentialStep(SequentialPipelineBlocks):
         return "VAE encoder step that preprocesses and encodes the image inputs into their latent representations."
 
 
+# auto_docstring
 class Flux2KleinAutoVaeEncoderStep(AutoPipelineBlocks):
+    model_name = "flux2-klein"
+
     block_classes = [Flux2KleinVaeEncoderSequentialStep]
     block_names = ["img_conditioning"]
     block_trigger_inputs = ["image"]
@@ -87,6 +91,7 @@ Flux2KleinCoreDenoiseBlocks = InsertableDict(
 )
 
 
+# auto_docstring
 class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "flux2-klein"
 
@@ -121,6 +126,7 @@ Flux2KleinImageConditionedCoreDenoiseBlocks = InsertableDict(
 )
 
 
+# auto_docstring
 class Flux2KleinImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "flux2-klein"
 
@@ -142,6 +148,7 @@ class Flux2KleinImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
         ]
 
 
+# auto_docstring
 class Flux2KleinAutoCoreDenoiseStep(AutoPipelineBlocks):
     model_name = "flux2-klein"
     block_classes = [Flux2KleinImageConditionedCoreDenoiseStep, Flux2KleinCoreDenoiseStep]

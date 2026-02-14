@@ -39,6 +39,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # Flux Kontext vae encoder (run before before_denoise)
+# auto_docstring
 class FluxKontextVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "flux-kontext"
 
@@ -50,6 +51,7 @@ class FluxKontextVaeEncoderStep(SequentialPipelineBlocks):
         return "Vae encoder step that preprocess andencode the image inputs into their latent representations."
 
 
+# auto_docstring
 class FluxKontextAutoVaeEncoderStep(AutoPipelineBlocks):
     model_name = "flux-kontext"
 
@@ -61,15 +63,14 @@ class FluxKontextAutoVaeEncoderStep(AutoPipelineBlocks):
     def description(self):
         return (
             "Vae encoder step that encode the image inputs into their latent representations.\n"
-            + "This is an auto pipeline block that works for img2img tasks.\n"
-            + " - `FluxKontextVaeEncoderStep` (img2img) is used when only `image` is provided."
+            + "This is an auto pipeline block that works for image-conditioned tasks.\n"
+            + " - `FluxKontextVaeEncoderStep` (image_conditioned) is used when only `image` is provided."
             + " - if `image` is not provided, step will be skipped."
         )
 
 
 # before_denoise: text2img
-
-
+# auto_docstring
 class FluxKontextBeforeDenoiseStep(SequentialPipelineBlocks):
     model_name = "flux-kontext"
 
@@ -78,10 +79,12 @@ class FluxKontextBeforeDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return "Before denoise step that prepares the inputs for the denoise step in text-to-image generation."
+        return "Before denoise step that prepares the inputs for the denoise step for Flux Kontext\n"
+        "for text-to-image tasks."
 
 
-# before_denoise: FluxKontext
+# before_denoise: image-conditioned
+# auto_docstring
 class FluxKontextImageConditionedBeforeDenoiseStep(SequentialPipelineBlocks):
     model_name = "flux-kontext"
 
@@ -91,11 +94,12 @@ class FluxKontextImageConditionedBeforeDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return (
-            "Before denoise step that prepare the inputs for the denoise step\n"
-            "for img2img/text2img task for Flux Kontext."
+            "Before denoise step that prepare the inputs for the denoise step for Flux Kontext\n"
+            "for image-conditioned tasks."
         )
 
 
+# auto_docstring
 class FluxKontextAutoBeforeDenoiseStep(AutoPipelineBlocks):
     model_name = "flux-kontext"
 
@@ -114,6 +118,7 @@ class FluxKontextAutoBeforeDenoiseStep(AutoPipelineBlocks):
 
 
 # inputs: Flux Kontext
+# auto_docstring
 class FluxKontextInputStep(SequentialPipelineBlocks):
     model_name = "flux-kontext"
     block_classes = [FluxKontextSetResolutionStep(), FluxTextInputStep(), FluxKontextAdditionalInputsStep()]
@@ -128,6 +133,7 @@ class FluxKontextInputStep(SequentialPipelineBlocks):
         )
 
 
+# auto_docstring
 class FluxKontextAutoInputStep(AutoPipelineBlocks):
     model_name = "flux-kontext"
     block_classes = [FluxKontextInputStep, FluxTextInputStep]
@@ -170,6 +176,7 @@ AUTO_BLOCKS_KONTEXT = InsertableDict(
 )
 
 
+# auto_docstring
 class FluxKontextAutoBlocks(SequentialPipelineBlocks):
     model_name = "flux-kontext"
 
