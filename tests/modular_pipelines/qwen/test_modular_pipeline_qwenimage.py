@@ -155,7 +155,7 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuider
 
 
 QWEN_IMAGE_EDIT_WORKFLOWS = {
-    "edit": [
+    "image_conditioned": [
         ("text_encoder.resize", "QwenImageEditResizeStep"),
         ("text_encoder.encode", "QwenImageEditTextEncoderStep"),
         ("vae_encoder.resize", "QwenImageEditResizeStep"),
@@ -171,7 +171,7 @@ QWEN_IMAGE_EDIT_WORKFLOWS = {
         ("decode.decode", "QwenImageDecoderStep"),
         ("decode.postprocess", "QwenImageProcessImagesOutputStep"),
     ],
-    "edit_inpainting": [
+    "image_conditioned_inpainting": [
         ("text_encoder.resize", "QwenImageEditResizeStep"),
         ("text_encoder.encode", "QwenImageEditTextEncoderStep"),
         ("vae_encoder.resize", "QwenImageEditResizeStep"),
