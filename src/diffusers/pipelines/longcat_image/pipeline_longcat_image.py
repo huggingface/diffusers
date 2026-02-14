@@ -13,7 +13,7 @@
 # limitations under the License.
 import inspect
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import numpy as np
 import torch
@@ -145,10 +145,10 @@ def calculate_shift(
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -163,15 +163,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -276,7 +276,7 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         rewrite_prompt = output_text
         return rewrite_prompt
 
-    def _encode_prompt(self, prompt: List[str]):
+    def _encode_prompt(self, prompt: list[str]):
         batch_all_tokens = []
 
         for each_prompt in prompt:
@@ -339,9 +339,9 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
 
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt: str | list[str] = None,
+        num_images_per_prompt: int | None = 1,
+        prompt_embeds: torch.Tensor | None = None,
     ):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
@@ -477,24 +477,24 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        negative_prompt: Union[str, List[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
-        sigmas: Optional[List[float]] = None,
+        sigmas: list[float] | None = None,
         guidance_scale: float = 4.5,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.FloatTensor | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        enable_cfg_renorm: Optional[bool] = True,
-        cfg_renorm_min: Optional[float] = 0.0,
-        enable_prompt_rewrite: Optional[bool] = True,
+        joint_attention_kwargs: dict[str, Any] | None = None,
+        enable_cfg_renorm: bool | None = True,
+        cfg_renorm_min: float | None = 0.0,
+        enable_prompt_rewrite: bool | None = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.

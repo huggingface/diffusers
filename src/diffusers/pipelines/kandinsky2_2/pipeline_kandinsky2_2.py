@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable
 
 import torch
 
@@ -77,7 +77,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        scheduler (Union[`DDIMScheduler`,`DDPMScheduler`]):
+        scheduler (`DDIMScheduler` | `DDPMScheduler`):
             A scheduler to be used in combination with `unet` to generate image latents.
         unet ([`UNet2DConditionModel`]):
             Conditional U-Net architecture to denoise the image embedding.
@@ -133,28 +133,28 @@ class KandinskyV22Pipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image_embeds: Union[torch.Tensor, List[torch.Tensor]],
-        negative_image_embeds: Union[torch.Tensor, List[torch.Tensor]],
+        image_embeds: torch.Tensor | list[torch.Tensor],
+        negative_image_embeds: torch.Tensor | list[torch.Tensor],
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
     ):
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image_embeds (`torch.Tensor` or `List[torch.Tensor]`):
+            image_embeds (`torch.Tensor` or `list[torch.Tensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
-            negative_image_embeds (`torch.Tensor` or `List[torch.Tensor]`):
+            negative_image_embeds (`torch.Tensor` or `list[torch.Tensor]`):
                 The clip image embeddings for negative text prompt, will be used to condition the image generation.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
@@ -171,7 +171,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
                 the text `prompt`, usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -188,7 +188,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
                 callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.

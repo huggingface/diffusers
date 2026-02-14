@@ -15,8 +15,6 @@
 # limitations under the License.
 
 
-from typing import Optional, Tuple, Union
-
 import torch
 
 from diffusers import SchedulerMixin, UNet2DModel
@@ -43,12 +41,12 @@ class CustomLocalPipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         num_inference_steps: int = 50,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         **kwargs,
-    ) -> Union[ImagePipelineOutput, Tuple]:
+    ) -> ImagePipelineOutput | tuple:
         r"""
         Args:
             batch_size (`int`, *optional*, defaults to 1):

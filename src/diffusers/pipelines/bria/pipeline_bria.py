@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -116,7 +116,7 @@ class BriaPipeline(DiffusionPipeline):
     def __init__(
         self,
         transformer: BriaTransformer2DModel,
-        scheduler: Union[FlowMatchEulerDiscreteScheduler, KarrasDiffusionSchedulers],
+        scheduler: FlowMatchEulerDiscreteScheduler | KarrasDiffusionSchedulers,
         vae: AutoencoderKL,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
@@ -151,20 +151,20 @@ class BriaPipeline(DiffusionPipeline):
 
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt: str | list[str] | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
         max_sequence_length: int = 128,
-        lora_scale: Optional[float] = None,
+        lora_scale: float | None = None,
     ):
         r"""
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -172,7 +172,7 @@ class BriaPipeline(DiffusionPipeline):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -326,10 +326,10 @@ class BriaPipeline(DiffusionPipeline):
 
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 128,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
     ):
         tokenizer = self.tokenizer
         text_encoder = self.text_encoder
@@ -455,97 +455,109 @@ class BriaPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        prompt: str | list[str] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 30,
-        timesteps: List[int] = None,
+        timesteps: list[int] = None,
         guidance_scale: float = 5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.FloatTensor | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 128,
-        clip_value: Union[None, float] = None,
+        clip_value: None | float = None,
         normalize: bool = False,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+                Function invoked when calling the pipeline for generation.
 
-        Args:
-            prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image. This is set to 1024 by default for the best results.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            num_inference_steps (`int`, *optional*, defaults to 50):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
-            guidance_scale (`float`, *optional*, defaults to 5.0):
-                Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
-                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
-                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
-                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will be generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.bria.BriaPipelineOutput`] instead of a plain tuple.
-            attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
-                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
-                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+                Args:
+                    prompt (`str` or `list[str]`, *optional*):
+                        The prompt or prompts to guide the image generation. If not defined, one has to pass
+                        `prompt_embeds`. instead.
+                    height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                        The height in pixels of the generated image. This is set to 1024 by default for the best
+                        results.
+                    width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
+                        The width in pixels of the generated image. This is set to 1024 by default for the best
+                        results.
+                    num_inference_steps (`int`, *optional*, defaults to 50):
+                        The number of denoising steps. More denoising steps usually lead to a higher quality image at
+                        the expense of slower inference.
+                    timesteps (`list[int]`, *optional*):
+                        Custom timesteps to use for the denoising process with schedulers which support a `timesteps`
+                        argument in their `set_timesteps` method. If not defined, the default behavior when
+                        `num_inference_steps` is passed will be used. Must be in descending order.
+                    guidance_scale (`float`, *optional*, defaults to 5.0):
+        <<<<<<< HEAD
+                        Guidance scale as defined in [Classifier-Free Diffusion
+                        Guidance](https://arxiv.org/abs/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                        of [Imagen Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting
+                        `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely
+                        linked to the text `prompt`, usually at the expense of lower image quality.
+                    negative_prompt (`str` or `list[str]`, *optional*):
+        =======
+                        Guidance scale as defined in [Classifier-Free Diffusion
+                        Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of
+                        equation 2. of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is
+                        enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
+                        that are closely linked to the text `prompt`, usually at the expense of lower image quality.
+                    negative_prompt (`str` or `list[str]`, *optional*):
+        >>>>>>> main
+                        The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                        `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if
+                        `guidance_scale` is less than `1`).
+                    num_images_per_prompt (`int`, *optional*, defaults to 1):
+                        The number of images to generate per prompt.
+                    generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
+                        One or a list of [torch
+                        generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                        generation deterministic.
+                    latents (`torch.FloatTensor`, *optional*):
+                        Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for
+                        image generation. Can be used to tweak the same generation with different prompts. If not
+                        provided, a latents tensor will be generated by sampling using the supplied random `generator`.
+                    prompt_embeds (`torch.FloatTensor`, *optional*):
+                        Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                        weighting. If not provided, text embeddings will be generated from `prompt` input argument.
+                    negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                        Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                        weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
+                        input argument.
+                    output_type (`str`, *optional*, defaults to `"pil"`):
+                        The output format of the generate image. Choose between
+                        [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                    return_dict (`bool`, *optional*, defaults to `True`):
+                        Whether or not to return a [`~pipelines.bria.BriaPipelineOutput`] instead of a plain tuple.
+                    attention_kwargs (`dict`, *optional*):
+                        A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined
+                        under `self.processor` in
+                        [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+                    callback_on_step_end (`Callable`, *optional*):
+                        A function that calls at the end of each denoising steps during the inference. The function is
+                        called with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int,
+                        timestep: int, callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as
+                        specified by `callback_on_step_end_tensor_inputs`.
+                    callback_on_step_end_tensor_inputs (`list`, *optional*):
+                        The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the
+                        list will be passed as `callback_kwargs` argument. You will only be able to include variables
+                        listed in the `._callback_tensor_inputs` attribute of your pipeline class.
+                    max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
 
-        Examples:
+                Examples:
 
-          Returns:
-            [`~pipelines.bria.BriaPipelineOutput`] or `tuple`: [`~pipelines.bria.BriaPipelineOutput`] if `return_dict`
-            is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
-            images.
+                  Returns:
+                    [`~pipelines.bria.BriaPipelineOutput`] or `tuple`: [`~pipelines.bria.BriaPipelineOutput`] if
+                    `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list
+                    with the generated images.
         """
 
         height = height or self.default_sample_size * self.vae_scale_factor

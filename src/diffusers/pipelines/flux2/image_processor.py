@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import List
 
 import PIL.Image
 
@@ -148,7 +147,7 @@ class Flux2ImageProcessor(VaeImageProcessor):
     # Taken from
     # https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/sampling.py#L310C1-L339C19
     @staticmethod
-    def concatenate_images(images: List[PIL.Image.Image]) -> PIL.Image.Image:
+    def concatenate_images(images: list[PIL.Image.Image]) -> PIL.Image.Image:
         """
         Concatenate a list of PIL images horizontally with center alignment and white background.
         """

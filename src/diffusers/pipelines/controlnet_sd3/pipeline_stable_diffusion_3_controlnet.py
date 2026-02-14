@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import torch
 from transformers import (
@@ -83,10 +83,10 @@ EXAMPLE_DOC_STRING = """
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -101,15 +101,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -174,7 +174,7 @@ class StableDiffusion3ControlNetPipeline(
         tokenizer_3 (`T5TokenizerFast`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        controlnet ([`SD3ControlNetModel`] or `List[SD3ControlNetModel]` or [`SD3MultiControlNetModel`]):
+        controlnet ([`SD3ControlNetModel`] or `list[SD3ControlNetModel]` or [`SD3MultiControlNetModel`]):
             Provides additional conditioning to the `unet` during the denoising process. If you set multiple
             ControlNets as a list, the outputs from each ControlNet are added together to create one combined
             additional conditioning.
@@ -199,11 +199,12 @@ class StableDiffusion3ControlNetPipeline(
         tokenizer_2: CLIPTokenizer,
         text_encoder_3: T5EncoderModel,
         tokenizer_3: T5TokenizerFast,
-        controlnet: Union[
-            SD3ControlNetModel, List[SD3ControlNetModel], Tuple[SD3ControlNetModel], SD3MultiControlNetModel
-        ],
-        image_encoder: Optional[SiglipVisionModel] = None,
-        feature_extractor: Optional[SiglipImageProcessor] = None,
+        controlnet: SD3ControlNetModel
+        | list[SD3ControlNetModel]
+        | tuple[SD3ControlNetModel]
+        | SD3MultiControlNetModel,
+        image_encoder: SiglipVisionModel | None = None,
+        feature_extractor: SiglipImageProcessor | None = None,
     ):
         super().__init__()
         self._guidance_scale = 7.0
@@ -255,11 +256,11 @@ class StableDiffusion3ControlNetPipeline(
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 256,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -312,10 +313,10 @@ class StableDiffusion3ControlNetPipeline(
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         num_images_per_prompt: int = 1,
-        device: Optional[torch.device] = None,
-        clip_skip: Optional[int] = None,
+        device: torch.device | None = None,
+        clip_skip: int | None = None,
         clip_model_index: int = 0,
     ):
         device = device or self._execution_device
@@ -368,32 +369,32 @@ class StableDiffusion3ControlNetPipeline(
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        prompt_2: Union[str, List[str]],
-        prompt_3: Union[str, List[str]],
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        prompt_2: str | list[str],
+        prompt_3: str | list[str],
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        negative_prompt_2: Optional[Union[str, List[str]]] = None,
-        negative_prompt_3: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt: str | list[str] | None = None,
+        negative_prompt_2: str | list[str] | None = None,
+        negative_prompt_3: str | list[str] | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+        pooled_prompt_embeds: torch.FloatTensor | None = None,
+        negative_pooled_prompt_embeds: torch.FloatTensor | None = None,
+        clip_skip: int | None = None,
         max_sequence_length: int = 256,
-        lora_scale: Optional[float] = None,
+        lora_scale: float | None = None,
     ):
         r"""
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            prompt_2 (`str` or `List[str]`, *optional*):
+            prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in all text-encoders
-            prompt_3 (`str` or `List[str]`, *optional*):
+            prompt_3 (`str` or `list[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_3` and `text_encoder_3`. If not defined, `prompt` is
                 used in all text-encoders
             device: (`torch.device`):
@@ -402,14 +403,14 @@ class StableDiffusion3ControlNetPipeline(
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            negative_prompt_2 (`str` or `List[str]`, *optional*):
+            negative_prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in all the text-encoders.
-            negative_prompt_3 (`str` or `List[str]`, *optional*):
+            negative_prompt_3 (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_3` and
                 `text_encoder_3`. If not defined, `negative_prompt` is used in all the text-encoders.
             prompt_embeds (`torch.FloatTensor`, *optional*):
@@ -765,9 +766,9 @@ class StableDiffusion3ControlNetPipeline(
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
         self,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[torch.Tensor] = None,
-        device: Optional[torch.device] = None,
+        ip_adapter_image: PipelineImageInput | None = None,
+        ip_adapter_image_embeds: torch.Tensor | None = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
     ) -> torch.Tensor:
@@ -824,50 +825,50 @@ class StableDiffusion3ControlNetPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        prompt_2: Optional[Union[str, List[str]]] = None,
-        prompt_3: Optional[Union[str, List[str]]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        prompt: str | list[str] = None,
+        prompt_2: str | list[str] | None = None,
+        prompt_3: str | list[str] | None = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 28,
-        sigmas: Optional[List[float]] = None,
+        sigmas: list[float] | None = None,
         guidance_scale: float = 7.0,
-        control_guidance_start: Union[float, List[float]] = 0.0,
-        control_guidance_end: Union[float, List[float]] = 1.0,
+        control_guidance_start: float | list[float] = 0.0,
+        control_guidance_end: float | list[float] = 1.0,
         control_image: PipelineImageInput = None,
-        controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
-        controlnet_pooled_projections: Optional[torch.FloatTensor] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        negative_prompt_2: Optional[Union[str, List[str]]] = None,
-        negative_prompt_3: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        controlnet_conditioning_scale: float | list[float] = 1.0,
+        controlnet_pooled_projections: torch.FloatTensor | None = None,
+        negative_prompt: str | list[str] | None = None,
+        negative_prompt_2: str | list[str] | None = None,
+        negative_prompt_3: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.FloatTensor | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+        pooled_prompt_embeds: torch.FloatTensor | None = None,
+        negative_pooled_prompt_embeds: torch.FloatTensor | None = None,
+        ip_adapter_image: PipelineImageInput | None = None,
+        ip_adapter_image_embeds: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        clip_skip: Optional[int] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        joint_attention_kwargs: dict[str, Any] | None = None,
+        clip_skip: int | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 256,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            prompt_2 (`str` or `List[str]`, *optional*):
+            prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 will be used instead
-            prompt_3 (`str` or `List[str]`, *optional*):
+            prompt_3 (`str` or `list[str]`, *optional*):
                 The prompt or prompts to be sent to `tokenizer_3` and `text_encoder_3`. If not defined, `prompt` is
                 will be used instead
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -877,7 +878,7 @@ class StableDiffusion3ControlNetPipeline(
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            sigmas (`List[float]`, *optional*):
+            sigmas (`list[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
@@ -887,37 +888,37 @@ class StableDiffusion3ControlNetPipeline(
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
-            control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
+            control_guidance_start (`float` or `list[float]`, *optional*, defaults to 0.0):
                 The percentage of total steps at which the ControlNet starts applying.
-            control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
+            control_guidance_end (`float` or `list[float]`, *optional*, defaults to 1.0):
                 The percentage of total steps at which the ControlNet stops applying.
-            control_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
-                    `List[List[torch.Tensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
+            control_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, `list[np.ndarray]`,:
+                    `list[list[torch.Tensor]]`, `list[list[np.ndarray]]` or `list[list[PIL.Image.Image]]`):
                 The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
                 specified as `torch.Tensor`, it is passed to ControlNet as is. `PIL.Image.Image` can also be accepted
                 as an image. The dimensions of the output image defaults to `image`'s dimensions. If height and/or
                 width are passed, `image` is resized accordingly. If multiple ControlNets are specified in `init`,
                 images must be passed as a list such that each element of the list can be correctly batched for input
                 to a single ControlNet.
-            controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
+            controlnet_conditioning_scale (`float` or `list[float]`, *optional*, defaults to 1.0):
                 The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
                 to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
                 the corresponding scale as a list.
             controlnet_pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`):
                 Embeddings projected from the embeddings of controlnet input conditions.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            negative_prompt_2 (`str` or `List[str]`, *optional*):
+            negative_prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used instead
-            negative_prompt_3 (`str` or `List[str]`, *optional*):
+            negative_prompt_3 (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_3` and
                 `text_encoder_3`. If not defined, `negative_prompt` is used instead
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
@@ -959,7 +960,7 @@ class StableDiffusion3ControlNetPipeline(
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
                 callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.

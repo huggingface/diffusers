@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
 
 import torch
 
@@ -90,7 +89,7 @@ EXAMPLE_DOC_STRING = """
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -124,17 +123,17 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
 
     def prepare_latents(
         self,
-        video: Optional[torch.Tensor] = None,
+        video: torch.Tensor | None = None,
         batch_size: int = 1,
         num_frames: int = 121,
         height: int = 512,
         width: int = 768,
         spatial_patch_size: int = 1,
         temporal_patch_size: int = 1,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if latents is not None:
             if latents.ndim == 3:
@@ -266,27 +265,27 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        video: Optional[List[PipelineImageInput]] = None,
+        video: list[PipelineImageInput] | None = None,
         height: int = 512,
         width: int = 768,
         num_frames: int = 121,
         spatial_patch_size: int = 1,
         temporal_patch_size: int = 1,
-        latents: Optional[torch.Tensor] = None,
+        latents: torch.Tensor | None = None,
         latents_normalized: bool = False,
-        decode_timestep: Union[float, List[float]] = 0.0,
-        decode_noise_scale: Optional[Union[float, List[float]]] = None,
+        decode_timestep: float | list[float] = 0.0,
+        decode_noise_scale: float | list[float] | None = None,
         adain_factor: float = 0.0,
         tone_map_compression_ratio: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
-            video (`List[PipelineImageInput]`, *optional*)
+            video (`list[PipelineImageInput]`, *optional*)
                 The video to be upsampled (such as a LTX 2.0 first stage output). If not supplied, `latents` should be
                 supplied.
             height (`int`, *optional*, defaults to `512`):
@@ -319,7 +318,7 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
                 This is useful for regularizing high-variance latents or for conditioning outputs during generation.
                 Should be in [0, 1], where 0.0 (the default) means tone mapping is not applied and 1.0 corresponds to
                 the full compression effect.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):

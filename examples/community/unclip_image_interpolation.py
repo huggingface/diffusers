@@ -216,7 +216,7 @@ class UnCLIPImageInterpolationPipeline(DiffusionPipeline):
         decoder_latents: Optional[torch.Tensor] = None,
         super_res_latents: Optional[torch.Tensor] = None,
         decoder_guidance_scale: float = 8.0,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ):
         """

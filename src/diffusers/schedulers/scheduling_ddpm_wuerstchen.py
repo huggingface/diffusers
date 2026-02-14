@@ -17,7 +17,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
 
 import torch
 
@@ -125,7 +124,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         ) ** 2 / self._init_alpha_cumprod.to(device)
         return alpha_cumprod.clamp(0.0001, 0.9999)
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -142,14 +141,14 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int = None,
-        timesteps: Optional[List[int]] = None,
-        device: Union[str, torch.device] = None,
+        timesteps: list[int] | None = None,
+        device: str | torch.device = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
-            num_inference_steps (`Dict[float, int]`):
+            num_inference_steps (`dict[float, int]`):
                 the number of diffusion steps used when generating samples with a pre-trained model. If passed, then
                 `timesteps` must be `None`.
             device (`str` or `torch.device`, optional):
@@ -168,7 +167,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[DDPMWuerstchenSchedulerOutput, Tuple]:
+    ) -> DDPMWuerstchenSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

@@ -13,14 +13,14 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, logging
 from ..attention import AttentionMixin, FeedForward
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
@@ -47,7 +47,7 @@ class WanVACETransformerBlock(nn.Module):
         qk_norm: str = "rms_norm_across_heads",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
-        added_kv_proj_dim: Optional[int] = None,
+        added_kv_proj_dim: int | None = None,
         apply_input_projection: bool = False,
         apply_output_projection: bool = False,
     ):
@@ -76,6 +76,7 @@ class WanVACETransformerBlock(nn.Module):
             eps=eps,
             added_kv_proj_dim=added_kv_proj_dim,
             processor=WanAttnProcessor(),
+            is_cross_attention=True,
         )
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
@@ -141,7 +142,7 @@ class WanVACETransformer3DModel(
     A Transformer model for video-like data used in the Wan model.
 
     Args:
-        patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
+        patch_size (`tuple[int]`, defaults to `(1, 2, 2)`):
             3D patch dimensions for video embedding (t_patch, h_patch, w_patch).
         num_attention_heads (`int`, defaults to `40`):
             Fixed length for text embeddings.
@@ -159,7 +160,7 @@ class WanVACETransformer3DModel(
             Intermediate dimension in feed-forward network.
         num_layers (`int`, defaults to `40`):
             The number of layers of transformer blocks to use.
-        window_size (`Tuple[int]`, defaults to `(-1, -1)`):
+        window_size (`tuple[int]`, defaults to `(-1, -1)`):
             Window size for local attention (-1 indicates global attention).
         cross_attn_norm (`bool`, defaults to `True`):
             Enable cross-attention normalization.
@@ -178,11 +179,12 @@ class WanVACETransformer3DModel(
     _no_split_modules = ["WanTransformerBlock", "WanVACETransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
+    _repeated_blocks = ["WanTransformerBlock", "WanVACETransformerBlock"]
 
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int, ...] = (1, 2, 2),
+        patch_size: tuple[int, ...] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
         in_channels: int = 16,
@@ -192,13 +194,13 @@ class WanVACETransformer3DModel(
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
+        qk_norm: str | None = "rms_norm_across_heads",
         eps: float = 1e-6,
-        image_dim: Optional[int] = None,
-        added_kv_proj_dim: Optional[int] = None,
+        image_dim: int | None = None,
+        added_kv_proj_dim: int | None = None,
         rope_max_seq_len: int = 1024,
-        pos_embed_seq_len: Optional[int] = None,
-        vace_layers: List[int] = [0, 5, 10, 15, 20, 25, 30, 35],
+        pos_embed_seq_len: int | None = None,
+        vace_layers: list[int] = [0, 5, 10, 15, 20, 25, 30, 35],
         vace_in_channels: int = 96,
     ) -> None:
         super().__init__()
@@ -261,32 +263,18 @@ class WanVACETransformer3DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        encoder_hidden_states_image: torch.Tensor | None = None,
         control_hidden_states: torch.Tensor = None,
         control_hidden_states_scale: torch.Tensor = None,
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
+        attention_kwargs: dict[str, Any] | None = None,
+    ) -> torch.Tensor | dict[str, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.config.patch_size
         post_patch_num_frames = num_frames // p_t
@@ -378,10 +366,6 @@ class WanVACETransformer3DModel(
         )
         hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
         output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

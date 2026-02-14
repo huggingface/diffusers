@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
-
 import torch
 
 from ..models.attention import AttentionModuleMixin, FeedForward, LuminaFeedForward
@@ -55,7 +53,7 @@ _GO_LC_SUPPORTED_PYTORCH_LAYERS = (
 )
 
 
-def _get_submodule_from_fqn(module: torch.nn.Module, fqn: str) -> Optional[torch.nn.Module]:
+def _get_submodule_from_fqn(module: torch.nn.Module, fqn: str) -> torch.nn.Module | None:
     for submodule_name, submodule in module.named_modules():
         if submodule_name == fqn:
             return submodule
