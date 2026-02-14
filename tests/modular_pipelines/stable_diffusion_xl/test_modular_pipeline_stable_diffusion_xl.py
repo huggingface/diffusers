@@ -347,7 +347,6 @@ class TestSDXLModularPipelineFast(
 
     expected_workflow_blocks = TEXT2IMAGE_WORKFLOWS
 
-
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
         inputs = {
@@ -369,6 +368,7 @@ class TestSDXLModularPipelineFast(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
 
 IMAGE2IMAGE_WORKFLOWS = {
     "image2image": [
@@ -428,6 +428,7 @@ IMAGE2IMAGE_WORKFLOWS = {
     ],
 }
 
+
 class TestSDXLImg2ImgModularPipelineFast(
     SDXLModularTesterMixin,
     SDXLModularIPAdapterTesterMixin,
@@ -480,6 +481,7 @@ class TestSDXLImg2ImgModularPipelineFast(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
 
 INPAINTING_WORKFLOWS = {
     "inpainting": [
@@ -538,6 +540,7 @@ INPAINTING_WORKFLOWS = {
         ("decode", "StableDiffusionXLInpaintDecodeStep"),
     ],
 }
+
 
 class SDXLInpaintingModularPipelineFastTests(
     SDXLModularTesterMixin,

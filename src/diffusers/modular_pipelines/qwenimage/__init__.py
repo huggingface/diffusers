@@ -28,8 +28,8 @@ else:
     _import_structure["modular_pipeline"] = [
         "QwenImageEditModularPipeline",
         "QwenImageEditPlusModularPipeline",
-        "QwenImageModularPipeline",
         "QwenImageLayeredModularPipeline",
+        "QwenImageModularPipeline",
     ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:

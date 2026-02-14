@@ -14,7 +14,6 @@
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     ZImageAdditionalInputsStep,
     ZImagePrepareLatentsStep,
@@ -40,6 +39,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # 1. DENOISE
 # ====================
 
+
 # text2image: inputs(text) -> set_timesteps -> prepare_latents -> denoise
 # auto_docstring
 class ZImageCoreDenoiseStep(SequentialPipelineBlocks):
@@ -63,7 +63,7 @@ class ZImageCoreDenoiseStep(SequentialPipelineBlocks):
         )
 
 
-# image2image: inputs(text + image_latents) -> prepare_latents -> set_timesteps -> set_timesteps_with_strength -> prepare_latents_with_image -> denoise 
+# image2image: inputs(text + image_latents) -> prepare_latents -> set_timesteps -> set_timesteps_with_strength -> prepare_latents_with_image -> denoise
 # auto_docstring
 class ZImageImage2ImageCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
@@ -152,4 +152,3 @@ class ZImageAutoBlocks(SequentialPipelineBlocks):
     @property
     def description(self) -> str:
         return "Auto Modular pipeline for text-to-image and image-to-image using ZImage."
-

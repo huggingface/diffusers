@@ -202,6 +202,4 @@ class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Auto Modular pipeline for image-to-video using Wan."
-        )
+        return "Auto Modular pipeline for image-to-video using Wan."

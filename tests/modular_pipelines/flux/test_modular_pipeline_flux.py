@@ -33,7 +33,6 @@ from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
-
 FLUX_TEXT2IMAGE_WORKFLOWS = {
     "text2image": [
         ("text_encoder", "FluxTextEncoderStep"),
@@ -89,6 +88,7 @@ FLUX_IMAGE2IMAGE_WORKFLOWS = {
         ("decode", "FluxDecodeStep"),
     ]
 }
+
 
 class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
@@ -156,30 +156,32 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     def test_float16_inference(self):
         super().test_float16_inference(8e-2)
 
+
 FLUX_KONTEXT_WORKFLOWS = {
     "text2image": [
-            ("text_encoder", "FluxTextEncoderStep"),
-            ("denoise.input", "FluxTextInputStep"),
-            ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
-            ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
-            ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
-            ("denoise.denoise", "FluxKontextDenoiseStep"),
-            ("decode", "FluxDecodeStep"),
-        ],
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("denoise.input", "FluxTextInputStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise.denoise", "FluxKontextDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ],
     "image_conditioned": [
-            ("text_encoder", "FluxTextEncoderStep"),
-            ("vae_encoder.preprocess", "FluxKontextProcessImagesInputStep"),
-            ("vae_encoder.encode", "FluxVaeEncoderStep"),
-            ("denoise.input.set_resolution", "FluxKontextSetResolutionStep"),
-            ("denoise.input.text_inputs", "FluxTextInputStep"),
-            ("denoise.input.additional_inputs", "FluxKontextAdditionalInputsStep"),
-            ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
-            ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
-            ("denoise.before_denoise.prepare_rope_inputs", "FluxKontextRoPEInputsStep"),
-            ("denoise.denoise", "FluxKontextDenoiseStep"),
-            ("decode", "FluxDecodeStep"),
-        ]
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("vae_encoder.preprocess", "FluxKontextProcessImagesInputStep"),
+        ("vae_encoder.encode", "FluxVaeEncoderStep"),
+        ("denoise.input.set_resolution", "FluxKontextSetResolutionStep"),
+        ("denoise.input.text_inputs", "FluxTextInputStep"),
+        ("denoise.input.additional_inputs", "FluxKontextAdditionalInputsStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxKontextRoPEInputsStep"),
+        ("denoise.denoise", "FluxKontextDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ],
 }
+
 
 class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxKontextModularPipeline

@@ -21,21 +21,18 @@ from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict, OutputParam
 from .before_denoise import (
-    Flux2KleinBaseRoPEInputsStep,
     Flux2PrepareImageLatentsStep,
     Flux2PrepareLatentsStep,
     Flux2RoPEInputsStep,
     Flux2SetTimestepsStep,
 )
 from .decoders import Flux2DecodeStep, Flux2UnpackLatentsStep
-from .denoise import Flux2KleinBaseDenoiseStep, Flux2KleinDenoiseStep
+from .denoise import Flux2KleinDenoiseStep
 from .encoders import (
-    Flux2KleinBaseTextEncoderStep,
     Flux2KleinTextEncoderStep,
     Flux2VaeEncoderStep,
 )
 from .inputs import (
-    Flux2KleinBaseTextInputStep,
     Flux2ProcessImagesInputStep,
     Flux2TextInputStep,
 )
@@ -98,9 +95,7 @@ class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Core denoise step that performs the denoising process for Flux2-Klein (distilled model), for text-to-image generation."
-        )
+        return "Core denoise step that performs the denoising process for Flux2-Klein (distilled model), for text-to-image generation."
 
     @property
     def outputs(self):
@@ -134,9 +129,7 @@ class Flux2KleinImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Core denoise step that performs the denoising process for Flux2-Klein (distilled model) with image conditioning."
-        )
+        return "Core denoise step that performs the denoising process for Flux2-Klein (distilled model) with image conditioning."
 
     @property
     def outputs(self):
@@ -169,6 +162,7 @@ class Flux2KleinAutoCoreDenoiseStep(AutoPipelineBlocks):
 ### Auto blocks
 ###
 
+
 # auto_docstring
 class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
     model_name = "flux2-klein"
@@ -186,9 +180,7 @@ class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Auto blocks that perform the text-to-image and image-conditioned generation using Flux2-Klein."
-        )
+        return "Auto blocks that perform the text-to-image and image-conditioned generation using Flux2-Klein."
 
     @property
     def outputs(self):

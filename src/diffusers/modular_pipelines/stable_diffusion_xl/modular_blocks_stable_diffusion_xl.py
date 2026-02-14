@@ -14,7 +14,6 @@
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     StableDiffusionXLControlNetInputStep,
     StableDiffusionXLControlNetUnionInputStep,
@@ -303,20 +302,53 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
         "controlnet_inpainting": {"control_image": True, "mask_image": True, "image": True, "prompt": True},
         "controlnet_union_text2image": {"control_image": True, "control_mode": True, "prompt": True},
         "controlnet_union_image2image": {"control_image": True, "control_mode": True, "image": True, "prompt": True},
-        "controlnet_union_inpainting": {"control_image": True, "control_mode": True, "mask_image": True, "image": True, "prompt": True},
+        "controlnet_union_inpainting": {
+            "control_image": True,
+            "control_mode": True,
+            "mask_image": True,
+            "image": True,
+            "prompt": True,
+        },
         "ip_adapter_text2image": {"ip_adapter_image": True, "prompt": True},
         "ip_adapter_image2image": {"ip_adapter_image": True, "image": True, "prompt": True},
         "ip_adapter_inpainting": {"ip_adapter_image": True, "mask_image": True, "image": True, "prompt": True},
         "ip_adapter_controlnet_text2image": {"ip_adapter_image": True, "control_image": True, "prompt": True},
-        "ip_adapter_controlnet_image2image": {"ip_adapter_image": True, "control_image": True, "image": True, "prompt": True},
-        "ip_adapter_controlnet_inpainting": {"ip_adapter_image": True, "control_image": True, "mask_image": True, "image": True, "prompt": True},
-        "ip_adapter_controlnet_union_text2image": {"ip_adapter_image": True, "control_image": True, "control_mode": True, "prompt": True},
-        "ip_adapter_controlnet_union_image2image": {"ip_adapter_image": True, "control_image": True, "control_mode": True, "image": True, "prompt": True},
-        "ip_adapter_controlnet_union_inpainting": {"ip_adapter_image": True, "control_image": True, "control_mode": True, "mask_image": True, "image": True, "prompt": True},
+        "ip_adapter_controlnet_image2image": {
+            "ip_adapter_image": True,
+            "control_image": True,
+            "image": True,
+            "prompt": True,
+        },
+        "ip_adapter_controlnet_inpainting": {
+            "ip_adapter_image": True,
+            "control_image": True,
+            "mask_image": True,
+            "image": True,
+            "prompt": True,
+        },
+        "ip_adapter_controlnet_union_text2image": {
+            "ip_adapter_image": True,
+            "control_image": True,
+            "control_mode": True,
+            "prompt": True,
+        },
+        "ip_adapter_controlnet_union_image2image": {
+            "ip_adapter_image": True,
+            "control_image": True,
+            "control_mode": True,
+            "image": True,
+            "prompt": True,
+        },
+        "ip_adapter_controlnet_union_inpainting": {
+            "ip_adapter_image": True,
+            "control_image": True,
+            "control_mode": True,
+            "mask_image": True,
+            "image": True,
+            "prompt": True,
+        },
     }
 
     @property
     def description(self):
-        return (
-            "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using Stable Diffusion XL."
-        )
+        return "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using Stable Diffusion XL."

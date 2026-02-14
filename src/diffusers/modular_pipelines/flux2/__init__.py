@@ -23,9 +23,13 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["encoders"] = ["Flux2RemoteTextEncoderStep"]
     _import_structure["modular_blocks_flux2"] = ["Flux2AutoBlocks"]
-    _import_structure["modular_blocks_flux2_klein_base"] = ["Flux2KleinBaseAutoBlocks"]
     _import_structure["modular_blocks_flux2_klein"] = ["Flux2KleinAutoBlocks"]
-    _import_structure["modular_pipeline"] = ["Flux2ModularPipeline", "Flux2KleinModularPipeline", "Flux2KleinBaseModularPipeline"]
+    _import_structure["modular_blocks_flux2_klein_base"] = ["Flux2KleinBaseAutoBlocks"]
+    _import_structure["modular_pipeline"] = [
+        "Flux2KleinBaseModularPipeline",
+        "Flux2KleinModularPipeline",
+        "Flux2ModularPipeline",
+    ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -36,8 +40,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .encoders import Flux2RemoteTextEncoderStep
         from .modular_blocks_flux2 import Flux2AutoBlocks
-        from .modular_blocks_flux2_klein_base import Flux2KleinBaseAutoBlocks
         from .modular_blocks_flux2_klein import Flux2KleinAutoBlocks
+        from .modular_blocks_flux2_klein_base import Flux2KleinBaseAutoBlocks
         from .modular_pipeline import Flux2KleinBaseModularPipeline, Flux2KleinModularPipeline, Flux2ModularPipeline
 else:
     import sys

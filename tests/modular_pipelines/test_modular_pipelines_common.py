@@ -364,8 +364,7 @@ class ModularPipelineTesterMixin:
 
             # Check that the number of blocks matches
             assert len(actual_blocks) == len(expected_blocks), (
-                f"Workflow '{workflow_name}' has {len(actual_blocks)} blocks, "
-                f"expected {len(expected_blocks)}"
+                f"Workflow '{workflow_name}' has {len(actual_blocks)} blocks, expected {len(expected_blocks)}"
             )
 
             # Check that each block name and type matches
@@ -376,6 +375,7 @@ class ModularPipelineTesterMixin:
                     f"Workflow '{workflow_name}': block '{actual_name}' has type "
                     f"{actual_block.__class__.__name__}, expected {expected_class_name}"
                 )
+
 
 class ModularGuiderTesterMixin:
     def test_guider_cfg(self, expected_max_diff=1e-2):

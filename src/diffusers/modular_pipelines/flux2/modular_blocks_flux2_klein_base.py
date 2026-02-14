@@ -24,20 +24,17 @@ from .before_denoise import (
     Flux2KleinBaseRoPEInputsStep,
     Flux2PrepareImageLatentsStep,
     Flux2PrepareLatentsStep,
-    Flux2RoPEInputsStep,
     Flux2SetTimestepsStep,
 )
 from .decoders import Flux2DecodeStep, Flux2UnpackLatentsStep
-from .denoise import Flux2KleinBaseDenoiseStep, Flux2KleinDenoiseStep
+from .denoise import Flux2KleinBaseDenoiseStep
 from .encoders import (
     Flux2KleinBaseTextEncoderStep,
-    Flux2KleinTextEncoderStep,
     Flux2VaeEncoderStep,
 )
 from .inputs import (
     Flux2KleinBaseTextInputStep,
     Flux2ProcessImagesInputStep,
-    Flux2TextInputStep,
 )
 
 
@@ -97,9 +94,7 @@ class Flux2KleinBaseCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Core denoise step that performs the denoising process for Flux2-Klein (base model), for text-to-image generation."
-        )
+        return "Core denoise step that performs the denoising process for Flux2-Klein (base model), for text-to-image generation."
 
     @property
     def outputs(self):
@@ -132,9 +127,7 @@ class Flux2KleinBaseImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Core denoise step that performs the denoising process for Flux2-Klein (base model) with image conditioning."
-        )
+        return "Core denoise step that performs the denoising process for Flux2-Klein (base model) with image conditioning."
 
     @property
     def outputs(self):
@@ -145,6 +138,7 @@ class Flux2KleinBaseImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
                 description="The latents from the denoising step.",
             )
         ]
+
 
 class Flux2KleinBaseAutoCoreDenoiseStep(AutoPipelineBlocks):
     model_name = "flux2-klein"
@@ -160,6 +154,7 @@ class Flux2KleinBaseAutoCoreDenoiseStep(AutoPipelineBlocks):
             " - `Flux2KleinBaseCoreDenoiseStep` is used for text-to-image generation.\n"
             " - `Flux2KleinBaseImageConditionedCoreDenoiseStep` is used for image-conditioned generation.\n"
         )
+
 
 ###
 ### Auto blocks
@@ -183,9 +178,7 @@ class Flux2KleinBaseAutoBlocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Auto blocks that perform the text-to-image and image-conditioned generation using Flux2-Klein (base model)."
-        )
+        return "Auto blocks that perform the text-to-image and image-conditioned generation using Flux2-Klein (base model)."
 
     @property
     def outputs(self):

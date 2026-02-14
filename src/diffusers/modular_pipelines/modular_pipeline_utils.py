@@ -16,9 +16,9 @@ import inspect
 import re
 import warnings
 from collections import OrderedDict
-from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union, get_args, get_origin
+from dataclasses import dataclass, field
 from types import UnionType
+from typing import Any, Dict, List, Literal, Tuple, Type, Union, get_args, get_origin
 
 import PIL.Image
 import torch
@@ -1032,6 +1032,8 @@ def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) ->
                 combined_dict[output_param.name] = output_param
 
     return list(combined_dict.values())
+
+
 def generate_modular_model_card_content(blocks) -> Dict[str, Any]:
     """
     Generate model card content for a modular pipeline.

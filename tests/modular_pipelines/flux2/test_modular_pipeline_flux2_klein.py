@@ -41,6 +41,7 @@ FLUX2_KLEIN_WORKFLOWS = {
     ],
 }
 
+
 class TestFlux2KleinModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Flux2KleinModularPipeline
     pipeline_blocks_class = Flux2KleinAutoBlocks
@@ -84,6 +85,7 @@ FLUX2_KLEIN_IMAGE_CONDITIONED_WORKFLOWS = {
         ("decode", "Flux2DecodeStep"),
     ],
 }
+
 
 class TestFlux2KleinImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Flux2KleinModularPipeline

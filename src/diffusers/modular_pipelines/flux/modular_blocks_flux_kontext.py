@@ -16,23 +16,19 @@ from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
-    FluxImg2ImgPrepareLatentsStep,
-    FluxImg2ImgSetTimestepsStep,
     FluxKontextRoPEInputsStep,
     FluxPrepareLatentsStep,
     FluxRoPEInputsStep,
     FluxSetTimestepsStep,
 )
 from .decoders import FluxDecodeStep
-from .denoise import FluxDenoiseStep, FluxKontextDenoiseStep
+from .denoise import FluxKontextDenoiseStep
 from .encoders import (
     FluxKontextProcessImagesInputStep,
-    FluxProcessImagesInputStep,
     FluxTextEncoderStep,
     FluxVaeEncoderStep,
 )
 from .inputs import (
-    FluxAdditionalInputsStep,
     FluxKontextAdditionalInputsStep,
     FluxKontextSetResolutionStep,
     FluxTextInputStep,
@@ -72,6 +68,7 @@ class FluxKontextAutoVaeEncoderStep(AutoPipelineBlocks):
 
 
 # before_denoise: text2img
+
 
 class FluxKontextBeforeDenoiseStep(SequentialPipelineBlocks):
     model_name = "flux-kontext"
@@ -114,6 +111,7 @@ class FluxKontextAutoBeforeDenoiseStep(AutoPipelineBlocks):
             + " - `FluxKontextBeforeDenoiseStep` (text2image) is used.\n"
             + " - `FluxKontextImageConditionedBeforeDenoiseStep` (image_conditioned) is used when only `image_latents` is provided.\n"
         )
+
 
 # inputs: Flux Kontext
 class FluxKontextInputStep(SequentialPipelineBlocks):
@@ -171,6 +169,7 @@ AUTO_BLOCKS_KONTEXT = InsertableDict(
     ]
 )
 
+
 class FluxKontextAutoBlocks(SequentialPipelineBlocks):
     model_name = "flux-kontext"
 
@@ -183,7 +182,4 @@ class FluxKontextAutoBlocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Modular pipeline for image-to-image using Flux Kontext."
-        )
-
+        return "Modular pipeline for image-to-image using Flux Kontext."

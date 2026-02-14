@@ -126,6 +126,7 @@ QWEN_IMAGE_TEXT2IMAGE_WORKFLOWS = {
     ],
 }
 
+
 class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
     pipeline_class = QwenImageModularPipeline
     pipeline_blocks_class = QwenImageAutoBlocks
@@ -151,6 +152,7 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuider
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
+
 
 QWEN_IMAGE_EDIT_WORKFLOWS = {
     "edit": [
@@ -188,6 +190,7 @@ QWEN_IMAGE_EDIT_WORKFLOWS = {
         ("decode.postprocess", "QwenImageInpaintProcessImagesOutputStep"),
     ],
 }
+
 
 class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
     pipeline_class = QwenImageEditModularPipeline

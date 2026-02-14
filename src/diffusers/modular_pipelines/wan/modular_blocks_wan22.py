@@ -66,7 +66,6 @@ class Wan22CoreDenoiseStep(SequentialPipelineBlocks):
 # ====================
 
 
-
 # auto_docstring
 class Wan22Blocks(SequentialPipelineBlocks):
     model_name = "wan"

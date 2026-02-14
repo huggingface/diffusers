@@ -30,7 +30,6 @@ from .before_denoise import (
 from .decoders import Flux2DecodeStep, Flux2UnpackLatentsStep
 from .denoise import Flux2DenoiseStep
 from .encoders import (
-    Flux2RemoteTextEncoderStep,
     Flux2TextEncoderStep,
     Flux2VaeEncoderStep,
 )
@@ -101,9 +100,7 @@ class Flux2CoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Core denoise step that performs the denoising process for Flux2-dev."
-        )
+        return "Core denoise step that performs the denoising process for Flux2-dev."
 
     @property
     def outputs(self):
@@ -139,9 +136,7 @@ class Flux2ImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Core denoise step that performs the denoising process for Flux2-dev with image conditioning."
-        )
+        return "Core denoise step that performs the denoising process for Flux2-dev with image conditioning."
 
     @property
     def outputs(self):
@@ -152,6 +147,7 @@ class Flux2ImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
                 description="The latents from the denoising step.",
             )
         ]
+
 
 class Flux2AutoCoreDenoiseStep(AutoPipelineBlocks):
     model_name = "flux2"
@@ -168,6 +164,7 @@ class Flux2AutoCoreDenoiseStep(AutoPipelineBlocks):
             " - `Flux2ImageConditionedCoreDenoiseStep` is used for image-conditioned generation.\n"
         )
 
+
 AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", Flux2TextEncoderStep()),
@@ -176,6 +173,7 @@ AUTO_BLOCKS = InsertableDict(
         ("decode", Flux2DecodeStep()),
     ]
 )
+
 
 # auto_docstring
 class Flux2AutoBlocks(SequentialPipelineBlocks):
@@ -190,9 +188,7 @@ class Flux2AutoBlocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Auto Modular pipeline for text-to-image and image-conditioned generation using Flux2."
-        )
+        return "Auto Modular pipeline for text-to-image and image-conditioned generation using Flux2."
 
     @property
     def outputs(self):

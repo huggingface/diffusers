@@ -42,6 +42,7 @@ ZIMAGE_WORKFLOWS = {
     ],
 }
 
+
 class TestZImageModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = ZImageModularPipeline
     pipeline_blocks_class = ZImageAutoBlocks

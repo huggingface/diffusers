@@ -27,6 +27,7 @@ from diffusers.modular_pipelines import (
 from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
+
 FLUX2_TEXT2IMAGE_WORKFLOWS = {
     "text2image": [
         ("text_encoder", "Flux2TextEncoderStep"),
@@ -40,6 +41,7 @@ FLUX2_TEXT2IMAGE_WORKFLOWS = {
         ("decode", "Flux2DecodeStep"),
     ],
 }
+
 
 class TestFlux2ModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Flux2ModularPipeline
@@ -69,6 +71,7 @@ class TestFlux2ModularPipelineFast(ModularPipelineTesterMixin):
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
 
+
 FLUX2_IMAGE_CONDITIONED_WORKFLOWS = {
     "image_conditioned": [
         ("text_encoder", "Flux2TextEncoderStep"),
@@ -85,6 +88,7 @@ FLUX2_IMAGE_CONDITIONED_WORKFLOWS = {
         ("decode", "Flux2DecodeStep"),
     ],
 }
+
 
 class TestFlux2ImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Flux2ModularPipeline

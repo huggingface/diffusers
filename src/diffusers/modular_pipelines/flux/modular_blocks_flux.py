@@ -18,23 +18,19 @@ from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     FluxImg2ImgPrepareLatentsStep,
     FluxImg2ImgSetTimestepsStep,
-    FluxKontextRoPEInputsStep,
     FluxPrepareLatentsStep,
     FluxRoPEInputsStep,
     FluxSetTimestepsStep,
 )
 from .decoders import FluxDecodeStep
-from .denoise import FluxDenoiseStep, FluxKontextDenoiseStep
+from .denoise import FluxDenoiseStep
 from .encoders import (
-    FluxKontextProcessImagesInputStep,
     FluxProcessImagesInputStep,
     FluxTextEncoderStep,
     FluxVaeEncoderStep,
 )
 from .inputs import (
     FluxAdditionalInputsStep,
-    FluxKontextAdditionalInputsStep,
-    FluxKontextSetResolutionStep,
     FluxTextInputStep,
 )
 
@@ -43,6 +39,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # vae encoder (run before before_denoise)
+
 
 # auto_docstring
 class FluxImg2ImgVaeEncoderStep(SequentialPipelineBlocks):
@@ -54,6 +51,7 @@ class FluxImg2ImgVaeEncoderStep(SequentialPipelineBlocks):
     @property
     def description(self) -> str:
         return "Vae encoder step that preprocess andencode the image inputs into their latent representations."
+
 
 # auto_docstring
 class FluxAutoVaeEncoderStep(AutoPipelineBlocks):
@@ -71,6 +69,7 @@ class FluxAutoVaeEncoderStep(AutoPipelineBlocks):
             + " - if `image` is not provided, step will be skipped."
         )
 
+
 # before_denoise: text2img
 # auto_docstring
 class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
@@ -87,7 +86,12 @@ class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class FluxImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
     model_name = "flux"
-    block_classes = [FluxPrepareLatentsStep(), FluxImg2ImgSetTimestepsStep(), FluxImg2ImgPrepareLatentsStep(), FluxRoPEInputsStep()]
+    block_classes = [
+        FluxPrepareLatentsStep(),
+        FluxImg2ImgSetTimestepsStep(),
+        FluxImg2ImgPrepareLatentsStep(),
+        FluxRoPEInputsStep(),
+    ]
     block_names = ["prepare_latents", "set_timesteps", "prepare_img2img_latents", "prepare_rope_inputs"]
 
     @property
@@ -113,8 +117,8 @@ class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
         )
 
 
-
 # inputs: text2image/img2img
+
 
 # auto_docstring
 class FluxImg2ImgInputStep(SequentialPipelineBlocks):
@@ -173,6 +177,7 @@ AUTO_BLOCKS = InsertableDict(
     ]
 )
 
+
 # auto_docstring
 class FluxAutoBlocks(SequentialPipelineBlocks):
     model_name = "flux"
@@ -187,6 +192,4 @@ class FluxAutoBlocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Auto Modular pipeline for text-to-image and image-to-image using Flux."
-        )
+        return "Auto Modular pipeline for text-to-image and image-to-image using Flux."
