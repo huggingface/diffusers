@@ -2107,58 +2107,29 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         - the `config` dict, which will be saved as `modular_model_index.json` during `save_pretrained`
 
         Args:
-            **kwargs: Component objects, ComponentSpec objects, or configuration values to update:
-                - Component objects: Only supports components we can extract specs using
-                  `ComponentSpec.from_component()` method i.e. components created with ComponentSpec.load() or
-                  ConfigMixin subclasses that aren't nn.Modules (e.g., `unet=new_unet, text_encoder=new_encoder`)
-                - ComponentSpec objects: Only supports default_creation_method == "from_config", will call create()
-                  method to create a new component (e.g., `guider=ComponentSpec(name="guider",
-                  type_hint=ClassifierFreeGuidance, config={...}, default_creation_method="from_config")`)
-                - Configuration values: Simple values to update configuration settings (e.g.,
-                  `requires_safety_checker=False`)
-
-        Raises:
-            ValueError: If a component object is not supported in ComponentSpec.from_component() method:
-                - nn.Module components without a valid `_diffusers_load_id` attribute
-                - Non-ConfigMixin components without a valid `_diffusers_load_id` attribute
+            **kwargs: Component objects or configuration values to update:
+                - Component objects: Models loaded with `AutoModel.from_pretrained()` or `ComponentSpec.load()`
+                are automatically tagged with loading information. ConfigMixin objects without weights (e.g.,
+                schedulers, guiders) can be passed directly.
+                - Configuration values: Simple values to update configuration settings
+                (e.g., `requires_safety_checker=False`)
 
         Examples:
             ```python
-            # Update multiple components at once
+            # Update pre-trained model
             pipeline.update_components(unet=new_unet_model, text_encoder=new_text_encoder)
 
             # Update configuration values
             pipeline.update_components(requires_safety_checker=False)
-
-            # Update both components and configs together
-            pipeline.update_components(unet=new_unet_model, requires_safety_checker=False)
-
-            # Update with ComponentSpec objects (from_config only)
-            pipeline.update_components(
-                guider=ComponentSpec(
-                    name="guider",
-                    type_hint=ClassifierFreeGuidance,
-                    config={"guidance_scale": 5.0},
-                    default_creation_method="from_config",
-                )
-            )
             ```
 
         Notes:
-            - Components with trained weights must be created using ComponentSpec.load(). If the component has not been
-              shared in huggingface hub and you don't have loading specs, you can upload it using `push_to_hub()`
-            - ConfigMixin objects without weights (e.g., schedulers, guiders) can be passed directly
-            - ComponentSpec objects with default_creation_method="from_pretrained" are not supported in
-              update_components()
+            - Components with trained weights should be loaded with `AutoModel.from_pretrained()` or
+            `ComponentSpec.load()` so that loading specs are preserved for serialization.
+            - ConfigMixin objects without weights (e.g., schedulers, guiders) can be passed directly.
         """
 
-        # extract component_specs_updates & config_specs_updates from `specs`
-        passed_component_specs = {
-            k: kwargs.pop(k) for k in self._component_specs if k in kwargs and isinstance(kwargs[k], ComponentSpec)
-        }
-        passed_components = {
-            k: kwargs.pop(k) for k in self._component_specs if k in kwargs and not isinstance(kwargs[k], ComponentSpec)
-        }
+        passed_components = {k: kwargs.pop(k) for k in self._component_specs if k in kwargs}
         passed_config_values = {k: kwargs.pop(k) for k in self._config_specs if k in kwargs}
 
         for name, component in passed_components.items():
@@ -2197,33 +2168,14 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         if len(kwargs) > 0:
             logger.warning(f"Unexpected keyword arguments, will be ignored: {kwargs.keys()}")
 
-        created_components = {}
-        for name, component_spec in passed_component_specs.items():
-            if component_spec.default_creation_method == "from_pretrained":
-                raise ValueError(
-                    "ComponentSpec object with default_creation_method == 'from_pretrained' is not supported in update_components() method"
-                )
-            created_components[name] = component_spec.create()
-            current_component_spec = self._component_specs[name]
-            # warn if type changed
-            if current_component_spec.type_hint is not None and not isinstance(
-                created_components[name], current_component_spec.type_hint
-            ):
-                logger.info(
-                    f"ModularPipeline.update_components: adding {name} with new type: {created_components[name].__class__.__name__}, previous type: {current_component_spec.type_hint.__name__}"
-                )
-            # update _component_specs based on the user passed component_spec
-            self._component_specs[name] = component_spec
-        self.register_components(**passed_components, **created_components)
+        self.register_components(**passed_components)
 
         config_to_register = {}
         for name, new_value in passed_config_values.items():
-            # e.g. requires_aesthetics_score = False
             self._config_specs[name].default = new_value
             config_to_register[name] = new_value
         self.register_to_config(**config_to_register)
 
-    # YiYi TODO: support map for additional from_pretrained kwargs
     def load_components(self, names: list[str] | str | None = None, **kwargs):
         """
         Load selected components from specs.
