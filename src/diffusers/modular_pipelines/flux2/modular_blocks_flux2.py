@@ -82,7 +82,6 @@ class Flux2AutoVaeEncoderStep(AutoPipelineBlocks):
 Flux2CoreDenoiseBlocks = InsertableDict(
     [
         ("input", Flux2TextInputStep()),
-        ("prepare_image_latents", Flux2PrepareImageLatentsStep()),
         ("prepare_latents", Flux2PrepareLatentsStep()),
         ("set_timesteps", Flux2SetTimestepsStep()),
         ("prepare_guidance", Flux2PrepareGuidanceStep()),
@@ -117,11 +116,63 @@ class Flux2CoreDenoiseStep(SequentialPipelineBlocks):
         ]
 
 
+Flux2ImageConditionedCoreDenoiseBlocks = InsertableDict(
+    [
+        ("input", Flux2TextInputStep()),
+        ("prepare_image_latents", Flux2PrepareImageLatentsStep()),
+        ("prepare_latents", Flux2PrepareLatentsStep()),
+        ("set_timesteps", Flux2SetTimestepsStep()),
+        ("prepare_guidance", Flux2PrepareGuidanceStep()),
+        ("prepare_rope_inputs", Flux2RoPEInputsStep()),
+        ("denoise", Flux2DenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
+    ]
+)
+
+
+# auto_docstring
+class Flux2ImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
+    model_name = "flux2"
+
+    block_classes = Flux2ImageConditionedCoreDenoiseBlocks.values()
+    block_names = Flux2ImageConditionedCoreDenoiseBlocks.keys()
+
+    @property
+    def description(self):
+        return (
+            "Core denoise step that performs the denoising process for Flux2-dev with image conditioning."
+        )
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                description="The latents from the denoising step.",
+            )
+        ]
+
+class Flux2AutoCoreDenoiseStep(AutoPipelineBlocks):
+    model_name = "flux2"
+    block_classes = [Flux2ImageConditionedCoreDenoiseStep, Flux2CoreDenoiseStep]
+    block_names = ["image_conditioned", "text2image"]
+    block_trigger_inputs = ["image_latents", None]
+
+    @property
+    def description(self):
+        return (
+            "Auto core denoise step that performs the denoising process for Flux2-dev."
+            "This is an auto pipeline block that works for text-to-image and image-conditioned generation."
+            " - `Flux2CoreDenoiseStep` is used for text-to-image generation.\n"
+            " - `Flux2ImageConditionedCoreDenoiseStep` is used for image-conditioned generation.\n"
+        )
+
 AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", Flux2TextEncoderStep()),
         ("vae_encoder", Flux2AutoVaeEncoderStep()),
-        ("denoise", Flux2CoreDenoiseStep()),
+        ("denoise", Flux2AutoCoreDenoiseStep()),
         ("decode", Flux2DecodeStep()),
     ]
 )
