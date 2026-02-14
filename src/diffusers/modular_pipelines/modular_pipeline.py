@@ -724,7 +724,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         Get the block(s) that would execute given the inputs.
 
         Recursively resolves nested ConditionalPipelineBlocks until reaching either:
-        - A leaf block (no sub_blocks) → returns single `ModularPipelineBlocks`
+        - A leaf block (no sub_blocks or LoopSequentialPipelineBlocks) → returns single `ModularPipelineBlocks`
         - A `SequentialPipelineBlocks` → delegates to its `get_execution_blocks()` which returns
         a `SequentialPipelineBlocks` containing the resolved execution blocks
 
@@ -746,7 +746,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
         block = self.sub_blocks[block_name]
 
-        # Recursively resolve until we hit a leaf block or a SequentialPipelineBlocks
+        # Recursively resolve until we hit a leaf block
         if block.sub_blocks and not isinstance(block, LoopSequentialPipelineBlocks):
             return block.get_execution_blocks(**kwargs)
 
