@@ -770,7 +770,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "Saving a FlashPack checkpoint in PyTorch, requires both PyTorch and flashpack to be installed. Please see "
                     "https://pytorch.org/ and https://github.com/fal-ai/flashpack for installation instructions."
                 )
-                raise ImportError("Please install torch and flashpack to load a FlashPack checkpoint in PyTorch.")
+                raise ImportError("Please install torch and flashpack to save a FlashPack checkpoint in PyTorch.")
 
             flashpack.serialization.pack_to_file(
                 state_dict_or_model=state_dict,
@@ -1349,10 +1349,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
                 flashpack_device = None
             else:
-                flashpack_device = device_map[""]
+                device = device_map[""]
+                flashpack_device = torch.device(device) if not isinstance(device, torch.device) else device
                 if flashpack_device in ["auto", "balanced", "balanced_low_0", "sequential"]:
                     raise ValueError(
-                        "FlashPack `device_map` should be a device, not one of `auto`, `balanced`, `balanced_low_0`, `sequential`."
+                        "FlashPack `device_map` should not be one of `auto`, `balanced`, `balanced_low_0`, `sequential`. Use a specific device instead, e.g., `device_map='cuda'` or `device_map='cuda:0'"
                     )
 
             flashpack.mixin.assign_from_file(
@@ -1361,7 +1362,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 device=flashpack_device,
                 **flashpack_kwargs,
             )
-
+            if dtype_orig is not None:
+                torch.set_default_dtype(dtype_orig)
             if output_loading_info:
                 logger.warning("`output_loading_info` is not supported with FlashPack.")
                 return model, {}

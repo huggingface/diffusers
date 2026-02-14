@@ -1603,7 +1603,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
         dduf_file: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_file", None)
-        use_flashpack = kwargs.pop("use_flashpack", True)
+        use_flashpack = kwargs.pop("use_flashpack", False)
 
         if dduf_file:
             if custom_pipeline:
