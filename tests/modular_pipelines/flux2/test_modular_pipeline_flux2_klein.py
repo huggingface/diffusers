@@ -28,13 +28,27 @@ from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
-class TestFlux2ModularPipelineFast(ModularPipelineTesterMixin):
+FLUX2_KLEIN_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "Flux2KleinTextEncoderStep"),
+        ("denoise.input", "Flux2TextInputStep"),
+        ("denoise.prepare_latents", "Flux2PrepareLatentsStep"),
+        ("denoise.set_timesteps", "Flux2SetTimestepsStep"),
+        ("denoise.prepare_rope_inputs", "Flux2RoPEInputsStep"),
+        ("denoise.denoise", "Flux2KleinDenoiseStep"),
+        ("denoise.after_denoise", "Flux2UnpackLatentsStep"),
+        ("decode", "Flux2DecodeStep"),
+    ],
+}
+
+class TestFlux2KleinModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Flux2KleinModularPipeline
     pipeline_blocks_class = Flux2KleinAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-modular"
 
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
+    expected_workflow_blocks = FLUX2_KLEIN_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
@@ -55,13 +69,30 @@ class TestFlux2ModularPipelineFast(ModularPipelineTesterMixin):
         super().test_float16_inference(9e-2)
 
 
-class TestFlux2ImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
+FLUX2_KLEIN_IMAGE_CONDITIONED_WORKFLOWS = {
+    "image_conditioned": [
+        ("text_encoder", "Flux2KleinTextEncoderStep"),
+        ("vae_encoder.preprocess", "Flux2ProcessImagesInputStep"),
+        ("vae_encoder.encode", "Flux2VaeEncoderStep"),
+        ("denoise.input", "Flux2TextInputStep"),
+        ("denoise.prepare_image_latents", "Flux2PrepareImageLatentsStep"),
+        ("denoise.prepare_latents", "Flux2PrepareLatentsStep"),
+        ("denoise.set_timesteps", "Flux2SetTimestepsStep"),
+        ("denoise.prepare_rope_inputs", "Flux2RoPEInputsStep"),
+        ("denoise.denoise", "Flux2KleinDenoiseStep"),
+        ("denoise.after_denoise", "Flux2UnpackLatentsStep"),
+        ("decode", "Flux2DecodeStep"),
+    ],
+}
+
+class TestFlux2KleinImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = Flux2KleinModularPipeline
     pipeline_blocks_class = Flux2KleinAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-modular"
 
     params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])
+    expected_workflow_blocks = FLUX2_KLEIN_IMAGE_CONDITIONED_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)

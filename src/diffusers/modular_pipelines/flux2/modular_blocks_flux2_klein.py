@@ -81,7 +81,6 @@ class Flux2KleinAutoVaeEncoderStep(AutoPipelineBlocks):
 Flux2KleinCoreDenoiseBlocks = InsertableDict(
     [
         ("input", Flux2TextInputStep()),
-        ("prepare_image_latents", Flux2PrepareImageLatentsStep()),
         ("prepare_latents", Flux2PrepareLatentsStep()),
         ("set_timesteps", Flux2SetTimestepsStep()),
         ("prepare_rope_inputs", Flux2RoPEInputsStep()),
@@ -100,7 +99,7 @@ class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return (
-            "Core denoise step that performs the denoising process for Flux2-Klein (distilled model)."
+            "Core denoise step that performs the denoising process for Flux2-Klein (distilled model), for text-to-image generation."
         )
 
     @property
@@ -114,6 +113,57 @@ class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
         ]
 
 
+Flux2KleinImageConditionedCoreDenoiseBlocks = InsertableDict(
+    [
+        ("input", Flux2TextInputStep()),
+        ("prepare_image_latents", Flux2PrepareImageLatentsStep()),
+        ("prepare_latents", Flux2PrepareLatentsStep()),
+        ("set_timesteps", Flux2SetTimestepsStep()),
+        ("prepare_rope_inputs", Flux2RoPEInputsStep()),
+        ("denoise", Flux2KleinDenoiseStep()),
+        ("after_denoise", Flux2UnpackLatentsStep()),
+    ]
+)
+
+
+class Flux2KleinImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
+    model_name = "flux2-klein"
+
+    block_classes = Flux2KleinImageConditionedCoreDenoiseBlocks.values()
+    block_names = Flux2KleinImageConditionedCoreDenoiseBlocks.keys()
+
+    @property
+    def description(self):
+        return (
+            "Core denoise step that performs the denoising process for Flux2-Klein (distilled model) with image conditioning."
+        )
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                description="The latents from the denoising step.",
+            )
+        ]
+
+
+class Flux2KleinAutoCoreDenoiseStep(AutoPipelineBlocks):
+    model_name = "flux2-klein"
+    block_classes = [Flux2KleinImageConditionedCoreDenoiseStep, Flux2KleinCoreDenoiseStep]
+    block_names = ["image_conditioned", "text2image"]
+    block_trigger_inputs = ["image_latents", None]
+
+    @property
+    def description(self):
+        return (
+            "Auto core denoise step that performs the denoising process for Flux2-Klein.\n"
+            "This is an auto pipeline block that works for text-to-image and image-conditioned generation.\n"
+            " - `Flux2KleinCoreDenoiseStep` is used for text-to-image generation.\n"
+            " - `Flux2KleinImageConditionedCoreDenoiseStep` is used for image-conditioned generation.\n"
+        )
+
 
 ###
 ### Auto blocks
@@ -125,7 +175,7 @@ class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
     block_classes = [
         Flux2KleinTextEncoderStep(),
         Flux2KleinAutoVaeEncoderStep(),
-        Flux2KleinCoreDenoiseStep(),
+        Flux2KleinAutoCoreDenoiseStep(),
         Flux2DecodeStep(),
     ]
     block_names = ["text_encoder", "vae_encoder", "denoise", "decode"]

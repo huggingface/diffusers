@@ -17,7 +17,8 @@ import re
 import warnings
 from collections import OrderedDict
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type, Union, get_args, get_origin
+from types import UnionType
 
 import PIL.Image
 import torch
