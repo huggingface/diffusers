@@ -724,7 +724,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             logger.error(error_msg)
             raise
 
-    def get_execution_blocks(self, **kwargs) -> "ModularPipelineBlocks" | None:
+    def get_execution_blocks(self, **kwargs) -> ModularPipelineBlocks | None:
         """
         Get the block(s) that would execute given the inputs.
 
