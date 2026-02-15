@@ -5472,6 +5472,16 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
+        is_kohya = any(".lora_down.weight" in k for k in state_dict)
+        if is_kohya:
+            state_dict = _convert_kohya_flux_lora_to_diffusers(
+                state_dict, 
+                version_flux2=True,
+            )
+            # Kohya already takes care of scaling the LoRA parameters with alpha.
+            for k in  state_dict:
+                assert "alpha" not in k, f"Found key with alpha: {k}"
+
         is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
         if is_ai_toolkit:
             state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
