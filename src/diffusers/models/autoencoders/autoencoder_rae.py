@@ -1,3 +1,17 @@
+# Copyright 2025 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from dataclasses import dataclass
 from math import sqrt
 from types import SimpleNamespace
@@ -11,12 +25,20 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
-from ...utils import BaseOutput
+from ...utils import BaseOutput, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_utils import ModelMixin
 from .vae import AutoencoderMixin, DecoderOutput, EncoderOutput
 
+
 ENCODER_ARCHS: Dict[str, Type] = {}
+ENCODER_DEFAULT_NAME_OR_PATH = {
+    "dinov2": "facebook/dinov2-with-registers-base",
+    "siglip2": "google/siglip2-base-patch16-256",
+    "mae": "facebook/vit-mae-base",
+}
+logger = logging.get_logger(__name__)
+
 
 def register_encoder(cls: Optional[Type] = None, *, name: Optional[str] = None) -> Union[Callable[[Type], Type], Type]:
     def decorator(inner_cls: Type) -> Type:
@@ -33,10 +55,7 @@ def register_encoder(cls: Optional[Type] = None, *, name: Optional[str] = None) 
 
 @register_encoder(name="dinov2")
 class Dinov2Encoder(nn.Module):
-    def __init__(
-        self,
-        encoder_name_or_path: str = "facebook/dinov2-with-registers-base"
-    ):
+    def __init__(self, encoder_name_or_path: str = "facebook/dinov2-with-registers-base"):
         super().__init__()
         from transformers import Dinov2WithRegistersModel
 
@@ -52,8 +71,7 @@ class Dinov2Encoder(nn.Module):
     @torch.no_grad()
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
-        images is of shape (B, C, H, W)
-        where B is batch size, C is number of channels, H and W are height and
+        images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and
         """
         outputs = self.model(images, output_hidden_states=True)
         unused_token_num = 5  # 1 CLS + 4 register tokens
@@ -63,13 +81,12 @@ class Dinov2Encoder(nn.Module):
 
 @register_encoder(name="siglip2")
 class Siglip2Encoder(nn.Module):
-    def __init__(
-        self,
-        encoder_name_or_path: str = "google/siglip2-base-patch16-256"
-    ):
+    def __init__(self, encoder_name_or_path: str = "google/siglip2-base-patch16-256"):
         super().__init__()
         from transformers import SiglipModel
+
         self.model = SiglipModel.from_pretrained(encoder_name_or_path).vision_model
+        self.model.requires_grad_(False)
         # remove the affine of final layernorm
         self.model.post_layernorm.elementwise_affine = False
         # remove the param
@@ -81,10 +98,9 @@ class Siglip2Encoder(nn.Module):
     @torch.no_grad()
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
-        images is of shape (B, C, H, W)
-        where B is batch size, C is number of channels, H and W are height and
+        images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and
         """
-        outputs = self.model(images, output_hidden_states=True, interpolate_pos_encoding = True)
+        outputs = self.model(images, output_hidden_states=True, interpolate_pos_encoding=True)
         image_features = outputs.last_hidden_state
         return image_features
 
@@ -94,7 +110,9 @@ class MAEEncoder(nn.Module):
     def __init__(self, encoder_name_or_path: str = "facebook/vit-mae-base"):
         super().__init__()
         from transformers import ViTMAEForPreTraining
+
         self.model = ViTMAEForPreTraining.from_pretrained(encoder_name_or_path).vit
+        self.model.requires_grad_(False)
         # remove the affine of final layernorm
         self.model.layernorm.elementwise_affine = False
         # remove the param
@@ -102,19 +120,21 @@ class MAEEncoder(nn.Module):
         self.model.layernorm.bias = None
         self.hidden_size = self.model.config.hidden_size
         self.patch_size = self.model.config.patch_size
-        self.model.config.mask_ratio = 0. # no masking
+        self.model.config.mask_ratio = 0.0  # no masking
 
+    @torch.no_grad()
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
-        images is of shape (B, C, H, W)
-        where B is batch size, C is number of channels, H and W are height and width of the image
+        images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and width of
+        the image
         """
-        h,w = images.shape[2], images.shape[3]
-        patch_num = int(h * w  // self.patch_size ** 2)
-        assert patch_num * self.patch_size ** 2 == h * w, 'image size should be divisible by patch size'
-        noise = torch.arange(patch_num).unsqueeze(0).expand(images.shape[0],-1).to(images.device).to(images.dtype)
-        outputs = self.model(images, noise, interpolate_pos_encoding = True)
-        image_features = outputs.last_hidden_state[:, 1:] # remove cls token
+        h, w = images.shape[2], images.shape[3]
+        patch_num = int(h * w // self.patch_size**2)
+        if patch_num * self.patch_size**2 != h * w:
+            raise ValueError("Image size should be divisible by patch size.")
+        noise = torch.arange(patch_num).unsqueeze(0).expand(images.shape[0], -1).to(images.device).to(images.dtype)
+        outputs = self.model(images, noise, interpolate_pos_encoding=True)
+        image_features = outputs.last_hidden_state[:, 1:]  # remove cls token
         return image_features
 
 
@@ -183,7 +203,9 @@ class ViTMAESelfAttention(nn.Module):
     def __init__(self, hidden_size: int, num_attention_heads: int, qkv_bias: bool = True, attn_dropout: float = 0.0):
         super().__init__()
         if hidden_size % num_attention_heads != 0:
-            raise ValueError(f"hidden_size={hidden_size} must be divisible by num_attention_heads={num_attention_heads}")
+            raise ValueError(
+                f"hidden_size={hidden_size} must be divisible by num_attention_heads={num_attention_heads}"
+            )
 
         self.num_attention_heads = num_attention_heads
         self.attention_head_size = int(hidden_size / num_attention_heads)
@@ -297,8 +319,12 @@ class ViTMAELayer(nn.Module):
             qkv_bias=qkv_bias,
             attn_dropout=attention_probs_dropout_prob,
         )
-        self.intermediate = ViTMAEIntermediate(hidden_size=hidden_size, intermediate_size=intermediate_size, hidden_act=hidden_act)
-        self.output = ViTMAEOutput(hidden_size=hidden_size, intermediate_size=intermediate_size, hidden_dropout_prob=hidden_dropout_prob)
+        self.intermediate = ViTMAEIntermediate(
+            hidden_size=hidden_size, intermediate_size=intermediate_size, hidden_act=hidden_act
+        )
+        self.output = ViTMAEOutput(
+            hidden_size=hidden_size, intermediate_size=intermediate_size, hidden_dropout_prob=hidden_dropout_prob
+        )
         self.layernorm_before = nn.LayerNorm(hidden_size, eps=layer_norm_eps)
         self.layernorm_after = nn.LayerNorm(hidden_size, eps=layer_norm_eps)
 
@@ -328,7 +354,9 @@ class GeneralDecoder(nn.Module):
     def __init__(self, config, num_patches: int):
         super().__init__()
         self.decoder_embed = nn.Linear(config.hidden_size, config.decoder_hidden_size, bias=True)
-        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, config.decoder_hidden_size), requires_grad=False)
+        self.decoder_pos_embed = nn.Parameter(
+            torch.zeros(1, num_patches + 1, config.decoder_hidden_size), requires_grad=False
+        )
 
         self.decoder_layers = nn.ModuleList(
             [
@@ -347,7 +375,9 @@ class GeneralDecoder(nn.Module):
         )
 
         self.decoder_norm = nn.LayerNorm(config.decoder_hidden_size, eps=config.layer_norm_eps)
-        self.decoder_pred = nn.Linear(config.decoder_hidden_size, config.patch_size**2 * config.num_channels, bias=True)
+        self.decoder_pred = nn.Linear(
+            config.decoder_hidden_size, config.patch_size**2 * config.num_channels, bias=True
+        )
         self.gradient_checkpointing = False
         self.config = config
         self.num_patches = num_patches
@@ -396,7 +426,9 @@ class GeneralDecoder(nn.Module):
     def unpatchify(self, patchified_pixel_values: torch.Tensor, original_image_size: Optional[Tuple[int, int]] = None):
         patch_size, num_channels = self.config.patch_size, self.config.num_channels
         original_image_size = (
-            original_image_size if original_image_size is not None else (self.config.image_size, self.config.image_size)
+            original_image_size
+            if original_image_size is not None
+            else (self.config.image_size, self.config.image_size)
         )
         original_height, original_width = original_image_size
         num_patches_h = original_height // patch_size
@@ -468,30 +500,30 @@ class RAEDecoder(GeneralDecoder):
     pass
 
 
-class AutoencoderRAE(
-    ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin
-):
+class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin):
     r"""
     Representation Autoencoder (RAE) model for encoding images to latents and decoding latents to images.
 
-    This model uses a frozen pretrained encoder (DINOv2, SigLIP2, or MAE) with a trainable ViT decoder
-    to reconstruct images from learned representations.
+    This model uses a frozen pretrained encoder (DINOv2, SigLIP2, or MAE) with a trainable ViT decoder to reconstruct
+    images from learned representations.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods
-    implemented for all models (such as downloading or saving).
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented for
+    all models (such as downloading or saving).
 
     Args:
         encoder_cls (`str`, *optional*, defaults to `"dinov2"`):
             Type of frozen encoder to use. One of `"dinov2"`, `"siglip2"`, or `"mae"`.
-        encoder_name_or_path (`str`, *optional*, defaults to `"facebook/dinov2-with-registers-base"`):
-            Path to pretrained encoder model or model identifier from huggingface.co/models.
+        encoder_name_or_path (`str`, *optional*):
+            Path to pretrained encoder model or model identifier from huggingface.co/models. If not provided, uses an
+            encoder-specific default model id.
         patch_size (`int`, *optional*, defaults to `16`):
             Decoder patch size (used for unpatchify and decoder head).
         encoder_input_size (`int`, *optional*, defaults to `224`):
             Input size expected by the encoder.
         image_size (`int`, *optional*):
-            Decoder output image size. If `None`, it is derived from encoder token count and `patch_size` like RAE-main:
-            `image_size = patch_size * sqrt(num_patches)`, where `num_patches = (encoder_input_size // encoder.patch_size) ** 2`.
+            Decoder output image size. If `None`, it is derived from encoder token count and `patch_size` like
+            RAE-main: `image_size = patch_size * sqrt(num_patches)`, where `num_patches = (encoder_input_size //
+            encoder.patch_size) ** 2`.
         num_channels (`int`, *optional*, defaults to `3`):
             Number of input/output channels.
         latent_mean (`torch.Tensor`, *optional*):
@@ -514,7 +546,7 @@ class AutoencoderRAE(
     def __init__(
         self,
         encoder_cls: str = "dinov2",
-        encoder_name_or_path: str = "facebook/dinov2-with-registers-base",
+        encoder_name_or_path: Optional[str] = None,
         decoder_hidden_size: int = 512,
         decoder_num_hidden_layers: int = 8,
         decoder_num_attention_heads: int = 16,
@@ -534,12 +566,13 @@ class AutoencoderRAE(
 
         if encoder_cls not in ENCODER_ARCHS:
             raise ValueError(f"Unknown encoder_cls='{encoder_cls}'. Available: {sorted(ENCODER_ARCHS.keys())}")
+        if encoder_name_or_path is None:
+            encoder_name_or_path = ENCODER_DEFAULT_NAME_OR_PATH[encoder_cls]
 
         self.encoder_input_size = encoder_input_size
         self.noise_tau = float(noise_tau)
         self.reshape_to_2d = bool(reshape_to_2d)
         self.use_encoder_loss = bool(use_encoder_loss)
-        self.scaling_factor = float(scaling_factor)
 
         # Frozen representation encoder
         self.encoder: nn.Module = ENCODER_ARCHS[encoder_cls](encoder_name_or_path=encoder_name_or_path)
@@ -588,23 +621,35 @@ class AutoencoderRAE(
                 proc = AutoImageProcessor.from_pretrained(encoder_name_or_path, local_files_only=False)
             encoder_mean = torch.tensor(proc.image_mean, dtype=torch.float32).view(1, 3, 1, 1)
             encoder_std = torch.tensor(proc.image_std, dtype=torch.float32).view(1, 3, 1, 1)
-        except Exception:
+        except (OSError, ValueError):
             # Keep default 0.5/0.5 if processor is unavailable.
-            pass
+            logger.warning(
+                "Falling back to encoder mean/std [0.5, 0.5, 0.5] for `%s` because AutoImageProcessor could not be loaded.",
+                encoder_name_or_path,
+            )
 
         self.register_buffer("encoder_mean", encoder_mean, persistent=True)
         self.register_buffer("encoder_std", encoder_std, persistent=True)
 
         # Optional latent normalization (RAE-main uses mean/var)
+        def _as_optional_tensor(value: Optional[Union[torch.Tensor, list, tuple]]) -> Optional[torch.Tensor]:
+            if value is None:
+                return None
+            if isinstance(value, torch.Tensor):
+                return value.detach().clone()
+            return torch.tensor(value, dtype=torch.float32)
+
+        latent_mean_tensor = _as_optional_tensor(latent_mean)
+        latent_var_tensor = _as_optional_tensor(latent_var)
         self.do_latent_normalization = latent_mean is not None or latent_var is not None
-        if latent_mean is not None:
-            self.register_buffer("latent_mean", latent_mean.detach().clone(), persistent=True)
+        if latent_mean_tensor is not None:
+            self.register_buffer("_latent_mean", latent_mean_tensor, persistent=True)
         else:
-            self.latent_mean = None
-        if latent_var is not None:
-            self.register_buffer("latent_var", latent_var.detach().clone(), persistent=True)
+            self._latent_mean = None
+        if latent_var_tensor is not None:
+            self.register_buffer("_latent_var", latent_var_tensor, persistent=True)
         else:
-            self.latent_var = None
+            self._latent_var = None
 
         # ViT-MAE style decoder
         encoder_hidden_size = getattr(self.encoder, "hidden_size", None)
@@ -657,15 +702,15 @@ class AutoencoderRAE(
     def _maybe_normalize_latents(self, z: torch.Tensor) -> torch.Tensor:
         if not self.do_latent_normalization:
             return z
-        latent_mean = self.latent_mean.to(device=z.device, dtype=z.dtype) if self.latent_mean is not None else 0
-        latent_var = self.latent_var.to(device=z.device, dtype=z.dtype) if self.latent_var is not None else 1
+        latent_mean = self._latent_mean.to(device=z.device, dtype=z.dtype) if self._latent_mean is not None else 0
+        latent_var = self._latent_var.to(device=z.device, dtype=z.dtype) if self._latent_var is not None else 1
         return (z - latent_mean) / torch.sqrt(latent_var + 1e-5)
 
     def _maybe_denormalize_latents(self, z: torch.Tensor) -> torch.Tensor:
         if not self.do_latent_normalization:
             return z
-        latent_mean = self.latent_mean.to(device=z.device, dtype=z.dtype) if self.latent_mean is not None else 0
-        latent_var = self.latent_var.to(device=z.device, dtype=z.dtype) if self.latent_var is not None else 1
+        latent_mean = self._latent_mean.to(device=z.device, dtype=z.dtype) if self._latent_mean is not None else 0
+        latent_var = self._latent_var.to(device=z.device, dtype=z.dtype) if self._latent_var is not None else 1
         return z * torch.sqrt(latent_var + 1e-5) + latent_mean
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
@@ -689,8 +734,8 @@ class AutoencoderRAE(
         z = self._maybe_normalize_latents(z)
 
         # Follow diffusers convention: optionally scale latents for diffusion
-        if self.scaling_factor != 1.0:
-            z = z * self.scaling_factor
+        if self.config.scaling_factor != 1.0:
+            z = z * self.config.scaling_factor
 
         return z
 
@@ -707,8 +752,8 @@ class AutoencoderRAE(
 
     def _decode(self, z: torch.Tensor) -> torch.Tensor:
         # Undo scaling factor if applied at encode time
-        if self.scaling_factor != 1.0:
-            z = z / self.scaling_factor
+        if self.config.scaling_factor != 1.0:
+            z = z / self.config.scaling_factor
 
         z = self._maybe_denormalize_latents(z)
 
@@ -740,4 +785,3 @@ class AutoencoderRAE(
         if not return_dict:
             return (decoded,)
         return DecoderOutput(sample=decoded)
-
