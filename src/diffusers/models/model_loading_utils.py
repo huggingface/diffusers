@@ -32,6 +32,7 @@ from huggingface_hub.utils import EntryNotFoundError
 from ..quantizers import DiffusersQuantizer
 from ..utils import (
     DEFAULT_HF_PARALLEL_LOADING_WORKERS,
+    FLASHPACK_FILE_EXTENSION,
     GGUF_FILE_EXTENSION,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
@@ -41,6 +42,7 @@ from ..utils import (
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
+    is_flashpack_available,
     is_gguf_available,
     is_torch_available,
     is_torch_version,
@@ -177,6 +179,8 @@ def load_state_dict(
                 return safetensors.torch.load_file(checkpoint_file, device=map_location)
         elif file_extension == GGUF_FILE_EXTENSION:
             return load_gguf_checkpoint(checkpoint_file)
+        elif file_extension == FLASHPACK_FILE_EXTENSION:
+            return load_flashpack_checkpoint(checkpoint_file)
         else:
             extra_args = {}
             weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
@@ -687,6 +691,33 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         parsed_parameters[name] = GGUFParameter(weights, quant_type=quant_type) if is_gguf_quant else weights
 
     return parsed_parameters
+
+
+def load_flashpack_checkpoint(flashpack_checkpoint_path: str):
+    """
+    Load a FlashPack file and return a dictionary of parsed parameters containing tensors.
+
+    Args:
+        flashpack_checkpoint_path (`str`):
+            The path the to FlashPack file to load
+    """
+
+    if is_flashpack_available() and is_torch_available():
+        import flashpack
+    else:
+        logger.error(
+            "Loading a FlashPack checkpoint in PyTorch, requires both PyTorch and flashpack to be installed. Please see "
+            "https://pytorch.org/ and https://github.com/fal-ai/flashpack for installation instructions."
+        )
+        raise ImportError("Please install torch and flashpack to load a FlashPack checkpoint in PyTorch.")
+
+    flash_tensor, meta = flashpack.deserialization.read_flashpack_file(
+        path=flashpack_checkpoint_path,
+    )
+    state_dict = {}
+    for name, view in flashpack.deserialization.iterate_from_flash_tensor(flash_tensor, meta):
+        state_dict[name] = view
+    return state_dict
 
 
 def _find_mismatched_keys(state_dict, model_state_dict, loaded_keys, ignore_mismatched_sizes):
