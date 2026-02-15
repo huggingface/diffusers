@@ -526,12 +526,16 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
             encoder.patch_size) ** 2`.
         num_channels (`int`, *optional*, defaults to `3`):
             Number of input/output channels.
-        latent_mean (`list` or `tuple`, *optional*):
+        latents_mean (`list` or `tuple`, *optional*):
             Optional mean for latent normalization. Tensor inputs are accepted for backward compatibility and converted
             to config-serializable lists.
+        latents_std (`list` or `tuple`, *optional*):
+            Optional standard deviation for latent normalization. Tensor inputs are accepted for backward compatibility
+            and converted to config-serializable lists.
+        latent_mean (`list` or `tuple`, *optional*):
+            Deprecated alias of `latents_mean`.
         latent_var (`list` or `tuple`, *optional*):
-            Optional variance for latent normalization. Tensor inputs are accepted for backward compatibility and
-            converted to config-serializable lists.
+            Deprecated alias of latent variance. If provided, it is converted to `latents_std = sqrt(latent_var + 1e-5)`.
         noise_tau (`float`, *optional*, defaults to `0.0`):
             Noise level for training (adds noise to latents during training).
         reshape_to_2d (`bool`, *optional*, defaults to `True`):
@@ -557,6 +561,8 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
         encoder_input_size: int = 224,
         image_size: Optional[int] = None,
         num_channels: int = 3,
+        latents_mean: Optional[Union[list, tuple, torch.Tensor]] = None,
+        latents_std: Optional[Union[list, tuple, torch.Tensor]] = None,
         latent_mean: Optional[Union[list, tuple, torch.Tensor]] = None,
         latent_var: Optional[Union[list, tuple, torch.Tensor]] = None,
         noise_tau: float = 0.0,
@@ -580,11 +586,34 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
                 return [_to_config_compatible(v) for v in value]
             return value
 
+        if latents_mean is not None and latent_mean is not None:
+            raise ValueError("Please provide only one of `latents_mean` or deprecated `latent_mean`.")
+        if latents_std is not None and latent_var is not None:
+            raise ValueError("Please provide only one of `latents_std` or deprecated `latent_var`.")
+
+        if latents_mean is None:
+            latents_mean = latent_mean
+
+        def _as_optional_tensor(value: Optional[Union[torch.Tensor, list, tuple]]) -> Optional[torch.Tensor]:
+            if value is None:
+                return None
+            if isinstance(value, torch.Tensor):
+                return value.detach().clone()
+            return torch.tensor(value, dtype=torch.float32)
+
+        latents_std_tensor = _as_optional_tensor(latents_std)
+        latent_var_tensor = _as_optional_tensor(latent_var)
+        if latents_std_tensor is None and latent_var_tensor is not None:
+            latents_std_tensor = torch.sqrt(latent_var_tensor + 1e-5)
+            latents_std = latents_std_tensor
+
         # Ensure config values are JSON-serializable (list/None), even if caller passes torch.Tensors.
         self.register_to_config(
             encoder_name_or_path=encoder_name_or_path,
-            latent_mean=_to_config_compatible(latent_mean),
-            latent_var=_to_config_compatible(latent_var),
+            latents_mean=_to_config_compatible(latents_mean),
+            latents_std=_to_config_compatible(latents_std),
+            latent_mean=None,
+            latent_var=None,
         )
 
         self.encoder_input_size = encoder_input_size
@@ -650,24 +679,16 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
         self.register_buffer("encoder_std", encoder_std, persistent=True)
 
         # Optional latent normalization (RAE-main uses mean/var)
-        def _as_optional_tensor(value: Optional[Union[torch.Tensor, list, tuple]]) -> Optional[torch.Tensor]:
-            if value is None:
-                return None
-            if isinstance(value, torch.Tensor):
-                return value.detach().clone()
-            return torch.tensor(value, dtype=torch.float32)
-
-        latent_mean_tensor = _as_optional_tensor(latent_mean)
-        latent_var_tensor = _as_optional_tensor(latent_var)
-        self.do_latent_normalization = latent_mean is not None or latent_var is not None
-        if latent_mean_tensor is not None:
-            self.register_buffer("_latent_mean", latent_mean_tensor, persistent=True)
+        latents_mean_tensor = _as_optional_tensor(latents_mean)
+        self.do_latent_normalization = latents_mean is not None or latents_std is not None or latent_var is not None
+        if latents_mean_tensor is not None:
+            self.register_buffer("_latents_mean", latents_mean_tensor, persistent=True)
         else:
-            self._latent_mean = None
-        if latent_var_tensor is not None:
-            self.register_buffer("_latent_var", latent_var_tensor, persistent=True)
+            self._latents_mean = None
+        if latents_std_tensor is not None:
+            self.register_buffer("_latents_std", latents_std_tensor, persistent=True)
         else:
-            self._latent_var = None
+            self._latents_std = None
 
         # ViT-MAE style decoder
         encoder_hidden_size = getattr(self.encoder, "hidden_size", None)
@@ -720,16 +741,16 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
     def _maybe_normalize_latents(self, z: torch.Tensor) -> torch.Tensor:
         if not self.do_latent_normalization:
             return z
-        latent_mean = self._latent_mean.to(device=z.device, dtype=z.dtype) if self._latent_mean is not None else 0
-        latent_var = self._latent_var.to(device=z.device, dtype=z.dtype) if self._latent_var is not None else 1
-        return (z - latent_mean) / torch.sqrt(latent_var + 1e-5)
+        latents_mean = self._latents_mean.to(device=z.device, dtype=z.dtype) if self._latents_mean is not None else 0
+        latents_std = self._latents_std.to(device=z.device, dtype=z.dtype) if self._latents_std is not None else 1
+        return (z - latents_mean) / (latents_std + 1e-5)
 
     def _maybe_denormalize_latents(self, z: torch.Tensor) -> torch.Tensor:
         if not self.do_latent_normalization:
             return z
-        latent_mean = self._latent_mean.to(device=z.device, dtype=z.dtype) if self._latent_mean is not None else 0
-        latent_var = self._latent_var.to(device=z.device, dtype=z.dtype) if self._latent_var is not None else 1
-        return z * torch.sqrt(latent_var + 1e-5) + latent_mean
+        latents_mean = self._latents_mean.to(device=z.device, dtype=z.dtype) if self._latents_mean is not None else 0
+        latents_std = self._latents_std.to(device=z.device, dtype=z.dtype) if self._latents_std is not None else 1
+        return z * (latents_std + 1e-5) + latents_mean
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         x = self._maybe_resize_and_normalize(x)

@@ -108,19 +108,17 @@ class AutoencoderRAETests(unittest.TestCase):
 
     def test_fast_latent_normalization_matches_formula(self):
         latent_mean = torch.full((1, 16, 1, 1), 0.25, dtype=torch.float32)
-        latent_var = torch.full((1, 16, 1, 1), 4.0, dtype=torch.float32)
+        latents_std = torch.full((1, 16, 1, 1), 2.0, dtype=torch.float32)
 
         model_raw = self._make_model().eval()
-        model_norm = self._make_model(latent_mean=latent_mean, latent_var=latent_var).eval()
+        model_norm = self._make_model(latents_mean=latent_mean, latents_std=latents_std).eval()
         x = torch.rand(1, 3, 32, 32, device=torch_device)
 
         with torch.no_grad():
             z_raw = model_raw.encode(x).latent
             z_norm = model_norm.encode(x).latent
 
-        expected = (z_raw - latent_mean.to(z_raw.device, z_raw.dtype)) / torch.sqrt(
-            latent_var.to(z_raw.device, z_raw.dtype) + 1e-5
-        )
+        expected = (z_raw - latent_mean.to(z_raw.device, z_raw.dtype)) / (latents_std.to(z_raw.device, z_raw.dtype) + 1e-5)
         self.assertTrue(torch.allclose(z_norm, expected, atol=1e-5, rtol=1e-4))
 
     def test_fast_slicing_matches_non_slicing(self):

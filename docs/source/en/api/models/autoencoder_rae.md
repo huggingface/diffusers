@@ -43,6 +43,8 @@ with torch.no_grad():
 
 `encoder_cls` supports `"dinov2"`, `"siglip2"`, and `"mae"`.
 
+For latent normalization, use `latents_mean` and `latents_std` (matching other diffusers autoencoders).
+
 ## AutoencoderRAE class
 
 [[autodoc]] AutoencoderRAE
