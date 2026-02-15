@@ -27,6 +27,8 @@ from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
+from ..attention import AttentionMixin
+from ..attention_processor import Attention
 from ..embeddings import get_2d_sincos_pos_embed
 from ..modeling_utils import ModelMixin
 from .vae import AutoencoderMixin, DecoderOutput, EncoderOutput
@@ -69,12 +71,15 @@ class Dinov2Encoder(nn.Module):
         self.patch_size = self.model.config.patch_size
         self.hidden_size = self.model.config.hidden_size
 
-    @torch.no_grad()
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
+    def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
         """
         images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and
         """
-        outputs = self.model(images, output_hidden_states=True)
+        if requires_grad:
+            outputs = self.model(images, output_hidden_states=True)
+        else:
+            with torch.no_grad():
+                outputs = self.model(images, output_hidden_states=True)
         unused_token_num = 5  # 1 CLS + 4 register tokens
         image_features = outputs.last_hidden_state[:, unused_token_num:]
         return image_features
@@ -96,12 +101,15 @@ class Siglip2Encoder(nn.Module):
         self.hidden_size = self.model.config.hidden_size
         self.patch_size = self.model.config.patch_size
 
-    @torch.no_grad()
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
+    def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
         """
         images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and
         """
-        outputs = self.model(images, output_hidden_states=True, interpolate_pos_encoding=True)
+        if requires_grad:
+            outputs = self.model(images, output_hidden_states=True, interpolate_pos_encoding=True)
+        else:
+            with torch.no_grad():
+                outputs = self.model(images, output_hidden_states=True, interpolate_pos_encoding=True)
         image_features = outputs.last_hidden_state
         return image_features
 
@@ -123,8 +131,7 @@ class MAEEncoder(nn.Module):
         self.patch_size = self.model.config.patch_size
         self.model.config.mask_ratio = 0.0  # no masking
 
-    @torch.no_grad()
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
+    def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
         """
         images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and width of
         the image
@@ -134,7 +141,11 @@ class MAEEncoder(nn.Module):
         if patch_num * self.patch_size**2 != h * w:
             raise ValueError("Image size should be divisible by patch size.")
         noise = torch.arange(patch_num).unsqueeze(0).expand(images.shape[0], -1).to(images.device).to(images.dtype)
-        outputs = self.model(images, noise, interpolate_pos_encoding=True)
+        if requires_grad:
+            outputs = self.model(images, noise, interpolate_pos_encoding=True)
+        else:
+            with torch.no_grad():
+                outputs = self.model(images, noise, interpolate_pos_encoding=True)
         image_features = outputs.last_hidden_state[:, 1:]  # remove cls token
         return image_features
 
@@ -152,73 +163,45 @@ class RAEDecoderOutput(BaseOutput):
     logits: torch.Tensor
 
 
-class ViTMAESelfAttention(nn.Module):
+@dataclass
+class AutoencoderRAELossOutput(BaseOutput):
+    """
+    Output of `AutoencoderRAE.forward(..., return_loss=True)`.
+
+    Args:
+        sample (`torch.Tensor`):
+            Reconstructed image tensor of shape `(batch_size, num_channels, image_height, image_width)`.
+        loss (`torch.Tensor`):
+            Total training loss.
+        reconstruction_loss (`torch.Tensor`):
+            Pixel-space reconstruction loss.
+        encoder_loss (`torch.Tensor`):
+            Optional encoder feature-space loss. Zero when disabled.
+    """
+
+    sample: torch.Tensor
+    loss: torch.Tensor
+    reconstruction_loss: torch.Tensor
+    encoder_loss: torch.Tensor
+
+
+class ViTMAEAttention(nn.Module):
     def __init__(self, hidden_size: int, num_attention_heads: int, qkv_bias: bool = True, attn_dropout: float = 0.0):
         super().__init__()
         if hidden_size % num_attention_heads != 0:
             raise ValueError(
                 f"hidden_size={hidden_size} must be divisible by num_attention_heads={num_attention_heads}"
             )
-
-        self.num_attention_heads = num_attention_heads
-        self.attention_head_size = int(hidden_size / num_attention_heads)
-        self.all_head_size = self.num_attention_heads * self.attention_head_size
-
-        self.query = nn.Linear(hidden_size, self.all_head_size, bias=qkv_bias)
-        self.key = nn.Linear(hidden_size, self.all_head_size, bias=qkv_bias)
-        self.value = nn.Linear(hidden_size, self.all_head_size, bias=qkv_bias)
-        self.dropout = nn.Dropout(attn_dropout)
-
-    def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
-        x = x.view(new_x_shape)
-        return x.permute(0, 2, 1, 3)
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        mixed_query_layer = self.query(hidden_states)
-        key_layer = self.transpose_for_scores(self.key(hidden_states))
-        value_layer = self.transpose_for_scores(self.value(hidden_states))
-        query_layer = self.transpose_for_scores(mixed_query_layer)
-
-        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-        attention_scores = attention_scores / (self.attention_head_size**0.5)
-        attention_probs = torch.softmax(attention_scores, dim=-1)
-        attention_probs = self.dropout(attention_probs)
-
-        context_layer = torch.matmul(attention_probs, value_layer)
-        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-        context_layer = context_layer.view(new_context_layer_shape)
-        return context_layer
-
-
-class ViTMAESelfOutput(nn.Module):
-    def __init__(self, hidden_size: int, hidden_dropout_prob: float = 0.0):
-        super().__init__()
-        self.dense = nn.Linear(hidden_size, hidden_size)
-        self.dropout = nn.Dropout(hidden_dropout_prob)
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.dense(hidden_states)
-        hidden_states = self.dropout(hidden_states)
-        return hidden_states
-
-
-class ViTMAEAttention(nn.Module):
-    def __init__(self, hidden_size: int, num_attention_heads: int, qkv_bias: bool = True, attn_dropout: float = 0.0):
-        super().__init__()
-        self.attention = ViTMAESelfAttention(
-            hidden_size=hidden_size,
-            num_attention_heads=num_attention_heads,
-            qkv_bias=qkv_bias,
-            attn_dropout=attn_dropout,
+        self.attention = Attention(
+            query_dim=hidden_size,
+            heads=num_attention_heads,
+            dim_head=hidden_size // num_attention_heads,
+            dropout=attn_dropout,
+            bias=qkv_bias,
         )
-        self.output = ViTMAESelfOutput(hidden_size=hidden_size)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        attn_output = self.attention(hidden_states)
-        attn_output = self.output(attn_output)
-        return attn_output
+        return self.attention(hidden_states)
 
 
 class ViTMAEIntermediate(nn.Module):
@@ -456,7 +439,9 @@ class RAEDecoder(nn.Module):
         return RAEDecoderOutput(logits=logits)
 
 
-class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin):
+class AutoencoderRAE(
+    ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin
+):
     r"""
     Representation Autoencoder (RAE) model for encoding images to latents and decoding latents to images.
 
@@ -688,11 +673,24 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
         latents_std = self._latents_std.to(device=z.device, dtype=z.dtype) if self._latents_std is not None else 1
         return z * (latents_std + 1e-5) + latents_mean
 
+    def _encode_tokens(self, x: torch.Tensor, *, requires_grad: bool) -> torch.Tensor:
+        # Keep compatibility with custom registered encoders that may not accept `requires_grad`.
+        try:
+            return self.encoder(x, requires_grad=requires_grad)
+        except TypeError:
+            if requires_grad:
+                logger.warning(
+                    "Encoder class `%s` does not accept `requires_grad`; falling back to default forward for "
+                    "encoder loss computation.",
+                    self.encoder.__class__.__name__,
+                )
+            return self.encoder(x)
+
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         x = self._maybe_resize_and_normalize(x)
 
-        # Encoder is frozen; many encoders already run under no_grad
-        tokens = self.encoder(x)  # (B, N, C)
+        # Encoder is frozen by default for latent extraction.
+        tokens = self._encode_tokens(x, requires_grad=False)  # (B, N, C)
 
         if self.training and self.noise_tau > 0:
             tokens = self._noising(tokens)
@@ -713,6 +711,29 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
             z = z * self.config.scaling_factor
 
         return z
+
+    def _compute_reconstruction_loss(
+        self, reconstructed: torch.Tensor, target: torch.Tensor, reconstruction_loss_type: str = "l1"
+    ) -> torch.Tensor:
+        if reconstructed.shape[-2:] != target.shape[-2:]:
+            target = F.interpolate(
+                target,
+                size=reconstructed.shape[-2:],
+                mode="bicubic",
+                align_corners=False,
+            )
+        if reconstruction_loss_type == "l1":
+            return F.l1_loss(reconstructed.float(), target.float())
+        if reconstruction_loss_type == "mse":
+            return F.mse_loss(reconstructed.float(), target.float())
+        raise ValueError(
+            f"Unsupported reconstruction_loss_type='{reconstruction_loss_type}'. Expected one of ['l1', 'mse']."
+        )
+
+    def _compute_encoder_feature_loss(self, reconstructed: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        target_tokens = self._encode_tokens(self._maybe_resize_and_normalize(target), requires_grad=False).detach()
+        reconstructed_tokens = self._encode_tokens(self._maybe_resize_and_normalize(reconstructed), requires_grad=True)
+        return F.mse_loss(reconstructed_tokens.float(), target_tokens.float())
 
     @apply_forward_hook
     def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[EncoderOutput, Tuple[torch.Tensor]]:
@@ -754,9 +775,33 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
             return (decoded,)
         return DecoderOutput(sample=decoded)
 
-    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    def forward(
+        self,
+        sample: torch.Tensor,
+        return_dict: bool = True,
+        return_loss: bool = False,
+        reconstruction_loss_type: str = "l1",
+        encoder_loss_weight: float = 0.0,
+    ) -> Union[DecoderOutput, AutoencoderRAELossOutput, Tuple[torch.Tensor]]:
         latents = self.encode(sample, return_dict=False)[0]
         decoded = self.decode(latents, return_dict=False)[0]
+        if return_loss:
+            reconstruction_loss = self._compute_reconstruction_loss(
+                decoded, sample, reconstruction_loss_type=reconstruction_loss_type
+            )
+            encoder_loss = torch.zeros_like(reconstruction_loss)
+            if self.use_encoder_loss and encoder_loss_weight > 0:
+                encoder_loss = self._compute_encoder_feature_loss(decoded, sample)
+            total_loss = reconstruction_loss + float(encoder_loss_weight) * encoder_loss
+
+            if not return_dict:
+                return (decoded, total_loss, reconstruction_loss, encoder_loss)
+            return AutoencoderRAELossOutput(
+                sample=decoded,
+                loss=total_loss,
+                reconstruction_loss=reconstruction_loss,
+                encoder_loss=encoder_loss,
+            )
         if not return_dict:
             return (decoded,)
         return DecoderOutput(sample=decoded)

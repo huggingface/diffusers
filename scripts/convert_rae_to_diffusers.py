@@ -99,6 +99,27 @@ def unwrap_state_dict(maybe_wrapped: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def remap_decoder_attention_keys_for_diffusers(state_dict: dict[str, Any]) -> dict[str, Any]:
+    """
+    Map official RAE decoder attention key layout to diffusers Attention layout used by AutoencoderRAE decoder.
+
+    Example mappings:
+    - `...attention.attention.query.*` -> `...attention.attention.to_q.*`
+    - `...attention.attention.key.*`   -> `...attention.attention.to_k.*`
+    - `...attention.attention.value.*` -> `...attention.attention.to_v.*`
+    - `...attention.output.dense.*`    -> `...attention.attention.to_out.0.*`
+    """
+    remapped: dict[str, Any] = {}
+    for key, value in state_dict.items():
+        new_key = key
+        new_key = new_key.replace(".attention.attention.query.", ".attention.attention.to_q.")
+        new_key = new_key.replace(".attention.attention.key.", ".attention.attention.to_k.")
+        new_key = new_key.replace(".attention.attention.value.", ".attention.attention.to_v.")
+        new_key = new_key.replace(".attention.output.dense.", ".attention.attention.to_out.0.")
+        remapped[new_key] = value
+    return remapped
+
+
 def resolve_decoder_file(
     accessor: RepoAccessor, encoder_cls: str, variant: str, decoder_checkpoint: str | None
 ) -> str:
@@ -179,6 +200,7 @@ def convert(args: argparse.Namespace) -> None:
     decoder_path = accessor.fetch(decoder_relpath)
     decoder_obj = torch.load(decoder_path, map_location="cpu")
     decoder_state_dict = unwrap_state_dict(decoder_obj)
+    decoder_state_dict = remap_decoder_attention_keys_for_diffusers(decoder_state_dict)
 
     latents_mean, latents_std = None, None
     if stats_relpath is not None:
