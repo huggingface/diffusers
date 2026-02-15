@@ -13,23 +13,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+from typing import Any
 
+import pytest
 import torch
 
 from diffusers import FluxTransformer2DModel
-from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
 from diffusers.models.embeddings import ImageProjection
+from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, is_peft_available, torch_device
-from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTesterMixin, TorchCompileTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    BitsAndBytesCompileTesterMixin,
+    BitsAndBytesTesterMixin,
+    ContextParallelTesterMixin,
+    FasterCacheTesterMixin,
+    FirstBlockCacheTesterMixin,
+    GGUFCompileTesterMixin,
+    GGUFTesterMixin,
+    IPAdapterTesterMixin,
+    LoraHotSwappingForModelTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    ModelOptCompileTesterMixin,
+    ModelOptTesterMixin,
+    ModelTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    QuantoCompileTesterMixin,
+    QuantoTesterMixin,
+    SingleFileTesterMixin,
+    TorchAoCompileTesterMixin,
+    TorchAoTesterMixin,
+    TorchCompileTesterMixin,
+    TrainingTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-def create_flux_ip_adapter_state_dict(model):
-    # "ip_adapter" (cross-attention weights)
+# TODO: This standalone function maintains backward compatibility with pipeline tests
+# (tests/pipelines/test_pipelines_common.py) and will be refactored.
+def create_flux_ip_adapter_state_dict(model) -> dict[str, dict[str, Any]]:
+    """Create a dummy IP Adapter state dict for Flux transformer testing."""
     ip_cross_attn_state_dict = {}
     key_id = 0
 
@@ -39,7 +68,7 @@ def create_flux_ip_adapter_state_dict(model):
 
         joint_attention_dim = model.config["joint_attention_dim"]
         hidden_size = model.config["num_attention_heads"] * model.config["attention_head_dim"]
-        sd = FluxIPAdapterJointAttnProcessor2_0(
+        sd = FluxIPAdapterAttnProcessor(
             hidden_size=hidden_size, cross_attention_dim=joint_attention_dim, scale=1.0
         ).state_dict()
         ip_cross_attn_state_dict.update(
@@ -50,10 +79,7 @@ def create_flux_ip_adapter_state_dict(model):
                 f"{key_id}.to_v_ip.bias": sd["to_v_ip.0.bias"],
             }
         )
-
         key_id += 1
-
-    # "image_proj" (ImageProjection layer weights)
 
     image_projection = ImageProjection(
         cross_attention_dim=model.config["joint_attention_dim"],
@@ -75,57 +101,45 @@ def create_flux_ip_adapter_state_dict(model):
     )
 
     del sd
-    ip_state_dict = {}
-    ip_state_dict.update({"image_proj": ip_image_projection_state_dict, "ip_adapter": ip_cross_attn_state_dict})
-    return ip_state_dict
+    return {"image_proj": ip_image_projection_state_dict, "ip_adapter": ip_cross_attn_state_dict}
 
 
-class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = FluxTransformer2DModel
-    main_input_name = "hidden_states"
-    # We override the items here because the transformer under consideration is small.
-    model_split_percents = [0.7, 0.6, 0.6]
-
-    # Skip setting testing with default: AttnProcessor
-    uses_custom_attn_processor = True
+class FluxTransformerTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return FluxTransformer2DModel
 
     @property
-    def dummy_input(self):
-        return self.prepare_dummy_input()
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-flux-pipe"
 
     @property
-    def input_shape(self):
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    @property
+    def output_shape(self) -> tuple[int, int]:
         return (16, 4)
 
     @property
-    def output_shape(self):
+    def input_shape(self) -> tuple[int, int]:
         return (16, 4)
 
-    def prepare_dummy_input(self, height=4, width=4):
-        batch_size = 1
-        num_latent_channels = 4
-        num_image_channels = 3
-        sequence_length = 48
-        embedding_dim = 32
+    @property
+    def model_split_percents(self) -> list:
+        return [0.9]
 
-        hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(torch_device)
-        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
-        pooled_prompt_embeds = torch.randn((batch_size, embedding_dim)).to(torch_device)
-        text_ids = torch.randn((sequence_length, num_image_channels)).to(torch_device)
-        image_ids = torch.randn((height * width, num_image_channels)).to(torch_device)
-        timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
+    @property
+    def main_input_name(self) -> str:
+        return "hidden_states"
 
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict[str, int | list[int]]:
+        """Return Flux model initialization arguments."""
         return {
-            "hidden_states": hidden_states,
-            "encoder_hidden_states": encoder_hidden_states,
-            "img_ids": image_ids,
-            "txt_ids": text_ids,
-            "pooled_projections": pooled_prompt_embeds,
-            "timestep": timestep,
-        }
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
             "patch_size": 1,
             "in_channels": 4,
             "num_layers": 1,
@@ -137,11 +151,40 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
             "axes_dims_rope": [4, 4, 8],
         }
 
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        batch_size = 1
+        height = width = 4
+        num_latent_channels = 4
+        num_image_channels = 3
+        sequence_length = 48
+        embedding_dim = 32
 
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+            ),
+            "pooled_projections": randn_tensor(
+                (batch_size, embedding_dim), generator=self.generator, device=torch_device
+            ),
+            "img_ids": randn_tensor(
+                (height * width, num_image_channels), generator=self.generator, device=torch_device
+            ),
+            "txt_ids": randn_tensor(
+                (sequence_length, num_image_channels), generator=self.generator, device=torch_device
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
+        }
+
+
+class TestFluxTransformer(FluxTransformerTesterConfig, ModelTesterMixin):
     def test_deprecated_inputs_img_txt_ids_3d(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        """Test that deprecated 3D img_ids and txt_ids still work."""
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
@@ -162,63 +205,228 @@ class FluxTransformerTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             output_2 = model(**inputs_dict).to_tuple()[0]
 
-        self.assertEqual(output_1.shape, output_2.shape)
-        self.assertTrue(
-            torch.allclose(output_1, output_2, atol=1e-5),
-            msg="output with deprecated inputs (img_ids and txt_ids as 3d torch tensors) are not equal as them as 2d inputs",
+        assert output_1.shape == output_2.shape
+        assert torch.allclose(output_1, output_2, atol=1e-5), (
+            "output with deprecated inputs (img_ids and txt_ids as 3d torch tensors) "
+            "are not equal as them as 2d inputs"
         )
 
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"FluxTransformer2DModel"}
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    # The test exists for cases like
-    # https://github.com/huggingface/diffusers/issues/11874
-    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_lora_exclude_modules(self):
-        from peft import LoraConfig, get_peft_model_state_dict, inject_adapter_in_model, set_peft_model_state_dict
+class TestFluxTransformerMemory(FluxTransformerTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for Flux Transformer."""
 
-        lora_rank = 4
-        target_module = "single_transformer_blocks.0.proj_out"
-        adapter_name = "foo"
-        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict).to(torch_device)
 
-        state_dict = model.state_dict()
-        target_mod_shape = state_dict[f"{target_module}.weight"].shape
-        lora_state_dict = {
-            f"{target_module}.lora_A.weight": torch.ones(lora_rank, target_mod_shape[1]) * 22,
-            f"{target_module}.lora_B.weight": torch.ones(target_mod_shape[0], lora_rank) * 33,
+class TestFluxTransformerTraining(FluxTransformerTesterConfig, TrainingTesterMixin):
+    """Training tests for Flux Transformer."""
+
+
+class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for Flux Transformer."""
+
+
+class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):
+    """Context Parallel inference tests for Flux Transformer"""
+
+
+class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterMixin):
+    """IP Adapter tests for Flux Transformer."""
+
+    @property
+    def ip_adapter_processor_cls(self):
+        return FluxIPAdapterAttnProcessor
+
+    def modify_inputs_for_ip_adapter(self, model, inputs_dict):
+        torch.manual_seed(0)
+        # Create dummy image embeds for IP adapter
+        cross_attention_dim = getattr(model.config, "joint_attention_dim", 32)
+        image_embeds = torch.randn(1, 1, cross_attention_dim).to(torch_device)
+
+        inputs_dict.update({"joint_attention_kwargs": {"ip_adapter_image_embeds": image_embeds}})
+
+        return inputs_dict
+
+    def create_ip_adapter_state_dict(self, model: Any) -> dict[str, dict[str, Any]]:
+        return create_flux_ip_adapter_state_dict(model)
+
+
+class TestFluxTransformerLoRA(FluxTransformerTesterConfig, LoraTesterMixin):
+    """LoRA adapter tests for Flux Transformer."""
+
+
+class TestFluxTransformerLoRAHotSwap(FluxTransformerTesterConfig, LoraHotSwappingForModelTesterMixin):
+    """LoRA hot-swapping tests for Flux Transformer."""
+
+    @property
+    def different_shapes_for_compilation(self):
+        return [(4, 4), (4, 8), (8, 8)]
+
+    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
+        """Override to support dynamic height/width for LoRA hotswap tests."""
+        batch_size = 1
+        num_latent_channels = 4
+        num_image_channels = 3
+        sequence_length = 24
+        embedding_dim = 32
+
+        return {
+            "hidden_states": randn_tensor((batch_size, height * width, num_latent_channels), device=torch_device),
+            "encoder_hidden_states": randn_tensor((batch_size, sequence_length, embedding_dim), device=torch_device),
+            "pooled_projections": randn_tensor((batch_size, embedding_dim), device=torch_device),
+            "img_ids": randn_tensor((height * width, num_image_channels), device=torch_device),
+            "txt_ids": randn_tensor((sequence_length, num_image_channels), device=torch_device),
+            "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
         }
-        # Passing exclude_modules should no longer be necessary (or even passing target_modules, for that matter).
-        config = LoraConfig(
-            r=lora_rank, target_modules=["single_transformer_blocks.0.proj_out"], exclude_modules=["proj_out"]
-        )
-        inject_adapter_in_model(config, model, adapter_name=adapter_name, state_dict=lora_state_dict)
-        set_peft_model_state_dict(model, lora_state_dict, adapter_name)
-        retrieved_lora_state_dict = get_peft_model_state_dict(model, adapter_name=adapter_name)
-        assert len(retrieved_lora_state_dict) == len(lora_state_dict)
-        assert (retrieved_lora_state_dict["single_transformer_blocks.0.proj_out.lora_A.weight"] == 22).all()
-        assert (retrieved_lora_state_dict["single_transformer_blocks.0.proj_out.lora_B.weight"] == 33).all()
 
 
-class FluxTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = FluxTransformer2DModel
-    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
+class TestFluxTransformerCompile(FluxTransformerTesterConfig, TorchCompileTesterMixin):
+    @property
+    def different_shapes_for_compilation(self):
+        return [(4, 4), (4, 8), (8, 8)]
 
-    def prepare_init_args_and_inputs_for_common(self):
-        return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
+        """Override to support dynamic height/width for compilation tests."""
+        batch_size = 1
+        num_latent_channels = 4
+        num_image_channels = 3
+        sequence_length = 24
+        embedding_dim = 32
 
-    def prepare_dummy_input(self, height, width):
-        return FluxTransformerTests().prepare_dummy_input(height=height, width=width)
+        return {
+            "hidden_states": randn_tensor((batch_size, height * width, num_latent_channels), device=torch_device),
+            "encoder_hidden_states": randn_tensor((batch_size, sequence_length, embedding_dim), device=torch_device),
+            "pooled_projections": randn_tensor((batch_size, embedding_dim), device=torch_device),
+            "img_ids": randn_tensor((height * width, num_image_channels), device=torch_device),
+            "txt_ids": randn_tensor((sequence_length, num_image_channels), device=torch_device),
+            "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
+        }
 
 
-class FluxTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
-    model_class = FluxTransformer2DModel
-    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
+class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors"
 
-    def prepare_init_args_and_inputs_for_common(self):
-        return FluxTransformerTests().prepare_init_args_and_inputs_for_common()
+    @property
+    def alternate_ckpt_paths(self):
+        return ["https://huggingface.co/Comfy-Org/flux1-dev/blob/main/flux1-dev-fp8.safetensors"]
 
-    def prepare_dummy_input(self, height, width):
-        return FluxTransformerTests().prepare_dummy_input(height=height, width=width)
+    @property
+    def pretrained_model_name_or_path(self):
+        return "black-forest-labs/FLUX.1-dev"
+
+
+class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
+    """BitsAndBytes quantization tests for Flux Transformer."""
+
+
+class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
+    """Quanto quantization tests for Flux Transformer."""
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-flux-transformer"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {}
+
+
+class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
+    """TorchAO quantization tests for Flux Transformer."""
+
+
+class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
+    @property
+    def gguf_filename(self):
+        return "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the real FLUX model dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 4096, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "pooled_projections": randn_tensor(
+                (1, 768), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+            "img_ids": randn_tensor((4096, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
+            "txt_ids": randn_tensor((512, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
+            "guidance": torch.tensor([3.5]).to(torch_device, self.torch_dtype),
+        }
+
+
+class TestFluxTransformerQuantoCompile(FluxTransformerTesterConfig, QuantoCompileTesterMixin):
+    """Quanto + compile tests for Flux Transformer."""
+
+
+class TestFluxTransformerTorchAoCompile(FluxTransformerTesterConfig, TorchAoCompileTesterMixin):
+    """TorchAO + compile tests for Flux Transformer."""
+
+
+class TestFluxTransformerGGUFCompile(FluxTransformerTesterConfig, GGUFCompileTesterMixin):
+    @property
+    def gguf_filename(self):
+        return "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the real FLUX model dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 4096, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "pooled_projections": randn_tensor(
+                (1, 768), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
+            "img_ids": randn_tensor((4096, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
+            "txt_ids": randn_tensor((512, 3), generator=self.generator, device=torch_device, dtype=self.torch_dtype),
+            "guidance": torch.tensor([3.5]).to(torch_device, self.torch_dtype),
+        }
+
+
+class TestFluxTransformerModelOpt(FluxTransformerTesterConfig, ModelOptTesterMixin):
+    """ModelOpt quantization tests for Flux Transformer."""
+
+
+class TestFluxTransformerModelOptCompile(FluxTransformerTesterConfig, ModelOptCompileTesterMixin):
+    """ModelOpt + compile tests for Flux Transformer."""
+
+
+@pytest.mark.skip(reason="torch.compile is not supported by BitsAndBytes")
+class TestFluxTransformerBitsAndBytesCompile(FluxTransformerTesterConfig, BitsAndBytesCompileTesterMixin):
+    """BitsAndBytes + compile tests for Flux Transformer."""
+
+
+class TestFluxTransformerPABCache(FluxTransformerTesterConfig, PyramidAttentionBroadcastTesterMixin):
+    """PyramidAttentionBroadcast cache tests for Flux Transformer."""
+
+
+class TestFluxTransformerFBCCache(FluxTransformerTesterConfig, FirstBlockCacheTesterMixin):
+    """FirstBlockCache tests for Flux Transformer."""
+
+
+class TestFluxTransformerFasterCache(FluxTransformerTesterConfig, FasterCacheTesterMixin):
+    """FasterCache tests for Flux Transformer."""
+
+    # Flux is guidance distilled, so we can test at model level without CFG batch handling
+    FASTER_CACHE_CONFIG = {
+        "spatial_attention_block_skip_range": 2,
+        "spatial_attention_timestep_skip_range": (-1, 901),
+        "tensor_format": "BCHW",
+        "is_guidance_distilled": True,
+    }

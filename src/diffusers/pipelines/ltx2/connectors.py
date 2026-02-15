@@ -1,5 +1,3 @@
-from typing import Optional, Tuple, Union
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,8 +38,8 @@ class LTX2RotaryPosEmbed1d(nn.Module):
         self,
         batch_size: int,
         pos: int,
-        device: Union[str, torch.device],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        device: str | torch.device,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # 1. Get 1D position ids
         grid_1d = torch.arange(pos, dtype=torch.float32, device=device)
         # Get fractional indices relative to self.base_seq_len
@@ -127,8 +125,8 @@ class LTX2TransformerBlock1d(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         norm_hidden_states = self.norm1(hidden_states)
         attn_hidden_states = self.attn1(norm_hidden_states, attention_mask=attention_mask, query_rotary_emb=rotary_emb)
@@ -202,9 +200,9 @@ class LTX2ConnectorTransformer1d(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
         attn_mask_binarize_threshold: float = -9000.0,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # hidden_states shape: [batch_size, seq_len, hidden_dim]
         # attention_mask shape: [batch_size, seq_len] or [batch_size, 1, 1, seq_len]
         batch_size, seq_len, _ = hidden_states.shape

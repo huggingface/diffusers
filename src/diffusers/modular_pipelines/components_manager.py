@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import copy
 import time
 from collections import OrderedDict
 from itertools import combinations
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import torch
 
@@ -53,9 +55,9 @@ class CustomOffloadHook(ModelHook):
 
     def __init__(
         self,
-        execution_device: Optional[Union[str, int, torch.device]] = None,
-        other_hooks: Optional[List["UserCustomOffloadHook"]] = None,
-        offload_strategy: Optional["AutoOffloadStrategy"] = None,
+        execution_device: str | int | torch.device | None = None,
+        other_hooks: list["UserCustomOffloadHook"] | None = None,
+        offload_strategy: "AutoOffloadStrategy" | None = None,
     ):
         self.execution_device = execution_device if execution_device is not None else PartialState().default_device
         self.other_hooks = other_hooks
@@ -135,8 +137,8 @@ class UserCustomOffloadHook:
 def custom_offload_with_hook(
     model_id: str,
     model: torch.nn.Module,
-    execution_device: Union[str, int, torch.device] = None,
-    offload_strategy: Optional["AutoOffloadStrategy"] = None,
+    execution_device: str | int | torch.device = None,
+    offload_strategy: "AutoOffloadStrategy" | None = None,
 ):
     hook = CustomOffloadHook(execution_device=execution_device, offload_strategy=offload_strategy)
     user_hook = UserCustomOffloadHook(model_id=model_id, model=model, hook=hook)
@@ -226,7 +228,7 @@ class AutoOffloadStrategy:
 
 # utils for display component info in a readable format
 # TODO: move to a different file
-def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
+def summarize_dict_by_value_and_parts(d: dict[str, Any]) -> dict[str, Any]:
     """Summarizes a dictionary by finding common prefixes that share the same value.
 
     For a dictionary with dot-separated keys like: {
@@ -247,7 +249,7 @@ def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
             value_to_keys[value_tuple] = []
         value_to_keys[value_tuple].append(key)
 
-    def find_common_prefix(keys: List[str]) -> str:
+    def find_common_prefix(keys: list[str]) -> str:
         """Find the shortest common prefix among a list of dot-separated keys."""
         if not keys:
             return ""
@@ -324,6 +326,7 @@ class ComponentsManager:
         "has_hook",
         "execution_device",
         "ip_adapter",
+        "quantization",
     ]
 
     def __init__(self):
@@ -336,10 +339,10 @@ class ComponentsManager:
 
     def _lookup_ids(
         self,
-        name: Optional[str] = None,
-        collection: Optional[str] = None,
-        load_id: Optional[str] = None,
-        components: Optional[OrderedDict] = None,
+        name: str | None = None,
+        collection: str | None = None,
+        load_id: str | None = None,
+        components: OrderedDict | None = None,
     ):
         """
         Lookup component_ids by name, collection, or load_id. Does not support pattern matching. Returns a set of
@@ -356,7 +359,9 @@ class ComponentsManager:
                     ids_by_name.add(component_id)
         else:
             ids_by_name = set(components.keys())
-        if collection:
+        if collection and collection not in self.collections:
+            return set()
+        elif collection and collection in self.collections:
             ids_by_collection = set()
             for component_id, component in components.items():
                 if component_id in self.collections[collection]:
@@ -378,14 +383,14 @@ class ComponentsManager:
     def _id_to_name(component_id: str):
         return "_".join(component_id.split("_")[:-1])
 
-    def add(self, name: str, component: Any, collection: Optional[str] = None):
+    def add(self, name: str, component: Any, collection: str | None = None):
         """
         Add a component to the ComponentsManager.
 
         Args:
             name (str): The name of the component
             component (Any): The component to add
-            collection (Optional[str]): The collection to add the component to
+            collection (str | None): The collection to add the component to
 
         Returns:
             str: The unique component ID, which is generated as "{name}_{id(component)}" where
@@ -423,7 +428,8 @@ class ComponentsManager:
 
         # add component to components manager
         self.components[component_id] = component
-        self.added_time[component_id] = time.time()
+        if is_new_component:
+            self.added_time[component_id] = time.time()
 
         if collection:
             if collection not in self.collections:
@@ -502,9 +508,9 @@ class ComponentsManager:
     # YiYi TODO: rename to search_components for now, may remove this method
     def search_components(
         self,
-        names: Optional[str] = None,
-        collection: Optional[str] = None,
-        load_id: Optional[str] = None,
+        names: str | None = None,
+        collection: str | None = None,
+        load_id: str | None = None,
         return_dict_with_names: bool = True,
     ):
         """
@@ -686,7 +692,7 @@ class ComponentsManager:
 
         return get_return_dict(matches, return_dict_with_names)
 
-    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device] = None, memory_reserve_margin="3GB"):
+    def enable_auto_cpu_offload(self, device: str | int | torch.device = None, memory_reserve_margin="3GB"):
         """
         Enable automatic CPU offloading for all components.
 
@@ -698,7 +704,7 @@ class ComponentsManager:
         5. Models stay on the execution device until another model needs memory and forces them off
 
         Args:
-            device (Union[str, int, torch.device]): The execution device where models are moved for forward passes
+            device (str | int | torch.device): The execution device where models are moved for forward passes
             memory_reserve_margin (str): The memory reserve margin to use, default is 3GB. This is the amount of
                                         memory to keep free on the device to avoid running out of memory during model
                                         execution (e.g., for intermediate activations, gradients, etc.)
@@ -760,17 +766,16 @@ class ComponentsManager:
         self.model_hooks = None
         self._auto_offload_enabled = False
 
-    # YiYi TODO: (1) add quantization info
     def get_model_info(
         self,
         component_id: str,
-        fields: Optional[Union[str, List[str]]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        fields: str | list[str] | None = None,
+    ) -> dict[str, Any] | None:
         """Get comprehensive information about a component.
 
         Args:
             component_id (str): Name of the component to get info for
-            fields (Optional[Union[str, List[str]]]):
+            fields (str | list[str] | None):
                    Field(s) to return. Can be a string for single field or list of fields. If None, uses the
                    available_info_fields setting.
 
@@ -835,6 +840,17 @@ class ComponentsManager:
                     }
                     if scales:
                         info["ip_adapter"] = summarize_dict_by_value_and_parts(scales)
+
+            # Check for quantization
+            hf_quantizer = getattr(component, "hf_quantizer", None)
+            if hf_quantizer is not None:
+                quant_config = hf_quantizer.quantization_config
+                if hasattr(quant_config, "to_diff_dict"):
+                    info["quantization"] = quant_config.to_diff_dict()
+                else:
+                    info["quantization"] = quant_config.to_dict()
+            else:
+                info["quantization"] = None
 
         # If fields specified, filter info
         if fields is not None:
@@ -966,21 +982,25 @@ class ComponentsManager:
         output += "\nAdditional Component Info:\n" + "=" * 50 + "\n"
         for name in self.components:
             info = self.get_model_info(name)
-            if info is not None and (info.get("adapters") is not None or info.get("ip_adapter")):
+            if info is not None and (
+                info.get("adapters") is not None or info.get("ip_adapter") or info.get("quantization")
+            ):
                 output += f"\n{name}:\n"
                 if info.get("adapters") is not None:
                     output += f"  Adapters: {info['adapters']}\n"
                 if info.get("ip_adapter"):
                     output += "  IP-Adapter: Enabled\n"
+                if info.get("quantization"):
+                    output += f"  Quantization: {info['quantization']}\n"
 
         return output
 
     def get_one(
         self,
-        component_id: Optional[str] = None,
-        name: Optional[str] = None,
-        collection: Optional[str] = None,
-        load_id: Optional[str] = None,
+        component_id: str | None = None,
+        name: str | None = None,
+        collection: str | None = None,
+        load_id: str | None = None,
     ) -> Any:
         """
         Get a single component by either:
@@ -989,10 +1009,10 @@ class ComponentsManager:
         Raises an error if multiple components match or none are found.
 
         Args:
-            component_id (Optional[str]): Optional component ID to get
-            name (Optional[str]): Component name or pattern
-            collection (Optional[str]): Optional collection to filter by
-            load_id (Optional[str]): Optional load_id to filter by
+            component_id (str | None): Optional component ID to get
+            name (str | None): Component name or pattern
+            collection (str | None): Optional collection to filter by
+            load_id (str | None): Optional load_id to filter by
 
         Returns:
             A single component
@@ -1020,16 +1040,16 @@ class ComponentsManager:
 
         return next(iter(results.values()))
 
-    def get_ids(self, names: Union[str, List[str]] = None, collection: Optional[str] = None):
+    def get_ids(self, names: str | list[str] = None, collection: str | None = None):
         """
         Get component IDs by a list of names, optionally filtered by collection.
 
         Args:
-            names (Union[str, List[str]]): List of component names
-            collection (Optional[str]): Optional collection to filter by
+            names (str | list[str]): list of component names
+            collection (str | None): Optional collection to filter by
 
         Returns:
-            List[str]: List of component IDs
+            list[str]: list of component IDs
         """
         ids = set()
         if not isinstance(names, list):
@@ -1038,18 +1058,18 @@ class ComponentsManager:
             ids.update(self._lookup_ids(name=name, collection=collection))
         return list(ids)
 
-    def get_components_by_ids(self, ids: List[str], return_dict_with_names: Optional[bool] = True):
+    def get_components_by_ids(self, ids: list[str], return_dict_with_names: bool | None = True):
         """
         Get components by a list of IDs.
 
         Args:
-            ids (List[str]):
-                List of component IDs
-            return_dict_with_names (Optional[bool]):
+            ids (list[str]):
+                list of component IDs
+            return_dict_with_names (bool | None):
                 Whether to return a dictionary with component names as keys:
 
         Returns:
-            Dict[str, Any]: Dictionary of components.
+            dict[str, Any]: Dictionary of components.
                 - If return_dict_with_names=True, keys are component names.
                 - If return_dict_with_names=False, keys are component IDs.
 
@@ -1071,16 +1091,16 @@ class ComponentsManager:
         else:
             return components
 
-    def get_components_by_names(self, names: List[str], collection: Optional[str] = None):
+    def get_components_by_names(self, names: list[str], collection: str | None = None):
         """
         Get components by a list of names, optionally filtered by collection.
 
         Args:
-            names (List[str]): List of component names
-            collection (Optional[str]): Optional collection to filter by
+            names (list[str]): list of component names
+            collection (str | None): Optional collection to filter by
 
         Returns:
-            Dict[str, Any]: Dictionary of components with component names as keys
+            dict[str, Any]: Dictionary of components with component names as keys
 
         Raises:
             ValueError: If duplicate component names are found in the search results
