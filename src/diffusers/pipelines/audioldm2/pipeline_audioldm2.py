@@ -324,17 +324,28 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             `inputs_embeds (`torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`):
                 The sequence of generated hidden-states.
         """
-        cache_position_kwargs = {}
-        if is_transformers_version("<", "4.52.1"):
-            cache_position_kwargs["input_ids"] = inputs_embeds
+        max_new_tokens = max_new_tokens if max_new_tokens is not None else self.language_model.config.max_new_tokens
+
+        has_generation_mixin = hasattr(self.language_model, "_get_initial_cache_position")
+
+        if has_generation_mixin:
+            cache_position_kwargs = {}
+            if is_transformers_version("<", "4.52.1"):
+                cache_position_kwargs["input_ids"] = inputs_embeds
+            else:
+                cache_position_kwargs["seq_length"] = inputs_embeds.shape[0]
+                cache_position_kwargs["device"] = (
+                    self.language_model.device if getattr(self, "language_model", None) is not None else self.device
+                )
+            cache_position_kwargs["model_kwargs"] = model_kwargs
+            model_kwargs = self.language_model._get_initial_cache_position(**cache_position_kwargs)
         else:
-            cache_position_kwargs["seq_length"] = inputs_embeds.shape[0]
-            cache_position_kwargs["device"] = (
+            # Fallback for models without GenerationMixin (e.g. GPT2Model instead of GPT2LMHeadModel).
+            # Set initial cache_position as a simple arange over the input sequence length.
+            device = (
                 self.language_model.device if getattr(self, "language_model", None) is not None else self.device
             )
-        cache_position_kwargs["model_kwargs"] = model_kwargs
-        max_new_tokens = max_new_tokens if max_new_tokens is not None else self.language_model.config.max_new_tokens
-        model_kwargs = self.language_model._get_initial_cache_position(**cache_position_kwargs)
+            model_kwargs["cache_position"] = torch.arange(inputs_embeds.shape[1], device=device)
 
         for _ in range(max_new_tokens):
             # prepare model inputs
@@ -349,7 +360,18 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             inputs_embeds = torch.cat([inputs_embeds, next_hidden_states[:, -1:, :]], dim=1)
 
             # Update generated hidden states, model inputs, and length for next step
-            model_kwargs = self.language_model._update_model_kwargs_for_generation(output, model_kwargs)
+            if has_generation_mixin:
+                model_kwargs = self.language_model._update_model_kwargs_for_generation(output, model_kwargs)
+            else:
+                # Fallback: manually update past_key_values, attention_mask, and cache_position.
+                if hasattr(output, "past_key_values") and output.past_key_values is not None:
+                    model_kwargs["past_key_values"] = output.past_key_values
+                if "attention_mask" in model_kwargs and model_kwargs["attention_mask"] is not None:
+                    attention_mask = model_kwargs["attention_mask"]
+                    model_kwargs["attention_mask"] = torch.cat(
+                        [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
+                    )
+                model_kwargs["cache_position"] = model_kwargs["cache_position"][-1:] + 1
 
         return inputs_embeds[:, -max_new_tokens:, :]
 
