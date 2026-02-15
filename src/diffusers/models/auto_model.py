@@ -30,9 +30,127 @@ class AutoModel(ConfigMixin):
     def __init__(self, *args, **kwargs):
         raise EnvironmentError(
             f"{self.__class__.__name__} is designed to be instantiated "
-            f"using the `{self.__class__.__name__}.from_pretrained(pretrained_model_name_or_path)` or "
+            f"using the `{self.__class__.__name__}.from_pretrained(pretrained_model_name_or_path)`, "
+            f"`{self.__class__.__name__}.from_config(config)`, or "
             f"`{self.__class__.__name__}.from_pipe(pipeline)` methods."
         )
+
+    @classmethod
+    def from_config(
+        cls, pretrained_model_name_or_path_or_dict: Optional[Union[str, os.PathLike, dict]] = None, **kwargs
+    ):
+        r"""
+        Instantiate a model from a config dictionary or a pretrained model configuration file with random weights (no
+        pretrained weights are loaded).
+
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str`, `os.PathLike`, or `dict`):
+                Can be either:
+
+                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model
+                      configuration hosted on the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing a model configuration
+                      file.
+                    - A config dictionary.
+
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model configuration, overriding the cached version if
+                it exists.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint.
+            local_files_only(`bool`, *optional*, defaults to `False`):
+                Whether to only load local model configuration files or not.
+            token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use.
+            trust_remote_code (`bool`, *optional*, defaults to `False`):
+                Whether to trust remote code.
+            subfolder (`str`, *optional*, defaults to `""`):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+
+        Returns:
+            A model object instantiated from the config with random weights.
+
+        Example:
+
+        ```py
+        from diffusers import AutoModel
+
+        model = AutoModel.from_config("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet")
+        ```
+        """
+        subfolder = kwargs.pop("subfolder", None)
+        trust_remote_code = kwargs.pop("trust_remote_code", False)
+
+        hub_kwargs_names = [
+            "cache_dir",
+            "force_download",
+            "local_files_only",
+            "proxies",
+            "revision",
+            "token",
+        ]
+        hub_kwargs = {name: kwargs.pop(name, None) for name in hub_kwargs_names}
+
+        if pretrained_model_name_or_path_or_dict is None:
+            raise ValueError(
+                "Please provide a `pretrained_model_name_or_path_or_dict` as the first positional argument."
+            )
+
+        if isinstance(pretrained_model_name_or_path_or_dict, (str, os.PathLike)):
+            pretrained_model_name_or_path = pretrained_model_name_or_path_or_dict
+            config = cls.load_config(pretrained_model_name_or_path, subfolder=subfolder, **hub_kwargs)
+        else:
+            config = pretrained_model_name_or_path_or_dict
+            pretrained_model_name_or_path = config.get("_name_or_path", None)
+
+        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
+        trust_remote_code = resolve_trust_remote_code(
+            trust_remote_code, pretrained_model_name_or_path, has_remote_code
+        )
+
+        if has_remote_code and trust_remote_code:
+            class_ref = config["auto_map"][cls.__name__]
+            module_file, class_name = class_ref.split(".")
+            module_file = module_file + ".py"
+            model_cls = get_class_from_dynamic_module(
+                pretrained_model_name_or_path,
+                subfolder=subfolder,
+                module_file=module_file,
+                class_name=class_name,
+                **hub_kwargs,
+            )
+        else:
+            if "_class_name" in config:
+                class_name = config["_class_name"]
+                library = "diffusers"
+            elif "model_type" in config:
+                class_name = "AutoModel"
+                library = "transformers"
+            else:
+                raise ValueError(
+                    f"Couldn't find a model class associated with the config: {config}. Make sure the config "
+                    "contains a `_class_name` or `model_type` key."
+                )
+
+            from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
+
+            model_cls, _ = get_class_obj_and_candidates(
+                library_name=library,
+                class_name=class_name,
+                importable_classes=ALL_IMPORTABLE_CLASSES,
+                pipelines=None,
+                is_pipeline_module=False,
+            )
+
+        if model_cls is None:
+            raise ValueError(f"AutoModel can't find a model linked to {class_name}.")
+
+        return model_cls.from_config(config, **kwargs)
 
     @classmethod
     @validate_hf_hub_args
