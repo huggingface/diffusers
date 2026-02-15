@@ -276,7 +276,7 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
 
     @property
     def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1
+        return self._guidance_scale > 0
 
     @property
     def joint_attention_kwargs(self):
@@ -335,10 +335,9 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
                 will be used.
             guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Z-Image uses the formula `pred = pos + guidance_scale * (pos - neg)`, so guidance scale is enabled
+                by setting `guidance_scale > 0`. Higher guidance scale encourages to generate images that are closely
+                linked to the text `prompt`, usually at the expense of lower image quality.
             cfg_normalization (`bool`, *optional*, defaults to False):
                 Whether to apply configuration normalization.
             cfg_truncation (`float`, *optional*, defaults to 1.0):
