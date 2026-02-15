@@ -185,25 +185,6 @@ class AutoencoderRAELossOutput(BaseOutput):
     encoder_loss: torch.Tensor
 
 
-class ViTMAEAttention(nn.Module):
-    def __init__(self, hidden_size: int, num_attention_heads: int, qkv_bias: bool = True, attn_dropout: float = 0.0):
-        super().__init__()
-        if hidden_size % num_attention_heads != 0:
-            raise ValueError(
-                f"hidden_size={hidden_size} must be divisible by num_attention_heads={num_attention_heads}"
-            )
-        self.attention = Attention(
-            query_dim=hidden_size,
-            heads=num_attention_heads,
-            dim_head=hidden_size // num_attention_heads,
-            dropout=attn_dropout,
-            bias=qkv_bias,
-        )
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        return self.attention(hidden_states)
-
-
 class ViTMAEIntermediate(nn.Module):
     def __init__(self, hidden_size: int, intermediate_size: int, hidden_act: str = "gelu"):
         super().__init__()
@@ -250,11 +231,16 @@ class ViTMAELayer(nn.Module):
         hidden_act: str = "gelu",
     ):
         super().__init__()
-        self.attention = ViTMAEAttention(
-            hidden_size=hidden_size,
-            num_attention_heads=num_attention_heads,
-            qkv_bias=qkv_bias,
-            attn_dropout=attention_probs_dropout_prob,
+        if hidden_size % num_attention_heads != 0:
+            raise ValueError(
+                f"hidden_size={hidden_size} must be divisible by num_attention_heads={num_attention_heads}"
+            )
+        self.attention = Attention(
+            query_dim=hidden_size,
+            heads=num_attention_heads,
+            dim_head=hidden_size // num_attention_heads,
+            dropout=attention_probs_dropout_prob,
+            bias=qkv_bias,
         )
         self.intermediate = ViTMAEIntermediate(
             hidden_size=hidden_size, intermediate_size=intermediate_size, hidden_act=hidden_act
