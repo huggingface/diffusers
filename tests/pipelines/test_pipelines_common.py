@@ -2065,7 +2065,16 @@ class PipelineTesterMixin:
             for component_name in model_components_pipe:
                 pipe_component = model_components_pipe[component_name]
                 pipe_loaded_component = model_components_pipe_loaded[component_name]
-                for p1, p2 in zip(pipe_component.parameters(), pipe_loaded_component.parameters()):
+
+                model_loaded_params = dict(pipe_loaded_component.named_parameters())
+                model_original_params = dict(pipe_component.named_parameters())
+
+                for name, p1 in model_original_params.items():
+                    # Skip tied weights that aren't saved with variants (transformers v5 behavior)
+                    if name not in model_loaded_params:
+                        continue
+
+                    p2 = model_loaded_params[name]
                     # nan check for luminanext (mps).
                     if not (is_nan(p1) and is_nan(p2)):
                         self.assertTrue(torch.equal(p1, p2))
