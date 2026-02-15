@@ -17,7 +17,6 @@ from math import sqrt
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,6 +26,8 @@ from ...loaders import PeftAdapterMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
 from ...utils.accelerate_utils import apply_forward_hook
+from ..activations import get_activation
+from ..embeddings import get_2d_sincos_pos_embed
 from ..modeling_utils import ModelMixin
 from .vae import AutoencoderMixin, DecoderOutput, EncoderOutput
 
@@ -138,46 +139,6 @@ class MAEEncoder(nn.Module):
         return image_features
 
 
-def _get_1d_sincos_pos_embed_from_grid(embed_dim: int, pos: np.ndarray) -> np.ndarray:
-    if embed_dim % 2 != 0:
-        raise ValueError("embed_dim must be even")
-
-    omega = np.arange(embed_dim // 2, dtype=np.float64)
-    omega /= embed_dim / 2.0
-    omega = 1.0 / (10000**omega)  # (D/2,)
-
-    pos = pos.reshape(-1)  # (M,)
-    out = np.einsum("m,d->md", pos, omega)  # (M, D/2)
-    emb_sin = np.sin(out)
-    emb_cos = np.cos(out)
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
-    return emb
-
-
-def _get_2d_sincos_pos_embed(embed_dim: int, grid_size: int, add_cls_token: bool = False) -> np.ndarray:
-    """
-    Returns:
-        pos_embed: (grid_size*grid_size, embed_dim) or (1+grid_size*grid_size, embed_dim)
-    """
-    grid_h = np.arange(grid_size, dtype=np.float64)
-    grid_w = np.arange(grid_size, dtype=np.float64)
-    grid = np.meshgrid(grid_w, grid_h)  # w first
-    grid = np.stack(grid, axis=0)  # (2, grid, grid)
-    grid = grid.reshape([2, 1, grid_size, grid_size])
-
-    if embed_dim % 2 != 0:
-        raise ValueError("embed_dim must be even")
-
-    emb_h = _get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
-    emb_w = _get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
-    pos_embed = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
-
-    if add_cls_token:
-        pos_embed = np.concatenate([np.zeros([1, embed_dim], dtype=np.float64), pos_embed], axis=0)
-
-    return pos_embed
-
-
 @dataclass
 class RAEDecoderOutput(BaseOutput):
     """
@@ -189,14 +150,6 @@ class RAEDecoderOutput(BaseOutput):
     """
 
     logits: torch.Tensor
-
-
-ACT2FN = {
-    "gelu": F.gelu,
-    "relu": F.relu,
-    "silu": F.silu,
-    "swish": F.silu,
-}
 
 
 class ViTMAESelfAttention(nn.Module):
@@ -272,9 +225,10 @@ class ViTMAEIntermediate(nn.Module):
     def __init__(self, hidden_size: int, intermediate_size: int, hidden_act: str = "gelu"):
         super().__init__()
         self.dense = nn.Linear(hidden_size, intermediate_size)
-        self.intermediate_act_fn = ACT2FN.get(hidden_act, None)
-        if self.intermediate_act_fn is None:
-            raise ValueError(f"Unsupported hidden_act={hidden_act}")
+        try:
+            self.intermediate_act_fn = get_activation(hidden_act)
+        except ValueError as e:
+            raise ValueError(f"Unsupported hidden_act={hidden_act}") from e
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
@@ -338,7 +292,7 @@ class ViTMAELayer(nn.Module):
         return layer_output
 
 
-class GeneralDecoder(nn.Module):
+class RAEDecoder(nn.Module):
     """
     Decoder implementation ported from RAE-main to keep checkpoint compatibility.
 
@@ -391,8 +345,15 @@ class GeneralDecoder(nn.Module):
 
     def _initialize_weights(self, num_patches: int):
         grid_size = int(num_patches**0.5)
-        pos_embed = _get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1], grid_size, add_cls_token=True)
-        self.decoder_pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+        pos_embed = get_2d_sincos_pos_embed(
+            self.decoder_pos_embed.shape[-1],
+            grid_size,
+            cls_token=True,
+            extra_tokens=1,
+            output_type="pt",
+            device=self.decoder_pos_embed.device,
+        )
+        self.decoder_pos_embed.data.copy_(pos_embed.unsqueeze(0).to(dtype=self.decoder_pos_embed.dtype))
 
     def interpolate_pos_encoding(self, embeddings: torch.Tensor) -> torch.Tensor:
         embeddings_positions = embeddings.shape[1] - 1
@@ -493,11 +454,6 @@ class GeneralDecoder(nn.Module):
         if not return_dict:
             return (logits,)
         return RAEDecoderOutput(logits=logits)
-
-
-# Backward-compatible alias: keep `RAEDecoder` name used by `AutoencoderRAE`
-class RAEDecoder(GeneralDecoder):
-    pass
 
 
 class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin):
