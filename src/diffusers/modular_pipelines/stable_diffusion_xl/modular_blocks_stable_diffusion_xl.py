@@ -14,7 +14,7 @@
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InsertableDict
+from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
     StableDiffusionXLControlNetInputStep,
     StableDiffusionXLControlNetUnionInputStep,
@@ -277,7 +277,161 @@ class StableDiffusionXLCoreDenoiseStep(SequentialPipelineBlocks):
 
 
 # ip-adapter, controlnet, text2img, img2img, inpainting
+# auto_docstring
 class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
+    """
+    Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using Stable Diffusion
+    XL.
+
+      Supported workflows:
+        - `text2image`: requires `prompt`
+        - `image2image`: requires `image`, `prompt`
+        - `inpainting`: requires `mask_image`, `image`, `prompt`
+        - `controlnet_text2image`: requires `control_image`, `prompt`
+        - `controlnet_image2image`: requires `control_image`, `image`, `prompt`
+        - `controlnet_inpainting`: requires `control_image`, `mask_image`, `image`, `prompt`
+        - `controlnet_union_text2image`: requires `control_image`, `control_mode`, `prompt`
+        - `controlnet_union_image2image`: requires `control_image`, `control_mode`, `image`, `prompt`
+        - `controlnet_union_inpainting`: requires `control_image`, `control_mode`, `mask_image`, `image`, `prompt`
+        - `ip_adapter_text2image`: requires `ip_adapter_image`, `prompt`
+        - `ip_adapter_image2image`: requires `ip_adapter_image`, `image`, `prompt`
+        - `ip_adapter_inpainting`: requires `ip_adapter_image`, `mask_image`, `image`, `prompt`
+        - `ip_adapter_controlnet_text2image`: requires `ip_adapter_image`, `control_image`, `prompt`
+        - `ip_adapter_controlnet_image2image`: requires `ip_adapter_image`, `control_image`, `image`, `prompt`
+        - `ip_adapter_controlnet_inpainting`: requires `ip_adapter_image`, `control_image`, `mask_image`, `image`,
+          `prompt`
+        - `ip_adapter_controlnet_union_text2image`: requires `ip_adapter_image`, `control_image`, `control_mode`,
+          `prompt`
+        - `ip_adapter_controlnet_union_image2image`: requires `ip_adapter_image`, `control_image`, `control_mode`,
+          `image`, `prompt`
+        - `ip_adapter_controlnet_union_inpainting`: requires `ip_adapter_image`, `control_image`, `control_mode`,
+          `mask_image`, `image`, `prompt`
+
+      Components:
+          text_encoder (`CLIPTextModel`) text_encoder_2 (`CLIPTextModelWithProjection`) tokenizer (`CLIPTokenizer`)
+          tokenizer_2 (`CLIPTokenizer`) guider (`ClassifierFreeGuidance`) image_encoder
+          (`CLIPVisionModelWithProjection`) feature_extractor (`CLIPImageProcessor`) unet (`UNet2DConditionModel`) vae
+          (`AutoencoderKL`) image_processor (`VaeImageProcessor`) mask_processor (`VaeImageProcessor`) scheduler
+          (`EulerDiscreteScheduler`) controlnet (`ControlNetUnionModel`) control_image_processor (`VaeImageProcessor`)
+
+      Configs:
+          force_zeros_for_empty_prompt (default: True) requires_aesthetics_score (default: False)
+
+      Inputs:
+          prompt (`None`, *optional*):
+              TODO: Add description.
+          prompt_2 (`None`, *optional*):
+              TODO: Add description.
+          negative_prompt (`None`, *optional*):
+              TODO: Add description.
+          negative_prompt_2 (`None`, *optional*):
+              TODO: Add description.
+          cross_attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          clip_skip (`None`, *optional*):
+              TODO: Add description.
+          ip_adapter_image (`Image | ndarray | Tensor | list | list | list`, *optional*):
+              The image(s) to be used as ip adapter
+          height (`None`, *optional*):
+              TODO: Add description.
+          width (`None`, *optional*):
+              TODO: Add description.
+          image (`None`, *optional*):
+              TODO: Add description.
+          mask_image (`None`, *optional*):
+              TODO: Add description.
+          padding_mask_crop (`None`, *optional*):
+              TODO: Add description.
+          dtype (`dtype`, *optional*):
+              The dtype of the model inputs
+          generator (`None`, *optional*):
+              TODO: Add description.
+          preprocess_kwargs (`dict | NoneType`, *optional*):
+              A kwargs dictionary that if specified is passed along to the `ImageProcessor` as defined under
+              `self.image_processor` in [diffusers.image_processor.VaeImageProcessor]
+          num_images_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          ip_adapter_embeds (`list`, *optional*):
+              Pre-generated image embeddings for IP-Adapter. Can be generated from ip_adapter step.
+          negative_ip_adapter_embeds (`list`, *optional*):
+              Pre-generated negative image embeddings for IP-Adapter. Can be generated from ip_adapter step.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          timesteps (`None`, *optional*):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          denoising_end (`None`, *optional*):
+              TODO: Add description.
+          strength (`None`, *optional*, defaults to 0.3):
+              TODO: Add description.
+          denoising_start (`None`, *optional*):
+              TODO: Add description.
+          latents (`None`):
+              TODO: Add description.
+          image_latents (`Tensor`, *optional*):
+              The latents representing the reference image for image-to-image/inpainting generation. Can be generated
+              in vae_encode step.
+          mask (`Tensor`, *optional*):
+              The mask for the inpainting generation. Can be generated in vae_encode step.
+          masked_image_latents (`Tensor`, *optional*):
+              The masked image latents for the inpainting generation (only for inpainting-specific unet). Can be
+              generated in vae_encode step.
+          original_size (`None`, *optional*):
+              TODO: Add description.
+          target_size (`None`, *optional*):
+              TODO: Add description.
+          negative_original_size (`None`, *optional*):
+              TODO: Add description.
+          negative_target_size (`None`, *optional*):
+              TODO: Add description.
+          crops_coords_top_left (`None`, *optional*, defaults to (0, 0)):
+              TODO: Add description.
+          negative_crops_coords_top_left (`None`, *optional*, defaults to (0, 0)):
+              TODO: Add description.
+          aesthetic_score (`None`, *optional*, defaults to 6.0):
+              TODO: Add description.
+          negative_aesthetic_score (`None`, *optional*, defaults to 2.0):
+              TODO: Add description.
+          control_image (`None`, *optional*):
+              TODO: Add description.
+          control_mode (`None`, *optional*):
+              TODO: Add description.
+          control_guidance_start (`None`, *optional*, defaults to 0.0):
+              TODO: Add description.
+          control_guidance_end (`None`, *optional*, defaults to 1.0):
+              TODO: Add description.
+          controlnet_conditioning_scale (`None`, *optional*, defaults to 1.0):
+              TODO: Add description.
+          guess_mode (`None`, *optional*, defaults to False):
+              TODO: Add description.
+          crops_coords (`tuple | NoneType`, *optional*):
+              The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can
+              be generated in vae_encode step.
+          controlnet_cond (`Tensor`, *optional*):
+              The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.
+          conditioning_scale (`float`, *optional*):
+              The controlnet conditioning scale value to use for the denoising process. Can be generated in
+              prepare_controlnet_inputs step.
+          controlnet_keep (`list`, *optional*):
+              The controlnet keep values to use for the denoising process. Can be generated in
+              prepare_controlnet_inputs step.
+          **denoiser_input_fields (`None`, *optional*):
+              All conditional model inputs that need to be prepared with guider. It should contain
+              prompt_embeds/negative_prompt_embeds, add_time_ids/negative_add_time_ids,
+              pooled_prompt_embeds/negative_pooled_prompt_embeds, and ip_adapter_embeds/negative_ip_adapter_embeds
+              (optional).please add `kwargs_type=denoiser_input_fields` to their parameter spec (`OutputParam`) when
+              they are created and added to the pipeline state
+          eta (`None`, *optional*, defaults to 0.0):
+              TODO: Add description.
+          output_type (`None`, *optional*, defaults to pil):
+              TODO: Add description.
+
+      Outputs:
+          images (`list`):
+              Generated images.
+    """
+
     block_classes = [
         StableDiffusionXLTextEncoderStep,
         StableDiffusionXLAutoIPAdapterStep,
@@ -293,103 +447,66 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
         "decode",
     ]
 
+    _workflow_map = {
+        "text2image": {"prompt": True},
+        "image2image": {"image": True, "prompt": True},
+        "inpainting": {"mask_image": True, "image": True, "prompt": True},
+        "controlnet_text2image": {"control_image": True, "prompt": True},
+        "controlnet_image2image": {"control_image": True, "image": True, "prompt": True},
+        "controlnet_inpainting": {"control_image": True, "mask_image": True, "image": True, "prompt": True},
+        "controlnet_union_text2image": {"control_image": True, "control_mode": True, "prompt": True},
+        "controlnet_union_image2image": {"control_image": True, "control_mode": True, "image": True, "prompt": True},
+        "controlnet_union_inpainting": {
+            "control_image": True,
+            "control_mode": True,
+            "mask_image": True,
+            "image": True,
+            "prompt": True,
+        },
+        "ip_adapter_text2image": {"ip_adapter_image": True, "prompt": True},
+        "ip_adapter_image2image": {"ip_adapter_image": True, "image": True, "prompt": True},
+        "ip_adapter_inpainting": {"ip_adapter_image": True, "mask_image": True, "image": True, "prompt": True},
+        "ip_adapter_controlnet_text2image": {"ip_adapter_image": True, "control_image": True, "prompt": True},
+        "ip_adapter_controlnet_image2image": {
+            "ip_adapter_image": True,
+            "control_image": True,
+            "image": True,
+            "prompt": True,
+        },
+        "ip_adapter_controlnet_inpainting": {
+            "ip_adapter_image": True,
+            "control_image": True,
+            "mask_image": True,
+            "image": True,
+            "prompt": True,
+        },
+        "ip_adapter_controlnet_union_text2image": {
+            "ip_adapter_image": True,
+            "control_image": True,
+            "control_mode": True,
+            "prompt": True,
+        },
+        "ip_adapter_controlnet_union_image2image": {
+            "ip_adapter_image": True,
+            "control_image": True,
+            "control_mode": True,
+            "image": True,
+            "prompt": True,
+        },
+        "ip_adapter_controlnet_union_inpainting": {
+            "ip_adapter_image": True,
+            "control_image": True,
+            "control_mode": True,
+            "mask_image": True,
+            "image": True,
+            "prompt": True,
+        },
+    }
+
     @property
     def description(self):
-        return (
-            "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using Stable Diffusion XL.\n"
-            + "- for image-to-image generation, you need to provide either `image` or `image_latents`\n"
-            + "- for inpainting, you need to provide `mask_image` and `image`, optionally you can provide `padding_mask_crop` \n"
-            + "- to run the controlnet workflow, you need to provide `control_image`\n"
-            + "- to run the controlnet_union workflow, you need to provide `control_image` and `control_mode`\n"
-            + "- to run the ip_adapter workflow, you need to provide `ip_adapter_image`\n"
-            + "- for text-to-image generation, all you need to provide is `prompt`"
-        )
-
-
-# controlnet (input + denoise step)
-class StableDiffusionXLAutoControlnetStep(SequentialPipelineBlocks):
-    block_classes = [
-        StableDiffusionXLAutoControlNetInputStep,
-        StableDiffusionXLAutoControlNetDenoiseStep,
-    ]
-    block_names = ["controlnet_input", "controlnet_denoise"]
+        return "Auto Modular pipeline for text-to-image, image-to-image, inpainting, and controlnet tasks using Stable Diffusion XL."
 
     @property
-    def description(self):
-        return (
-            "Controlnet auto step that prepare the controlnet input and denoise the latents. "
-            + "It works for both controlnet and controlnet_union and supports text2img, img2img and inpainting tasks."
-            + " (it should be replace at 'denoise' step)"
-        )
-
-
-TEXT2IMAGE_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", StableDiffusionXLTextEncoderStep),
-        ("input", StableDiffusionXLInputStep),
-        ("set_timesteps", StableDiffusionXLSetTimestepsStep),
-        ("prepare_latents", StableDiffusionXLPrepareLatentsStep),
-        ("prepare_add_cond", StableDiffusionXLPrepareAdditionalConditioningStep),
-        ("denoise", StableDiffusionXLDenoiseStep),
-        ("decode", StableDiffusionXLDecodeStep),
-    ]
-)
-
-IMAGE2IMAGE_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", StableDiffusionXLTextEncoderStep),
-        ("vae_encoder", StableDiffusionXLVaeEncoderStep),
-        ("input", StableDiffusionXLInputStep),
-        ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
-        ("prepare_latents", StableDiffusionXLImg2ImgPrepareLatentsStep),
-        ("prepare_add_cond", StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep),
-        ("denoise", StableDiffusionXLDenoiseStep),
-        ("decode", StableDiffusionXLDecodeStep),
-    ]
-)
-
-INPAINT_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", StableDiffusionXLTextEncoderStep),
-        ("vae_encoder", StableDiffusionXLInpaintVaeEncoderStep),
-        ("input", StableDiffusionXLInputStep),
-        ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
-        ("prepare_latents", StableDiffusionXLInpaintPrepareLatentsStep),
-        ("prepare_add_cond", StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep),
-        ("denoise", StableDiffusionXLInpaintDenoiseStep),
-        ("decode", StableDiffusionXLInpaintDecodeStep),
-    ]
-)
-
-CONTROLNET_BLOCKS = InsertableDict(
-    [
-        ("denoise", StableDiffusionXLAutoControlnetStep),
-    ]
-)
-
-
-IP_ADAPTER_BLOCKS = InsertableDict(
-    [
-        ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
-    ]
-)
-
-AUTO_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", StableDiffusionXLTextEncoderStep),
-        ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
-        ("vae_encoder", StableDiffusionXLAutoVaeEncoderStep),
-        ("denoise", StableDiffusionXLCoreDenoiseStep),
-        ("decode", StableDiffusionXLAutoDecodeStep),
-    ]
-)
-
-
-ALL_BLOCKS = {
-    "text2img": TEXT2IMAGE_BLOCKS,
-    "img2img": IMAGE2IMAGE_BLOCKS,
-    "inpaint": INPAINT_BLOCKS,
-    "controlnet": CONTROLNET_BLOCKS,
-    "ip_adapter": IP_ADAPTER_BLOCKS,
-    "auto": AUTO_BLOCKS,
-}
+    def outputs(self):
+        return [OutputParam.template("images")]
