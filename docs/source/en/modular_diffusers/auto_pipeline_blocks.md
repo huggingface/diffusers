@@ -165,7 +165,7 @@ Here is the same example written using [`~modular_pipelines.ConditionalPipelineB
 from diffusers.modular_pipelines import ConditionalPipelineBlocks
 
 class AutoImageBlocks(ConditionalPipelineBlocks):
-    block_classes = [block_inpaint_cls, block_i2i_cls, block_t2i_cls]
+    block_classes = [InpaintBlock, ImageToImageBlock, TextToImageBlock]
     block_names = ["inpaint", "img2img", "text2img"]
     block_trigger_inputs = ["mask", "image"]
     default_block_name = "text2img"
