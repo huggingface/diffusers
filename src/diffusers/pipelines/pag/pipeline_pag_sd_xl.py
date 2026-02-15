@@ -258,6 +258,13 @@ class StableDiffusionXLPAGPipeline(
         pag_applied_layers: str | list[str] = "mid",  # ["mid"],["down.block_1"],["up.block_0.attentions_0"]
     ):
         super().__init__()
+        self._guidance_scale = 5.0
+        self._clip_skip = None
+        self._guidance_rescale = 0.0
+        self._cross_attention_kwargs = None
+        self._denoising_end = None
+        self._num_timesteps = 0
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,
@@ -1054,7 +1061,6 @@ class StableDiffusionXLPAGPipeline(
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
         self._denoising_end = denoising_end
-        self._interrupt = False
         self._pag_scale = pag_scale
         self._pag_adaptive_scale = pag_adaptive_scale
 

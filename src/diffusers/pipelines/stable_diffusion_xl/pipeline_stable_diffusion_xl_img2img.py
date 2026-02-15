@@ -273,6 +273,14 @@ class StableDiffusionXLImg2ImgPipeline(
         add_watermarker: bool | None = None,
     ):
         super().__init__()
+        self._guidance_scale = 5.0
+        self._guidance_rescale = 0.0
+        self._clip_skip = None
+        self._cross_attention_kwargs = None
+        self._denoising_end = None
+        self._denoising_start = None
+        self._num_timesteps = 0
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,
@@ -1218,7 +1226,6 @@ class StableDiffusionXLImg2ImgPipeline(
         self._cross_attention_kwargs = cross_attention_kwargs
         self._denoising_end = denoising_end
         self._denoising_start = denoising_start
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

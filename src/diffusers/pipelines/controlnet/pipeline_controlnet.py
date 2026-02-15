@@ -223,6 +223,11 @@ class StableDiffusionControlNetPipeline(
         requires_safety_checker: bool = True,
     ):
         super().__init__()
+        self._guidance_scale = 7.5
+        self._clip_skip = None
+        self._cross_attention_kwargs = None
+        self._num_timesteps = 0
+        self._interrupt = False
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -1098,7 +1103,6 @@ class StableDiffusionControlNetPipeline(
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

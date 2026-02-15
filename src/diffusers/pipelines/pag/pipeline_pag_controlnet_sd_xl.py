@@ -271,6 +271,11 @@ class StableDiffusionXLControlNetPAGPipeline(
         pag_applied_layers: str | list[str] = "mid",  # ["down.block_2", "up.block_1.attentions_0"], "mid"
     ):
         super().__init__()
+        self._guidance_scale = 5.0
+        self._clip_skip = None
+        self._cross_attention_kwargs = None
+        self._denoising_end = None
+        self._num_timesteps = 0
 
         if isinstance(controlnet, (list, tuple)):
             controlnet = MultiControlNetModel(controlnet)

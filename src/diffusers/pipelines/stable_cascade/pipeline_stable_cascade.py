@@ -101,6 +101,8 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         latent_dim_scale: float = 10.67,
     ) -> None:
         super().__init__()
+        self._guidance_scale = 0.0
+        self._num_timesteps = 0
         self.register_modules(
             decoder=decoder,
             tokenizer=tokenizer,

@@ -288,6 +288,10 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         scheduler: CogVideoXDPMScheduler,
     ):
         super().__init__()
+        self._guidance_scale = 6.0
+        self._num_timesteps = 0
+        self._attention_kwargs = None
+        self._interrupt = False
 
         self.register_modules(
             tokenizer=tokenizer,
@@ -806,7 +810,6 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         )
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
-        self._interrupt = False
 
         # 2. Default call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -914,7 +917,7 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
                 # perform guidance
                 if use_dynamic_cfg:
-                    self._guidance_scale = 1 + guidance_scale * (
+                    self._guidance_scale = 6.0 + guidance_scale * (
                         (
                             1
                             - math.cos(

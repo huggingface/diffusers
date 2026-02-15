@@ -215,6 +215,10 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
         | FluxMultiControlNetModel,
     ):
         super().__init__()
+        self._guidance_scale = 7.0
+        self._joint_attention_kwargs = None
+        self._num_timesteps = 0
+        self._interrupt = False
         if isinstance(controlnet, (list, tuple)):
             controlnet = FluxMultiControlNetModel(controlnet)
 
@@ -755,7 +759,6 @@ class FluxControlNetImg2ImgPipeline(DiffusionPipeline, FluxLoraLoaderMixin, From
 
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
-        self._interrupt = False
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1

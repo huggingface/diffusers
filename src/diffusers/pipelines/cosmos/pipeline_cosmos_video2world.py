@@ -219,6 +219,10 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         safety_checker: CosmosSafetyChecker = None,
     ):
         super().__init__()
+        self._guidance_scale = 7.0
+        self._current_timestep = None
+        self._interrupt = False
+        self._num_timesteps = 0
 
         if safety_checker is None:
             safety_checker = CosmosSafetyChecker()

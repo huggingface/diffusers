@@ -185,6 +185,11 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         scheduler: CogVideoXDDIMScheduler | CogVideoXDPMScheduler,
     ):
         super().__init__()
+        self._guidance_scale = 6
+        self._num_timesteps = 0
+        self._attention_kwargs = None
+        self._current_timestep = None
+        self._interrupt = False
 
         self.register_modules(
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
@@ -629,8 +634,6 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         )
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
-        self._current_timestep = None
-        self._interrupt = False
 
         # 2. Default call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -735,7 +738,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
                 # perform guidance
                 if use_dynamic_cfg:
-                    self._guidance_scale = 1 + guidance_scale * (
+                    self._guidance_scale = 6 + guidance_scale * (
                         (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
                     )
                 if do_classifier_free_guidance:

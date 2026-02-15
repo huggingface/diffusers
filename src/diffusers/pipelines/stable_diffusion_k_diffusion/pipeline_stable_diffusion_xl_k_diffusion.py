@@ -155,6 +155,9 @@ class StableDiffusionXLKDiffusionPipeline(
         force_zeros_for_empty_prompt: bool = True,
     ):
         super().__init__()
+        self._guidance_scale = 5.0
+        self._clip_skip = None
+        self._guidance_scale = 1.0
 
         # get correct sigmas from LMS
         scheduler = LMSDiscreteScheduler.from_config(scheduler.config)
