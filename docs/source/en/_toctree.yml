@@ -460,6 +460,8 @@
         title: ConsistencyDecoderVAE
       - local: api/models/autoencoder_oobleck
         title: Oobleck AutoEncoder
+      - local: api/models/autoencoder_rae
+        title: AutoencoderRAE
       - local: api/models/autoencoder_tiny
         title: Tiny AutoEncoder
       - local: api/models/vq
