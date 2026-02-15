@@ -191,7 +191,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
               step.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images. (tensor output of the vae decoder.)
     """
 
@@ -268,7 +268,7 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
               Output format: 'pil', 'np', 'pt'.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images.
     """
 
@@ -366,7 +366,7 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
               Output format: 'pil', 'np', 'pt'.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images.
     """
 
@@ -436,12 +436,12 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
               the generated image tensor from decoders step
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          mask_overlay_kwargs (`Dict`, *optional*):
+          mask_overlay_kwargs (`dict`, *optional*):
               The kwargs for the postprocess step to apply the mask overlay. generated in
               InpaintProcessImagesInputStep.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images.
     """
 

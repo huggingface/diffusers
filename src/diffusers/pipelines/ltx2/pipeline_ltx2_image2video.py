@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LTX2Pipeline
+        >>> from diffusers import LTX2ImageToVideoPipeline
         >>> from diffusers.pipelines.ltx2.export_utils import encode_video
         >>> from diffusers.utils import load_image
 
@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
         >>> frame_rate = 24.0
-        >>> video = pipe(
+        >>> video, audio = pipe(
         ...     image=image,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
