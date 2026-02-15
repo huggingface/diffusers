@@ -15,7 +15,7 @@
 from dataclasses import dataclass
 from math import sqrt
 from types import SimpleNamespace
-from typing import Callable, Dict, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import numpy as np
 import torch
@@ -526,10 +526,12 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
             encoder.patch_size) ** 2`.
         num_channels (`int`, *optional*, defaults to `3`):
             Number of input/output channels.
-        latent_mean (`torch.Tensor`, *optional*):
-            Optional mean for latent normalization.
-        latent_var (`torch.Tensor`, *optional*):
-            Optional variance for latent normalization.
+        latent_mean (`list` or `tuple`, *optional*):
+            Optional mean for latent normalization. Tensor inputs are accepted for backward compatibility and converted
+            to config-serializable lists.
+        latent_var (`list` or `tuple`, *optional*):
+            Optional variance for latent normalization. Tensor inputs are accepted for backward compatibility and
+            converted to config-serializable lists.
         noise_tau (`float`, *optional*, defaults to `0.0`):
             Noise level for training (adds noise to latents during training).
         reshape_to_2d (`bool`, *optional*, defaults to `True`):
@@ -555,8 +557,8 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
         encoder_input_size: int = 224,
         image_size: Optional[int] = None,
         num_channels: int = 3,
-        latent_mean: Optional[torch.Tensor] = None,
-        latent_var: Optional[torch.Tensor] = None,
+        latent_mean: Optional[Union[list, tuple, torch.Tensor]] = None,
+        latent_var: Optional[Union[list, tuple, torch.Tensor]] = None,
         noise_tau: float = 0.0,
         reshape_to_2d: bool = True,
         use_encoder_loss: bool = False,
@@ -568,6 +570,22 @@ class AutoencoderRAE(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMode
             raise ValueError(f"Unknown encoder_cls='{encoder_cls}'. Available: {sorted(ENCODER_ARCHS.keys())}")
         if encoder_name_or_path is None:
             encoder_name_or_path = ENCODER_DEFAULT_NAME_OR_PATH[encoder_cls]
+
+        def _to_config_compatible(value: Any) -> Any:
+            if isinstance(value, torch.Tensor):
+                return value.detach().cpu().tolist()
+            if isinstance(value, tuple):
+                return [_to_config_compatible(v) for v in value]
+            if isinstance(value, list):
+                return [_to_config_compatible(v) for v in value]
+            return value
+
+        # Ensure config values are JSON-serializable (list/None), even if caller passes torch.Tensors.
+        self.register_to_config(
+            encoder_name_or_path=encoder_name_or_path,
+            latent_mean=_to_config_compatible(latent_mean),
+            latent_var=_to_config_compatible(latent_var),
+        )
 
         self.encoder_input_size = encoder_input_size
         self.noise_tau = float(noise_tau)
