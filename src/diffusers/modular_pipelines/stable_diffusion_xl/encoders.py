@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple
-
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -45,7 +43,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -71,7 +69,7 @@ class StableDiffusionXLIPAdapterStep(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("image_encoder", CLIPVisionModelWithProjection),
             ComponentSpec(
@@ -90,7 +88,7 @@ class StableDiffusionXLIPAdapterStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "ip_adapter_image",
@@ -101,7 +99,7 @@ class StableDiffusionXLIPAdapterStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("ip_adapter_embeds", type_hint=torch.Tensor, description="IP adapter image embeddings"),
             OutputParam(
@@ -223,7 +221,7 @@ class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
         return "Text Encoder step that generate text_embeddings to guide the image generation"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_encoder", CLIPTextModel),
             ComponentSpec("text_encoder_2", CLIPTextModelWithProjection),
@@ -238,11 +236,11 @@ class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def expected_configs(self) -> List[ConfigSpec]:
+    def expected_configs(self) -> list[ConfigSpec]:
         return [ConfigSpec("force_zeros_for_empty_prompt", True)]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("prompt"),
             InputParam("prompt_2"),
@@ -253,7 +251,7 @@ class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "prompt_embeds",
@@ -296,26 +294,26 @@ class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
     def encode_prompt(
         components,
         prompt: str,
-        prompt_2: Optional[str] = None,
-        device: Optional[torch.device] = None,
+        prompt_2: str | None = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         prepare_unconditional_embeds: bool = True,
-        negative_prompt: Optional[str] = None,
-        negative_prompt_2: Optional[str] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
+        negative_prompt: str | None = None,
+        negative_prompt_2: str | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        pooled_prompt_embeds: torch.Tensor | None = None,
+        negative_pooled_prompt_embeds: torch.Tensor | None = None,
+        lora_scale: float | None = None,
+        clip_skip: int | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            prompt_2 (`str` or `List[str]`, *optional*):
+            prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in both text-encoders
             device: (`torch.device`):
@@ -324,11 +322,11 @@ class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
                 number of images that should be generated per prompt
             prepare_unconditional_embeds (`bool`):
                 whether to use prepare unconditional embeddings or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            negative_prompt_2 (`str` or `List[str]`, *optional*):
+            negative_prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
             prompt_embeds (`torch.Tensor`, *optional*):
@@ -450,7 +448,7 @@ class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
                 batch_size * [negative_prompt_2] if isinstance(negative_prompt_2, str) else negative_prompt_2
             )
 
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
@@ -584,7 +582,7 @@ class StableDiffusionXLVaeEncoderStep(ModularPipelineBlocks):
         return "Vae Encoder step that encode the input image into a latent representation"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
@@ -596,7 +594,7 @@ class StableDiffusionXLVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("image", required=True),
             InputParam("height"),
@@ -605,13 +603,13 @@ class StableDiffusionXLVaeEncoderStep(ModularPipelineBlocks):
             InputParam("dtype", type_hint=torch.dtype, description="Data type of model tensor inputs"),
             InputParam(
                 "preprocess_kwargs",
-                type_hint=Optional[dict],
+                type_hint=dict | None,
                 description="A kwargs dictionary that if specified is passed along to the `ImageProcessor` as defined under `self.image_processor` in [diffusers.image_processor.VaeImageProcessor]",
             ),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "image_latents",
@@ -687,7 +685,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
@@ -711,7 +709,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(ModularPipelineBlocks):
         return "Vae encoder step that prepares the image and mask for the inpainting process"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("height"),
             InputParam("width"),
@@ -723,7 +721,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "image_latents", type_hint=torch.Tensor, description="The latents representation of the input image"
@@ -736,7 +734,7 @@ class StableDiffusionXLInpaintVaeEncoderStep(ModularPipelineBlocks):
             ),
             OutputParam(
                 "crops_coords",
-                type_hint=Optional[Tuple[int, int]],
+                type_hint=tuple[int, int] | None,
                 description="The crop coordinates to use for the preprocess/postprocess of the image and mask",
             ),
         ]

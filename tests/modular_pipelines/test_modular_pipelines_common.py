@@ -1,6 +1,6 @@
 import gc
 import tempfile
-from typing import Callable, Union
+from typing import Callable
 
 import pytest
 import torch
@@ -46,7 +46,7 @@ class ModularPipelineTesterMixin:
         return generator
 
     @property
-    def pipeline_class(self) -> Union[Callable, ModularPipeline]:
+    def pipeline_class(self) -> Callable | ModularPipeline:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_class = ClassNameOfPipeline` in the child test class. "
             "See existing pipeline tests for reference."
@@ -59,7 +59,7 @@ class ModularPipelineTesterMixin:
         )
 
     @property
-    def pipeline_blocks_class(self) -> Union[Callable, ModularPipelineBlocks]:
+    def pipeline_blocks_class(self) -> Callable | ModularPipelineBlocks:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_blocks_class = ClassNameOfPipelineBlocks` in the child test class. "
             "See existing pipeline tests for reference."
@@ -97,6 +97,14 @@ class ModularPipelineTesterMixin:
             "do not make modifications to the existing common sets of batch arguments. I.e. a text to "
             "image pipeline `negative_prompt` is not batched should set the attribute as "
             "`batch_params = TEXT_TO_IMAGE_BATCH_PARAMS - {'negative_prompt'}`. "
+            "See existing pipeline tests for reference."
+        )
+
+    @property
+    def expected_workflow_blocks(self) -> dict:
+        raise NotImplementedError(
+            "You need to set the attribute `expected_workflow_blocks` in the child test class. "
+            "`expected_workflow_blocks` is a dictionary that maps workflow names to list of block names. "
             "See existing pipeline tests for reference."
         )
 
@@ -340,6 +348,34 @@ class ModularPipelineTesterMixin:
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+    def test_workflow_map(self):
+        blocks = self.pipeline_blocks_class()
+        if blocks._workflow_map is None:
+            pytest.skip("Skipping test as _workflow_map is not set")
+
+        assert hasattr(self, "expected_workflow_blocks") and self.expected_workflow_blocks, (
+            "expected_workflow_blocks must be defined in the test class"
+        )
+
+        for workflow_name, expected_blocks in self.expected_workflow_blocks.items():
+            workflow_blocks = blocks.get_workflow(workflow_name)
+            actual_blocks = list(workflow_blocks.sub_blocks.items())
+
+            # Check that the number of blocks matches
+            assert len(actual_blocks) == len(expected_blocks), (
+                f"Workflow '{workflow_name}' has {len(actual_blocks)} blocks, expected {len(expected_blocks)}"
+            )
+
+            # Check that each block name and type matches
+            for i, ((actual_name, actual_block), (expected_name, expected_class_name)) in enumerate(
+                zip(actual_blocks, expected_blocks)
+            ):
+                assert actual_name == expected_name
+                assert actual_block.__class__.__name__ == expected_class_name, (
+                    f"Workflow '{workflow_name}': block '{actual_name}' has type "
+                    f"{actual_block.__class__.__name__}, expected {expected_class_name}"
+                )
 
 
 class ModularGuiderTesterMixin:

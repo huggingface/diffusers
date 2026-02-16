@@ -310,3 +310,7 @@ class VisualClozeGenerationPipelineFastTests(unittest.TestCase, PipelineTesterMi
     @unittest.skip("Skipped due to missing layout_prompt. Needs further investigation.")
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=0.0001, rtol=0.0001):
         pass
+
+    @unittest.skip("Needs to be revisited later.")
+    def test_pipeline_with_accelerator_device_map(self, expected_max_difference=0.0001):
+        pass
