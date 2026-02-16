@@ -621,24 +621,11 @@ class AutoencoderRAE(
         latents_std = self._latents_std.to(device=z.device, dtype=z.dtype) if self._latents_std is not None else 1
         return z * (latents_std + 1e-5) + latents_mean
 
-    def _encode_tokens(self, x: torch.Tensor, *, requires_grad: bool) -> torch.Tensor:
-        # Keep compatibility with custom registered encoders that may not accept `requires_grad`.
-        try:
-            return self.encoder(x, requires_grad=requires_grad)
-        except TypeError:
-            if requires_grad:
-                logger.warning(
-                    "Encoder class `%s` does not accept `requires_grad`; falling back to default forward for "
-                    "encoder loss computation.",
-                    self.encoder.__class__.__name__,
-                )
-            return self.encoder(x)
-
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         x = self._maybe_resize_and_normalize(x)
 
         # Encoder is frozen by default for latent extraction.
-        tokens = self._encode_tokens(x, requires_grad=False)  # (B, N, C)
+        tokens = self.encoder(x, requires_grad=False)  # (B, N, C)
 
         if self.training and self.noise_tau > 0:
             tokens = self._noising(tokens)
