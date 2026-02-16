@@ -22,8 +22,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
-from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import BaseOutput, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
@@ -400,9 +398,7 @@ class RAEDecoder(nn.Module):
         return RAEDecoderOutput(logits=logits)
 
 
-class AutoencoderRAE(
-    ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin
-):
+class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
     r"""
     Representation Autoencoder (RAE) model for encoding images to latents and decoding latents to images.
 
