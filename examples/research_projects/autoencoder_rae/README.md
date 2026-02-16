@@ -26,6 +26,7 @@ accelerate launch examples/research_projects/autoencoder_rae/train_autoencoder_r
   --train_batch_size 8 \
   --learning_rate 1e-4 \
   --num_train_epochs 10 \
+  --report_to wandb \
   --reconstruction_loss_type l1 \
   --use_encoder_loss \
   --encoder_loss_weight 0.1
