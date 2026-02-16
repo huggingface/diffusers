@@ -731,7 +731,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         width: int = 768,
         num_frames: int = 121,
         device: torch.device | None = None,
-        index_type: str = "latent",
     ) -> tuple[list[torch.Tensor], list[float], list[int]]:
         """
         Preprocesses the condition images/videos to torch tensors.
