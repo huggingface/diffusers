@@ -32,7 +32,7 @@ class FlashPackTests(unittest.TestCase):
     @require_flashpack
     def test_save_load_model(self):
         model = AutoModel.from_pretrained(self.model_id, subfolder="transformer")
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             model.save_pretrained(temp_dir, use_flashpack=True)
             self.assertTrue((pathlib.Path(temp_dir) / "model.flashpack").exists())
             model = AutoModel.from_pretrained(temp_dir, use_flashpack=True)
@@ -40,7 +40,7 @@ class FlashPackTests(unittest.TestCase):
     @require_flashpack
     def test_save_load_pipeline(self):
         pipeline = AutoPipelineForText2Image.from_pretrained(self.model_id)
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             pipeline.save_pretrained(temp_dir, use_flashpack=True)
             self.assertTrue((pathlib.Path(temp_dir) / "transformer" / "model.flashpack").exists())
             self.assertTrue((pathlib.Path(temp_dir) / "vae" / "model.flashpack").exists())
@@ -50,7 +50,7 @@ class FlashPackTests(unittest.TestCase):
     @require_flashpack
     def test_load_model_device_str(self):
         model = AutoModel.from_pretrained(self.model_id, subfolder="transformer")
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             model.save_pretrained(temp_dir, use_flashpack=True)
             model = AutoModel.from_pretrained(temp_dir, use_flashpack=True, device_map={"": "cuda"})
             self.assertTrue(model.device.type == "cuda")
@@ -59,7 +59,7 @@ class FlashPackTests(unittest.TestCase):
     @require_flashpack
     def test_load_model_device(self):
         model = AutoModel.from_pretrained(self.model_id, subfolder="transformer")
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             model.save_pretrained(temp_dir, use_flashpack=True)
             model = AutoModel.from_pretrained(temp_dir, use_flashpack=True, device_map={"": torch.device("cuda")})
             self.assertTrue(model.device.type == "cuda")
@@ -67,7 +67,7 @@ class FlashPackTests(unittest.TestCase):
     @require_flashpack
     def test_load_model_device_auto(self):
         model = AutoModel.from_pretrained(self.model_id, subfolder="transformer")
-        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
             model.save_pretrained(temp_dir, use_flashpack=True)
             with self.assertRaises(ValueError):
                 model = AutoModel.from_pretrained(temp_dir, use_flashpack=True, device_map={"": "auto"})
