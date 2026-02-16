@@ -147,22 +147,7 @@ class TestWanVACETransformer3DCompile(WanVACETransformer3DTesterConfig, TorchCom
     def test_torch_compile_repeated_blocks(self):
         # WanVACE has two block types (WanTransformerBlock and WanVACETransformerBlock),
         # so we need recompile_limit=2 instead of the default 1.
-        import torch._dynamo
-        import torch._inductor.utils
-
-        init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
-
-        model = self.model_class(**init_dict).to(torch_device)
-        model.eval()
-        model.compile_repeated_blocks(fullgraph=True)
-
-        with (
-            torch._inductor.utils.fresh_inductor_cache(),
-            torch._dynamo.config.patch(recompile_limit=2),
-        ):
-            _ = model(**inputs_dict)
-            _ = model(**inputs_dict)
+        super().test_torch_compile_repeated_blocks(recompile_limit=2)
 
 
 class TestWanVACETransformer3DBitsAndBytes(WanVACETransformer3DTesterConfig, BitsAndBytesTesterMixin):
