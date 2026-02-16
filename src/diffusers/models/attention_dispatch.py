@@ -1117,7 +1117,7 @@ def _sage_attention_backward_op(
     raise NotImplementedError("Backward pass is not implemented for Sage attention.")
 
 
-def _maybe_modify_attn_mask_npu(query: torch.Tensor, key: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
+def _maybe_modify_attn_mask_npu(query: torch.Tensor, key: torch.Tensor, attn_mask: torch.Tensor | None = None):
     # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
     if attn_mask is not None and torch.all(attn_mask != 0):
         attn_mask = None
