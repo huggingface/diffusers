@@ -1199,6 +1199,9 @@ class TestUNet2DConditionIPAdapter(UNet2DConditionTesterConfig, IPAdapterTesterM
 class TestUNet2DConditionModelCompile(UNet2DConditionTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for UNet2DConditionModel."""
 
+    def test_torch_compile_repeated_blocks(self):
+        return super().test_torch_compile_repeated_blocks(recompile_limit=2)
+
 
 class TestUNet2DConditionModelLoRAHotSwap(UNet2DConditionTesterConfig, LoraHotSwappingForModelTesterMixin):
     """LoRA hot-swapping tests for UNet2DConditionModel."""

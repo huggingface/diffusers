@@ -92,9 +92,6 @@ class TorchCompileTesterMixin:
         model.eval()
         model.compile_repeated_blocks(fullgraph=True)
 
-        if self.model_class.__name__ == "UNet2DConditionModel":
-            recompile_limit = 2
-
         with (
             torch._inductor.utils.fresh_inductor_cache(),
             torch._dynamo.config.patch(recompile_limit=recompile_limit),
