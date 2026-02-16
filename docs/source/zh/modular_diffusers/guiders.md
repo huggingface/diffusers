@@ -86,28 +86,13 @@ t2i_pipeline.guider
 
 ## 更改引导器参数
 
-引导器参数可以通过 [`~ComponentSpec.create`] 方法或 [`~ModularPipeline.update_components`] 方法进行调整。下面的示例更改了 `guidance_scale` 值。
-
-<hfoptions id="switch">
-<hfoption id="create">
+引导器参数可以通过 [`~ComponentSpec.create`] 方法以及 [`~ModularPipeline.update_components`] 方法进行调整。下面的示例更改了 `guidance_scale` 值。
 
 ```py
 guider_spec = t2i_pipeline.get_component_spec("guider")
 guider = guider_spec.create(guidance_scale=10)
 t2i_pipeline.update_components(guider=guider)
 ```
-
-</hfoption>
-<hfoption id="update_components">
-
-```py
-guider_spec = t2i_pipeline.get_component_spec("guider")
-guider_spec.config["guidance_scale"] = 10
-t2i_pipeline.update_components(guider=guider_spec)
-```
-
-</hfoption>
-</hfoptions>
 
 ## 上传自定义引导器
 

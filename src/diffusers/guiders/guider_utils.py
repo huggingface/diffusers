@@ -54,7 +54,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._timestep: torch.LongTensor = None
         self._count_prepared = 0
         self._input_fields: dict[str, str | tuple[str, str]] = None
-        self._enabled = True
+        self._enabled = enabled
 
         if not (0.0 <= start < 1.0):
             raise ValueError(f"Expected `start` to be between 0.0 and 1.0, but got {start}.")

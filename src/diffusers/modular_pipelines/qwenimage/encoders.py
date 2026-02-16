@@ -285,11 +285,11 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
           image_resize_processor (`VaeImageProcessor`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
 
       Outputs:
-          resized_image (`List`):
+          resized_image (`list`):
               The resized images
     """
 
@@ -359,13 +359,13 @@ class QwenImageLayeredResizeStep(ModularPipelineBlocks):
           image_resize_processor (`VaeImageProcessor`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           resolution (`int`, *optional*, defaults to 640):
               The target area to resize the image to, can be 1024 or 640
 
       Outputs:
-          resized_image (`List`):
+          resized_image (`list`):
               The resized images
     """
 
@@ -452,13 +452,13 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
           image_resize_processor (`VaeImageProcessor`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
 
       Outputs:
-          resized_image (`List`):
+          resized_image (`list`):
               Images resized to 1024x1024 target area for VAE encoding
-          resized_cond_image (`List`):
+          resized_cond_image (`list`):
               Images resized to 384x384 target area for VL text encoding
     """
 
@@ -1058,7 +1058,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
       Inputs:
           mask_image (`Image`):
               Mask image for inpainting.
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -1072,7 +1072,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
               The processed image
           processed_mask_image (`Tensor`):
               The processed mask image
-          mask_overlay_kwargs (`Dict`):
+          mask_overlay_kwargs (`dict`):
               The kwargs for the postprocess step to apply the mask overlay
     """
 
@@ -1177,7 +1177,7 @@ class QwenImageEditInpaintProcessImagesInputStep(ModularPipelineBlocks):
               The processed image
           processed_mask_image (`Tensor`):
               The processed mask image
-          mask_overlay_kwargs (`Dict`):
+          mask_overlay_kwargs (`dict`):
               The kwargs for the postprocess step to apply the mask overlay
     """
 
@@ -1256,7 +1256,7 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
           image_processor (`VaeImageProcessor`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -1340,7 +1340,7 @@ class QwenImageEditProcessImagesInputStep(ModularPipelineBlocks):
           image_processor (`VaeImageProcessor`)
 
       Inputs:
-          resized_image (`List`):
+          resized_image (`list`):
               The resized image. should be generated using a resize step
 
       Outputs:
@@ -1412,7 +1412,7 @@ class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
           image_processor (`VaeImageProcessor`)
 
       Inputs:
-          resized_image (`List`):
+          resized_image (`list`):
               The resized image. should be generated using a resize step
 
       Outputs:
