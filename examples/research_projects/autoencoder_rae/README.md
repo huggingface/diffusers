@@ -14,6 +14,7 @@ It follows the same high-level training recipe as the official RAE stage-1 setup
 accelerate launch examples/research_projects/autoencoder_rae/train_autoencoder_rae.py \
   --train_data_dir /path/to/imagenet_like_folder \
   --output_dir /tmp/autoencoder-rae \
+  --resolution 256 \
   --encoder_cls dinov2 \
   --encoder_input_size 224 \
   --patch_size 16 \
@@ -29,6 +30,8 @@ accelerate launch examples/research_projects/autoencoder_rae/train_autoencoder_r
   --use_encoder_loss \
   --encoder_loss_weight 0.1
 ```
+
+Note: stage-1 reconstruction loss assumes matching target/output spatial size, so `--resolution` must equal `--image_size`.
 
 Dataset format is expected to be `ImageFolder`-compatible:
 
