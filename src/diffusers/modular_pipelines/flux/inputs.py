@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List
 
 import torch
 
@@ -42,7 +41,7 @@ class FluxTextInputStep(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_images_per_prompt", default=1),
             InputParam(
@@ -62,7 +61,7 @@ class FluxTextInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "batch_size",
@@ -122,13 +121,13 @@ class FluxTextInputStep(ModularPipelineBlocks):
 
 
 # Adapted from `QwenImageAdditionalInputsStep`
-class FluxInputsDynamicStep(ModularPipelineBlocks):
+class FluxAdditionalInputsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     def __init__(
         self,
-        image_latent_inputs: List[str] = ["image_latents"],
-        additional_batch_inputs: List[str] = [],
+        image_latent_inputs: list[str] = ["image_latents"],
+        additional_batch_inputs: list[str] = [],
     ):
         if not isinstance(image_latent_inputs, list):
             image_latent_inputs = [image_latent_inputs]
@@ -163,7 +162,7 @@ class FluxInputsDynamicStep(ModularPipelineBlocks):
         return summary_section + inputs_info + placement_section
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         inputs = [
             InputParam(name="num_images_per_prompt", default=1),
             InputParam(name="batch_size", required=True),
@@ -182,7 +181,7 @@ class FluxInputsDynamicStep(ModularPipelineBlocks):
         return inputs
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(name="image_height", type_hint=int, description="The height of the image latents"),
             OutputParam(name="image_width", type_hint=int, description="The width of the image latents"),
@@ -244,7 +243,7 @@ class FluxInputsDynamicStep(ModularPipelineBlocks):
         return components, state
 
 
-class FluxKontextInputsDynamicStep(FluxInputsDynamicStep):
+class FluxKontextAdditionalInputsStep(FluxAdditionalInputsStep):
     model_name = "flux-kontext"
 
     def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
@@ -257,7 +256,7 @@ class FluxKontextInputsDynamicStep(FluxInputsDynamicStep):
                 continue
 
             # 1. Calculate height/width from latents
-            # Unlike the `FluxInputsDynamicStep`, we don't overwrite the `block.height` and `block.width`
+            # Unlike the `FluxAdditionalInputsStep`, we don't overwrite the `block.height` and `block.width`
             height, width = calculate_dimension_from_latents(image_latent_tensor, components.vae_scale_factor)
             if not hasattr(block_state, "image_height"):
                 block_state.image_height = height
@@ -304,6 +303,7 @@ class FluxKontextInputsDynamicStep(FluxInputsDynamicStep):
 class FluxKontextSetResolutionStep(ModularPipelineBlocks):
     model_name = "flux-kontext"
 
+    @property
     def description(self):
         return (
             "Determines the height and width to be used during the subsequent computations.\n"
@@ -311,7 +311,7 @@ class FluxKontextSetResolutionStep(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         inputs = [
             InputParam(name="height"),
             InputParam(name="width"),
@@ -320,7 +320,7 @@ class FluxKontextSetResolutionStep(ModularPipelineBlocks):
         return inputs
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(name="height", type_hint=int, description="The height of the initial noisy latents"),
             OutputParam(name="width", type_hint=int, description="The width of the initial noisy latents"),

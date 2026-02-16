@@ -13,13 +13,13 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -27,6 +27,9 @@ from .scheduling_utils_flax import (
     FlaxSchedulerOutput,
     broadcast_to_shape_from_left,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -37,16 +40,25 @@ class LMSDiscreteSchedulerState:
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
     sigmas: jnp.ndarray
-    num_inference_steps: Optional[int] = None
+    num_inference_steps: int = None
 
     # running values
-    derivatives: Optional[jnp.ndarray] = None
+    derivatives: jnp.ndarray | None = None
 
     @classmethod
     def create(
-        cls, common: CommonSchedulerState, init_noise_sigma: jnp.ndarray, timesteps: jnp.ndarray, sigmas: jnp.ndarray
+        cls,
+        common: CommonSchedulerState,
+        init_noise_sigma: jnp.ndarray,
+        timesteps: jnp.ndarray,
+        sigmas: jnp.ndarray,
     ):
-        return cls(common=common, init_noise_sigma=init_noise_sigma, timesteps=timesteps, sigmas=sigmas)
+        return cls(
+            common=common,
+            init_noise_sigma=init_noise_sigma,
+            timesteps=timesteps,
+            sigmas=sigmas,
+        )
 
 
 @dataclass
@@ -97,13 +109,17 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         prediction_type: str = "epsilon",
         dtype: jnp.dtype = jnp.float32,
     ):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> LMSDiscreteSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> LMSDiscreteSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 
@@ -165,7 +181,10 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         return integrated_coeff
 
     def set_timesteps(
-        self, state: LMSDiscreteSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self,
+        state: LMSDiscreteSchedulerState,
+        num_inference_steps: int,
+        shape: tuple = (),
     ) -> LMSDiscreteSchedulerState:
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -177,7 +196,12 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
 
-        timesteps = jnp.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=self.dtype)
+        timesteps = jnp.linspace(
+            self.config.num_train_timesteps - 1,
+            0,
+            num_inference_steps,
+            dtype=self.dtype,
+        )
 
         low_idx = jnp.floor(timesteps).astype(jnp.int32)
         high_idx = jnp.ceil(timesteps).astype(jnp.int32)
@@ -208,7 +232,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         order: int = 4,
         return_dict: bool = True,
-    ) -> Union[FlaxLMSSchedulerOutput, Tuple]:
+    ) -> FlaxLMSSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

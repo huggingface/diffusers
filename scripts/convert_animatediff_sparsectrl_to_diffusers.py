@@ -18,7 +18,7 @@ KEYS_RENAME_MAPPING = {
 }
 
 
-def convert(original_state_dict: Dict[str, nn.Module]) -> Dict[str, nn.Module]:
+def convert(original_state_dict: Dict[str, nn.Module]) -> dict[str, nn.Module]:
     converted_state_dict = {}
 
     for key in list(original_state_dict.keys()):

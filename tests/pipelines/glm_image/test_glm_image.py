@@ -169,7 +169,7 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # fmt: off
         expected_slice = np.array(
             [
-                0.5796329,  0.5005878,  0.45881274, 0.45331675, 0.43688118, 0.4899527, 0.54017603, 0.50983673, 0.3387968,  0.38074082, 0.29942477, 0.33733928, 0.3672544,  0.38462338, 0.40991822, 0.46641728
+                0.5849247, 0.50278825, 0.45747858, 0.45895284, 0.43804976, 0.47044256, 0.5239665, 0.47904694, 0.3323419, 0.38725388, 0.28505728, 0.3161863, 0.35026982, 0.37546024, 0.4090118, 0.46629113
             ]
         )
         # fmt: on
@@ -177,20 +177,189 @@ class GlmImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(image.shape, (3, 32, 32))
         self.assertTrue(np.allclose(expected_slice, generated_slice, atol=1e-4, rtol=1e-4))
 
-    @unittest.skip("Not supported.")
     def test_inference_batch_single_identical(self):
-        # GLM-Image has batch_size=1 constraint due to AR model
-        pass
+        """Test that batch=1 produces consistent results with the same seed."""
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
 
-    @unittest.skip("Not supported.")
-    def test_inference_batch_consistent(self):
-        # GLM-Image has batch_size=1 constraint due to AR model
-        pass
+        # Run twice with same seed
+        inputs1 = self.get_dummy_inputs(device, seed=42)
+        inputs2 = self.get_dummy_inputs(device, seed=42)
 
-    @unittest.skip("Not supported.")
+        image1 = pipe(**inputs1).images[0]
+        image2 = pipe(**inputs2).images[0]
+
+        self.assertTrue(torch.allclose(image1, image2, atol=1e-4))
+
+    def test_inference_batch_multiple_prompts(self):
+        """Test batch processing with multiple prompts."""
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=device).manual_seed(42)
+        height, width = 32, 32
+
+        inputs = {
+            "prompt": ["A photo of a cat", "A photo of a dog"],
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 1.5,
+            "height": height,
+            "width": width,
+            "max_sequence_length": 16,
+            "output_type": "pt",
+        }
+
+        images = pipe(**inputs).images
+
+        # Should return 2 images
+        self.assertEqual(len(images), 2)
+        self.assertEqual(images[0].shape, (3, 32, 32))
+        self.assertEqual(images[1].shape, (3, 32, 32))
+
     def test_num_images_per_prompt(self):
-        # GLM-Image has batch_size=1 constraint due to AR model
-        pass
+        """Test generating multiple images per prompt."""
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=device).manual_seed(42)
+        height, width = 32, 32
+
+        inputs = {
+            "prompt": "A photo of a cat",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 1.5,
+            "height": height,
+            "width": width,
+            "max_sequence_length": 16,
+            "output_type": "pt",
+            "num_images_per_prompt": 2,
+        }
+
+        images = pipe(**inputs).images
+
+        # Should return 2 images for single prompt
+        self.assertEqual(len(images), 2)
+        self.assertEqual(images[0].shape, (3, 32, 32))
+        self.assertEqual(images[1].shape, (3, 32, 32))
+
+    def test_batch_with_num_images_per_prompt(self):
+        """Test batch prompts with num_images_per_prompt > 1."""
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=device).manual_seed(42)
+        height, width = 32, 32
+
+        inputs = {
+            "prompt": ["A photo of a cat", "A photo of a dog"],
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 1.5,
+            "height": height,
+            "width": width,
+            "max_sequence_length": 16,
+            "output_type": "pt",
+            "num_images_per_prompt": 2,
+        }
+
+        images = pipe(**inputs).images
+
+        # Should return 4 images (2 prompts × 2 images per prompt)
+        self.assertEqual(len(images), 4)
+
+    def test_prompt_with_prior_token_ids(self):
+        """Test that prompt and prior_token_ids can be provided together.
+
+        When both are given, the AR generation step is skipped (prior_token_ids is used
+        directly) and prompt is used to generate prompt_embeds via the glyph encoder.
+        """
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        height, width = 32, 32
+
+        # Step 1: Run with prompt only to get prior_token_ids from AR model
+        generator = torch.Generator(device=device).manual_seed(0)
+        prior_token_ids, _, _ = pipe.generate_prior_tokens(
+            prompt="A photo of a cat",
+            height=height,
+            width=width,
+            device=torch.device(device),
+            generator=torch.Generator(device=device).manual_seed(0),
+        )
+
+        # Step 2: Run with both prompt and prior_token_ids — should not raise
+        generator = torch.Generator(device=device).manual_seed(0)
+        inputs_both = {
+            "prompt": "A photo of a cat",
+            "prior_token_ids": prior_token_ids,
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 1.5,
+            "height": height,
+            "width": width,
+            "max_sequence_length": 16,
+            "output_type": "pt",
+        }
+        images = pipe(**inputs_both).images
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].shape, (3, 32, 32))
+
+    def test_check_inputs_rejects_invalid_combinations(self):
+        """Test that check_inputs correctly rejects invalid input combinations."""
+        device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+
+        height, width = 32, 32
+
+        # Neither prompt nor prior_token_ids → error
+        with self.assertRaises(ValueError):
+            pipe.check_inputs(
+                prompt=None,
+                height=height,
+                width=width,
+                callback_on_step_end_tensor_inputs=None,
+                prompt_embeds=torch.randn(1, 16, 32),
+            )
+
+        # prior_token_ids alone without prompt or prompt_embeds → error
+        with self.assertRaises(ValueError):
+            pipe.check_inputs(
+                prompt=None,
+                height=height,
+                width=width,
+                callback_on_step_end_tensor_inputs=None,
+                prior_token_ids=torch.randint(0, 100, (1, 64)),
+            )
+
+        # prompt + prompt_embeds together → error
+        with self.assertRaises(ValueError):
+            pipe.check_inputs(
+                prompt="A cat",
+                height=height,
+                width=width,
+                callback_on_step_end_tensor_inputs=None,
+                prompt_embeds=torch.randn(1, 16, 32),
+            )
 
     @unittest.skip("Needs to be revisited.")
     def test_encode_prompt_works_in_isolation(self):

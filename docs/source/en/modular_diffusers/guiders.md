@@ -89,28 +89,14 @@ t2i_pipeline.guider
 
 ## Changing guider parameters
 
-The guider parameters can be adjusted with either the [`~ComponentSpec.create`] method or with [`~ModularPipeline.update_components`]. The example below changes the `guidance_scale` value.
+The guider parameters can be adjusted with the [`~ComponentSpec.create`] method and [`~ModularPipeline.update_components`]. The example below changes the `guidance_scale` value.
 
-<hfoptions id="switch">
-<hfoption id="create">
 
 ```py
 guider_spec = t2i_pipeline.get_component_spec("guider")
 guider = guider_spec.create(guidance_scale=10)
 t2i_pipeline.update_components(guider=guider)
 ```
-
-</hfoption>
-<hfoption id="update_components">
-
-```py
-guider_spec = t2i_pipeline.get_component_spec("guider")
-guider_spec.config["guidance_scale"] = 10
-t2i_pipeline.update_components(guider=guider_spec)
-```
-
-</hfoption>
-</hfoptions>
 
 ## Uploading custom guiders
 

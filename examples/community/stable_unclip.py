@@ -190,7 +190,7 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         width: Optional[int] = None,
         num_images_per_prompt: int = 1,
         prior_num_inference_steps: int = 25,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         prior_latents: Optional[torch.Tensor] = None,
         text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None,
         text_attention_mask: Optional[torch.Tensor] = None,
@@ -199,7 +199,7 @@ class StableUnCLIPPipeline(DiffusionPipeline):
         decoder_num_inference_steps: int = 50,
         decoder_num_images_per_prompt: Optional[int] = 1,
         decoder_eta: float = 0.0,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ):
         if prompt is not None:

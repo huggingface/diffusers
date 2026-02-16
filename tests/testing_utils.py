@@ -18,7 +18,7 @@ from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -38,6 +38,7 @@ from diffusers.utils.import_utils import (
     is_gguf_available,
     is_kernels_available,
     is_note_seq_available,
+    is_nvidia_modelopt_version,
     is_onnx_available,
     is_opencv_available,
     is_optimum_quanto_available,
@@ -128,6 +129,59 @@ def torch_all_close(a, b, *args, **kwargs):
     if not torch.allclose(a, b, *args, **kwargs):
         assert False, f"Max diff is absolute {(a - b).abs().max()}. Diff tensor is {(a - b).abs()}."
     return True
+
+
+def assert_tensors_close(
+    actual: "torch.Tensor",
+    expected: "torch.Tensor",
+    atol: float = 1e-5,
+    rtol: float = 1e-5,
+    msg: str = "",
+) -> None:
+    """
+    Assert that two tensors are close within tolerance.
+
+    Uses the same formula as torch.allclose: |actual - expected| <= atol + rtol * |expected|
+    Provides concise, actionable error messages without dumping full tensors.
+
+    Args:
+        actual: The actual tensor from the computation.
+        expected: The expected tensor to compare against.
+        atol: Absolute tolerance.
+        rtol: Relative tolerance.
+        msg: Optional message prefix for the assertion error.
+
+    Raises:
+        AssertionError: If tensors have different shapes or values exceed tolerance.
+
+    Example:
+        >>> assert_tensors_close(output, expected_output, atol=1e-5, rtol=1e-5, msg="Forward pass")
+    """
+    if not is_torch_available():
+        raise ValueError("PyTorch needs to be installed to use this function.")
+
+    if actual.shape != expected.shape:
+        raise AssertionError(f"{msg} Shape mismatch: actual {actual.shape} vs expected {expected.shape}")
+
+    if not torch.allclose(actual, expected, atol=atol, rtol=rtol):
+        abs_diff = (actual - expected).abs()
+        max_diff = abs_diff.max().item()
+
+        flat_idx = abs_diff.argmax().item()
+        max_idx = tuple(idx.item() for idx in torch.unravel_index(torch.tensor(flat_idx), actual.shape))
+
+        threshold = atol + rtol * expected.abs()
+        mismatched = (abs_diff > threshold).sum().item()
+        total = actual.numel()
+
+        raise AssertionError(
+            f"{msg}\n"
+            f"Tensors not close! Mismatched elements: {mismatched}/{total} ({100 * mismatched / total:.1f}%)\n"
+            f"  Max diff: {max_diff:.6e} at index {max_idx}\n"
+            f"  Actual:   {actual.flatten()[flat_idx].item():.6e}\n"
+            f"  Expected: {expected.flatten()[flat_idx].item():.6e}\n"
+            f"  atol: {atol:.6e}, rtol: {rtol:.6e}"
+        )
 
 
 def numpy_cosine_similarity_distance(a, b):
@@ -241,7 +295,6 @@ def parse_flag_from_env(key, default=False):
 
 _run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
 _run_nightly_tests = parse_flag_from_env("RUN_NIGHTLY", default=False)
-_run_compile_tests = parse_flag_from_env("RUN_COMPILE", default=False)
 
 
 def floats_tensor(shape, scale=1.0, rng=None, name=None):
@@ -282,12 +335,155 @@ def nightly(test_case):
 
 def is_torch_compile(test_case):
     """
-    Decorator marking a test that runs compile tests in the diffusers CI.
-
-    Compile tests are skipped by default. Set the RUN_COMPILE environment variable to a truthy value to run them.
-
+    Decorator marking a test as a torch.compile test. These tests can be filtered using:
+        pytest -m "not compile" to skip
+        pytest -m compile to run only these tests
     """
-    return pytest.mark.skipif(not _run_compile_tests, reason="test is torch compile")(test_case)
+    return pytest.mark.compile(test_case)
+
+
+def is_single_file(test_case):
+    """
+    Decorator marking a test as a single file loading test. These tests can be filtered using:
+        pytest -m "not single_file" to skip
+        pytest -m single_file to run only these tests
+    """
+    return pytest.mark.single_file(test_case)
+
+
+def is_lora(test_case):
+    """
+    Decorator marking a test as a LoRA test. These tests can be filtered using:
+        pytest -m "not lora" to skip
+        pytest -m lora to run only these tests
+    """
+    return pytest.mark.lora(test_case)
+
+
+def is_ip_adapter(test_case):
+    """
+    Decorator marking a test as an IP Adapter test. These tests can be filtered using:
+        pytest -m "not ip_adapter" to skip
+        pytest -m ip_adapter to run only these tests
+    """
+    return pytest.mark.ip_adapter(test_case)
+
+
+def is_training(test_case):
+    """
+    Decorator marking a test as a training test. These tests can be filtered using:
+        pytest -m "not training" to skip
+        pytest -m training to run only these tests
+    """
+    return pytest.mark.training(test_case)
+
+
+def is_attention(test_case):
+    """
+    Decorator marking a test as an attention test. These tests can be filtered using:
+        pytest -m "not attention" to skip
+        pytest -m attention to run only these tests
+    """
+    return pytest.mark.attention(test_case)
+
+
+def is_memory(test_case):
+    """
+    Decorator marking a test as a memory optimization test. These tests can be filtered using:
+        pytest -m "not memory" to skip
+        pytest -m memory to run only these tests
+    """
+    return pytest.mark.memory(test_case)
+
+
+def is_cpu_offload(test_case):
+    """
+    Decorator marking a test as a CPU offload test. These tests can be filtered using:
+        pytest -m "not cpu_offload" to skip
+        pytest -m cpu_offload to run only these tests
+    """
+    return pytest.mark.cpu_offload(test_case)
+
+
+def is_group_offload(test_case):
+    """
+    Decorator marking a test as a group offload test. These tests can be filtered using:
+        pytest -m "not group_offload" to skip
+        pytest -m group_offload to run only these tests
+    """
+    return pytest.mark.group_offload(test_case)
+
+
+def is_quantization(test_case):
+    """
+    Decorator marking a test as a quantization test. These tests can be filtered using:
+        pytest -m "not quantization" to skip
+        pytest -m quantization to run only these tests
+    """
+    return pytest.mark.quantization(test_case)
+
+
+def is_bitsandbytes(test_case):
+    """
+    Decorator marking a test as a BitsAndBytes quantization test. These tests can be filtered using:
+        pytest -m "not bitsandbytes" to skip
+        pytest -m bitsandbytes to run only these tests
+    """
+    return pytest.mark.bitsandbytes(test_case)
+
+
+def is_quanto(test_case):
+    """
+    Decorator marking a test as a Quanto quantization test. These tests can be filtered using:
+        pytest -m "not quanto" to skip
+        pytest -m quanto to run only these tests
+    """
+    return pytest.mark.quanto(test_case)
+
+
+def is_torchao(test_case):
+    """
+    Decorator marking a test as a TorchAO quantization test. These tests can be filtered using:
+        pytest -m "not torchao" to skip
+        pytest -m torchao to run only these tests
+    """
+    return pytest.mark.torchao(test_case)
+
+
+def is_gguf(test_case):
+    """
+    Decorator marking a test as a GGUF quantization test. These tests can be filtered using:
+        pytest -m "not gguf" to skip
+        pytest -m gguf to run only these tests
+    """
+    return pytest.mark.gguf(test_case)
+
+
+def is_modelopt(test_case):
+    """
+    Decorator marking a test as a NVIDIA ModelOpt quantization test. These tests can be filtered using:
+        pytest -m "not modelopt" to skip
+        pytest -m modelopt to run only these tests
+    """
+    return pytest.mark.modelopt(test_case)
+
+
+def is_context_parallel(test_case):
+    """
+    Decorator marking a test as a context parallel inference test. These tests can be filtered using:
+        pytest -m "not context_parallel" to skip
+        pytest -m context_parallel to run only these tests
+    """
+    return pytest.mark.context_parallel(test_case)
+
+
+def is_cache(test_case):
+    """
+    Decorator marking a test as a cache test. These tests can be filtered using:
+        pytest -m "not cache" to skip
+        pytest -m cache to run only these tests
+    """
+    return pytest.mark.cache(test_case)
 
 
 def require_torch(test_case):
@@ -650,6 +846,16 @@ def require_kernels_version_greater_or_equal(kernels_version):
     return decorator
 
 
+def require_modelopt_version_greater_or_equal(modelopt_version):
+    def decorator(test_case):
+        return pytest.mark.skipif(
+            not is_nvidia_modelopt_version(">=", modelopt_version),
+            reason=f"Test requires modelopt with version greater than {modelopt_version}.",
+        )(test_case)
+
+    return decorator
+
+
 def deprecate_after_peft_backend(test_case):
     """
     Decorator marking a test that will be skipped after PEFT backend
@@ -663,7 +869,7 @@ def get_python_version():
     return major, minor
 
 
-def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
+def load_numpy(arry: str | np.ndarray, local_path: str | None = None) -> np.ndarray:
     if isinstance(arry, str):
         if local_path is not None:
             # local_path can be passed to correct images of tests
@@ -689,14 +895,14 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
     return arry
 
 
-def load_pt(url: str, map_location: Optional[str] = None, weights_only: Optional[bool] = True):
+def load_pt(url: str, map_location: str | None = None, weights_only: bool = True):
     response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
     response.raise_for_status()
     arry = torch.load(BytesIO(response.content), map_location=map_location, weights_only=weights_only)
     return arry
 
 
-def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
+def load_image(image: str | PIL.Image.Image) -> PIL.Image.Image:
     """
     Loads `image` to a PIL Image.
 
@@ -737,7 +943,7 @@ def preprocess_image(image: PIL.Image, batch_size: int):
     return 2.0 * image - 1.0
 
 
-def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None) -> str:
+def export_to_gif(image: list[PIL.Image.Image], output_gif_path: str = None) -> str:
     if output_gif_path is None:
         output_gif_path = tempfile.NamedTemporaryFile(suffix=".gif").name
 
@@ -831,7 +1037,7 @@ def export_to_obj(mesh, output_obj_path: str = None):
         f.writelines("\n".join(combined_data))
 
 
-def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
+def export_to_video(video_frames: list[np.ndarray], output_video_path: str = None) -> str:
     if is_opencv_available():
         import cv2
     else:
@@ -1012,7 +1218,7 @@ def pytest_terminal_summary_main(tr, id):
 
 
 # Adapted from https://github.com/huggingface/transformers/blob/000e52aec8850d3fe2f360adc6fd256e5b47fe4c/src/transformers..testing_utils.py#L1905
-def is_flaky(max_attempts: int = 5, wait_before_retry: Optional[float] = None, description: Optional[str] = None):
+def is_flaky(max_attempts: int = 5, wait_before_retry: float | None = None, description: str | None = None):
     """
     To decorate flaky tests (methods or entire classes). They will be retried on failures.
 
@@ -1269,7 +1475,7 @@ if is_torch_available():
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
-def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], *args, **kwargs):
+def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, Callable], *args, **kwargs):
     if device not in dispatch_table:
         return dispatch_table["default"](*args, **kwargs)
 
@@ -1327,7 +1533,7 @@ def backend_supports_training(device: str):
 # Guard for when Torch is not available
 if is_torch_available():
     # Update device function dict mapping
-    def update_mapping_from_spec(device_fn_dict: Dict[str, Callable], attribute_name: str):
+    def update_mapping_from_spec(device_fn_dict: dict[str, Callable], attribute_name: str):
         try:
             # Try to import the function directly
             spec_fn = getattr(device_spec_module, attribute_name)
@@ -1423,10 +1629,10 @@ if is_torch_available():
         module: torch.nn.Module,
         offload_to_disk_path: str,
         offload_type: str,
-        num_blocks_per_group: Optional[int] = None,
-        block_modules: Optional[List[str]] = None,
+        num_blocks_per_group: int | None = None,
+        block_modules: list[str] | None = None,
         module_prefix: str = "",
-    ) -> Set[str]:
+    ) -> set[str]:
         expected_files = set()
 
         def get_hashed_filename(group_id: str) -> str:
@@ -1506,8 +1712,8 @@ if is_torch_available():
         module: torch.nn.Module,
         offload_to_disk_path: str,
         offload_type: str,
-        num_blocks_per_group: Optional[int] = None,
-        block_modules: Optional[List[str]] = None,
+        num_blocks_per_group: int | None = None,
+        block_modules: list[str] | None = None,
     ) -> bool:
         if not os.path.isdir(offload_to_disk_path):
             return False, None, None
