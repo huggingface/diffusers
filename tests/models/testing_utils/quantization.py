@@ -639,7 +639,9 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
 
         assert hasattr(model_quantized, "hf_device_map"), "Model should have hf_device_map attribute"
         assert model_quantized.hf_device_map is not None, "hf_device_map should not be None"
-        assert model_quantized.device == "cpu"
+        assert model_quantized.device == torch.device("cpu"), (
+            f"Model should be on CPU, but is on {model_quantized.device}"
+        )
 
 
 @is_quantization
