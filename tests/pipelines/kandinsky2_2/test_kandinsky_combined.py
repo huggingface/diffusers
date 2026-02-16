@@ -416,3 +416,7 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
 
     def test_callback_cfg(self):
         pass
+
+    @unittest.skip("`device_map` is not yet supported for connected pipelines.")
+    def test_pipeline_with_accelerator_device_map(self):
+        pass
