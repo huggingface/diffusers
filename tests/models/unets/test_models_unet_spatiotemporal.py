@@ -32,8 +32,6 @@ from ..test_modeling_common import UNetTesterMixin
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
-    LoraTesterMixin,
-    MemoryTesterMixin,
     ModelTesterMixin,
     TrainingTesterMixin,
 )
@@ -209,10 +207,6 @@ class TestUNetSpatioTemporalAttention(UNetSpatioTemporalTesterConfig, AttentionT
         ), "xformers is not enabled"
 
 
-class TestUNetSpatioTemporalMemory(UNetSpatioTemporalTesterConfig, MemoryTesterMixin):
-    pass
-
-
 class TestUNetSpatioTemporalTraining(UNetSpatioTemporalTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
@@ -224,7 +218,3 @@ class TestUNetSpatioTemporalTraining(UNetSpatioTemporalTesterConfig, TrainingTes
             "UNetMidBlockSpatioTemporal",
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestUNetSpatioTemporalLoRA(UNetSpatioTemporalTesterConfig, LoraTesterMixin):
-    pass

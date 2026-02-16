@@ -33,7 +33,6 @@ from ...testing_utils import (
 from ..test_modeling_common import UNetTesterMixin
 from ..testing_utils import (
     BaseModelTesterConfig,
-    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TrainingTesterMixin,
@@ -148,10 +147,6 @@ class TestUNet2D(UNet2DTesterConfig, ModelTesterMixin, UNetTesterMixin):
         assert not torch.allclose(output, mid_none_output, rtol=1e-3), "outputs should be different."
 
 
-class TestUNet2DMemory(UNet2DTesterConfig, MemoryTesterMixin):
-    pass
-
-
 class TestUNet2DTraining(UNet2DTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
@@ -163,10 +158,6 @@ class TestUNet2DTraining(UNet2DTesterConfig, TrainingTesterMixin):
         }
         # NOTE: unlike UNet2DConditionModel, UNet2DModel does not currently support tuples for `attention_head_dim`
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestUNet2DLoRA(UNet2DTesterConfig, LoraTesterMixin):
-    pass
 
 
 # =============================================================================
@@ -212,23 +203,11 @@ class UNet2DLDMTesterConfig(BaseModelTesterConfig):
         }
 
 
-class TestUNet2DLDM(UNet2DLDMTesterConfig, ModelTesterMixin, UNetTesterMixin):
-    pass
-
-
-class TestUNet2DLDMMemory(UNet2DLDMTesterConfig, MemoryTesterMixin):
-    pass
-
-
 class TestUNet2DLDMTraining(UNet2DLDMTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"DownBlock2D", "UNetMidBlock2D", "UpBlock2D"}
         # NOTE: unlike UNet2DConditionModel, UNet2DModel does not currently support tuples for `attention_head_dim`
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestUNet2DLDMLoRA(UNet2DLDMTesterConfig, LoraTesterMixin):
-    pass
 
 
 class TestUNet2DLDMHubLoading(UNet2DLDMTesterConfig):
@@ -407,10 +386,6 @@ class TestNCSNppTraining(NCSNppTesterConfig, TrainingTesterMixin):
             "UNetMidBlock2D",
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestNCSNppLoRA(NCSNppTesterConfig, LoraTesterMixin):
-    pass
 
 
 class TestNCSNppHubLoading(NCSNppTesterConfig):

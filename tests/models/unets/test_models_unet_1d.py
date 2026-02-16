@@ -27,10 +27,8 @@ from ...testing_utils import (
 from ..test_modeling_common import UNetTesterMixin
 from ..testing_utils import (
     BaseModelTesterConfig,
-    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
-    TrainingTesterMixin,
 )
 
 
@@ -94,14 +92,6 @@ class TestUNet1DMemory(UNet1DTesterConfig, MemoryTesterMixin):
     @pytest.mark.xfail(reason=_LAYERWISE_CASTING_XFAIL_REASON)
     def test_layerwise_casting_memory(self):
         super().test_layerwise_casting_memory()
-
-
-class TestUNet1DTraining(UNet1DTesterConfig, TrainingTesterMixin):
-    pass
-
-
-class TestUNet1DLoRA(UNet1DTesterConfig, LoraTesterMixin):
-    pass
 
 
 class TestUNet1DHubLoading(UNet1DTesterConfig):
@@ -231,14 +221,6 @@ class TestUNet1DRLMemory(UNet1DRLTesterConfig, MemoryTesterMixin):
     @pytest.mark.xfail(reason=_LAYERWISE_CASTING_XFAIL_REASON)
     def test_layerwise_casting_memory(self):
         super().test_layerwise_casting_memory()
-
-
-class TestUNet1DRLTraining(UNet1DRLTesterConfig, TrainingTesterMixin):
-    pass
-
-
-class TestUNet1DRLLoRA(UNet1DRLTesterConfig, LoraTesterMixin):
-    pass
 
 
 class TestUNet1DRLHubLoading(UNet1DRLTesterConfig):

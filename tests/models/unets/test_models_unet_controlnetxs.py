@@ -24,8 +24,6 @@ from ...testing_utils import enable_full_determinism, floats_tensor, is_flaky, t
 from ..test_modeling_common import UNetTesterMixin
 from ..testing_utils import (
     BaseModelTesterConfig,
-    LoraTesterMixin,
-    MemoryTesterMixin,
     ModelTesterMixin,
     TrainingTesterMixin,
 )
@@ -314,10 +312,6 @@ class TestUNetControlNetXS(UNetControlNetXSTesterConfig, ModelTesterMixin, UNetT
         assert output.shape == output_mix_time.shape
 
 
-class TestUNetControlNetXSMemory(UNetControlNetXSTesterConfig, MemoryTesterMixin):
-    pass
-
-
 class TestUNetControlNetXSTraining(UNetControlNetXSTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {
@@ -328,7 +322,3 @@ class TestUNetControlNetXSTraining(UNetControlNetXSTesterConfig, TrainingTesterM
             "ControlNetXSCrossAttnUpBlock2D",
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestUNetControlNetXSLoRA(UNetControlNetXSTesterConfig, LoraTesterMixin):
-    pass

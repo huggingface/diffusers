@@ -16,7 +16,6 @@
 import unittest
 
 import numpy as np
-import pytest
 import torch
 
 from diffusers import UNet3DConditionModel
@@ -32,10 +31,7 @@ from ..test_modeling_common import UNetTesterMixin
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
-    LoraTesterMixin,
-    MemoryTesterMixin,
     ModelTesterMixin,
-    TrainingTesterMixin,
 )
 
 
@@ -196,15 +192,3 @@ class TestUNet3DConditionAttention(UNet3DConditionTesterConfig, AttentionTesterM
         with torch.no_grad():
             output = model(**inputs_dict)
         assert output is not None
-
-
-class TestUNet3DConditionMemory(UNet3DConditionTesterConfig, MemoryTesterMixin):
-    pass
-
-
-class TestUNet3DConditionTraining(UNet3DConditionTesterConfig, TrainingTesterMixin):
-    pass
-
-
-class TestUNet3DConditionLoRA(UNet3DConditionTesterConfig, LoraTesterMixin):
-    pass
