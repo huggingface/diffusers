@@ -21,6 +21,7 @@ import os
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration, set_seed
 from torch.utils.data import DataLoader
@@ -98,7 +99,7 @@ def parse_args():
         "--encoder_loss_weight",
         type=float,
         default=0.0,
-        help="Weight for encoder feature consistency loss used in `AutoencoderRAE.forward(return_loss=True)`.",
+        help="Weight for encoder feature consistency loss in the training loop.",
     )
     parser.add_argument(
         "--use_encoder_loss",
@@ -119,6 +120,34 @@ def build_transforms(args):
         image_transforms.append(transforms.RandomHorizontalFlip())
     image_transforms.append(transforms.ToTensor())
     return transforms.Compose(image_transforms)
+
+
+def compute_losses(
+    model, pixel_values, reconstruction_loss_type: str, use_encoder_loss: bool, encoder_loss_weight: float
+):
+    decoded = model(pixel_values).sample
+
+    if decoded.shape[-2:] != pixel_values.shape[-2:]:
+        raise ValueError(
+            "Training requires matching reconstruction and target sizes, got "
+            f"decoded={tuple(decoded.shape[-2:])}, target={tuple(pixel_values.shape[-2:])}."
+        )
+
+    if reconstruction_loss_type == "l1":
+        reconstruction_loss = F.l1_loss(decoded.float(), pixel_values.float())
+    else:
+        reconstruction_loss = F.mse_loss(decoded.float(), pixel_values.float())
+
+    encoder_loss = torch.zeros_like(reconstruction_loss)
+    if use_encoder_loss and encoder_loss_weight > 0:
+        target_tokens = model._encode_tokens(
+            model._maybe_resize_and_normalize(pixel_values), requires_grad=False
+        ).detach()
+        reconstructed_tokens = model._encode_tokens(model._maybe_resize_and_normalize(decoded), requires_grad=True)
+        encoder_loss = F.mse_loss(reconstructed_tokens.float(), target_tokens.float())
+
+    loss = reconstruction_loss + float(encoder_loss_weight) * encoder_loss
+    return decoded, loss, reconstruction_loss, encoder_loss
 
 
 def main():
@@ -237,13 +266,13 @@ def main():
             with accelerator.accumulate(model):
                 pixel_values = batch["pixel_values"]
 
-                model_output = model(
+                _, loss, reconstruction_loss, encoder_loss = compute_losses(
+                    model,
                     pixel_values,
-                    return_loss=True,
                     reconstruction_loss_type=args.reconstruction_loss_type,
+                    use_encoder_loss=args.use_encoder_loss,
                     encoder_loss_weight=args.encoder_loss_weight,
                 )
-                loss = model_output.loss
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -258,8 +287,8 @@ def main():
 
                 logs = {
                     "loss": loss.detach().item(),
-                    "reconstruction_loss": model_output.reconstruction_loss.detach().item(),
-                    "encoder_loss": model_output.encoder_loss.detach().item(),
+                    "reconstruction_loss": reconstruction_loss.detach().item(),
+                    "encoder_loss": encoder_loss.detach().item(),
                     "lr": lr_scheduler.get_last_lr()[0],
                 }
                 progress_bar.set_postfix(**logs)
@@ -267,17 +296,18 @@ def main():
 
                 if global_step % args.validation_steps == 0:
                     with torch.no_grad():
-                        val_output = model(
+                        _, val_loss, val_reconstruction_loss, val_encoder_loss = compute_losses(
+                            model,
                             pixel_values,
-                            return_loss=True,
                             reconstruction_loss_type=args.reconstruction_loss_type,
+                            use_encoder_loss=args.use_encoder_loss,
                             encoder_loss_weight=args.encoder_loss_weight,
                         )
                     accelerator.log(
                         {
-                            "val/loss": val_output.loss.detach().item(),
-                            "val/reconstruction_loss": val_output.reconstruction_loss.detach().item(),
-                            "val/encoder_loss": val_output.encoder_loss.detach().item(),
+                            "val/loss": val_loss.detach().item(),
+                            "val/reconstruction_loss": val_reconstruction_loss.detach().item(),
+                            "val/encoder_loss": val_encoder_loss.detach().item(),
                         },
                         step=global_step,
                     )

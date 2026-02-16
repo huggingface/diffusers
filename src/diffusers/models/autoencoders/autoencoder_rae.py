@@ -163,36 +163,11 @@ class RAEDecoderOutput(BaseOutput):
     logits: torch.Tensor
 
 
-@dataclass
-class AutoencoderRAELossOutput(BaseOutput):
-    """
-    Output of `AutoencoderRAE.forward(..., return_loss=True)`.
-
-    Args:
-        sample (`torch.Tensor`):
-            Reconstructed image tensor of shape `(batch_size, num_channels, image_height, image_width)`.
-        loss (`torch.Tensor`):
-            Total training loss.
-        reconstruction_loss (`torch.Tensor`):
-            Pixel-space reconstruction loss.
-        encoder_loss (`torch.Tensor`):
-            Optional encoder feature-space loss. Zero when disabled.
-    """
-
-    sample: torch.Tensor
-    loss: torch.Tensor
-    reconstruction_loss: torch.Tensor
-    encoder_loss: torch.Tensor
-
-
 class ViTMAEIntermediate(nn.Module):
     def __init__(self, hidden_size: int, intermediate_size: int, hidden_act: str = "gelu"):
         super().__init__()
         self.dense = nn.Linear(hidden_size, intermediate_size)
-        try:
-            self.intermediate_act_fn = get_activation(hidden_act)
-        except ValueError as e:
-            raise ValueError(f"Unsupported hidden_act={hidden_act}") from e
+        self.intermediate_act_fn = get_activation(hidden_act)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
@@ -562,25 +537,12 @@ class AutoencoderRAE(
                     f"for patch_size={decoder_patch_size} and computed num_patches={num_patches}."
                 )
 
-        # Normalization stats from the encoder's image processor
-        # RAE-main uses AutoImageProcessor mean/std; we follow the same.
-        encoder_mean = torch.tensor([0.5, 0.5, 0.5], dtype=torch.float32).view(1, 3, 1, 1)
-        encoder_std = torch.tensor([0.5, 0.5, 0.5], dtype=torch.float32).view(1, 3, 1, 1)
-        try:
-            from transformers import AutoImageProcessor
+        # Normalization stats from the encoder's image processor (strict, same as official RAE).
+        from transformers import AutoImageProcessor
 
-            try:
-                proc = AutoImageProcessor.from_pretrained(encoder_name_or_path, local_files_only=True)
-            except Exception:
-                proc = AutoImageProcessor.from_pretrained(encoder_name_or_path, local_files_only=False)
-            encoder_mean = torch.tensor(proc.image_mean, dtype=torch.float32).view(1, 3, 1, 1)
-            encoder_std = torch.tensor(proc.image_std, dtype=torch.float32).view(1, 3, 1, 1)
-        except (OSError, ValueError):
-            # Keep default 0.5/0.5 if processor is unavailable.
-            logger.warning(
-                "Falling back to encoder mean/std [0.5, 0.5, 0.5] for `%s` because AutoImageProcessor could not be loaded.",
-                encoder_name_or_path,
-            )
+        proc = AutoImageProcessor.from_pretrained(encoder_name_or_path)
+        encoder_mean = torch.tensor(proc.image_mean, dtype=torch.float32).view(1, 3, 1, 1)
+        encoder_std = torch.tensor(proc.image_std, dtype=torch.float32).view(1, 3, 1, 1)
 
         self.register_buffer("encoder_mean", encoder_mean, persistent=True)
         self.register_buffer("encoder_std", encoder_std, persistent=True)
@@ -698,28 +660,6 @@ class AutoencoderRAE(
 
         return z
 
-    def _compute_reconstruction_loss(
-        self, reconstructed: torch.Tensor, target: torch.Tensor, reconstruction_loss_type: str = "l1"
-    ) -> torch.Tensor:
-        if reconstructed.shape[-2:] != target.shape[-2:]:
-            raise ValueError(
-                "Reconstruction loss requires matching spatial sizes, but got "
-                f"reconstructed={tuple(reconstructed.shape[-2:])} and target={tuple(target.shape[-2:])}. "
-                "Configure `image_size` to match training input resolution."
-            )
-        if reconstruction_loss_type == "l1":
-            return F.l1_loss(reconstructed.float(), target.float())
-        if reconstruction_loss_type == "mse":
-            return F.mse_loss(reconstructed.float(), target.float())
-        raise ValueError(
-            f"Unsupported reconstruction_loss_type='{reconstruction_loss_type}'. Expected one of ['l1', 'mse']."
-        )
-
-    def _compute_encoder_feature_loss(self, reconstructed: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        target_tokens = self._encode_tokens(self._maybe_resize_and_normalize(target), requires_grad=False).detach()
-        reconstructed_tokens = self._encode_tokens(self._maybe_resize_and_normalize(reconstructed), requires_grad=True)
-        return F.mse_loss(reconstructed_tokens.float(), target_tokens.float())
-
     @apply_forward_hook
     def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[EncoderOutput, Tuple[torch.Tensor]]:
         if self.use_slicing and x.shape[0] > 1:
@@ -760,33 +700,9 @@ class AutoencoderRAE(
             return (decoded,)
         return DecoderOutput(sample=decoded)
 
-    def forward(
-        self,
-        sample: torch.Tensor,
-        return_dict: bool = True,
-        return_loss: bool = False,
-        reconstruction_loss_type: str = "l1",
-        encoder_loss_weight: float = 0.0,
-    ) -> Union[DecoderOutput, AutoencoderRAELossOutput, Tuple[torch.Tensor]]:
+    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
         latents = self.encode(sample, return_dict=False)[0]
         decoded = self.decode(latents, return_dict=False)[0]
-        if return_loss:
-            reconstruction_loss = self._compute_reconstruction_loss(
-                decoded, sample, reconstruction_loss_type=reconstruction_loss_type
-            )
-            encoder_loss = torch.zeros_like(reconstruction_loss)
-            if self.use_encoder_loss and encoder_loss_weight > 0:
-                encoder_loss = self._compute_encoder_feature_loss(decoded, sample)
-            total_loss = reconstruction_loss + float(encoder_loss_weight) * encoder_loss
-
-            if not return_dict:
-                return (decoded, total_loss, reconstruction_loss, encoder_loss)
-            return AutoencoderRAELossOutput(
-                sample=decoded,
-                loss=total_loss,
-                reconstruction_loss=reconstruction_loss,
-                encoder_loss=encoder_loss,
-            )
         if not return_dict:
             return (decoded,)
         return DecoderOutput(sample=decoded)

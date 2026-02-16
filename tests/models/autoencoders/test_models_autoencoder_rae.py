@@ -15,6 +15,7 @@
 
 import gc
 import unittest
+from unittest.mock import patch
 
 import torch
 import torch.nn.functional as F
@@ -74,7 +75,11 @@ class AutoencoderRAETests(unittest.TestCase):
             "scaling_factor": 1.0,
         }
         config.update(overrides)
-        return AutoencoderRAE(**config).to(torch_device)
+        with patch("transformers.AutoImageProcessor.from_pretrained") as mocked_from_pretrained:
+            mocked_from_pretrained.return_value = type(
+                "_MockProcessor", (), {"image_mean": [0.5, 0.5, 0.5], "image_std": [0.5, 0.5, 0.5]}
+            )()
+            return AutoencoderRAE(**config).to(torch_device)
 
     def test_fast_encode_decode_and_forward_shapes(self):
         model = self._make_model().eval()
@@ -158,32 +163,6 @@ class AutoencoderRAETests(unittest.TestCase):
         self.assertEqual(z_train_1.shape, z_eval_1.shape)
         self.assertFalse(torch.allclose(z_train_1, z_train_2))
         self.assertTrue(torch.allclose(z_eval_1, z_eval_2, atol=1e-6, rtol=1e-5))
-
-    def test_fast_forward_return_loss_reconstruction_only(self):
-        model = self._make_model(use_encoder_loss=False).train()
-        x = torch.rand(2, 3, 16, 16, device=torch_device)
-
-        output = model(x, return_loss=True)
-
-        self.assertEqual(output.sample.shape, (2, 3, 16, 16))
-        self.assertTrue(torch.isfinite(output.loss).all().item())
-        self.assertTrue(torch.isfinite(output.reconstruction_loss).all().item())
-        self.assertTrue(torch.isfinite(output.encoder_loss).all().item())
-        self.assertEqual(output.encoder_loss.item(), 0.0)
-        self.assertTrue(torch.allclose(output.loss, output.reconstruction_loss))
-
-    def test_fast_forward_return_loss_with_encoder_loss(self):
-        model = self._make_model(use_encoder_loss=True).train()
-        x = torch.rand(2, 3, 16, 16, device=torch_device)
-
-        output = model(x, return_loss=True, encoder_loss_weight=0.5, reconstruction_loss_type="mse")
-
-        self.assertEqual(output.sample.shape, (2, 3, 16, 16))
-        self.assertTrue(torch.isfinite(output.loss).all().item())
-        self.assertTrue(torch.isfinite(output.reconstruction_loss).all().item())
-        self.assertTrue(torch.isfinite(output.encoder_loss).all().item())
-        self.assertGreaterEqual(output.encoder_loss.item(), 0.0)
-        self.assertGreaterEqual(output.loss.item(), output.reconstruction_loss.item())
 
 
 @slow

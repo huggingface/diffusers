@@ -45,12 +45,8 @@ with torch.no_grad():
 
 For latent normalization, use `latents_mean` and `latents_std` (matching other diffusers autoencoders).
 
-For training, `forward(...)` also supports:
-- `return_loss=True`
-- `reconstruction_loss_type` (`"l1"` or `"mse"`)
-- `encoder_loss_weight` (used when `use_encoder_loss=True`)
-
-See `examples/research_projects/autoencoder_rae/train_autoencoder_rae.py` for a stage-1 style training script.
+See `examples/research_projects/autoencoder_rae/train_autoencoder_rae.py` for a stage-1 style training script
+(reconstruction and optional encoder-feature losses are computed in the training loop, following diffusers training conventions).
 
 ## AutoencoderRAE class
 
