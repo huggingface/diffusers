@@ -628,6 +628,19 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
         """Test that quantized models can be used for training with adapters."""
         self._test_quantization_training(BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"])
 
+    @pytest.mark.parametrize(
+        "config_name",
+        list(BitsAndBytesConfigMixin.BNB_CONFIGS.keys()),
+        ids=list(BitsAndBytesConfigMixin.BNB_CONFIGS.keys()),
+    )
+    def test_cpu_device_map(self, config_name):
+        config_kwargs = BitsAndBytesConfigMixin.BNB_CONFIGS[config_name]
+        model_quantized = self._create_quantized_model(config_kwargs, device_map="cpu")
+
+        assert hasattr(model_quantized, "hf_device_map"), "Model should have hf_device_map attribute"
+        assert model_quantized.hf_device_map is not None, "hf_device_map should not be None"
+        assert model_quantized.device == "cpu"
+
 
 @is_quantization
 @is_quanto
