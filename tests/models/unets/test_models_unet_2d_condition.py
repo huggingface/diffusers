@@ -1196,11 +1196,11 @@ class TestUNet2DConditionIPAdapter(UNet2DConditionTesterConfig, IPAdapterTesterM
         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
 
 
-class UNet2DConditionModelCompileTests(UNet2DConditionTesterConfig, TorchCompileTesterMixin):
+class TestUNet2DConditionModelCompile(UNet2DConditionTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for UNet2DConditionModel."""
 
 
-class UNet2DConditionModelLoRAHotSwapTests(UNet2DConditionTesterConfig, LoraHotSwappingForModelTesterMixin):
+class TestUNet2DConditionModelLoRAHotSwap(UNet2DConditionTesterConfig, LoraHotSwappingForModelTesterMixin):
     """LoRA hot-swapping tests for UNet2DConditionModel."""
 
 
