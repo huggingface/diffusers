@@ -135,7 +135,7 @@ def process_face_embeddings(
         is_align_face: Boolean flag indicating whether face alignment should be performed.
 
     Returns:
-        Tuple:
+        tuple:
             - id_cond: Concatenated tensor of Ante face embedding and CLIP vision embedding
             - id_vit_hidden: Hidden state of the CLIP vision model, a list of tensors.
             - return_face_features_image_2: Processed face features image after normalization and parsing.
@@ -245,7 +245,7 @@ def process_face_embeddings_infer(
         is_align_face: Boolean flag indicating whether face alignment should be performed (default: True).
 
     Returns:
-        Tuple:
+        tuple:
             - id_cond: Concatenated tensor of Ante face embedding and CLIP vision embedding.
             - id_vit_hidden: Hidden state of the CLIP vision model, a list of tensors.
             - image: Processed face image after feature extraction and alignment.

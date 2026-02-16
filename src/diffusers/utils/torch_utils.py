@@ -15,9 +15,10 @@
 PyTorch utilities: Utilities related to PyTorch
 """
 
+from __future__ import annotations
+
 import functools
 import os
-from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from . import logging
 from .import_utils import is_torch_available, is_torch_mlu_available, is_torch_npu_available, is_torch_version
@@ -88,7 +89,7 @@ except (ImportError, ModuleNotFoundError):
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
-def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], *args, **kwargs):
+def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, callable], *args, **kwargs):
     if device not in dispatch_table:
         return dispatch_table["default"](*args, **kwargs)
 
@@ -144,11 +145,11 @@ def backend_supports_training(device: str):
 
 
 def randn_tensor(
-    shape: Union[Tuple, List],
-    generator: Optional[Union[List["torch.Generator"], "torch.Generator"]] = None,
-    device: Optional[Union[str, "torch.device"]] = None,
-    dtype: Optional["torch.dtype"] = None,
-    layout: Optional["torch.layout"] = None,
+    shape: tuple | list,
+    generator: list["torch.Generator"] | "torch.Generator" | None = None,
+    device: str | "torch.device" | None = None,
+    dtype: "torch.dtype" | None = None,
+    layout: "torch.layout" | None = None,
 ):
     """A helper function to create random tensors on the desired `device` with the desired `dtype`. When
     passing a list of generators, you can seed each batch size individually. If CPU generators are passed, the tensor
@@ -241,9 +242,9 @@ def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.T
 
 def apply_freeu(
     resolution_idx: int, hidden_states: "torch.Tensor", res_hidden_states: "torch.Tensor", **freeu_kwargs
-) -> Tuple["torch.Tensor", "torch.Tensor"]:
-    """Applies the FreeU mechanism as introduced in https://huggingface.co/papers/2309.11497. Adapted from the official
-    code repository: https://github.com/ChenyangSi/FreeU.
+) -> tuple["torch.Tensor", "torch.Tensor"]:
+    """Applies the FreeU mechanism as introduced in https:
+    //arxiv.org/abs/2309.11497. Adapted from the official code repository: https://github.com/ChenyangSi/FreeU.
 
     Args:
         resolution_idx (`int`): Integer denoting the UNet block where FreeU is being applied.
@@ -292,7 +293,7 @@ def get_device():
         return "cpu"
 
 
-def empty_device_cache(device_type: Optional[str] = None):
+def empty_device_cache(device_type: str | None = None):
     if device_type is None:
         device_type = get_device()
     if device_type in ["cpu"]:
@@ -301,7 +302,7 @@ def empty_device_cache(device_type: Optional[str] = None):
     device_mod.empty_cache()
 
 
-def device_synchronize(device_type: Optional[str] = None):
+def device_synchronize(device_type: str | None = None):
     if device_type is None:
         device_type = get_device()
     device_mod = getattr(torch, device_type, torch.cuda)

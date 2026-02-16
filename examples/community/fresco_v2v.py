@@ -1208,7 +1208,7 @@ def apply_FRESCO_attn(pipe):
 
 
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -2064,7 +2064,7 @@ class FrescoV2VPipeline(StableDiffusionControlNetImg2ImgPipeline):
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
         ip_adapter_image_embeds: Optional[List[torch.FloatTensor]] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 0.8,

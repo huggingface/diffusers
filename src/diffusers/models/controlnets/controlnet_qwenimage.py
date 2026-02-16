@@ -13,14 +13,19 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    BaseOutput,
+    apply_lora_scale,
+    deprecate,
+    logging,
+)
 from ..attention import AttentionMixin
 from ..cache_utils import CacheMixin
 from ..controlnets.controlnet import zero_module
@@ -40,7 +45,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class QwenImageControlNetOutput(BaseOutput):
-    controlnet_block_samples: Tuple[torch.Tensor]
+    controlnet_block_samples: tuple[torch.Tensor]
 
 
 class QwenImageControlNetModel(
@@ -53,12 +58,12 @@ class QwenImageControlNetModel(
         self,
         patch_size: int = 2,
         in_channels: int = 64,
-        out_channels: Optional[int] = 16,
+        out_channels: int | None = 16,
         num_layers: int = 60,
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
         joint_attention_dim: int = 3584,
-        axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
+        axes_dims_rope: tuple[int, int, int] = (16, 56, 56),
         extra_condition_channels: int = 0,  # for controlnet-inpainting
     ):
         super().__init__()
@@ -123,6 +128,7 @@ class QwenImageControlNetModel(
 
         return controlnet
 
+    @apply_lora_scale("joint_attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -131,11 +137,11 @@ class QwenImageControlNetModel(
         encoder_hidden_states: torch.Tensor = None,
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        img_shapes: Optional[List[Tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[List[int]] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        img_shapes: list[tuple[int, int, int]] | None = None,
+        txt_seq_lens: list[int] | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
+    ) -> torch.FloatTensor | Transformer2DModelOutput:
         """
         The [`QwenImageControlNetModel`] forward method.
 
@@ -154,9 +160,9 @@ class QwenImageControlNetModel(
                 (not just contiguous valid tokens followed by padding) since it's applied element-wise in attention.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            img_shapes (`List[Tuple[int, int, int]]`, *optional*):
+            img_shapes (`list[tuple[int, int, int]]`, *optional*):
                 Image shapes for RoPE computation.
-            txt_seq_lens (`List[int]`, *optional*):
+            txt_seq_lens (`list[int]`, *optional*):
                 **Deprecated**. Not needed anymore, we use `encoder_hidden_states` instead to infer text sequence
                 length.
             joint_attention_kwargs (`dict`, *optional*):
@@ -181,20 +187,6 @@ class QwenImageControlNetModel(
                 standard_warn=False,
             )
 
-        if joint_attention_kwargs is not None:
-            joint_attention_kwargs = joint_attention_kwargs.copy()
-            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
-                )
         hidden_states = self.img_in(hidden_states)
 
         # add
@@ -256,10 +248,6 @@ class QwenImageControlNetModel(
         controlnet_block_samples = [sample * conditioning_scale for sample in controlnet_block_samples]
         controlnet_block_samples = None if len(controlnet_block_samples) == 0 else controlnet_block_samples
 
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
-
         if not return_dict:
             return controlnet_block_samples
 
@@ -276,7 +264,7 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
     to be compatible with `QwenImageControlNetModel`.
 
     Args:
-        controlnets (`List[QwenImageControlNetModel]`):
+        controlnets (`list[QwenImageControlNetModel]`):
             Provides additional conditioning to the unet during the denoising process. You must set multiple
             `QwenImageControlNetModel` as a list.
     """
@@ -288,16 +276,16 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-        controlnet_cond: List[torch.tensor],
-        conditioning_scale: List[float],
+        controlnet_cond: list[torch.tensor],
+        conditioning_scale: list[float],
         encoder_hidden_states: torch.Tensor = None,
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        img_shapes: Optional[List[Tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[List[int]] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        img_shapes: list[tuple[int, int, int]] | None = None,
+        txt_seq_lens: list[int] | None = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[QwenImageControlNetOutput, Tuple]:
+    ) -> QwenImageControlNetOutput | tuple:
         if txt_seq_lens is not None:
             deprecate(
                 "txt_seq_lens",

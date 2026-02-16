@@ -16,7 +16,6 @@
 from collections.abc import Iterator
 from fractions import Fraction
 from itertools import chain
-from typing import List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -109,10 +108,10 @@ def _write_audio(
 
 
 def encode_video(
-    video: Union[List[PIL.Image.Image], np.ndarray, torch.Tensor, Iterator[torch.Tensor]],
+    video: list[PIL.Image.Image] | np.ndarray | torch.Tensor | Iterator[torch.Tensor],
     fps: int,
-    audio: Optional[torch.Tensor],
-    audio_sample_rate: Optional[int],
+    audio: torch.Tensor,
+    audio_sample_rate: int,
     output_path: str,
     video_chunks_number: int = 1,
 ) -> None:

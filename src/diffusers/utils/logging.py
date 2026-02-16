@@ -28,7 +28,6 @@ from logging import (
     WARN,  # NOQA
     WARNING,  # NOQA
 )
-from typing import Dict, Optional
 
 from tqdm import auto as tqdm_lib
 
@@ -36,7 +35,7 @@ from .distributed_utils import is_torch_dist_rank_zero
 
 
 _lock = threading.Lock()
-_default_handler: Optional[logging.Handler] = None
+_default_handler: logging.Handler | None = None
 
 log_levels = {
     "debug": logging.DEBUG,
@@ -125,11 +124,11 @@ def _reset_library_root_logger() -> None:
         _default_handler = None
 
 
-def get_log_levels_dict() -> Dict[str, int]:
+def get_log_levels_dict() -> dict[str, int]:
     return log_levels
 
 
-def get_logger(name: Optional[str] = None) -> logging.Logger:
+def get_logger(name: str | None = None) -> logging.Logger:
     """
     Return a logger with the specified name.
 
