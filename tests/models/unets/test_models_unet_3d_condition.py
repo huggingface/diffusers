@@ -16,49 +16,50 @@
 import unittest
 
 import numpy as np
+import pytest
 import torch
 
-from diffusers.models import ModelMixin, UNet3DConditionModel
-from diffusers.utils import logging
+from diffusers import UNet3DConditionModel
 from diffusers.utils.import_utils import is_xformers_available
 
-from ...testing_utils import enable_full_determinism, floats_tensor, skip_mps, torch_device
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ...testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    skip_mps,
+    torch_device,
+)
+from ..test_modeling_common import UNetTesterMixin
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TrainingTesterMixin,
+)
 
 
 enable_full_determinism()
 
-logger = logging.get_logger(__name__)
-
 
 @skip_mps
-class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
-    model_class = UNet3DConditionModel
-    main_input_name = "sample"
+class UNet3DConditionTesterConfig(BaseModelTesterConfig):
+    """Base configuration for UNet3DConditionModel testing."""
 
     @property
-    def dummy_input(self):
-        batch_size = 4
-        num_channels = 4
-        num_frames = 4
-        sizes = (16, 16)
-
-        noise = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
-        time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 8)).to(torch_device)
-
-        return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
-
-    @property
-    def input_shape(self):
-        return (4, 4, 16, 16)
+    def model_class(self):
+        return UNet3DConditionModel
 
     @property
     def output_shape(self):
         return (4, 4, 16, 16)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    @property
+    def main_input_name(self):
+        return "sample"
+
+    def get_init_dict(self):
+        return {
             "block_out_channels": (4, 8),
             "norm_num_groups": 4,
             "down_block_types": (
@@ -73,27 +74,25 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             "layers_per_block": 1,
             "sample_size": 16,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_enable_works(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+    def get_dummy_inputs(self):
+        batch_size = 4
+        num_channels = 4
+        num_frames = 4
+        sizes = (16, 16)
 
-        model.enable_xformers_memory_efficient_attention()
+        return {
+            "sample": floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device),
+            "timestep": torch.tensor([10]).to(torch_device),
+            "encoder_hidden_states": floats_tensor((batch_size, 4, 8)).to(torch_device),
+        }
 
-        assert (
-            model.mid_block.attentions[0].transformer_blocks[0].attn1.processor.__class__.__name__
-            == "XFormersAttnProcessor"
-        ), "xformers is not enabled"
 
+class TestUNet3DCondition(UNet3DConditionTesterConfig, ModelTesterMixin, UNetTesterMixin):
     # Overriding to set `norm_num_groups` needs to be different for this model.
     def test_forward_with_norm_groups(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
         init_dict["block_out_channels"] = (32, 64)
         init_dict["norm_num_groups"] = 32
 
@@ -107,39 +106,74 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     # Overriding since the UNet3D outputs a different structure.
+    @torch.no_grad()
     def test_determinism(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+        model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         model.eval()
 
-        with torch.no_grad():
-            # Warmup pass when using mps (see #372)
-            if torch_device == "mps" and isinstance(model, ModelMixin):
-                model(**self.dummy_input)
+        inputs_dict = self.get_dummy_inputs()
 
-            first = model(**inputs_dict)
-            if isinstance(first, dict):
-                first = first.sample
+        first = model(**inputs_dict)
+        if isinstance(first, dict):
+            first = first.sample
 
-            second = model(**inputs_dict)
-            if isinstance(second, dict):
-                second = second.sample
+        second = model(**inputs_dict)
+        if isinstance(second, dict):
+            second = second.sample
 
         out_1 = first.cpu().numpy()
         out_2 = second.cpu().numpy()
         out_1 = out_1[~np.isnan(out_1)]
         out_2 = out_2[~np.isnan(out_2)]
         max_diff = np.amax(np.abs(out_1 - out_2))
-        self.assertLessEqual(max_diff, 1e-5)
+        assert max_diff <= 1e-5
+
+    def test_feed_forward_chunking(self):
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        init_dict["block_out_channels"] = (32, 64)
+        init_dict["norm_num_groups"] = 32
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)[0]
+
+        model.enable_forward_chunking()
+        with torch.no_grad():
+            output_2 = model(**inputs_dict)[0]
+
+        assert output.shape == output_2.shape, "Shape doesn't match"
+        assert np.abs(output.cpu() - output_2.cpu()).max() < 1e-2
+
+
+class TestUNet3DConditionAttention(UNet3DConditionTesterConfig, AttentionTesterMixin):
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_enable_works(self):
+        init_dict = self.get_init_dict()
+        model = self.model_class(**init_dict)
+
+        model.enable_xformers_memory_efficient_attention()
+
+        assert (
+            model.mid_block.attentions[0].transformer_blocks[0].attn1.processor.__class__.__name__
+            == "XFormersAttnProcessor"
+        ), "xformers is not enabled"
 
     def test_model_attention_slicing(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = 8
@@ -163,21 +197,14 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             output = model(**inputs_dict)
         assert output is not None
 
-    def test_feed_forward_chunking(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        init_dict["block_out_channels"] = (32, 64)
-        init_dict["norm_num_groups"] = 32
 
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
+class TestUNet3DConditionMemory(UNet3DConditionTesterConfig, MemoryTesterMixin):
+    pass
 
-        with torch.no_grad():
-            output = model(**inputs_dict)[0]
 
-        model.enable_forward_chunking()
-        with torch.no_grad():
-            output_2 = model(**inputs_dict)[0]
+class TestUNet3DConditionTraining(UNet3DConditionTesterConfig, TrainingTesterMixin):
+    pass
 
-        self.assertEqual(output.shape, output_2.shape, "Shape doesn't match")
-        assert np.abs(output.cpu() - output_2.cpu()).max() < 1e-2
+
+class TestUNet3DConditionLoRA(UNet3DConditionTesterConfig, LoraTesterMixin):
+    pass
