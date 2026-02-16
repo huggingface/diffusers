@@ -6,7 +6,7 @@ from ..utils import (
     _LazyModule,
     get_objects_from_module,
     is_flax_available,
-    is_k_diffusion_available,
+
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,
@@ -467,21 +467,6 @@ else:
     )
 
 try:
-    if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils import (
-        dummy_torch_and_transformers_and_k_diffusion_objects,
-    )
-
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
-else:
-    _import_structure["stable_diffusion_k_diffusion"] = [
-        "StableDiffusionKDiffusionPipeline",
-        "StableDiffusionXLKDiffusionPipeline",
-    ]
-
-try:
     if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -899,17 +884,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 OnnxStableDiffusionPipeline,
                 OnnxStableDiffusionUpscalePipeline,
                 StableDiffusionOnnxPipeline,
-            )
-
-        try:
-            if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_torch_and_transformers_and_k_diffusion_objects import *
-        else:
-            from .stable_diffusion_k_diffusion import (
-                StableDiffusionKDiffusionPipeline,
-                StableDiffusionXLKDiffusionPipeline,
             )
 
         try:
