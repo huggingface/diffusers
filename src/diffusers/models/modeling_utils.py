@@ -1243,54 +1243,37 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     subfolder=subfolder or "",
                     dduf_entries=dduf_entries,
                 )
-            elif use_flashpack:
-                try:
-                    resolved_model_file = _get_model_file(
-                        pretrained_model_name_or_path,
-                        weights_name=FLASHPACK_WEIGHTS_NAME,
-                        cache_dir=cache_dir,
-                        force_download=force_download,
-                        proxies=proxies,
-                        local_files_only=local_files_only,
-                        token=token,
-                        revision=revision,
-                        subfolder=subfolder,
-                        user_agent=user_agent,
-                        commit_hash=commit_hash,
-                        dduf_entries=dduf_entries,
-                    )
+            else:
+                if use_flashpack:
+                    weights_name = FLASHPACK_WEIGHTS_NAME
+                elif use_safetensors:
+                    weights_name = _add_variant(SAFETENSORS_WEIGHTS_NAME, variant)
+                else:
+                    weights_name = None
+                if weights_name is not None:
+                    try:
+                        resolved_model_file = _get_model_file(
+                            pretrained_model_name_or_path,
+                            weights_name=weights_name,
+                            cache_dir=cache_dir,
+                            force_download=force_download,
+                            proxies=proxies,
+                            local_files_only=local_files_only,
+                            token=token,
+                            revision=revision,
+                            subfolder=subfolder,
+                            user_agent=user_agent,
+                            commit_hash=commit_hash,
+                            dduf_entries=dduf_entries,
+                        )
 
-                except IOError as e:
-                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
-                    if not allow_pickle:
-                        raise
-                    logger.warning(
-                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
-                    )
-            elif use_safetensors:
-                try:
-                    resolved_model_file = _get_model_file(
-                        pretrained_model_name_or_path,
-                        weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
-                        cache_dir=cache_dir,
-                        force_download=force_download,
-                        proxies=proxies,
-                        local_files_only=local_files_only,
-                        token=token,
-                        revision=revision,
-                        subfolder=subfolder,
-                        user_agent=user_agent,
-                        commit_hash=commit_hash,
-                        dduf_entries=dduf_entries,
-                    )
-
-                except IOError as e:
-                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
-                    if not allow_pickle:
-                        raise
-                    logger.warning(
-                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
-                    )
+                    except IOError as e:
+                        logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
+                        if not allow_pickle:
+                            raise
+                        logger.warning(
+                            "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
+                        )
 
             if resolved_model_file is None and not is_sharded:
                 resolved_model_file = _get_model_file(
@@ -1345,14 +1328,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "`device_map` has not been provided for FlashPack, model will be on `cpu` - provide `device_map` to fully utilize "
                     "the benefit of FlashPack."
                 )
-                flashpack_device = None
+                flashpack_device = torch.device("cpu")
             else:
                 device = device_map[""]
-                flashpack_device = torch.device(device) if not isinstance(device, torch.device) else device
-                if flashpack_device in ["auto", "balanced", "balanced_low_0", "sequential"]:
+                if isinstance(device, str) and device in ["auto", "balanced", "balanced_low_0", "sequential"]:
                     raise ValueError(
                         "FlashPack `device_map` should not be one of `auto`, `balanced`, `balanced_low_0`, `sequential`. Use a specific device instead, e.g., `device_map='cuda'` or `device_map='cuda:0'"
                     )
+                flashpack_device = torch.device(device) if not isinstance(device, torch.device) else device
 
             flashpack.mixin.assign_from_file(
                 model=model,

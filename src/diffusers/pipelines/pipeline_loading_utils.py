@@ -1104,7 +1104,7 @@ def _get_ignore_patterns(
     is_onnx: bool,
     use_flashpack: bool,
     variant: str | None = None,
-) -> List[str]:
+) -> list[str]:
     if (
         use_safetensors
         and not allow_pickle
