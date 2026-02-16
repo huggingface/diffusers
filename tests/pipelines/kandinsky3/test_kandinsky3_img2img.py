@@ -194,9 +194,6 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     def test_save_load_dduf(self):
         super().test_save_load_dduf(atol=1e-3, rtol=1e-3)
 
-    def test_pipeline_with_accelerator_device_map(self):
-        return super().test_pipeline_with_accelerator_device_map(expected_max_difference=5e-3)
-
 
 @slow
 @require_torch_accelerator

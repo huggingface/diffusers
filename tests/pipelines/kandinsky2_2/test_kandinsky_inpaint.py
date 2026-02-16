@@ -296,9 +296,6 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         output = pipe(**inputs)[0]
         assert output.abs().sum() == 0
 
-    def test_pipeline_with_accelerator_device_map(self):
-        return super().test_pipeline_with_accelerator_device_map(expected_max_difference=5e-3)
-
 
 @slow
 @require_torch_accelerator

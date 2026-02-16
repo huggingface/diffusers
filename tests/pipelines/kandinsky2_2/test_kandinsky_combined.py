@@ -155,16 +155,10 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=5e-3)
 
-    @unittest.skip("TODO: revisit")
     def test_callback_inputs(self):
         pass
 
-    @unittest.skip("TODO: revisit")
     def test_callback_cfg(self):
-        pass
-
-    @unittest.skip("TODO: revisit")
-    def test_pipeline_with_accelerator_device_map(self):
         pass
 
 
@@ -412,14 +406,8 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
     def test_sequential_cpu_offload_forward_pass(self):
         super().test_sequential_cpu_offload_forward_pass(expected_max_diff=5e-4)
 
-    @unittest.skip("TODO: revisit")
     def test_callback_inputs(self):
         pass
 
-    @unittest.skip("TODO: revisit")
     def test_callback_cfg(self):
-        pass
-
-    @unittest.skip("TODO: revisit")
-    def test_pipeline_with_accelerator_device_map(self):
         pass
