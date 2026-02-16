@@ -20,6 +20,7 @@ import tempfile
 import unittest
 from collections import OrderedDict
 
+import pytest
 import torch
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
@@ -366,6 +367,10 @@ class UNet2DConditionTesterConfig(BaseModelTesterConfig):
     def model_split_percents(self) -> list[float]:
         return [0.5, 0.34, 0.4]
 
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
     def get_init_dict(self) -> dict:
         """Return UNet2D model initialization arguments."""
         return {
@@ -396,7 +401,8 @@ class UNet2DConditionTesterConfig(BaseModelTesterConfig):
 
 class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTesterMixin):
     def test_model_with_attention_head_dim_tuple(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
@@ -411,12 +417,13 @@ class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTes
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     def test_model_with_use_linear_projection(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["use_linear_projection"] = True
 
@@ -430,12 +437,13 @@ class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTes
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     def test_model_with_cross_attention_dim_tuple(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["cross_attention_dim"] = (8, 8)
 
@@ -449,12 +457,13 @@ class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTes
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     def test_model_with_simple_projection(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         batch_size, _, _, sample_size = inputs_dict["sample"].shape
 
@@ -473,12 +482,13 @@ class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTes
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     def test_model_with_class_embeddings_concat(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         batch_size, _, _, sample_size = inputs_dict["sample"].shape
 
@@ -498,13 +508,13 @@ class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTes
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     # see diffusers.models.attention_processor::Attention#prepare_attention_mask
     # note: we may not need to fix mask padding to work for stable-diffusion cross-attn masks.
-    # since the use-case (somebody passes in a too-short cross-attn mask) is pretty esoteric.
+    # since the use-case (somebody passes in a too-short cross-attn mask) is pretty small,
     # maybe it's fine that this only works for the unclip use-case.
     @mark.skip(
         reason="we currently pad mask by target_length tokens (what unclip needs), whereas stable-diffusion's cross-attn needs to instead pad by remaining_length."
@@ -565,7 +575,7 @@ class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTes
         expected_shape = inputs_dict["sample"].shape
 
         # Check if input and output shapes are the same
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
 
 class TestUNet2DConditionHubLoading(UNet2DConditionTesterConfig):
@@ -706,11 +716,8 @@ class TestUNet2DConditionLoRA(UNet2DConditionTesterConfig, LoraTesterMixin):
             model.save_attn_procs(tmpdirname)
             model.unload_lora()
 
-            with self.assertWarns(FutureWarning) as warning:
+            with pytest.warns(FutureWarning, match="Using the `load_attn_procs\\(\\)` method has been deprecated"):
                 model.load_attn_procs(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
-
-            warning_message = str(warning.warnings[0].message)
-            assert "Using the `load_attn_procs()` method has been deprecated" in warning_message
 
             # import to still check for the rest of the stuff.
             assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
@@ -738,11 +745,8 @@ class TestUNet2DConditionLoRA(UNet2DConditionTesterConfig, LoraTesterMixin):
         assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            with self.assertWarns(FutureWarning) as warning:
-                model.save_attn_procs(tmpdirname)
-
-        warning_message = str(warning.warnings[0].message)
-        assert "Using the `save_attn_procs()` method has been deprecated" in warning_message
+            with pytest.warns(FutureWarning, match="Using the `save_attn_procs\\(\\)` method has been deprecated"):
+                model.save_attn_procs(os.path.join(tmpdirname))
 
 
 class TestUNet2DConditionMemory(UNet2DConditionTesterConfig, MemoryTesterMixin):
