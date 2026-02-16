@@ -161,7 +161,7 @@ class AutoencoderRAETests(unittest.TestCase):
 
     def test_fast_forward_return_loss_reconstruction_only(self):
         model = self._make_model(use_encoder_loss=False).train()
-        x = torch.rand(2, 3, 32, 32, device=torch_device)
+        x = torch.rand(2, 3, 16, 16, device=torch_device)
 
         output = model(x, return_loss=True)
 
@@ -174,7 +174,7 @@ class AutoencoderRAETests(unittest.TestCase):
 
     def test_fast_forward_return_loss_with_encoder_loss(self):
         model = self._make_model(use_encoder_loss=True).train()
-        x = torch.rand(2, 3, 32, 32, device=torch_device)
+        x = torch.rand(2, 3, 16, 16, device=torch_device)
 
         output = model(x, return_loss=True, encoder_loss_weight=0.5, reconstruction_loss_type="mse")
 

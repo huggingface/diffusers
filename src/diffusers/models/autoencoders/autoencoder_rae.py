@@ -702,11 +702,10 @@ class AutoencoderRAE(
         self, reconstructed: torch.Tensor, target: torch.Tensor, reconstruction_loss_type: str = "l1"
     ) -> torch.Tensor:
         if reconstructed.shape[-2:] != target.shape[-2:]:
-            target = F.interpolate(
-                target,
-                size=reconstructed.shape[-2:],
-                mode="bicubic",
-                align_corners=False,
+            raise ValueError(
+                "Reconstruction loss requires matching spatial sizes, but got "
+                f"reconstructed={tuple(reconstructed.shape[-2:])} and target={tuple(target.shape[-2:])}. "
+                "Configure `image_size` to match training input resolution."
             )
         if reconstruction_loss_type == "l1":
             return F.l1_loss(reconstructed.float(), target.float())

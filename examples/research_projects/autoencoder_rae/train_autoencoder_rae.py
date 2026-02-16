@@ -123,6 +123,11 @@ def build_transforms(args):
 
 def main():
     args = parse_args()
+    if args.resolution != args.image_size:
+        raise ValueError(
+            f"`--resolution` ({args.resolution}) must match `--image_size` ({args.image_size}) "
+            "for stage-1 reconstruction loss."
+        )
 
     logging_dir = Path(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
