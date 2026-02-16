@@ -179,6 +179,8 @@ class AttentionBackendName(str, Enum):
     _FLASH_VARLEN_3 = "_flash_varlen_3"
     _FLASH_3_HUB = "_flash_3_hub"
     _FLASH_3_VARLEN_HUB = "_flash_3_varlen_hub"
+    FLASH_SPLIT = "flash_split"
+    FLASH_HUB_SPLIT = "flash_hub_split"
 
     # `aiter`
     AITER = "aiter"
@@ -192,6 +194,7 @@ class AttentionBackendName(str, Enum):
     _NATIVE_MATH = "_native_math"
     _NATIVE_NPU = "_native_npu"
     _NATIVE_XLA = "_native_xla"
+    NATIVE_SPLIT = "native_split"
 
     # `sageattention`
     SAGE = "sage"
@@ -433,7 +436,7 @@ def _check_shape(
 
 
 def _check_attention_backend_requirements(backend: AttentionBackendName) -> None:
-    if backend in [AttentionBackendName.FLASH, AttentionBackendName.FLASH_VARLEN]:
+    if backend in [AttentionBackendName.FLASH, AttentionBackendName.FLASH_SPLIT, AttentionBackendName.FLASH_VARLEN]:
         if not _CAN_USE_FLASH_ATTN:
             raise RuntimeError(
                 f"Flash Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `flash-attn>={_REQUIRED_FLASH_VERSION}`."
@@ -447,6 +450,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
 
     elif backend in [
         AttentionBackendName.FLASH_HUB,
+        AttentionBackendName.FLASH_HUB_SPLIT,
         AttentionBackendName.FLASH_VARLEN_HUB,
         AttentionBackendName._FLASH_3_HUB,
         AttentionBackendName._FLASH_3_VARLEN_HUB,
@@ -514,7 +518,7 @@ def _prepare_for_flash_attn_or_sage_varlen_without_mask(
     cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     cu_seqlens_q[1:] = torch.cumsum(seqlens_q, dim=0)
     cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
-    max_seqlen_q = seqlens_q.max().item()
+    max_seqlen_q = seqlens_q.max().item() #TODO item() is inefficient and breaks torch.compile graphs. Use 'seq_len' parameter instead (see split attention backend)
     max_seqlen_k = seqlens_k.max().item()
     return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
 
@@ -1938,6 +1942,28 @@ def _flash_attention(
 
     return (out, lse) if return_lse else out
 
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.FLASH_SPLIT,
+    constraints=[_check_device, _check_shape],
+    supports_context_parallel=True,
+)
+def _flash_split_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    seq_lens: Optional[list[int]] = None, #attn_mask is ignored if seq_lens is passed
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    return __split_attention(
+        lambda q, k, v, mask: _flash_attention(q, k, v, mask, dropout_p, is_causal, scale, return_lse, _parallel_config),
+        query, key, value, attn_mask, seq_lens,
+    )
+
 
 @_AttentionBackendRegistry.register(
     AttentionBackendName.FLASH_HUB,
@@ -1973,6 +1999,29 @@ def _flash_attention_hub(
         out, lse, *_ = out
 
     return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.FLASH_HUB_SPLIT,
+    constraints=[_check_device, _check_shape],
+    supports_context_parallel=True,
+)
+def _flash_hub_split_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    seq_lens: Optional[list[int]] = None, #attn_mask is ignored if seq_lens is passed
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    return __split_attention(
+        lambda q, k, v, mask: _flash_attention_hub(q, k, v, mask, dropout_p, is_causal, scale, return_lse, _parallel_config),
+        query, key, value, attn_mask, seq_lens,
+    )
 
 
 @_AttentionBackendRegistry.register(
@@ -2475,6 +2524,58 @@ def _native_attention(
 
     return out
 
+def __split_attention(
+    attn_fn,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    seq_lens: Optional[list[int]] = None, #attn_mask is ignored if seq_len is passed - both must match
+):
+    batch_size, batch_seq_len = query.shape[:2]
+    if seq_lens is None:
+        return attn_fn(query, key, value, attn_mask)
+    if all(sample_seq_len == batch_seq_len for sample_seq_len in seq_lens):
+        return attn_fn(query, key, value, None)
+    if any(sample_seq_len > batch_seq_len for sample_seq_len in seq_lens):
+        raise ValueError("Attention sequence lengths cannot be longer than maximum sequence length")
+    if len(seq_lens) != batch_size:
+        raise ValueError("Attention sequence lengths must match the batch size")
+
+    result = []
+    for index, sample_seq_len in enumerate(seq_lens):
+        sliced_query = query[index, :sample_seq_len, :, :].unsqueeze(0)
+        sliced_key =   key  [index, :sample_seq_len, :, :].unsqueeze(0)
+        sliced_value = value[index, :sample_seq_len, :, :].unsqueeze(0)
+        sliced_result = attn_fn(sliced_query, sliced_key, sliced_value, None)
+
+        padding = torch.zeros((1, batch_seq_len - sample_seq_len) + sliced_result.shape[2:], device=sliced_result.device, dtype=sliced_result.dtype)
+        padded_result = torch.cat([sliced_result, padding], dim=1)
+        result.append(padded_result)
+    return torch.cat(result, dim=0)
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.NATIVE_SPLIT,
+    constraints=[_check_device, _check_shape],
+    supports_context_parallel=True,
+)
+def _native_split_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    seq_lens: Optional[list[int]] = None, #attn_mask is ignored if seq_lens is passed
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    return __split_attention(
+        lambda q, k, v, mask: _native_attention(q, k, v, mask, dropout_p, is_causal, scale, enable_gqa, return_lse, _parallel_config),
+        query, key, value, attn_mask, seq_lens,
+    )
 
 @_AttentionBackendRegistry.register(
     AttentionBackendName._NATIVE_CUDNN,

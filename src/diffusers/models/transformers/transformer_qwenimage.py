@@ -150,7 +150,7 @@ def compute_text_seq_len_from_mask(
     """
     batch_size, text_seq_len = encoder_hidden_states.shape[:2]
     if encoder_hidden_states_mask is None:
-        return text_seq_len, None, None
+        return text_seq_len, [text_seq_len] * batch_size, None
 
     if encoder_hidden_states_mask.shape[:2] != (batch_size, text_seq_len):
         raise ValueError(
@@ -165,7 +165,7 @@ def compute_text_seq_len_from_mask(
     active_positions = torch.where(encoder_hidden_states_mask, position_ids, position_ids.new_zeros(()))
     has_active = encoder_hidden_states_mask.any(dim=1)
     per_sample_len = torch.where(has_active, active_positions.max(dim=1).values + 1, torch.as_tensor(text_seq_len))
-    return text_seq_len, per_sample_len, encoder_hidden_states_mask
+    return text_seq_len, per_sample_len.tolist(), encoder_hidden_states_mask
 
 
 class QwenTimestepProjEmbeddings(nn.Module):
@@ -491,12 +491,11 @@ class QwenDoubleStreamAttnProcessor2_0:
         encoder_hidden_states: torch.FloatTensor = None,  # Text stream
         encoder_hidden_states_mask: torch.FloatTensor = None,
         attention_mask: torch.FloatTensor | None = None,
+        seq_lens: list[int] | None = None,
         image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.FloatTensor:
         if encoder_hidden_states is None:
             raise ValueError("QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)")
-
-        seq_txt = encoder_hidden_states.shape[1]
 
         # Compute QKV for image stream (sample projections)
         img_query = attn.to_q(hidden_states)
@@ -537,9 +536,9 @@ class QwenDoubleStreamAttnProcessor2_0:
 
         # Concatenate for joint attention
         # Order: [text, image]
-        joint_query = torch.cat([txt_query, img_query], dim=1)
-        joint_key = torch.cat([txt_key, img_key], dim=1)
-        joint_value = torch.cat([txt_value, img_value], dim=1)
+        joint_query = torch.cat([img_query, txt_query], dim=1)
+        joint_key = torch.cat([img_key, txt_key], dim=1)
+        joint_value = torch.cat([img_value, txt_value], dim=1)
 
         joint_hidden_states = dispatch_attention_fn(
             joint_query,
@@ -550,6 +549,9 @@ class QwenDoubleStreamAttnProcessor2_0:
             is_causal=False,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
+            attention_kwargs={
+                'seq_lens': seq_lens,
+            },
         )
 
         # Reshape back
@@ -557,8 +559,9 @@ class QwenDoubleStreamAttnProcessor2_0:
         joint_hidden_states = joint_hidden_states.to(joint_query.dtype)
 
         # Split attention outputs back
-        txt_attn_output = joint_hidden_states[:, :seq_txt, :]  # Text part
-        img_attn_output = joint_hidden_states[:, seq_txt:, :]  # Image part
+        image_seq_len = hidden_states.shape[1]
+        img_attn_output = joint_hidden_states[:, :image_seq_len, :]  # Image part
+        txt_attn_output = joint_hidden_states[:, image_seq_len:, :]  # Text part
 
         # Apply output projections
         img_attn_output = attn.to_out[0](img_attn_output.contiguous())
@@ -907,7 +910,7 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
         # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
-        text_seq_len, _, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
+        text_seq_len, text_seq_len_per_sample, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
             encoder_hidden_states, encoder_hidden_states_mask
         )
 
@@ -925,11 +928,12 @@ class QwenImageTransformer2DModel(
         # Construct joint attention mask once to avoid reconstructing in every block
         # This eliminates 60 GPU syncs during training while maintaining torch.compile compatibility
         block_attention_kwargs = attention_kwargs.copy() if attention_kwargs is not None else {}
+        batch_size, image_seq_len = hidden_states.shape[:2]
+        block_attention_kwargs["seq_lens"] = [text_seq_len + image_seq_len for text_seq_len in text_seq_len_per_sample]
         if encoder_hidden_states_mask is not None:
-            # Build joint mask: [text_mask, all_ones_for_image]
-            batch_size, image_seq_len = hidden_states.shape[:2]
+            # Build joint mask: [all_ones_for_image, text_mask]
             image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
-            joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
+            joint_attention_mask = torch.cat([image_mask, encoder_hidden_states_mask], dim=1)
             block_attention_kwargs["attention_mask"] = joint_attention_mask
 
         for index_block, block in enumerate(self.transformer_blocks):
