@@ -6,7 +6,6 @@ from ..utils import (
     _LazyModule,
     get_objects_from_module,
     is_flax_available,
-
     is_librosa_available,
     is_note_seq_available,
     is_onnx_available,

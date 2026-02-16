@@ -293,7 +293,6 @@ def is_kernels_available():
     return _kernels_available
 
 
-
 def is_note_seq_available():
     return _note_seq_available
 
@@ -592,7 +591,6 @@ BACKENDS_MAPPING = OrderedDict(
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
-
         ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
         ("tensorboard", (is_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
@@ -819,7 +817,6 @@ def is_torchao_version(operation: str, version: str):
     if not _torchao_available:
         return False
     return compare_versions(parse(_torchao_version), operation, version)
-
 
 
 @cache

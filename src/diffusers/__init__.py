@@ -10,7 +10,6 @@ from .utils import (
     is_bitsandbytes_available,
     is_flax_available,
     is_gguf_available,
-
     is_librosa_available,
     is_note_seq_available,
     is_nvidia_modelopt_available,
@@ -50,7 +49,6 @@ _import_structure = {
         "is_flax_available",
         "is_inflect_available",
         "is_invisible_watermark_available",
-
         "is_librosa_available",
         "is_note_seq_available",
         "is_onnx_available",

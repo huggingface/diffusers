@@ -111,7 +111,6 @@ _deps = [
     "jax>=0.4.1",
     "jaxlib>=0.4.1",
     "Jinja2",
-
     "torchsde",
     "note_seq",
     "librosa",
@@ -226,7 +225,6 @@ extras["test"] = deps_list(
     "datasets",
     "Jinja2",
     "invisible-watermark",
-
     "librosa",
     "parameterized",
     "pytest",
