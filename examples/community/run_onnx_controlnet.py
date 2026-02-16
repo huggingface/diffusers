@@ -136,7 +136,7 @@ class OnnxStableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         num_images_per_prompt: Optional[int],
         do_classifier_free_guidance: bool,
-        negative_prompt: Optional[str],
+        negative_prompt: str | None,
         prompt_embeds: Optional[np.ndarray] = None,
         negative_prompt_embeds: Optional[np.ndarray] = None,
     ):
@@ -534,7 +534,7 @@ class OnnxStableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline):
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,

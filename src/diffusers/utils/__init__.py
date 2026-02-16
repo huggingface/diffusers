@@ -23,6 +23,7 @@ from .constants import (
     DEFAULT_HF_PARALLEL_LOADING_WORKERS,
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
+    DIFFUSERS_LOAD_ID_FIELDS,
     FLAX_WEIGHTS_NAME,
     GGUF_FILE_EXTENSION,
     HF_ENABLE_PARALLEL_LOADING,
@@ -130,6 +131,7 @@ from .loading_utils import get_module_from_name, get_submodule_by_name, load_ima
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (
+    apply_lora_scale,
     check_peft_version,
     delete_adapter_layers,
     get_adapter_name,

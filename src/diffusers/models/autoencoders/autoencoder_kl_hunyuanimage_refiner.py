@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -37,10 +36,10 @@ class HunyuanImageRefinerCausalConv3d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]] = 3,
-        stride: Union[int, Tuple[int, int, int]] = 1,
-        padding: Union[int, Tuple[int, int, int]] = 0,
-        dilation: Union[int, Tuple[int, int, int]] = 1,
+        kernel_size: int | tuple[int, int, int] = 3,
+        stride: int | tuple[int, int, int] = 1,
+        padding: int | tuple[int, int, int] = 0,
+        dilation: int | tuple[int, int, int] = 1,
         bias: bool = True,
         pad_mode: str = "replicate",
     ) -> None:
@@ -226,7 +225,7 @@ class HunyuanImageRefinerResnetBlock(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         non_linearity: str = "swish",
     ) -> None:
         super().__init__()
@@ -315,7 +314,7 @@ class HunyuanImageRefinerDownBlock3D(nn.Module):
         in_channels: int,
         out_channels: int,
         num_layers: int = 1,
-        downsample_out_channels: Optional[int] = None,
+        downsample_out_channels: int | None = None,
         add_temporal_downsample: int = True,
     ) -> None:
         super().__init__()
@@ -364,7 +363,7 @@ class HunyuanImageRefinerUpBlock3D(nn.Module):
         in_channels: int,
         out_channels: int,
         num_layers: int = 1,
-        upsample_out_channels: Optional[int] = None,
+        upsample_out_channels: int | None = None,
         add_temporal_upsample: bool = True,
     ) -> None:
         super().__init__()
@@ -422,7 +421,7 @@ class HunyuanImageRefinerEncoder3D(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 64,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 1024, 1024),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 1024, 1024),
         layers_per_block: int = 2,
         temporal_compression_ratio: int = 4,
         spatial_compression_ratio: int = 16,
@@ -509,7 +508,7 @@ class HunyuanImageRefinerDecoder3D(nn.Module):
         self,
         in_channels: int = 32,
         out_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (1024, 1024, 512, 256, 128),
+        block_out_channels: tuple[int, ...] = (1024, 1024, 512, 256, 128),
         layers_per_block: int = 2,
         spatial_compression_ratio: int = 16,
         temporal_compression_ratio: int = 4,
@@ -601,7 +600,7 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin
         in_channels: int = 3,
         out_channels: int = 3,
         latent_channels: int = 32,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 1024, 1024),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 1024, 1024),
         layers_per_block: int = 2,
         spatial_compression_ratio: int = 16,
         temporal_compression_ratio: int = 4,
@@ -655,11 +654,11 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_sample_stride_height: Optional[float] = None,
-        tile_sample_stride_width: Optional[float] = None,
-        tile_overlap_factor: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_sample_stride_height: float | None = None,
+        tile_sample_stride_width: float | None = None,
+        tile_overlap_factor: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -697,7 +696,7 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         r"""
         Encode a batch of images into latents.
 
@@ -735,7 +734,7 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin
         return dec
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images.
 
@@ -893,8 +892,8 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+        generator: torch.Generator | None = None,
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

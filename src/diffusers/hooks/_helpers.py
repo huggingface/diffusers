@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Type
+from typing import Any, Callable, Type
 
 
 @dataclass
@@ -26,9 +26,10 @@ class AttentionProcessorMetadata:
 class TransformerBlockMetadata:
     return_hidden_states_index: int = None
     return_encoder_hidden_states_index: int = None
+    hidden_states_argument_name: str = "hidden_states"
 
     _cls: Type = None
-    _cached_parameter_indices: Dict[str, int] = None
+    _cached_parameter_indices: dict[str, int] = None
 
     def _get_parameter_from_args_kwargs(self, identifier: str, args=(), kwargs=None):
         kwargs = kwargs or {}
@@ -169,7 +170,7 @@ def _register_attention_processors_metadata():
 
 
 def _register_transformer_blocks_metadata():
-    from ..models.attention import BasicTransformerBlock
+    from ..models.attention import BasicTransformerBlock, JointTransformerBlock
     from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock
     from ..models.transformers.transformer_bria import BriaTransformerBlock
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
@@ -184,6 +185,7 @@ def _register_transformer_blocks_metadata():
         HunyuanImageSingleTransformerBlock,
         HunyuanImageTransformerBlock,
     )
+    from ..models.transformers.transformer_kandinsky import Kandinsky5TransformerDecoderBlock
     from ..models.transformers.transformer_ltx import LTXVideoTransformerBlock
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
@@ -328,6 +330,24 @@ def _register_transformer_blocks_metadata():
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=None,
+        ),
+    )
+
+    TransformerBlockRegistry.register(
+        model_class=JointTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+        ),
+    )
+
+    # Kandinsky 5.0 (Kandinsky5TransformerDecoderBlock)
+    TransformerBlockRegistry.register(
+        model_class=Kandinsky5TransformerDecoderBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
+            hidden_states_argument_name="visual_embed",
         ),
     )
 

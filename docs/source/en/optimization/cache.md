@@ -111,3 +111,57 @@ config = TaylorSeerCacheConfig(
 )
 pipe.transformer.enable_cache(config)
 ```
+
+## MagCache
+
+[MagCache](https://github.com/Zehong-Ma/MagCache) accelerates inference by skipping transformer blocks based on the magnitude of the residual update. It observes that the magnitude of updates (Output - Input) decays predictably over the diffusion process. By accumulating an "error budget" based on pre-computed magnitude ratios, it dynamically decides when to skip computation and reuse the previous residual.
+
+MagCache relies on **Magnitude Ratios** (`mag_ratios`), which describe this decay curve. These ratios are specific to the model checkpoint and scheduler.
+
+### Usage
+
+To use MagCache, you typically follow a two-step process: **Calibration** and **Inference**.
+
+1.  **Calibration**: Run inference once with `calibrate=True`. The hook will measure the residual magnitudes and print the calculated ratios to the console.
+2.  **Inference**: Pass these ratios to `MagCacheConfig` to enable acceleration.
+
+```python
+import torch
+from diffusers import FluxPipeline, MagCacheConfig
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-schnell",
+    torch_dtype=torch.bfloat16
+).to("cuda")
+
+# 1. Calibration Step
+# Run full inference to measure model behavior.
+calib_config = MagCacheConfig(calibrate=True, num_inference_steps=4)
+pipe.transformer.enable_cache(calib_config)
+
+# Run a prompt to trigger calibration
+pipe("A cat playing chess", num_inference_steps=4)
+# Logs will print something like: "MagCache Calibration Results: [1.0, 1.37, 0.97, 0.87]"
+
+# 2. Inference Step
+# Apply the specific ratios obtained from calibration for optimized speed.
+# Note: For Flux models, you can also import defaults: 
+# from diffusers.hooks.mag_cache import FLUX_MAG_RATIOS
+mag_config = MagCacheConfig(
+    mag_ratios=[1.0, 1.37, 0.97, 0.87],
+    num_inference_steps=4
+)
+
+pipe.transformer.enable_cache(mag_config) 
+
+image = pipe("A cat playing chess", num_inference_steps=4).images[0]
+```
+
+> [!NOTE]
+> `mag_ratios` represent the model's intrinsic magnitude decay curve. Ratios calibrated for a high number of steps (e.g., 50) can be reused for lower step counts (e.g., 20). The implementation uses interpolation to map the curve to the current number of inference steps.
+
+> [!TIP]
+> For pipelines that run Classifier-Free Guidance sequentially (like Kandinsky 5.0), the calibration log might print two arrays: one for the Conditional pass and one for the Unconditional pass. In most cases, you should use the first array (Conditional).
+
+> [!TIP]
+> For pipelines that run Classifier-Free Guidance in a **batched** manner (like SDXL or Flux), the `hidden_states` processed by the model contain both conditional and unconditional branches concatenated together. The calibration process automatically accounts for this, producing a single array of ratios that represents the joint behavior. You can use this resulting array directly without modification.
