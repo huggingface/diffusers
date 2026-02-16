@@ -779,7 +779,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 # Treat all other as videos. Note that this means 4D ndarrays and tensors will be treated as videos of
                 # shape (F, H, W, C) and (F, C, H, W), respectively.
                 video_like_cond = condition.frames
-            condition_pixels = self.video_processor.preprocess_video(video_like_cond, height, width)
+            condition_pixels = self.video_processor.preprocess_video(video_like_cond, height, width, resize_mode="crop")
 
             # Interpret the index as a latent index, following the original LTX-2 code.
             latent_start_idx = condition.index
