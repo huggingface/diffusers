@@ -14,7 +14,7 @@
 
 import copy
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable
 
 import numpy as np
 import torch
@@ -22,7 +22,7 @@ from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTo
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
-from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
+from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LTX2Pipeline
+        >>> from diffusers import LTX2ImageToVideoPipeline
         >>> from diffusers.pipelines.ltx2.export_utils import encode_video
         >>> from diffusers.utils import load_image
 
@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
         >>> frame_rate = 24.0
-        >>> video = pipe(
+        >>> video, audio = pipe(
         ...     image=image,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
@@ -75,8 +75,6 @@ EXAMPLE_DOC_STRING = """
         ...     output_type="np",
         ...     return_dict=False,
         ... )
-        >>> video = (video * 255).round().astype("uint8")
-        >>> video = torch.from_numpy(video)
 
         >>> encode_video(
         ...     video[0],
@@ -91,7 +89,7 @@ EXAMPLE_DOC_STRING = """
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -120,10 +118,10 @@ def calculate_shift(
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -138,15 +136,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -204,7 +202,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixin):
+class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     r"""
     Pipeline for image-to-video generation.
 
@@ -223,7 +221,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         vae: AutoencoderKLLTX2Video,
         audio_vae: AutoencoderKLLTX2Audio,
         text_encoder: Gemma3ForConditionalGeneration,
-        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+        tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
         vocoder: LTX2Vocoder,
@@ -278,7 +276,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
     def _pack_text_embeds(
         text_hidden_states: torch.Tensor,
         sequence_lengths: torch.Tensor,
-        device: Union[str, torch.device],
+        device: str | torch.device,
         padding_side: str = "left",
         scale_factor: int = 8,
         eps: float = 1e-6,
@@ -344,18 +342,18 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._get_gemma_prompt_embeds
     def _get_gemma_prompt_embeds(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 1024,
         scale_factor: int = 8,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`str` or `torch.device`):
                 torch device to place the resulting embeddings on
@@ -418,26 +416,26 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: str | list[str] | None = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
         max_sequence_length: int = 1024,
         scale_factor: int = 8,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -615,9 +613,18 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._create_noised_state
+    def _create_noised_state(
+        latents: torch.Tensor, noise_scale: float | torch.Tensor, generator: torch.Generator | None = None
+    ):
+        noise = randn_tensor(latents.shape, generator=generator, device=latents.device, dtype=latents.dtype)
+        noised_latents = noise_scale * noise + (1 - noise_scale) * latents
+        return noised_latents
+
+    @staticmethod
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._pack_audio_latents
     def _pack_audio_latents(
-        latents: torch.Tensor, patch_size: Optional[int] = None, patch_size_t: Optional[int] = None
+        latents: torch.Tensor, patch_size: int | None = None, patch_size_t: int | None = None
     ) -> torch.Tensor:
         # Audio latents shape: [B, C, L, M], where L is the latent audio length and M is the number of mel bins
         if patch_size is not None and patch_size_t is not None:
@@ -642,8 +649,8 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         latents: torch.Tensor,
         latent_length: int,
         num_mel_bins: int,
-        patch_size: Optional[int] = None,
-        patch_size_t: Optional[int] = None,
+        patch_size: int | None = None,
+        patch_size_t: int | None = None,
     ) -> torch.Tensor:
         # Unpacks an audio patch sequence of shape [B, S, D] into a latent spectrogram tensor of shape [B, C, L, M],
         # where L is the latent audio length and M is the number of mel bins.
@@ -657,6 +664,13 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         return latents
 
     @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._normalize_audio_latents
+    def _normalize_audio_latents(latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor):
+        latents_mean = latents_mean.to(latents.device, latents.dtype)
+        latents_std = latents_std.to(latents.device, latents.dtype)
+        return (latents - latents_mean) / latents_std
+
+    @staticmethod
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._denormalize_audio_latents
     def _denormalize_audio_latents(latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor):
         latents_mean = latents_mean.to(latents.device, latents.dtype)
@@ -665,16 +679,17 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
 
     def prepare_latents(
         self,
-        image: Optional[torch.Tensor] = None,
+        image: torch.Tensor | None = None,
         batch_size: int = 1,
         num_channels_latents: int = 128,
         height: int = 512,
         width: int = 704,
         num_frames: int = 161,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
+        noise_scale: float = 0.0,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         height = height // self.vae_spatial_compression_ratio
         width = width // self.vae_spatial_compression_ratio
@@ -686,6 +701,15 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         if latents is not None:
             conditioning_mask = latents.new_zeros(mask_shape)
             conditioning_mask[:, :, 0] = 1.0
+            if latents.ndim == 5:
+                latents = self._normalize_latents(
+                    latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+                )
+                latents = self._create_noised_state(latents, noise_scale * (1 - conditioning_mask), generator)
+                # latents are of shape [B, C, F, H, W], need to be packed
+                latents = self._pack_latents(
+                    latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+                )
             conditioning_mask = self._pack_latents(
                 conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
             ).squeeze(-1)
@@ -737,29 +761,30 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         self,
         batch_size: int = 1,
         num_channels_latents: int = 8,
+        audio_latent_length: int = 1,  # 1 is just a dummy value
         num_mel_bins: int = 64,
-        num_frames: int = 121,
-        frame_rate: float = 25.0,
-        sampling_rate: int = 16000,
-        hop_length: int = 160,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
+        noise_scale: float = 0.0,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        duration_s = num_frames / frame_rate
-        latents_per_second = (
-            float(sampling_rate) / float(hop_length) / float(self.audio_vae_temporal_compression_ratio)
-        )
-        latent_length = round(duration_s * latents_per_second)
-
         if latents is not None:
-            return latents.to(device=device, dtype=dtype), latent_length
+            if latents.ndim == 4:
+                # latents are of shape [B, C, L, M], need to be packed
+                latents = self._pack_audio_latents(latents)
+            if latents.ndim != 3:
+                raise ValueError(
+                    f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is [batch_size, num_seq, num_features]."
+                )
+            latents = self._normalize_audio_latents(latents, self.audio_vae.latents_mean, self.audio_vae.latents_std)
+            latents = self._create_noised_state(latents, noise_scale, generator)
+            return latents.to(device=device, dtype=dtype)
 
         # TODO: confirm whether this logic is correct
         latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
 
-        shape = (batch_size, num_channels_latents, latent_length, latent_mel_bins)
+        shape = (batch_size, num_channels_latents, audio_latent_length, latent_mel_bins)
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -769,7 +794,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         latents = self._pack_audio_latents(latents)
-        return latents, latent_length
+        return latents
 
     @property
     def guidance_scale(self):
@@ -804,31 +829,33 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
     def __call__(
         self,
         image: PipelineImageInput = None,
-        prompt: Union[str, List[str]] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] | None = None,
         height: int = 512,
         width: int = 768,
         num_frames: int = 121,
         frame_rate: float = 24.0,
         num_inference_steps: int = 40,
-        timesteps: List[int] = None,
+        sigmas: list[float] | None = None,
+        timesteps: list[int] | None = None,
         guidance_scale: float = 4.0,
         guidance_rescale: float = 0.0,
-        num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        audio_latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_attention_mask: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
-        decode_timestep: Union[float, List[float]] = 0.0,
-        decode_noise_scale: Optional[Union[float, List[float]]] = None,
-        output_type: Optional[str] = "pil",
+        noise_scale: float = 0.0,
+        num_videos_per_prompt: int = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        audio_latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        decode_timestep: float | list[float] = 0.0,
+        decode_noise_scale: float | list[float] | None = None,
+        output_type: str = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 1024,
     ):
         r"""
@@ -837,7 +864,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         Args:
             image (`PipelineImageInput`):
                 The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             height (`int`, *optional*, defaults to `512`):
@@ -851,6 +878,10 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
             num_inference_steps (`int`, *optional*, defaults to 40):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
@@ -867,9 +898,12 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
                 [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://huggingface.co/papers/2305.08891). Guidance rescale factor should fix overexposure when
                 using zero terminal SNR.
+            noise_scale (`float`, *optional*, defaults to `0.0`):
+                The interpolation factor between random noise and denoised latents at each timestep. Applying noise to
+                the `latents` and `audio_latents` before continue denoising.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -982,6 +1016,26 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         )
 
         # 4. Prepare latent variables
+        latent_num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
+        latent_height = height // self.vae_spatial_compression_ratio
+        latent_width = width // self.vae_spatial_compression_ratio
+        if latents is not None:
+            if latents.ndim == 5:
+                logger.info(
+                    "Got latents of shape [batch_size, latent_dim, latent_frames, latent_height, latent_width], `latent_num_frames`, `latent_height`, `latent_width` will be inferred."
+                )
+                _, _, latent_num_frames, latent_height, latent_width = latents.shape  # [B, C, F, H, W]
+            elif latents.ndim == 3:
+                logger.warning(
+                    f"You have supplied packed `latents` of shape {latents.shape}, so the latent dims cannot be"
+                    f" inferred. Make sure the supplied `height`, `width`, and `num_frames` are correct."
+                )
+            else:
+                raise ValueError(
+                    f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is either [batch_size, seq_len, num_features] or [batch_size, latent_dim, latent_frames, latent_height, latent_width]."
+                )
+        video_sequence_length = latent_num_frames * latent_height * latent_width
+
         if latents is None:
             image = self.video_processor.preprocess(image, height=height, width=width)
             image = image.to(device=device, dtype=prompt_embeds.dtype)
@@ -994,6 +1048,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
             height,
             width,
             num_frames,
+            noise_scale,
             torch.float32,
             device,
             generator,
@@ -1002,20 +1057,38 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         if self.do_classifier_free_guidance:
             conditioning_mask = torch.cat([conditioning_mask, conditioning_mask])
 
+        duration_s = num_frames / frame_rate
+        audio_latents_per_second = (
+            self.audio_sampling_rate / self.audio_hop_length / float(self.audio_vae_temporal_compression_ratio)
+        )
+        audio_num_frames = round(duration_s * audio_latents_per_second)
+        if audio_latents is not None:
+            if audio_latents.ndim == 4:
+                logger.info(
+                    "Got audio_latents of shape [batch_size, num_channels, audio_length, mel_bins], `audio_num_frames` will be inferred."
+                )
+                _, _, audio_num_frames, _ = audio_latents.shape  # [B, C, L, M]
+            elif audio_latents.ndim == 3:
+                logger.warning(
+                    f"You have supplied packed `audio_latents` of shape {audio_latents.shape}, so the latent dims"
+                    f" cannot be inferred. Make sure the supplied `num_frames` and `frame_rate` are correct."
+                )
+            else:
+                raise ValueError(
+                    f"Provided `audio_latents` tensor has shape {audio_latents.shape}, but the expected shape is either [batch_size, seq_len, num_features] or [batch_size, num_channels, audio_length, mel_bins]."
+                )
+
         num_mel_bins = self.audio_vae.config.mel_bins if getattr(self, "audio_vae", None) is not None else 64
         latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
-
         num_channels_latents_audio = (
             self.audio_vae.config.latent_channels if getattr(self, "audio_vae", None) is not None else 8
         )
-        audio_latents, audio_num_frames = self.prepare_audio_latents(
+        audio_latents = self.prepare_audio_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents=num_channels_latents_audio,
+            audio_latent_length=audio_num_frames,
             num_mel_bins=num_mel_bins,
-            num_frames=num_frames,  # Video frames, audio frames will be calculated from this
-            frame_rate=frame_rate,
-            sampling_rate=self.audio_sampling_rate,
-            hop_length=self.audio_hop_length,
+            noise_scale=noise_scale,
             dtype=torch.float32,
             device=device,
             generator=generator,
@@ -1023,12 +1096,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         )
 
         # 5. Prepare timesteps
-        latent_num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
-        latent_height = height // self.vae_spatial_compression_ratio
-        latent_width = width // self.vae_spatial_compression_ratio
-        video_sequence_length = latent_num_frames * latent_height * latent_width
-
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         mu = calculate_shift(
             video_sequence_length,
             self.scheduler.config.get("base_image_seq_len", 1024),
@@ -1071,6 +1139,10 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         audio_coords = self.transformer.audio_rope.prepare_audio_coords(
             audio_latents.shape[0], audio_num_frames, audio_latents.device
         )
+        # Duplicate the positional ids as well if using CFG
+        if self.do_classifier_free_guidance:
+            video_coords = video_coords.repeat((2,) + (1,) * (video_coords.ndim - 1))  # Repeat twice in batch dim
+            audio_coords = audio_coords.repeat((2,) + (1,) * (audio_coords.ndim - 1))
 
         # 7. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:

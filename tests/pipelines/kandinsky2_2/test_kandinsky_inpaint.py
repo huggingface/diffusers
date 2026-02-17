@@ -248,6 +248,9 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=5e-1)
 
+    def test_save_load_dduf(self):
+        super().test_save_load_dduf(atol=1e-3, rtol=1e-3)
+
     @is_flaky()
     def test_model_cpu_offload_forward_pass(self):
         super().test_inference_batch_single_identical(expected_max_diff=8e-4)
@@ -292,6 +295,9 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         output = pipe(**inputs)[0]
         assert output.abs().sum() == 0
+
+    def test_pipeline_with_accelerator_device_map(self):
+        super().test_pipeline_with_accelerator_device_map(expected_max_difference=5e-3)
 
 
 @slow

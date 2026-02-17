@@ -1,7 +1,6 @@
 import pickle as pkl
 import unittest
 from dataclasses import dataclass
-from typing import List, Union
 
 import numpy as np
 import PIL.Image
@@ -13,7 +12,7 @@ from ..testing_utils import require_torch
 
 @dataclass
 class CustomOutput(BaseOutput):
-    images: Union[List[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
 
 
 class ConfigTester(unittest.TestCase):

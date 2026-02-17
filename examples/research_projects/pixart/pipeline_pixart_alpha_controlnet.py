@@ -808,7 +808,7 @@ class PixArtAlphaControlnetPipeline(DiffusionPipeline):
         # rc todo: controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         # rc todo: control_guidance_start = 0.0,
         # rc todo: control_guidance_end = 1.0,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,

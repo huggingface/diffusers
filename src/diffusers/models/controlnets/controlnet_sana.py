@@ -13,14 +13,14 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import BaseOutput, apply_lora_scale, logging
 from ..attention import AttentionMixin
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
@@ -35,7 +35,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class SanaControlNetOutput(BaseOutput):
-    controlnet_block_samples: Tuple[torch.Tensor]
+    controlnet_block_samples: tuple[torch.Tensor]
 
 
 class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
@@ -47,13 +47,13 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
     def __init__(
         self,
         in_channels: int = 32,
-        out_channels: Optional[int] = 32,
+        out_channels: int | None = 32,
         num_attention_heads: int = 70,
         attention_head_dim: int = 32,
         num_layers: int = 7,
-        num_cross_attention_heads: Optional[int] = 20,
-        cross_attention_head_dim: Optional[int] = 112,
-        cross_attention_dim: Optional[int] = 2240,
+        num_cross_attention_heads: int | None = 20,
+        cross_attention_head_dim: int | None = 112,
+        cross_attention_dim: int | None = 2240,
         caption_channels: int = 2304,
         mlp_ratio: float = 2.5,
         dropout: float = 0.0,
@@ -62,7 +62,7 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         patch_size: int = 1,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
-        interpolation_scale: Optional[int] = None,
+        interpolation_scale: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -117,6 +117,7 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -124,26 +125,11 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         timestep: torch.LongTensor,
         controlnet_cond: torch.Tensor,
         conditioning_scale: float = 1.0,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
+    ) -> tuple[torch.Tensor, ...] | Transformer2DModelOutput:
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
@@ -217,10 +203,6 @@ class SanaControlNetModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMi
         for block_res_sample, controlnet_block in zip(block_res_samples, self.controlnet_blocks):
             block_res_sample = controlnet_block(block_res_sample)
             controlnet_block_res_samples = controlnet_block_res_samples + (block_res_sample,)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         controlnet_block_res_samples = [sample * conditioning_scale for sample in controlnet_block_res_samples]
 

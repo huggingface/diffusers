@@ -75,6 +75,8 @@ class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     tokenizer_cls, tokenizer_id = GemmaTokenizer, "hf-internal-testing/dummy-gemma"
     text_encoder_cls, text_encoder_id = Gemma2Model, "hf-internal-testing/dummy-gemma-for-diffusers"
 
+    supports_text_encoder_loras = False
+
     @property
     def output_shape(self):
         return (1, 32, 32, 3)
@@ -115,26 +117,6 @@ class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @unittest.skip("Not supported in SANA.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_partial_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora_and_scale(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora_fused(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora_save_load(self):
         pass
 
     @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")

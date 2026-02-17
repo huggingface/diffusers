@@ -24,7 +24,7 @@ from collections import OrderedDict, defaultdict
 from functools import lru_cache as cache
 from itertools import chain
 from types import ModuleType
-from typing import Any, Tuple, Union
+from typing import Any
 
 from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging.version import Version, parse
@@ -59,7 +59,7 @@ STR_OPERATION_TO_FUNC = {">": op.gt, ">=": op.ge, "==": op.eq, "!=": op.ne, "<="
 _is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
 
 
-def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> Tuple[bool, str]:
+def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> tuple[bool, str]:
     global _package_map
     pkg_exists = importlib.util.find_spec(pkg_name) is not None
     pkg_version = "N/A"
@@ -198,7 +198,7 @@ _hf_hub_available, _hf_hub_version = _is_package_available("huggingface_hub")
 _kernels_available, _kernels_version = _is_package_available("kernels")
 _inflect_available, _inflect_version = _is_package_available("inflect")
 _unidecode_available, _unidecode_version = _is_package_available("unidecode")
-_k_diffusion_available, _k_diffusion_version = _is_package_available("k_diffusion")
+
 _note_seq_available, _note_seq_version = _is_package_available("note_seq")
 _wandb_available, _wandb_version = _is_package_available("wandb")
 _tensorboard_available, _tensorboard_version = _is_package_available("tensorboard")
@@ -227,7 +227,7 @@ _cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("
 _sageattention_available, _sageattention_version = _is_package_available("sageattention")
 _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
-_aiter_available, _aiter_version = _is_package_available("aiter")
+_aiter_available, _aiter_version = _is_package_available("aiter", get_dist_name=True)
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
 _av_available, _av_version = _is_package_available("av")
@@ -291,10 +291,6 @@ def is_accelerate_available():
 
 def is_kernels_available():
     return _kernels_available
-
-
-def is_k_diffusion_available():
-    return _k_diffusion_available
 
 
 def is_note_seq_available():
@@ -480,12 +476,6 @@ Unidecode`
 """
 
 # docstyle-ignore
-K_DIFFUSION_IMPORT_ERROR = """
-{0} requires the k-diffusion library but it was not found in your environment. You can install it with pip: `pip
-install k-diffusion`
-"""
-
-# docstyle-ignore
 NOTE_SEQ_IMPORT_ERROR = """
 {0} requires the note-seq library but it was not found in your environment. You can install it with pip: `pip
 install note-seq`
@@ -601,7 +591,6 @@ BACKENDS_MAPPING = OrderedDict(
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
-        ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
         ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
         ("tensorboard", (is_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
@@ -668,7 +657,7 @@ class DummyObject(type):
 
 
 # This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L319
-def compare_versions(library_or_version: Union[str, Version], operation: str, requirement_version: str):
+def compare_versions(library_or_version: str | Version, operation: str, requirement_version: str):
     """
     Compares a library version to some requirement using a given operation.
 
@@ -828,22 +817,6 @@ def is_torchao_version(operation: str, version: str):
     if not _torchao_available:
         return False
     return compare_versions(parse(_torchao_version), operation, version)
-
-
-@cache
-def is_k_diffusion_version(operation: str, version: str):
-    """
-    Compares the current k-diffusion version to a given reference with an operation.
-
-    Args:
-        operation (`str`):
-            A string representation of an operator, such as `">"` or `"<="`
-        version (`str`):
-            A version string
-    """
-    if not _k_diffusion_available:
-        return False
-    return compare_versions(parse(_k_diffusion_version), operation, version)
 
 
 @cache
