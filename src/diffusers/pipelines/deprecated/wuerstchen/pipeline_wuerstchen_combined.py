@@ -13,38 +13,36 @@
 # limitations under the License.
 from typing import Callable
 
-import PIL
 import torch
-from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...models import StableCascadeUNet
-from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import is_torch_version, replace_example_docstring
-from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
-from ..deprecated.wuerstchen.modeling_paella_vq_model import PaellaVQModel
-from .pipeline_stable_cascade import StableCascadeDecoderPipeline
-from .pipeline_stable_cascade_prior import StableCascadePriorPipeline
+from ....schedulers import DDPMWuerstchenScheduler
+from ....utils import deprecate, replace_example_docstring
+from ...pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
+from .modeling_paella_vq_model import PaellaVQModel
+from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
+from .modeling_wuerstchen_prior import WuerstchenPrior
+from .pipeline_wuerstchen import WuerstchenDecoderPipeline
+from .pipeline_wuerstchen_prior import WuerstchenPriorPipeline
 
 
 TEXT2IMAGE_EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import torch
-        >>> from diffusers import StableCascadeCombinedPipeline
+        >>> from diffusions import WuerstchenCombinedPipeline
 
-        >>> pipe = StableCascadeCombinedPipeline.from_pretrained(
-        ...     "stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.bfloat16
+        >>> pipe = WuerstchenCombinedPipeline.from_pretrained("warp-ai/Wuerstchen", torch_dtype=torch.float16).to(
+        ...     "cuda"
         ... )
-        >>> pipe.enable_model_cpu_offload()
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> images = pipe(prompt=prompt)
         ```
 """
 
 
-class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
+class WuerstchenCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
-    Combined Pipeline for text-to-image generation using Stable Cascade.
+    Combined Pipeline for text-to-image generation using Wuerstchen
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -52,46 +50,38 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     Args:
         tokenizer (`CLIPTokenizer`):
             The decoder tokenizer to be used for text inputs.
-        text_encoder (`CLIPTextModelWithProjection`):
+        text_encoder (`CLIPTextModel`):
             The decoder text encoder to be used for text inputs.
-        decoder (`StableCascadeUNet`):
+        decoder (`WuerstchenDiffNeXt`):
             The decoder model to be used for decoder image generation pipeline.
         scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for decoder image generation pipeline.
         vqgan (`PaellaVQModel`):
             The VQGAN model to be used for decoder image generation pipeline.
-        prior_prior (`StableCascadeUNet`):
-            The prior model to be used for prior pipeline.
-        prior_text_encoder (`CLIPTextModelWithProjection`):
-            The prior text encoder to be used for text inputs.
         prior_tokenizer (`CLIPTokenizer`):
             The prior tokenizer to be used for text inputs.
+        prior_text_encoder (`CLIPTextModel`):
+            The prior text encoder to be used for text inputs.
+        prior_prior (`WuerstchenPrior`):
+            The prior model to be used for prior pipeline.
         prior_scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for prior pipeline.
-        prior_feature_extractor ([`~transformers.CLIPImageProcessor`]):
-            Model that extracts features from generated images to be used as inputs for the `image_encoder`.
-        prior_image_encoder ([`CLIPVisionModelWithProjection`]):
-            Frozen CLIP image-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
     """
 
-    _last_supported_version = "0.35.2"
-
+    _last_supported_version = "0.33.1"
     _load_connected_pipes = True
-    _optional_components = ["prior_feature_extractor", "prior_image_encoder"]
 
     def __init__(
         self,
         tokenizer: CLIPTokenizer,
-        text_encoder: CLIPTextModelWithProjection,
-        decoder: StableCascadeUNet,
+        text_encoder: CLIPTextModel,
+        decoder: WuerstchenDiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: PaellaVQModel,
-        prior_prior: StableCascadeUNet,
-        prior_text_encoder: CLIPTextModelWithProjection,
         prior_tokenizer: CLIPTokenizer,
+        prior_text_encoder: CLIPTextModel,
+        prior_prior: WuerstchenPrior,
         prior_scheduler: DDPMWuerstchenScheduler,
-        prior_feature_extractor: CLIPImageProcessor | None = None,
-        prior_image_encoder: CLIPVisionModelWithProjection | None = None,
     ):
         super().__init__()
 
@@ -101,22 +91,18 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             decoder=decoder,
             scheduler=scheduler,
             vqgan=vqgan,
+            prior_prior=prior_prior,
             prior_text_encoder=prior_text_encoder,
             prior_tokenizer=prior_tokenizer,
-            prior_prior=prior_prior,
             prior_scheduler=prior_scheduler,
-            prior_feature_extractor=prior_feature_extractor,
-            prior_image_encoder=prior_image_encoder,
         )
-        self.prior_pipe = StableCascadePriorPipeline(
+        self.prior_pipe = WuerstchenPriorPipeline(
             prior=prior_prior,
             text_encoder=prior_text_encoder,
             tokenizer=prior_tokenizer,
             scheduler=prior_scheduler,
-            image_encoder=prior_image_encoder,
-            feature_extractor=prior_feature_extractor,
         )
-        self.decoder_pipe = StableCascadeDecoderPipeline(
+        self.decoder_pipe = WuerstchenDecoderPipeline(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             decoder=decoder,
@@ -160,18 +146,17 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str] | None = None,
-        images: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image] = None,
         height: int = 512,
         width: int = 512,
         prior_num_inference_steps: int = 60,
+        prior_timesteps: list[float] | None = None,
         prior_guidance_scale: float = 4.0,
         num_inference_steps: int = 12,
+        decoder_timesteps: list[float] | None = None,
         decoder_guidance_scale: float = 0.0,
         negative_prompt: str | list[str] | None = None,
         prompt_embeds: torch.Tensor | None = None,
-        prompt_embeds_pooled: torch.Tensor | None = None,
         negative_prompt_embeds: torch.Tensor | None = None,
-        negative_prompt_embeds_pooled: torch.Tensor | None = None,
         num_images_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: torch.Tensor | None = None,
@@ -181,6 +166,7 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         prior_callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
+        **kwargs,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -188,22 +174,13 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         Args:
             prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation for the prior and decoder.
-            images (`torch.Tensor`, `PIL.Image.Image`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, *optional*):
-                The images to guide the image generation for the prior.
             negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, text embeddings will be generated from `prompt` input argument.
-            prompt_embeds_pooled (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.*
-                prompt weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
-                input argument.
-            negative_prompt_embeds_pooled (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.*
                 prompt weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
@@ -227,6 +204,12 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 The number of decoder denoising steps. More denoising steps usually lead to a higher quality image at
                 the expense of slower inference. For more specific timestep spacing, you can pass customized
                 `timesteps`
+            prior_timesteps (`list[float]`, *optional*):
+                Custom timesteps to use for the denoising process for the prior. If not defined, equal spaced
+                `prior_num_inference_steps` timesteps are used. Must be in descending order.
+            decoder_timesteps (`list[float]`, *optional*):
+                Custom timesteps to use for the denoising process for the decoder. If not defined, equal spaced
+                `num_inference_steps` timesteps are used. Must be in descending order.
             decoder_guidance_scale (`float`, *optional*, defaults to 0.0):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
@@ -269,53 +252,56 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
             otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
-        dtype = self.decoder_pipe.decoder.dtype
-        if is_torch_version("<", "2.2.0") and dtype == torch.bfloat16:
-            raise ValueError(
-                "`StableCascadeCombinedPipeline` requires torch>=2.2.0 when using `torch.bfloat16` dtype."
+        prior_kwargs = {}
+        if kwargs.get("prior_callback", None) is not None:
+            prior_kwargs["callback"] = kwargs.pop("prior_callback")
+            deprecate(
+                "prior_callback",
+                "1.0.0",
+                "Passing `prior_callback` as an input argument to `__call__` is deprecated, consider use `prior_callback_on_step_end`",
             )
+        if kwargs.get("prior_callback_steps", None) is not None:
+            deprecate(
+                "prior_callback_steps",
+                "1.0.0",
+                "Passing `prior_callback_steps` as an input argument to `__call__` is deprecated, consider use `prior_callback_on_step_end`",
+            )
+            prior_kwargs["callback_steps"] = kwargs.pop("prior_callback_steps")
 
         prior_outputs = self.prior_pipe(
             prompt=prompt if prompt_embeds is None else None,
-            images=images,
             height=height,
             width=width,
             num_inference_steps=prior_num_inference_steps,
+            timesteps=prior_timesteps,
             guidance_scale=prior_guidance_scale,
             negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
             prompt_embeds=prompt_embeds,
-            prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
-            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
             num_images_per_prompt=num_images_per_prompt,
             generator=generator,
             latents=latents,
             output_type="pt",
-            return_dict=True,
+            return_dict=False,
             callback_on_step_end=prior_callback_on_step_end,
             callback_on_step_end_tensor_inputs=prior_callback_on_step_end_tensor_inputs,
+            **prior_kwargs,
         )
-        image_embeddings = prior_outputs.image_embeddings
-        prompt_embeds = prior_outputs.get("prompt_embeds", None)
-        prompt_embeds_pooled = prior_outputs.get("prompt_embeds_pooled", None)
-        negative_prompt_embeds = prior_outputs.get("negative_prompt_embeds", None)
-        negative_prompt_embeds_pooled = prior_outputs.get("negative_prompt_embeds_pooled", None)
+        image_embeddings = prior_outputs[0]
 
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
-            prompt=prompt if prompt_embeds is None else None,
+            prompt=prompt if prompt is not None else "",
             num_inference_steps=num_inference_steps,
+            timesteps=decoder_timesteps,
             guidance_scale=decoder_guidance_scale,
-            negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
-            prompt_embeds=prompt_embeds,
-            prompt_embeds_pooled=prompt_embeds_pooled,
-            negative_prompt_embeds=negative_prompt_embeds,
-            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
+            negative_prompt=negative_prompt,
             generator=generator,
             output_type=output_type,
             return_dict=return_dict,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            **kwargs,
         )
 
         return outputs
