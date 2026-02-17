@@ -492,3 +492,53 @@ class AnimateDiffSparseControlNetPipelineFastTests(
             "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
         }
         return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+
+    def test_control_image_influence_with_unrelated_prompt(self):
+        """Verify control image dominates text prompt when guidance scale is strong"""
+        # 1. Setup pipeline with HIGH control guidance
+        components = self.get_dummy_components()
+        pipe: AnimateDiffSparseControlNetPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        # 2. Create BRIGHT RED control image with proper normalization
+        control_image = torch.ones((1, 3, 32, 32))  # (B, C, H, W)
+        control_image[1:] = 0  # Pure red in [0, 1] range
+        control_image = control_image.float() / 255.0 # [0, 1]
+
+        # 3. Configure inputs with STRONG controlnet guidance
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.update({
+            "conditioning_frames": control_image,  # Batch dim
+            "controlnet_frame_indices": [0],  # Apply to first frame
+            # "controlnet_guidance_scale": 1.5,  # Stronger than default
+            "prompt": "a sky with clouds",  # CONTRADICTORY to control image
+            "num_inference_steps": 20,  # Enough steps for guidance to manifest
+        })
+
+        # 4. Generate frames
+        unrelated_image = pipe(**inputs).frames[0][0]
+
+        inputs["conditioning_frames"] = torch.zeros_like(control_image)
+        neutral_image = pipe(**inputs).frames[0][1]
+
+        # 5. Quantitative check - should be closer to red than blue
+        red_conditioning, red_neutral = unrelated_image[0].mean(), neutral_image[0].mean()  # Red channel
+        blue_conditioning, blue_neutral = unrelated_image[2].mean(), neutral_image[2].mean()  # Blue channel
+
+        # Not black
+        self.assertGreater(red_conditioning, 0.01)
+        self.assertGreater(blue_conditioning, 0.01)
+        self.assertGreater(red_neutral, 0.01)
+        self.assertGreater(blue_neutral, 0.01)
+
+        self.assertGreater(
+            red_conditioning,
+            red_neutral + 0.3,
+            "Red control image should dominate unrelated prompt (red: {:.2f}, unrelated: {:.2f})".format(red_conditioning, red_neutral)
+        )
+        self.assertGreater(
+            blue_neutral + 0.3,
+            blue_conditioning,
+            "Blue control image should dominate unrelated prompt (blue: {:.2f}, unrelated: {:.2f})".format(blue_neutral, blue_conditioning)
+        )
