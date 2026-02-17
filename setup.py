@@ -229,6 +229,7 @@ extras["test"] = deps_list(
     "invisible-watermark",
     "librosa",
     "parameterized",
+    "protobuf",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
