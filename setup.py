@@ -101,6 +101,7 @@ _deps = [
     "datasets",
     "filelock",
     "flax>=0.4.1",
+    "ftfy",
     "hf-doc-builder>=0.3.0",
     "httpx<1.0.0",
     "huggingface-hub>=0.34.0,<2.0",
@@ -221,6 +222,7 @@ extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft", "timm")
 extras["test"] = deps_list(
     "compel",
+    "ftfy",
     "GitPython",
     "datasets",
     "Jinja2",
