@@ -54,7 +54,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -U setuptools wheel twine
           pip install -U torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -U transformers
 
       - name: Build the dist files
         run: python setup.py bdist_wheel && python setup.py sdist
@@ -69,6 +68,8 @@ jobs:
         run: |
           pip install diffusers && pip uninstall diffusers -y
           pip install -i https://test.pypi.org/simple/ diffusers
+          pip install -U transformers
+          python utils/print_env.py
           python -c "from diffusers import __version__; print(__version__)"
           python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('fusing/unet-ldm-dummy-update'); pipe()"
           python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('hf-internal-testing/tiny-stable-diffusion-pipe', safety_checker=None); pipe('ah suh du')"
