@@ -384,19 +384,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         trust_remote_code: bool = False,
         **kwargs,
     ):
-        config = cls.load_config(pretrained_model_name_or_path)
-        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
-        trust_remote_code = resolve_trust_remote_code(
-            trust_remote_code, pretrained_model_name_or_path, has_remote_code
-        )
-        if not has_remote_code and trust_remote_code:
-            raise ValueError(
-                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
-            )
-
-        if "requirements" in config and config["requirements"] is not None:
-            _ = _validate_requirements(config["requirements"])
-
         hub_kwargs_names = [
             "cache_dir",
             "force_download",
@@ -408,6 +395,19 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
+
+        config = cls.load_config(pretrained_model_name_or_path, **hub_kwargs)
+        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
+        trust_remote_code = resolve_trust_remote_code(
+            trust_remote_code, pretrained_model_name_or_path, has_remote_code
+        )
+        if not has_remote_code and trust_remote_code:
+            raise ValueError(
+                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+            )
+
+        if "requirements" in config and config["requirements"] is not None:
+            _ = _validate_requirements(config["requirements"])
 
         class_ref = config["auto_map"][cls.__name__]
         module_file, class_name = class_ref.split(".")
