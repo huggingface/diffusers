@@ -18,6 +18,7 @@ import unittest
 import numpy as np
 import torch
 from transformers import (
+    AutoConfig,
     AutoTokenizer,
     CLIPTextConfig,
     CLIPTextModelWithProjection,
@@ -94,7 +95,9 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder_2 = CLIPTextModelWithProjection(clip_text_encoder_config)
 
         torch.manual_seed(0)
-        text_encoder_3 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config.tie_word_embeddings = False
+        text_encoder_3 = T5EncoderModel(config)
 
         torch.manual_seed(0)
         text_encoder_4 = LlamaForCausalLM.from_pretrained("hf-internal-testing/tiny-random-LlamaForCausalLM")
