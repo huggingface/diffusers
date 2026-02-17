@@ -316,9 +316,9 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
         clip_prompt: Optional[Union[str, List[str]]] = None,
         num_cutouts: Optional[int] = 4,
         use_cutouts: Optional[bool] = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ):
         if isinstance(prompt, str):

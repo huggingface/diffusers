@@ -68,7 +68,7 @@ class RequestScopedPipeline:
 
         return any(hasattr(pipeline, attr) for attr in kernel_indicators)
 
-    def _make_local_scheduler(self, num_inference_steps: int, device: Optional[str] = None, **clone_kwargs):
+    def _make_local_scheduler(self, num_inference_steps: int, device: str | None = None, **clone_kwargs):
         base_sched = getattr(self._base, "scheduler", None)
         if base_sched is None:
             return None
@@ -231,7 +231,7 @@ class RequestScopedPipeline:
     def _should_wrap_tokenizers(self) -> bool:
         return True
 
-    def generate(self, *args, num_inference_steps: int = 50, device: Optional[str] = None, **kwargs):
+    def generate(self, *args, num_inference_steps: int = 50, device: str | None = None, **kwargs):
         local_scheduler = self._make_local_scheduler(num_inference_steps=num_inference_steps, device=device)
 
         try:

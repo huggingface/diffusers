@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -36,7 +35,7 @@ class WanAnimateImageProcessor(VaeImageProcessor):
             this factor.
         vae_latent_channels (`int`, *optional*, defaults to `16`):
             VAE latent channels.
-        spatial_patch_size (`Tuple[int, int]`, *optional*, defaults to `(2, 2)`):
+        spatial_patch_size (`tuple[int, int]`, *optional*, defaults to `(2, 2)`):
             The spatial patch size used by the diffusion transformer. For Wan models, this is typically (2, 2).
         resample (`str`, *optional*, defaults to `lanczos`):
             Resampling filter to use when resizing the image.
@@ -48,7 +47,7 @@ class WanAnimateImageProcessor(VaeImageProcessor):
             Whether to convert the images to RGB format.
         do_convert_grayscale (`bool`, *optional*, defaults to be `False`):
             Whether to convert the images to grayscale format.
-        fill_color (`str` or `float` or `Tuple[float, ...]`, *optional*, defaults to `None`):
+        fill_color (`str` or `float` or `tuple[float, ...]`, *optional*, defaults to `None`):
             An optional fill color when `resize_mode` is set to `"fill"`. This will fill the empty space with that
             color instead of filling with data from the image. Any valid `color` argument to `PIL.Image.new` is valid;
             if `None`, will default to filling with data from `image`.
@@ -60,14 +59,14 @@ class WanAnimateImageProcessor(VaeImageProcessor):
         do_resize: bool = True,
         vae_scale_factor: int = 8,
         vae_latent_channels: int = 16,
-        spatial_patch_size: Tuple[int, int] = (2, 2),
+        spatial_patch_size: tuple[int, int] = (2, 2),
         resample: str = "lanczos",
         reducing_gap: int = None,
         do_normalize: bool = True,
         do_binarize: bool = False,
         do_convert_rgb: bool = False,
         do_convert_grayscale: bool = False,
-        fill_color: Optional[Union[str, float, Tuple[float, ...]]] = 0,
+        fill_color: str | float | tuple[float, ...] | None = 0,
     ):
         super().__init__()
         if do_convert_rgb and do_convert_grayscale:
@@ -134,25 +133,25 @@ class WanAnimateImageProcessor(VaeImageProcessor):
 
     def get_default_height_width(
         self,
-        image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-    ) -> Tuple[int, int]:
+        image: PIL.Image.Image | np.ndarray | torch.Tensor,
+        height: int | None = None,
+        width: int | None = None,
+    ) -> tuple[int, int]:
         r"""
         Returns the height and width of the image, downscaled to the next integer multiple of `vae_scale_factor`.
 
         Args:
-            image (`Union[PIL.Image.Image, np.ndarray, torch.Tensor]`):
+            image (`PIL.Image.Image | np.ndarray | torch.Tensor`):
                 The image input, which can be a PIL image, NumPy array, or PyTorch tensor. If it is a NumPy array, it
                 should have shape `[batch, height, width]` or `[batch, height, width, channels]`. If it is a PyTorch
                 tensor, it should have shape `[batch, channels, height, width]`.
-            height (`Optional[int]`, *optional*, defaults to `None`):
+            height (`int | None`, *optional*, defaults to `None`):
                 The height of the preprocessed image. If `None`, the height of the `image` input will be used.
-            width (`Optional[int]`, *optional*, defaults to `None`):
+            width (`int | None`, *optional*, defaults to `None`):
                 The width of the preprocessed image. If `None`, the width of the `image` input will be used.
 
         Returns:
-            `Tuple[int, int]`:
+            `tuple[int, int]`:
                 A tuple containing the height and width, both resized to the nearest integer multiple of
                 `vae_scale_factor * spatial_patch_size`.
         """
