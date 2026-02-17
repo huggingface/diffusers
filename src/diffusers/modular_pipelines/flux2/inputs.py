@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List
-
 import torch
 
 from ...configuration_utils import FrozenDict
@@ -39,7 +37,7 @@ class Flux2TextInputStep(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_images_per_prompt", default=1),
             InputParam(
@@ -52,7 +50,7 @@ class Flux2TextInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "batch_size",
@@ -101,7 +99,7 @@ class Flux2KleinBaseTextInputStep(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_images_per_prompt", default=1),
             InputParam(
@@ -121,7 +119,7 @@ class Flux2KleinBaseTextInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "batch_size",
@@ -181,7 +179,7 @@ class Flux2ProcessImagesInputStep(ModularPipelineBlocks):
         return "Image preprocess step for Flux2. Validates and preprocesses reference images."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "image_processor",
@@ -192,7 +190,7 @@ class Flux2ProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("image"),
             InputParam("height"),
@@ -200,8 +198,8 @@ class Flux2ProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
-        return [OutputParam(name="condition_images", type_hint=List[torch.Tensor])]
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam(name="condition_images", type_hint=list[torch.Tensor])]
 
     @torch.no_grad()
     def __call__(self, components: Flux2ModularPipeline, state: PipelineState):

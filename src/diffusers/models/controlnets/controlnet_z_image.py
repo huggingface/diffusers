@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import List, Literal, Optional, Tuple
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -94,9 +94,9 @@ class ZSingleStreamAttnProcessor:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        freqs_cis: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        freqs_cis: torch.Tensor | None = None,
     ) -> torch.Tensor:
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
@@ -234,10 +234,10 @@ class ZImageTransformerBlock(nn.Module):
         x: torch.Tensor,
         attn_mask: torch.Tensor,
         freqs_cis: torch.Tensor,
-        adaln_input: Optional[torch.Tensor] = None,
-        noise_mask: Optional[torch.Tensor] = None,
-        adaln_noisy: Optional[torch.Tensor] = None,
-        adaln_clean: Optional[torch.Tensor] = None,
+        adaln_input: torch.Tensor | None = None,
+        noise_mask: torch.Tensor | None = None,
+        adaln_noisy: torch.Tensor | None = None,
+        adaln_clean: torch.Tensor | None = None,
     ):
         if self.modulation:
             seq_len = x.shape[1]
@@ -291,8 +291,8 @@ class RopeEmbedder:
     def __init__(
         self,
         theta: float = 256.0,
-        axes_dims: List[int] = (16, 56, 56),
-        axes_lens: List[int] = (64, 128, 128),
+        axes_dims: list[int] = (16, 56, 56),
+        axes_lens: list[int] = (64, 128, 128),
     ):
         self.theta = theta
         self.axes_dims = axes_dims
@@ -301,7 +301,7 @@ class RopeEmbedder:
         self.freqs_cis = None
 
     @staticmethod
-    def precompute_freqs_cis(dim: List[int], end: List[int], theta: float = 256.0):
+    def precompute_freqs_cis(dim: list[int], end: list[int], theta: float = 256.0):
         with torch.device("cpu"):
             freqs_cis = []
             for i, (d, e) in enumerate(zip(dim, end)):
@@ -389,7 +389,7 @@ class ZImageControlTransformerBlock(nn.Module):
         x: torch.Tensor,
         attn_mask: torch.Tensor,
         freqs_cis: torch.Tensor,
-        adaln_input: Optional[torch.Tensor] = None,
+        adaln_input: torch.Tensor | None = None,
     ):
         # Control
         if self.block_id == 0:
@@ -435,10 +435,10 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
     @register_to_config
     def __init__(
         self,
-        control_layers_places: List[int] = None,
-        control_refiner_layers_places: List[int] = None,
+        control_layers_places: list[int] = None,
+        control_refiner_layers_places: list[int] = None,
         control_in_dim=None,
-        add_control_noise_refiner: Optional[Literal["control_layers", "control_noise_refiner"]] = None,
+        add_control_noise_refiner: Literal["control_layers", "control_noise_refiner"] | None = None,
         all_patch_size=(2,),
         all_f_patch_size=(1,),
         dim=3840,
@@ -505,15 +505,15 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 ]
             )
 
-        self.t_scale: Optional[float] = None
-        self.t_embedder: Optional[TimestepEmbedder] = None
-        self.all_x_embedder: Optional[nn.ModuleDict] = None
-        self.cap_embedder: Optional[nn.Sequential] = None
-        self.rope_embedder: Optional[RopeEmbedder] = None
-        self.noise_refiner: Optional[nn.ModuleList] = None
-        self.context_refiner: Optional[nn.ModuleList] = None
-        self.x_pad_token: Optional[nn.Parameter] = None
-        self.cap_pad_token: Optional[nn.Parameter] = None
+        self.t_scale: float | None = None
+        self.t_embedder: TimestepEmbedder | None = None
+        self.all_x_embedder: nn.ModuleDict | None = None
+        self.cap_embedder: nn.Sequential | None = None
+        self.rope_embedder: RopeEmbedder | None = None
+        self.noise_refiner: nn.ModuleList | None = None
+        self.context_refiner: nn.ModuleList | None = None
+        self.x_pad_token: nn.Parameter | None = None
+        self.cap_pad_token: nn.Parameter | None = None
 
     @classmethod
     def from_transformer(cls, controlnet, transformer):
@@ -551,10 +551,10 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
     def _pad_with_ids(
         self,
         feat: torch.Tensor,
-        pos_grid_size: Tuple,
-        pos_start: Tuple,
+        pos_grid_size: tuple,
+        pos_start: tuple,
         device: torch.device,
-        noise_mask_val: Optional[int] = None,
+        noise_mask_val: int | None = None,
     ):
         """Pad feature to SEQ_MULTI_OF, create position IDs and pad mask."""
         ori_len = len(feat)
@@ -587,7 +587,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
     # Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformer2DModel.patchify_and_embed
     def patchify_and_embed(
-        self, all_image: List[torch.Tensor], all_cap_feats: List[torch.Tensor], patch_size: int, f_patch_size: int
+        self, all_image: list[torch.Tensor], all_cap_feats: list[torch.Tensor], patch_size: int, f_patch_size: int
     ):
         """Patchify for basic mode: single image per batch item."""
         device = all_image[0].device
@@ -625,7 +625,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
     def patchify(
         self,
-        all_image: List[torch.Tensor],
+        all_image: list[torch.Tensor],
         patch_size: int,
         f_patch_size: int,
     ):
@@ -653,10 +653,10 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
     def forward(
         self,
-        x: List[torch.Tensor],
+        x: list[torch.Tensor],
         t,
-        cap_feats: List[torch.Tensor],
-        control_context: List[torch.Tensor],
+        cap_feats: list[torch.Tensor],
+        control_context: list[torch.Tensor],
         conditioning_scale: float = 1.0,
         patch_size=2,
         f_patch_size=1,

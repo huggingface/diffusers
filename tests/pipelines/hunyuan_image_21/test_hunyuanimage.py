@@ -34,11 +34,7 @@ from diffusers import (
 )
 
 from ...testing_utils import enable_full_determinism
-from ..test_pipelines_common import (
-    FirstBlockCacheTesterMixin,
-    PipelineTesterMixin,
-    to_np,
-)
+from ..test_pipelines_common import FirstBlockCacheTesterMixin, PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
