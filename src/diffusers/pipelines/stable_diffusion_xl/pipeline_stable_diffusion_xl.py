@@ -1260,6 +1260,19 @@ class StableDiffusionXLPipeline(
                 if torch.backends.mps.is_available():
                     # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                     self.vae = self.vae.to(latents.dtype)
+                else:
+                    # On CUDA/CPU we still need to align the latents dtype/device to the VAE decode dtype/device.
+                    # Otherwise, if the VAE (or parts of it) are in fp32 while latents are fp16, group_norm/linear
+                    # will error with Half/Float dtype mismatch.
+                    try:
+                        decode_param = next(iter(self.vae.post_quant_conv.parameters()))
+                    except Exception:
+                        decode_param = next(iter(self.vae.parameters()))
+
+                    if latents.device != decode_param.device:
+                        latents = latents.to(device=decode_param.device)
+                    if latents.dtype != decode_param.dtype:
+                        latents = latents.to(dtype=decode_param.dtype)
 
             # unscale/denormalize the latents
             # denormalize with the mean and std if available and not None
