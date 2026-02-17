@@ -16,7 +16,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable
 
 import ftfy
 import torch
@@ -284,9 +284,9 @@ class PRXPipeline(
         transformer: PRXTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
         text_encoder: T5GemmaEncoder,
-        tokenizer: Union[T5TokenizerFast, GemmaTokenizerFast, AutoTokenizer],
-        vae: Optional[Union[AutoencoderKL, AutoencoderDC]] = None,
-        default_sample_size: Optional[int] = DEFAULT_RESOLUTION,
+        tokenizer: T5TokenizerFast | GemmaTokenizerFast | AutoTokenizer,
+        vae: AutoencoderKL | AutoencoderDC | None = None,
+        default_sample_size: int | None = DEFAULT_RESOLUTION,
     ):
         super().__init__()
 
@@ -352,8 +352,8 @@ class PRXPipeline(
         width: int,
         dtype: torch.dtype,
         device: torch.device,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
     ):
         """Prepare initial latents for the diffusion process."""
         if latents is None:
@@ -370,15 +370,15 @@ class PRXPipeline(
 
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        device: torch.device | None = None,
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
         num_images_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_attention_mask: Optional[torch.BoolTensor] = None,
-        negative_prompt_attention_mask: Optional[torch.BoolTensor] = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+        prompt_attention_mask: torch.BoolTensor | None = None,
+        negative_prompt_attention_mask: torch.BoolTensor | None = None,
     ):
         """Encode text prompt using standard text encoder and tokenizer, or use precomputed embeddings."""
         if device is None:
@@ -420,7 +420,7 @@ class PRXPipeline(
             negative_prompt_attention_mask if do_classifier_free_guidance else None,
         )
 
-    def _tokenize_prompts(self, prompts: List[str], device: torch.device):
+    def _tokenize_prompts(self, prompts: list[str], device: torch.device):
         """Tokenize and clean prompts."""
         cleaned = [self.text_preprocessor.clean_text(text) for text in prompts]
         tokens = self.tokenizer(
@@ -435,7 +435,7 @@ class PRXPipeline(
 
     def _encode_prompt_standard(
         self,
-        prompt: List[str],
+        prompt: list[str],
         device: torch.device,
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
@@ -473,13 +473,13 @@ class PRXPipeline(
 
     def check_inputs(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         height: int,
         width: int,
         guidance_scale: float,
-        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
     ):
         """Check that all inputs are in correct format."""
         if prompt is not None and prompt_embeds is not None:
@@ -527,31 +527,31 @@ class PRXPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: str | list[str] = None,
         negative_prompt: str = "",
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 28,
-        timesteps: List[int] = None,
+        timesteps: list[int] = None,
         guidance_scale: float = 4.0,
-        num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_attention_mask: Optional[torch.BoolTensor] = None,
-        negative_prompt_attention_mask: Optional[torch.BoolTensor] = None,
-        output_type: Optional[str] = "pil",
+        num_images_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        negative_prompt_embeds: torch.FloatTensor | None = None,
+        prompt_attention_mask: torch.BoolTensor | None = None,
+        negative_prompt_attention_mask: torch.BoolTensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
         use_resolution_binning: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
                 instead.
             negative_prompt (`str`, *optional*, defaults to `""`):
@@ -564,7 +564,7 @@ class PRXPipeline(
             num_inference_steps (`int`, *optional*, defaults to 28):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
@@ -576,7 +576,7 @@ class PRXPipeline(
                 the text `prompt`, usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -610,7 +610,7 @@ class PRXPipeline(
                 with the following arguments: `callback_on_step_end(self, step, timestep, callback_kwargs)`.
                 `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include tensors that are listed
                 in the `._callback_tensor_inputs` attribute.

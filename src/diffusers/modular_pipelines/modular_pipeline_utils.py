@@ -14,9 +14,11 @@
 
 import inspect
 import re
+import warnings
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Type, Union
+from types import UnionType
+from typing import Any, Literal, Type, Union, get_args, get_origin
 
 import PIL.Image
 import torch
@@ -113,18 +115,18 @@ class ComponentSpec:
         default_creation_method: Preferred creation method - "from_config" or "from_pretrained"
     """
 
-    name: Optional[str] = None
-    type_hint: Optional[Type] = None
-    description: Optional[str] = None
-    config: Optional[FrozenDict] = None
-    pretrained_model_name_or_path: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
-    subfolder: Optional[str] = field(default="", metadata={"loading": True})
-    variant: Optional[str] = field(default=None, metadata={"loading": True})
-    revision: Optional[str] = field(default=None, metadata={"loading": True})
+    name: str | None = None
+    type_hint: Type | None = None
+    description: str | None = None
+    config: FrozenDict | None = None
+    pretrained_model_name_or_path: str | list[str] | None = field(default=None, metadata={"loading": True})
+    subfolder: str | None = field(default="", metadata={"loading": True})
+    variant: str | None = field(default=None, metadata={"loading": True})
+    revision: str | None = field(default=None, metadata={"loading": True})
     default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
 
     # Deprecated
-    repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": False})
+    repo: str | list[str] | None = field(default=None, metadata={"loading": False})
 
     def __post_init__(self):
         repo_value = self.repo
@@ -206,7 +208,7 @@ class ComponentSpec:
         )
 
     @classmethod
-    def loading_fields(cls) -> List[str]:
+    def loading_fields(cls) -> list[str]:
         """
         Return the names of all loading‐related fields (i.e. those whose field.metadata["loading"] is True).
         """
@@ -225,7 +227,7 @@ class ComponentSpec:
         return "|".join(parts)
 
     @classmethod
-    def decode_load_id(cls, load_id: str) -> Dict[str, Optional[str]]:
+    def decode_load_id(cls, load_id: str) -> dict[str, str | None]:
         """
         Decode a load_id string back into a dictionary of loading fields and values.
 
@@ -263,7 +265,7 @@ class ComponentSpec:
     # otherwise we cannot do spec -> spec.create() -> component -> ComponentSpec.from_component(component)
     # the config info is lost in the process
     # remove error check in from_component spec and ModularPipeline.update_components() if we remove support for non configmixin in `create()` method
-    def create(self, config: Optional[Union[FrozenDict, Dict[str, Any]]] = None, **kwargs) -> Any:
+    def create(self, config: FrozenDict | dict[str, Any] | None = None, **kwargs) -> Any:
         """Create component using from_config with config."""
 
         if self.type_hint is None or not isinstance(self.type_hint, type):
@@ -345,7 +347,7 @@ class ConfigSpec:
 
     name: str
     default: Any
-    description: Optional[str] = None
+    description: str | None = None
 
 
 # ======================================================
@@ -390,7 +392,7 @@ INPUT_PARAM_TEMPLATES = {
         "description": "Torch generator for deterministic generation.",
     },
     "sigmas": {
-        "type_hint": List[float],
+        "type_hint": list[float],
         "description": "Custom sigmas for the denoising process.",
     },
     "strength": {
@@ -399,7 +401,7 @@ INPUT_PARAM_TEMPLATES = {
         "description": "Strength for img2img/inpainting.",
     },
     "image": {
-        "type_hint": Union[PIL.Image.Image, List[PIL.Image.Image]],
+        "type_hint": PIL.Image.Image | list[PIL.Image.Image],
         "required": True,
         "description": "Reference image(s) for denoising. Can be a single image or list of images.",
     },
@@ -417,7 +419,7 @@ INPUT_PARAM_TEMPLATES = {
         "description": "Output format: 'pil', 'np', 'pt'.",
     },
     "attention_kwargs": {
-        "type_hint": Dict[str, Any],
+        "type_hint": dict[str, Any],
         "description": "Additional kwargs for attention processors.",
     },
     "denoiser_input_fields": {
@@ -499,8 +501,12 @@ INPUT_PARAM_TEMPLATES = {
 
 OUTPUT_PARAM_TEMPLATES = {
     "images": {
-        "type_hint": List[PIL.Image.Image],
+        "type_hint": list[PIL.Image.Image],
         "description": "Generated images.",
+    },
+    "videos": {
+        "type_hint": list[PIL.Image.Image],
+        "description": "The generated videos.",
     },
     "latents": {
         "type_hint": torch.Tensor,
@@ -544,7 +550,7 @@ class InputParam:
     required: bool = False
     description: str = ""
     kwargs_type: str = None
-    metadata: Dict[str, Any] = None
+    metadata: dict[str, Any] = None
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
@@ -578,7 +584,7 @@ class OutputParam:
     type_hint: Any = None
     description: str = ""
     kwargs_type: str = None
-    metadata: Dict[str, Any] = None
+    metadata: dict[str, Any] = None
 
     def __repr__(self):
         return (
@@ -611,7 +617,7 @@ def format_inputs_short(inputs):
     Format input parameters into a string representation, with required params first followed by optional ones.
 
     Args:
-        inputs: List of input parameters with 'required' and 'name' attributes, and 'default' for optional params
+        inputs: list of input parameters with 'required' and 'name' attributes, and 'default' for optional params
 
     Returns:
         str: Formatted string of input parameters
@@ -640,9 +646,9 @@ def format_intermediates_short(intermediate_inputs, required_intermediate_inputs
     Formats intermediate inputs and outputs of a block into a string representation.
 
     Args:
-        intermediate_inputs: List of intermediate input parameters
-        required_intermediate_inputs: List of required intermediate input names
-        intermediate_outputs: List of intermediate output parameters
+        intermediate_inputs: list of intermediate input parameters
+        required_intermediate_inputs: list of required intermediate input names
+        intermediate_outputs: list of intermediate output parameters
 
     Returns:
         str: Formatted string like:
@@ -689,7 +695,7 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
     """Format a list of InputParam or OutputParam objects into a readable string representation.
 
     Args:
-        params: List of InputParam or OutputParam objects to format
+        params: list of InputParam or OutputParam objects to format
         header: Header text to use (e.g. "Args" or "Returns")
         indent_level: Number of spaces to indent each parameter line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
@@ -706,9 +712,9 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
     formatted_params = []
 
     def get_type_str(type_hint):
-        if hasattr(type_hint, "__origin__") and type_hint.__origin__ is Union:
-            types = [t.__name__ if hasattr(t, "__name__") else str(t) for t in type_hint.__args__]
-            return f"Union[{', '.join(types)}]"
+        if isinstance(type_hint, UnionType) or get_origin(type_hint) is Union:
+            type_strs = [t.__name__ if hasattr(t, "__name__") else str(t) for t in get_args(type_hint)]
+            return " | ".join(type_strs)
         return type_hint.__name__ if hasattr(type_hint, "__name__") else str(type_hint)
 
     def wrap_text(text, indent, max_length):
@@ -769,7 +775,7 @@ def format_input_params(input_params, indent_level=4, max_line_length=115):
     """Format a list of InputParam objects into a readable string representation.
 
     Args:
-        input_params: List of InputParam objects to format
+        input_params: list of InputParam objects to format
         indent_level: Number of spaces to indent each parameter line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
 
@@ -783,7 +789,7 @@ def format_output_params(output_params, indent_level=4, max_line_length=115):
     """Format a list of OutputParam objects into a readable string representation.
 
     Args:
-        output_params: List of OutputParam objects to format
+        output_params: list of OutputParam objects to format
         indent_level: Number of spaces to indent each parameter line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
 
@@ -797,7 +803,7 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
     """Format a list of ComponentSpec objects into a readable string representation.
 
     Args:
-        components: List of ComponentSpec objects to format
+        components: list of ComponentSpec objects to format
         indent_level: Number of spaces to indent each component line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
         add_empty_lines: Whether to add empty lines between components (default: True)
@@ -852,7 +858,7 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
     """Format a list of ConfigSpec objects into a readable string representation.
 
     Args:
-        configs: List of ConfigSpec objects to format
+        configs: list of ConfigSpec objects to format
         indent_level: Number of spaces to indent each config line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
         add_empty_lines: Whether to add empty lines between configs (default: True)
@@ -886,6 +892,30 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
     return "\n".join(formatted_configs)
 
 
+def format_workflow(workflow_map):
+    """Format a workflow map into a readable string representation.
+
+    Args:
+        workflow_map: Dictionary mapping workflow names to trigger inputs
+
+    Returns:
+        A formatted string representing all workflows
+    """
+    if workflow_map is None:
+        return ""
+
+    lines = ["Supported workflows:"]
+    for workflow_name, trigger_inputs in workflow_map.items():
+        required_inputs = [k for k, v in trigger_inputs.items() if v]
+        if required_inputs:
+            inputs_str = ", ".join(f"`{t}`" for t in required_inputs)
+            lines.append(f"  - `{workflow_name}`: requires {inputs_str}")
+        else:
+            lines.append(f"  - `{workflow_name}`: default (no additional inputs required)")
+
+    return "\n".join(lines)
+
+
 def make_doc_string(
     inputs,
     outputs,
@@ -898,13 +928,13 @@ def make_doc_string(
     Generates a formatted documentation string describing the pipeline block's parameters and structure.
 
     Args:
-        inputs: List of input parameters
-        intermediate_inputs: List of intermediate input parameters
-        outputs: List of output parameters
+        inputs: list of input parameters
+        intermediate_inputs: list of intermediate input parameters
+        outputs: list of output parameters
         description (str, *optional*): Description of the block
         class_name (str, *optional*): Name of the class to include in the documentation
-        expected_components (List[ComponentSpec], *optional*): List of expected components
-        expected_configs (List[ConfigSpec], *optional*): List of expected configurations
+        expected_components (list[ComponentSpec], *optional*): list of expected components
+        expected_configs (list[ConfigSpec], *optional*): list of expected configurations
 
     Returns:
         str: A formatted string containing information about components, configs, call parameters,
@@ -942,7 +972,73 @@ def make_doc_string(
     return output
 
 
-def generate_modular_model_card_content(blocks) -> Dict[str, Any]:
+def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> list[InputParam]:
+    """
+    Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if current
+    default value is None and new default value is not None. Warns if multiple non-None default values exist for the
+    same input.
+
+    Args:
+        named_input_lists: List of tuples containing (block_name, input_param_list) pairs
+
+    Returns:
+        List[InputParam]: Combined list of unique InputParam objects
+    """
+    combined_dict = {}  # name -> InputParam
+    value_sources = {}  # name -> block_name
+
+    for block_name, inputs in named_input_lists:
+        for input_param in inputs:
+            if input_param.name is None and input_param.kwargs_type is not None:
+                input_name = "*_" + input_param.kwargs_type
+            else:
+                input_name = input_param.name
+            if input_name in combined_dict:
+                current_param = combined_dict[input_name]
+                if (
+                    current_param.default is not None
+                    and input_param.default is not None
+                    and current_param.default != input_param.default
+                ):
+                    warnings.warn(
+                        f"Multiple different default values found for input '{input_name}': "
+                        f"{current_param.default} (from block '{value_sources[input_name]}') and "
+                        f"{input_param.default} (from block '{block_name}'). Using {current_param.default}."
+                    )
+                if current_param.default is None and input_param.default is not None:
+                    combined_dict[input_name] = input_param
+                    value_sources[input_name] = block_name
+            else:
+                combined_dict[input_name] = input_param
+                value_sources[input_name] = block_name
+
+    return list(combined_dict.values())
+
+
+def combine_outputs(*named_output_lists: list[tuple[str, list[OutputParam]]]) -> list[OutputParam]:
+    """
+    Combines multiple lists of OutputParam objects from different blocks. For duplicate outputs, keeps the first
+    occurrence of each output name.
+
+    Args:
+        named_output_lists: List of tuples containing (block_name, output_param_list) pairs
+
+    Returns:
+        List[OutputParam]: Combined list of unique OutputParam objects
+    """
+    combined_dict = {}  # name -> OutputParam
+
+    for block_name, outputs in named_output_lists:
+        for output_param in outputs:
+            if (output_param.name not in combined_dict) or (
+                combined_dict[output_param.name].kwargs_type is None and output_param.kwargs_type is not None
+            ):
+                combined_dict[output_param.name] = output_param
+
+    return list(combined_dict.values())
+
+
+def generate_modular_model_card_content(blocks) -> dict[str, Any]:
     """
     Generate model card content for a modular pipeline.
 

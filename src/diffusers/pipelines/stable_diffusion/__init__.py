@@ -6,8 +6,6 @@ from ...utils import (
     _LazyModule,
     get_objects_from_module,
     is_flax_available,
-    is_k_diffusion_available,
-    is_k_diffusion_version,
     is_onnx_available,
     is_torch_available,
     is_transformers_available,
