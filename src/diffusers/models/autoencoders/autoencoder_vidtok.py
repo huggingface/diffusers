@@ -433,7 +433,7 @@ class VidTokAttnBlock(nn.Module):
         q, k, v = [x.permute(0, 2, 3, 4, 1).reshape(b, t, -1, c).contiguous() for x in [q, k, v]]
         hidden_states = F.scaled_dot_product_attention(q, k, v)  # scale is dim ** -0.5 per default
         return hidden_states.reshape(b, t, h, w, c).permute(0, 4, 1, 2, 3)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         hidden_states = x
         hidden_states = self.attention(hidden_states)
@@ -1016,7 +1016,7 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
         self.regularizer = regularizer
         if self.regularizer not in ["kl", "fsq"]:
             raise ValueError(f"Invalid regularizer: {self.regularizer}. Only `kl` and `fsq` are supported.")
-        
+
         if self.regularizer == "fsq":
             if z_channels != int(math.log(codebook_size, 8)):
                 raise ValueError(
@@ -1024,7 +1024,7 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
                     f" log base 8 of the `codebook_size` {codebook_size}, but got {z_channels}."
                 )
             if double_z:
-                raise ValueError(f"When using the `fsq` regularizer, `double_z` must be `False`.")
+                raise ValueError("When using the `fsq` regularizer, `double_z` must be `False`.")
 
             self.regularization = FSQRegularizer(levels=[8] * z_channels)
 
@@ -1147,9 +1147,9 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
         self._empty_causal_cached(self.decoder)
         self._set_first_chunk(True)
         if not self.is_causal and z.shape[-3] % self.num_latent_frames_batch_size != 0:
-            assert (
-                z.shape[-3] >= self.num_latent_frames_batch_size
-            ), f"Too short latent frames. At least {self.num_latent_frames_batch_size} frames."
+            assert z.shape[-3] >= self.num_latent_frames_batch_size, (
+                f"Too short latent frames. At least {self.num_latent_frames_batch_size} frames."
+            )
             z = z[..., : (z.shape[-3] // self.num_latent_frames_batch_size * self.num_latent_frames_batch_size), :, :]
         if decode_from_indices:
             z = self.tile_indices_to_latent(z) if self.use_tiling else self.indices_to_latent(z)
@@ -1444,9 +1444,9 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
                     )
                     x = self._pad_at_dim(x, (0, time_padding), dim=2, pad_mode="replicate")
                 else:
-                    assert (
-                        x.shape[2] >= self.num_sample_frames_batch_size
-                    ), f"Too short video. At least {self.num_sample_frames_batch_size} frames."
+                    assert x.shape[2] >= self.num_sample_frames_batch_size, (
+                        f"Too short video. At least {self.num_sample_frames_batch_size} frames."
+                    )
                     x = x[:, :, : x.shape[2] // self.num_sample_frames_batch_size * self.num_sample_frames_batch_size]
             else:
                 time_padding = 0
