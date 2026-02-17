@@ -52,14 +52,17 @@ Pass the canny image to the pipeline. Use the `controlnet_conditioning_scale` pa
 ```py
 import torch
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 from diffusers import FluxControlNetPipeline, FluxControlNetModel
+
+device = get_device()
 
 controlnet = FluxControlNetModel.from_pretrained(
     "InstantX/FLUX.1-dev-Controlnet-Canny", torch_dtype=torch.bfloat16
 )
 pipeline = FluxControlNetPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev", controlnet=controlnet, torch_dtype=torch.bfloat16
-).to("cuda")
+).to(device)
 
 prompt = """
 A photorealistic overhead image of a cat reclining sideways in a flamingo pool floatie holding a margarita. 
@@ -103,14 +106,16 @@ from PIL import Image
 from transformers import DPTImageProcessor, DPTForDepthEstimation
 from diffusers import ControlNetModel, StableDiffusionXLControlNetImg2ImgPipeline, AutoencoderKL
 from diffusers.utils import load_image
+from diffusers.utils.torch_utils import get_device
 
+device = get_device()
 
-depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")
+depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to(device)
 feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
 
 def get_depth_map(image):
-    image = feature_extractor(images=image, return_tensors="pt").pixel_values.to("cuda")
-    with torch.no_grad(), torch.autocast("cuda"):
+    image = feature_extractor(images=image, return_tensors="pt").pixel_values.to(device)
+    with torch.no_grad(), torch.autocast(device):
         depth_map = depth_estimator(image).predicted_depth
 
     depth_map = torch.nn.functional.interpolate(
@@ -143,7 +148,7 @@ pipeline = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
     controlnet=controlnet,
     vae=vae,
     torch_dtype=torch.float16,
-).to("cuda")
+).to(device)
 
 prompt = """
 A photorealistic overhead image of a cat reclining sideways in a flamingo pool floatie holding a margarita. 
@@ -260,6 +265,9 @@ Pass the ControlNets as a list to the pipeline and resize the images to the expe
 ```py
 import torch
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 controlnets = [
     ControlNetModel.from_pretrained(
@@ -273,7 +281,7 @@ controlnets = [
 vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
 pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnets, vae=vae, torch_dtype=torch.float16
-).to("cuda")
+).to(device)
 
 prompt = """
 a relaxed rabbit sitting on a striped towel next to a pool with a tropical drink nearby, 
@@ -316,6 +324,9 @@ pipeline(
 import torch
 from diffusers.utils import load_iamge
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 controlnet = ControlNetModel.from_pretrained(
   "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
@@ -324,7 +335,7 @@ pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   controlnet=controlnet,
   torch_dtype=torch.float16
-).to("cuda")
+).to(device)
 
 canny_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/canny-cat.png")
 pipeline(

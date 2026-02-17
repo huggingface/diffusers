@@ -17,8 +17,11 @@ The model can be loaded with the following code snippet.
 
 ```python
 from diffusers import AutoencoderKLLTXVideo
+from diffusers.utils.torch_utils import get_device
 
-vae = AutoencoderKLLTXVideo.from_pretrained("Lightricks/LTX-Video", subfolder="vae", torch_dtype=torch.float32).to("cuda")
+device = get_device()
+
+vae = AutoencoderKLLTXVideo.from_pretrained("Lightricks/LTX-Video", subfolder="vae", torch_dtype=torch.float32).to(device)
 ```
 
 ## AutoencoderKLLTXVideo
