@@ -17,11 +17,6 @@ from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
-@pytest.mark.xfail(
-    condition=is_transformers_version(">", "4.57.1"),
-    reason="See https://github.com/huggingface/diffusers/pull/12456#issuecomment-3424228544",
-    strict=False,
-)
 class PRXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = PRXPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
