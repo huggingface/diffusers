@@ -685,7 +685,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         return prompt_embeds, attention_mask, generated_prompt_embeds
 
-    # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.mel_spectrogram_to_waveform
+    # Copied from diffusers.pipelines.deprecated.audioldm.pipeline_audioldm.AudioLDMPipeline.mel_spectrogram_to_waveform
     def mel_spectrogram_to_waveform(self, mel_spectrogram):
         if mel_spectrogram.dim() == 4:
             mel_spectrogram = mel_spectrogram.squeeze(1)
