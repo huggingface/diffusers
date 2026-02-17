@@ -591,7 +591,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 multiple prompts (batch_size > 1), provide a nested list where each sublist contains the input images
                 for that prompt: `[[img1_for_prompt1], [img2_for_prompt2]]`. For a single prompt with multiple
                 reference images (batch_size == 1), use a flat list: `[img1, img2]`.
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             negative_prompt (`str` or `list[str]`, *optional*):
