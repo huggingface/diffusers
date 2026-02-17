@@ -14,7 +14,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -145,30 +144,30 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         timestep_ratio_embedding_dim: int = 64,
         patch_size: int = 1,
         conditioning_dim: int = 2048,
-        block_out_channels: Tuple[int, ...] = (2048, 2048),
-        num_attention_heads: Tuple[int, ...] = (32, 32),
-        down_num_layers_per_block: Tuple[int, ...] = (8, 24),
-        up_num_layers_per_block: Tuple[int, ...] = (24, 8),
-        down_blocks_repeat_mappers: Optional[Tuple[int]] = (
+        block_out_channels: tuple[int, ...] = (2048, 2048),
+        num_attention_heads: tuple[int, ...] = (32, 32),
+        down_num_layers_per_block: tuple[int, ...] = (8, 24),
+        up_num_layers_per_block: tuple[int, ...] = (24, 8),
+        down_blocks_repeat_mappers: tuple[int] | None = (
             1,
             1,
         ),
-        up_blocks_repeat_mappers: Optional[Tuple[int]] = (1, 1),
-        block_types_per_layer: Tuple[Tuple[str]] = (
+        up_blocks_repeat_mappers: tuple[int] | None = (1, 1),
+        block_types_per_layer: tuple[tuple[str]] = (
             ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
             ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
         ),
-        clip_text_in_channels: Optional[int] = None,
+        clip_text_in_channels: int | None = None,
         clip_text_pooled_in_channels=1280,
-        clip_image_in_channels: Optional[int] = None,
+        clip_image_in_channels: int | None = None,
         clip_seq=4,
-        effnet_in_channels: Optional[int] = None,
-        pixel_mapper_in_channels: Optional[int] = None,
+        effnet_in_channels: int | None = None,
+        pixel_mapper_in_channels: int | None = None,
         kernel_size=3,
-        dropout: Union[float, Tuple[float]] = (0.1, 0.1),
-        self_attn: Union[bool, Tuple[bool]] = True,
-        timestep_conditioning_type: Tuple[str, ...] = ("sca", "crp"),
-        switch_level: Optional[Tuple[bool]] = None,
+        dropout: float | tuple[float] = (0.1, 0.1),
+        self_attn: bool | tuple[bool] = True,
+        timestep_conditioning_type: tuple[str, ...] = ("sca", "crp"),
+        switch_level: tuple[bool] | None = None,
     ):
         """
 
@@ -183,20 +182,20 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 Patch size to use for pixel unshuffling layer
             conditioning_dim (`int`, defaults to 2048):
                 Dimension of the image and text conditional embedding.
-            block_out_channels (Tuple[int], defaults to (2048, 2048)):
-                Tuple of output channels for each block.
-            num_attention_heads (Tuple[int], defaults to (32, 32)):
+            block_out_channels (tuple[int], defaults to (2048, 2048)):
+                tuple of output channels for each block.
+            num_attention_heads (tuple[int], defaults to (32, 32)):
                 Number of attention heads in each attention block. Set to -1 to if block types in a layer do not have
                 attention.
-            down_num_layers_per_block (Tuple[int], defaults to [8, 24]):
+            down_num_layers_per_block (tuple[int], defaults to [8, 24]):
                 Number of layers in each down block.
-            up_num_layers_per_block (Tuple[int], defaults to [24, 8]):
+            up_num_layers_per_block (tuple[int], defaults to [24, 8]):
                 Number of layers in each up block.
-            down_blocks_repeat_mappers (Tuple[int], optional, defaults to [1, 1]):
+            down_blocks_repeat_mappers (tuple[int], optional, defaults to [1, 1]):
                 Number of 1x1 Convolutional layers to repeat in each down block.
-            up_blocks_repeat_mappers (Tuple[int], optional, defaults to [1, 1]):
+            up_blocks_repeat_mappers (tuple[int], optional, defaults to [1, 1]):
                 Number of 1x1 Convolutional layers to repeat in each up block.
-            block_types_per_layer (Tuple[Tuple[str]], optional,
+            block_types_per_layer (tuple[tuple[str]], optional,
                 defaults to (
                     ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"), ("SDCascadeResBlock",
                     "SDCascadeTimestepBlock", "SDCascadeAttnBlock")
@@ -214,14 +213,14 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 Number of input channels for pixel mapper conditioning.
             kernel_size (`int`, *optional*, defaults to 3):
                 Kernel size to use in the block convolutional layers.
-            dropout (Tuple[float], *optional*, defaults to (0.1, 0.1)):
+            dropout (tuple[float], *optional*, defaults to (0.1, 0.1)):
                 Dropout to use per block.
-            self_attn (Union[bool, Tuple[bool]]):
-                Tuple of booleans that determine whether to use self attention in a block or not.
-            timestep_conditioning_type (Tuple[str], defaults to ("sca", "crp")):
+            self_attn (bool | tuple[bool]):
+                tuple of booleans that determine whether to use self attention in a block or not.
+            timestep_conditioning_type (tuple[str], defaults to ("sca", "crp")):
                 Timestep conditioning type.
-            switch_level (Optional[Tuple[bool]], *optional*, defaults to `None`):
-                Tuple that indicates whether upsampling or downsampling should be applied in a block
+            switch_level (tuple[bool] | None, *optional*, defaults to `None`):
+                tuple that indicates whether upsampling or downsampling should be applied in a block
         """
 
         super().__init__()

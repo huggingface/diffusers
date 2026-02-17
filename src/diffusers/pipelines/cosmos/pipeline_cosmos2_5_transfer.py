@@ -64,7 +64,7 @@ def _maybe_pad_video(video: torch.Tensor, num_frames: int):
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -223,8 +223,8 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         max_sequence_length: int = 512,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -292,11 +292,11 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
         max_sequence_length: int = 512,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -381,10 +381,10 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         num_frames_in: int = 93,
         num_frames_out: int = 93,
         do_classifier_free_guidance: bool = True,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -459,7 +459,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         num_frames: int,
         dtype: torch.dtype,
         device: torch.device,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]],
+        generator: torch.Generator | list[torch.Generator] | None,
     ) -> Optional[torch.Tensor]:
         if controls is None:
             return None
@@ -538,18 +538,18 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] | None = None,
         negative_prompt: Union[str, List[str]] = DEFAULT_NEGATIVE_PROMPT,
         height: int = 704,
-        width: Optional[int] = None,
+        width: int | None = None,
         num_frames: int = 93,
         num_inference_steps: int = 36,
         guidance_scale: float = 3.0,
         num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
         controls: Optional[PipelineImageInput | List[PipelineImageInput]] = None,
-        controls_conditioning_scale: Union[float, List[float]] = 1.0,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        controls_conditioning_scale: float | list[float] = 1.0,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        output_type: str = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]

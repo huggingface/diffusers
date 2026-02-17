@@ -14,7 +14,6 @@
 
 # ===== This file is an implementation of a dummy guardrail for the fast tests =====
 
-from typing import Union
 
 import numpy as np
 import torch
@@ -35,7 +34,7 @@ class DummyCosmosSafetyChecker(ModelMixin, ConfigMixin):
     def check_video_safety(self, frames: np.ndarray) -> np.ndarray:
         return frames
 
-    def to(self, device: Union[str, torch.device] = None, dtype: torch.dtype = None):
+    def to(self, device: str | torch.device = None, dtype: torch.dtype = None):
         module = super().to(device=device, dtype=dtype)
         return module
 

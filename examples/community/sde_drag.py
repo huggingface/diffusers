@@ -73,7 +73,7 @@ class SdeDragPipeline(DiffusionPipeline):
         image_scale: Optional[float] = 0.3,
         adapt_radius: Optional[int] = 5,
         min_lora_scale: Optional[float] = 0.5,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ):
         r"""
         Function invoked when calling the pipeline for image editing.

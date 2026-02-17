@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 import uuid
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict
 
 import numpy as np
 import PIL.Image
@@ -1072,7 +1072,7 @@ class PipelineTesterMixin:
         return generator
 
     @property
-    def pipeline_class(self) -> Union[Callable, DiffusionPipeline]:
+    def pipeline_class(self) -> Callable | DiffusionPipeline:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_class = ClassNameOfPipeline` in the child test class. "
             "See existing pipeline tests for reference."
@@ -2355,7 +2355,6 @@ class PipelineTesterMixin:
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
                 )
 
-    @require_torch_accelerator
     def test_pipeline_with_accelerator_device_map(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

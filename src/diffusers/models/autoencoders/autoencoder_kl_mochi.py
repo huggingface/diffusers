@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import functools
-from typing import Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -83,7 +82,7 @@ class MochiResnetBlock3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         act_fn: str = "swish",
     ):
         super().__init__()
@@ -106,7 +105,7 @@ class MochiResnetBlock3D(nn.Module):
     def forward(
         self,
         inputs: torch.Tensor,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         new_conv_cache = {}
         conv_cache = conv_cache or {}
@@ -193,7 +192,7 @@ class MochiDownBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
         chunk_size: int = 2**15,
     ) -> torch.Tensor:
         r"""Forward method of the `MochiUpBlock3D` class."""
@@ -294,7 +293,7 @@ class MochiMidBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Forward method of the `MochiMidBlock3D` class."""
 
@@ -368,7 +367,7 @@ class MochiUpBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Forward method of the `MochiUpBlock3D` class."""
 
@@ -445,13 +444,13 @@ class MochiEncoder3D(nn.Module):
             The number of input channels.
         out_channels (`int`, *optional*):
             The number of output channels.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(128, 256, 512, 768)`):
+        block_out_channels (`tuple[int, ...]`, *optional*, defaults to `(128, 256, 512, 768)`):
             The number of output channels for each block.
-        layers_per_block (`Tuple[int, ...]`, *optional*, defaults to `(3, 3, 4, 6, 3)`):
+        layers_per_block (`tuple[int, ...]`, *optional*, defaults to `(3, 3, 4, 6, 3)`):
             The number of resnet blocks for each block.
-        temporal_expansions (`Tuple[int, ...]`, *optional*, defaults to `(1, 2, 3)`):
+        temporal_expansions (`tuple[int, ...]`, *optional*, defaults to `(1, 2, 3)`):
             The temporal expansion factor for each of the up blocks.
-        spatial_expansions (`Tuple[int, ...]`, *optional*, defaults to `(2, 2, 2)`):
+        spatial_expansions (`tuple[int, ...]`, *optional*, defaults to `(2, 2, 2)`):
             The spatial expansion factor for each of the up blocks.
         non_linearity (`str`, *optional*, defaults to `"swish"`):
             The non-linearity to use in the decoder.
@@ -461,11 +460,11 @@ class MochiEncoder3D(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 768),
-        layers_per_block: Tuple[int, ...] = (3, 3, 4, 6, 3),
-        temporal_expansions: Tuple[int, ...] = (1, 2, 3),
-        spatial_expansions: Tuple[int, ...] = (2, 2, 2),
-        add_attention_block: Tuple[bool, ...] = (False, True, True, True, True),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 768),
+        layers_per_block: tuple[int, ...] = (3, 3, 4, 6, 3),
+        temporal_expansions: tuple[int, ...] = (1, 2, 3),
+        spatial_expansions: tuple[int, ...] = (2, 2, 2),
+        add_attention_block: tuple[bool, ...] = (False, True, True, True, True),
         act_fn: str = "swish",
     ):
         super().__init__()
@@ -499,9 +498,7 @@ class MochiEncoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self, hidden_states: torch.Tensor, conv_cache: Optional[Dict[str, torch.Tensor]] = None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, conv_cache: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
         r"""Forward method of the `MochiEncoder3D` class."""
 
         new_conv_cache = {}
@@ -558,13 +555,13 @@ class MochiDecoder3D(nn.Module):
             The number of input channels.
         out_channels (`int`, *optional*):
             The number of output channels.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(128, 256, 512, 768)`):
+        block_out_channels (`tuple[int, ...]`, *optional*, defaults to `(128, 256, 512, 768)`):
             The number of output channels for each block.
-        layers_per_block (`Tuple[int, ...]`, *optional*, defaults to `(3, 3, 4, 6, 3)`):
+        layers_per_block (`tuple[int, ...]`, *optional*, defaults to `(3, 3, 4, 6, 3)`):
             The number of resnet blocks for each block.
-        temporal_expansions (`Tuple[int, ...]`, *optional*, defaults to `(1, 2, 3)`):
+        temporal_expansions (`tuple[int, ...]`, *optional*, defaults to `(1, 2, 3)`):
             The temporal expansion factor for each of the up blocks.
-        spatial_expansions (`Tuple[int, ...]`, *optional*, defaults to `(2, 2, 2)`):
+        spatial_expansions (`tuple[int, ...]`, *optional*, defaults to `(2, 2, 2)`):
             The spatial expansion factor for each of the up blocks.
         non_linearity (`str`, *optional*, defaults to `"swish"`):
             The non-linearity to use in the decoder.
@@ -574,10 +571,10 @@ class MochiDecoder3D(nn.Module):
         self,
         in_channels: int,  # 12
         out_channels: int,  # 3
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 768),
-        layers_per_block: Tuple[int, ...] = (3, 3, 4, 6, 3),
-        temporal_expansions: Tuple[int, ...] = (1, 2, 3),
-        spatial_expansions: Tuple[int, ...] = (2, 2, 2),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 768),
+        layers_per_block: tuple[int, ...] = (3, 3, 4, 6, 3),
+        temporal_expansions: tuple[int, ...] = (1, 2, 3),
+        spatial_expansions: tuple[int, ...] = (2, 2, 2),
         act_fn: str = "swish",
     ):
         super().__init__()
@@ -612,9 +609,7 @@ class MochiDecoder3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self, hidden_states: torch.Tensor, conv_cache: Optional[Dict[str, torch.Tensor]] = None
-    ) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, conv_cache: dict[str, torch.Tensor] | None = None) -> torch.Tensor:
         r"""Forward method of the `MochiDecoder3D` class."""
 
         new_conv_cache = {}
@@ -668,8 +663,8 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of block output channels.
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
+            tuple of block output channels.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         scaling_factor (`float`, *optional*, defaults to `1.15258426`):
             The component-wise standard deviation of the trained latent space computed using the first batch of the
@@ -688,15 +683,15 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
         self,
         in_channels: int = 15,
         out_channels: int = 3,
-        encoder_block_out_channels: Tuple[int, ...] = (64, 128, 256, 384),
-        decoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 768),
+        encoder_block_out_channels: tuple[int] = (64, 128, 256, 384),
+        decoder_block_out_channels: tuple[int] = (128, 256, 512, 768),
         latent_channels: int = 12,
-        layers_per_block: Tuple[int, ...] = (3, 3, 4, 6, 3),
+        layers_per_block: tuple[int, ...] = (3, 3, 4, 6, 3),
         act_fn: str = "silu",
-        temporal_expansions: Tuple[int, ...] = (1, 2, 3),
-        spatial_expansions: Tuple[int, ...] = (2, 2, 2),
-        add_attention_block: Tuple[bool, ...] = (False, True, True, True, True),
-        latents_mean: Tuple[float, ...] = (
+        temporal_expansions: tuple[int, ...] = (1, 2, 3),
+        spatial_expansions: tuple[int, ...] = (2, 2, 2),
+        add_attention_block: tuple[bool, ...] = (False, True, True, True, True),
+        latents_mean: tuple[float, ...] = (
             -0.06730895953510081,
             -0.038011381506090416,
             -0.07477820912866141,
@@ -710,7 +705,7 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
             -0.011931556316503654,
             -0.0321993391887285,
         ),
-        latents_std: Tuple[float, ...] = (
+        latents_std: tuple[float, ...] = (
             0.9263795028493863,
             0.9248894543193766,
             0.9393059390890617,
@@ -790,10 +785,10 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_sample_stride_height: Optional[float] = None,
-        tile_sample_stride_width: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_sample_stride_height: float | None = None,
+        tile_sample_stride_width: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -860,7 +855,7 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -885,7 +880,7 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
@@ -915,7 +910,7 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         """
         Decode a batch of images.
 
@@ -1013,7 +1008,7 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
         enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
         return enc
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -1096,8 +1091,8 @@ class AutoencoderKLMochi(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[torch.Tensor, torch.Tensor]:
+        generator: torch.Generator | None = None,
+    ) -> torch.Tensor | torch.Tensor:
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:
