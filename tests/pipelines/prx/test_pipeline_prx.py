@@ -1,7 +1,6 @@
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from transformers import AutoTokenizer
 from transformers.models.t5gemma.configuration_t5gemma import T5GemmaConfig, T5GemmaModuleConfig
@@ -11,7 +10,6 @@ from diffusers.models import AutoencoderDC, AutoencoderKL
 from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
 from diffusers.pipelines.prx.pipeline_prx import PRXPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
-from diffusers.utils import is_transformers_version
 
 from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
