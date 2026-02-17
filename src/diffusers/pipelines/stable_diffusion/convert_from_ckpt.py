@@ -53,8 +53,8 @@ from ...schedulers import (
 from ...utils import is_accelerate_available, logging
 from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from ...utils.torch_utils import get_device
-from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..deprecated.paint_by_example import PaintByExampleImageEncoder
+from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..pipeline_utils import DiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer

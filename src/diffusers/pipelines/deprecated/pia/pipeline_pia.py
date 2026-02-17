@@ -22,7 +22,12 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ....image_processor import PipelineImageInput
-from ....loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
+from ....loaders import (
+    FromSingleFileMixin,
+    IPAdapterMixin,
+    StableDiffusionLoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from ....models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from ....models.lora import adjust_lora_scale_text_encoder
 from ....models.unets.unet_motion_model import MotionAdapter
