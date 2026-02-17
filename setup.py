@@ -237,6 +237,7 @@ extras["test"] = deps_list(
     "sentencepiece",
     "scipy",
     "tiktoken",
+    "torchsde",
     "torchvision",
     "transformers",
     "phonemizer",
