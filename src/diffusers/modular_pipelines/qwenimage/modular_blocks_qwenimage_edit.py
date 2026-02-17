@@ -67,7 +67,7 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
           (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           prompt (`str`):
               The prompt or prompts to guide image generation.
@@ -75,7 +75,7 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
 
       Outputs:
-          resized_image (`List`):
+          resized_image (`list`):
               The resized images
           prompt_embeds (`Tensor`):
               The prompt embeddings.
@@ -115,13 +115,13 @@ class QwenImageEditVaeEncoderStep(SequentialPipelineBlocks):
           (`AutoencoderKLQwenImage`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
       Outputs:
-          resized_image (`List`):
+          resized_image (`list`):
               The resized images
           processed_image (`Tensor`):
               The processed image
@@ -156,7 +156,7 @@ class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
           (`AutoencoderKLQwenImage`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           mask_image (`Image`):
               Mask image for inpainting.
@@ -166,13 +166,13 @@ class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
 
       Outputs:
-          resized_image (`List`):
+          resized_image (`list`):
               The resized images
           processed_image (`Tensor`):
               The processed image
           processed_mask_image (`Tensor`):
               The processed mask image
-          mask_overlay_kwargs (`Dict`):
+          mask_overlay_kwargs (`dict`):
               The kwargs for the postprocess step to apply the mask overlay
           image_latents (`Tensor`):
               The latent representation of the input image.
@@ -450,9 +450,9 @@ class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -526,11 +526,11 @@ class QwenImageEditInpaintCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           strength (`float`, *optional*, defaults to 0.9):
               Strength for img2img/inpainting.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -627,7 +627,7 @@ class QwenImageEditDecodeStep(SequentialPipelineBlocks):
               Output format: 'pil', 'np', 'pt'.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images. (tensor output of the vae decoder.)
     """
 
@@ -656,12 +656,12 @@ class QwenImageEditInpaintDecodeStep(SequentialPipelineBlocks):
               step.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          mask_overlay_kwargs (`Dict`, *optional*):
+          mask_overlay_kwargs (`dict`, *optional*):
               The kwargs for the postprocess step to apply the mask overlay. generated in
               InpaintProcessImagesInputStep.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images. (tensor output of the vae decoder.)
     """
 
@@ -718,6 +718,11 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
       - for edit inpainting, you need to provide `mask_image` and `image`, optionally you can provide
         `padding_mask_crop`
 
+
+      Supported workflows:
+        - `image_conditioned`: requires `prompt`, `image`
+        - `image_conditioned_inpainting`: requires `prompt`, `mask_image`, `image`
+
       Components:
           image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
           (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`) image_mask_processor (`InpaintProcessor`) vae
@@ -725,7 +730,7 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
           (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           prompt (`str`):
               The prompt or prompts to guide image generation.
@@ -751,28 +756,32 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
               Pre-generated noisy latents for image generation.
           num_inference_steps (`int`):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           strength (`float`, *optional*, defaults to 0.9):
               Strength for img2img/inpainting.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          mask_overlay_kwargs (`Dict`, *optional*):
+          mask_overlay_kwargs (`dict`, *optional*):
               The kwargs for the postprocess step to apply the mask overlay. generated in
               InpaintProcessImagesInputStep.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images.
     """
 
     model_name = "qwenimage-edit"
     block_classes = EDIT_AUTO_BLOCKS.values()
     block_names = EDIT_AUTO_BLOCKS.keys()
+    _workflow_map = {
+        "image_conditioned": {"prompt": True, "image": True},
+        "image_conditioned_inpainting": {"prompt": True, "mask_image": True, "image": True},
+    }
 
     @property
     def description(self):

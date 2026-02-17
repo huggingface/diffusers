@@ -24,7 +24,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, deprecate, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, FeedForward
@@ -164,7 +164,11 @@ def compute_text_seq_len_from_mask(
     position_ids = torch.arange(text_seq_len, device=encoder_hidden_states.device, dtype=torch.long)
     active_positions = torch.where(encoder_hidden_states_mask, position_ids, position_ids.new_zeros(()))
     has_active = encoder_hidden_states_mask.any(dim=1)
-    per_sample_len = torch.where(has_active, active_positions.max(dim=1).values + 1, torch.as_tensor(text_seq_len))
+    per_sample_len = torch.where(
+        has_active,
+        active_positions.max(dim=1).values + 1,
+        torch.as_tensor(text_seq_len, device=encoder_hidden_states.device),
+    )
     return text_seq_len, per_sample_len, encoder_hidden_states_mask
 
 
@@ -829,6 +833,7 @@ class QwenImageTransformer2DModel(
         self.gradient_checkpointing = False
         self.zero_cond_t = zero_cond_t
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -887,20 +892,6 @@ class QwenImageTransformer2DModel(
                 "The mask-based approach is more flexible and supports variable-length sequences.",
                 standard_warn=False,
             )
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
-                )
 
         hidden_states = self.img_in(hidden_states)
 
@@ -980,10 +971,6 @@ class QwenImageTransformer2DModel(
         # Use only the image part (hidden_states) from the dual-stream blocks
         hidden_states = self.norm_out(hidden_states, temb)
         output = self.proj_out(hidden_states)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

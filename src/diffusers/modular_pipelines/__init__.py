@@ -33,6 +33,7 @@ else:
         "ModularPipeline",
         "AutoPipelineBlocks",
         "SequentialPipelineBlocks",
+        "ConditionalPipelineBlocks",
         "LoopSequentialPipelineBlocks",
         "PipelineState",
         "BlockState",
@@ -105,6 +106,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
+            ConditionalPipelineBlocks,
             LoopSequentialPipelineBlocks,
             ModularPipeline,
             ModularPipelineBlocks,
