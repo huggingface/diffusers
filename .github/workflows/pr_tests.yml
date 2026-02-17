@@ -191,7 +191,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality]"
+        uv pip install -e ".[quality,test]"
 
     - name: Environment
       run: |
@@ -242,7 +242,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality]"
+        uv pip install -e ".[quality,test]"
         # TODO (sayakpaul, DN6): revisit `--no-deps`
         uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
         uv pip install -U tokenizers
