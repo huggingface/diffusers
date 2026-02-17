@@ -627,8 +627,7 @@
           title: Image-to-image
         - local: api/pipelines/stable_diffusion/inpaint
           title: Inpainting
-        - local: api/pipelines/stable_diffusion/k_diffusion
-          title: K-Diffusion
+
         - local: api/pipelines/stable_diffusion/latent_upscale
           title: Latent upscaler
         - local: api/pipelines/stable_diffusion/ldm3d_diffusion

@@ -1117,6 +1117,26 @@ def _sage_attention_backward_op(
     raise NotImplementedError("Backward pass is not implemented for Sage attention.")
 
 
+def _maybe_modify_attn_mask_npu(query: torch.Tensor, key: torch.Tensor, attn_mask: torch.Tensor | None = None):
+    # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
+    if attn_mask is not None and torch.all(attn_mask != 0):
+        attn_mask = None
+
+    # Reshape Attention Mask: [batch_size, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
+    # https://www.hiascend.com/document/detail/zh/Pytorch/730/apiref/torchnpuCustomsapi/docs/context/torch_npu-npu_fusion_attention.md
+    if (
+        attn_mask is not None
+        and attn_mask.ndim == 2
+        and attn_mask.shape[0] == query.shape[0]
+        and attn_mask.shape[1] == key.shape[1]
+    ):
+        B, Sq, Skv = attn_mask.shape[0], query.shape[1], key.shape[1]
+        attn_mask = ~attn_mask.to(torch.bool)
+        attn_mask = attn_mask.unsqueeze(1).expand(B, Sq, Skv).unsqueeze(1).contiguous()
+
+    return attn_mask
+
+
 def _npu_attention_forward_op(
     ctx: torch.autograd.function.FunctionCtx,
     query: torch.Tensor,
@@ -1134,11 +1154,14 @@ def _npu_attention_forward_op(
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
 
+    attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
+
     out = npu_fusion_attention(
         query,
         key,
         value,
         query.size(2),  # num_heads
+        atten_mask=attn_mask,
         input_layout="BSND",
         pse=None,
         scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
@@ -2668,16 +2691,17 @@ def _native_npu_attention(
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
-    if attn_mask is not None:
-        raise ValueError("`attn_mask` is not supported for NPU attention")
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
     if _parallel_config is None:
+        attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
+
         out = npu_fusion_attention(
             query,
             key,
             value,
             query.size(2),  # num_heads
+            atten_mask=attn_mask,
             input_layout="BSND",
             pse=None,
             scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
@@ -2692,7 +2716,7 @@ def _native_npu_attention(
             query,
             key,
             value,
-            None,
+            attn_mask,
             dropout_p,
             None,
             scale,

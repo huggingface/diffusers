@@ -2355,7 +2355,6 @@ class PipelineTesterMixin:
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
                 )
 
-    @require_torch_accelerator
     def test_pipeline_with_accelerator_device_map(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
