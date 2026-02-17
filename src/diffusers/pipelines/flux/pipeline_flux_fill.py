@@ -890,8 +890,11 @@ class FluxFillPipeline(
         self._joint_attention_kwargs = joint_attention_kwargs
         self._interrupt = False
 
-        init_image = self.image_processor.preprocess(image, height=height, width=width)
-        init_image = init_image.to(dtype=torch.float32)
+        if image:
+            init_image = self.image_processor.preprocess(image, height=height, width=width)
+            init_image = init_image.to(dtype=torch.float32)
+        else:
+            init_image = None
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
