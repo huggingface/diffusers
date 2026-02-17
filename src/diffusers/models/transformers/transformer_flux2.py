@@ -423,6 +423,7 @@ class Flux2SingleTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None,
         temb_mod: torch.Tensor,
         image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         joint_attention_kwargs: dict[str, Any] | None = None,
