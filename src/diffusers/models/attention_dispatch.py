@@ -56,6 +56,8 @@ _REQUIRED_FLEX_VERSION = "2.5.0"
 _REQUIRED_XLA_VERSION = "2.2"
 _REQUIRED_XFORMERS_VERSION = "0.0.29"
 
+logger = get_logger(__name__)  # pylint: disable=invalid-name
+
 _CAN_USE_FLASH_ATTN = is_flash_attn_available() and is_flash_attn_version(">=", _REQUIRED_FLASH_VERSION)
 _CAN_USE_FLASH_ATTN_3 = is_flash_attn_3_available()
 _CAN_USE_AITER_ATTN = is_aiter_available() and is_aiter_version(">=", _REQUIRED_AITER_VERSION)
@@ -70,11 +72,10 @@ if _CAN_USE_FLASH_ATTN:
     try:
         from flash_attn import flash_attn_func, flash_attn_varlen_func
         from flash_attn.flash_attn_interface import _wrapped_flash_attn_backward, _wrapped_flash_attn_forward
-    except (ImportError, OSError) as e:
+    except (ImportError, OSError, RuntimeError) as e:
         # Handle ABI mismatch or other import failures gracefully.
         # This can happen when flash_attn was compiled against a different PyTorch version.
-        _flash_attn_logger = get_logger(__name__)
-        _flash_attn_logger.warning(
+        logger.warning(
             f"flash_attn is installed but failed to import: {e}. "
             f"Falling back to native PyTorch attention."
         )
@@ -94,9 +95,8 @@ if _CAN_USE_FLASH_ATTN_3:
     try:
         from flash_attn_interface import flash_attn_func as flash_attn_3_func
         from flash_attn_interface import flash_attn_varlen_func as flash_attn_3_varlen_func
-    except (ImportError, OSError) as e:
-        _flash_attn_3_logger = get_logger(__name__)
-        _flash_attn_3_logger.warning(f"flash_attn_3 failed to import: {e}. Falling back to native attention.")
+    except (ImportError, OSError, RuntimeError) as e:
+        logger.warning(f"flash_attn_3 failed to import: {e}. Falling back to native attention.")
         _CAN_USE_FLASH_ATTN_3 = False
         flash_attn_3_func = None
         flash_attn_3_varlen_func = None
@@ -107,9 +107,8 @@ else:
 if _CAN_USE_AITER_ATTN:
     try:
         from aiter import flash_attn_func as aiter_flash_attn_func
-    except (ImportError, OSError) as e:
-        _aiter_logger = get_logger(__name__)
-        _aiter_logger.warning(f"aiter failed to import: {e}. Falling back to native attention.")
+    except (ImportError, OSError, RuntimeError) as e:
+        logger.warning(f"aiter failed to import: {e}. Falling back to native attention.")
         _CAN_USE_AITER_ATTN = False
         aiter_flash_attn_func = None
 else:
@@ -125,9 +124,8 @@ if _CAN_USE_SAGE_ATTN:
             sageattn_qk_int8_pv_fp16_triton,
             sageattn_varlen,
         )
-    except (ImportError, OSError) as e:
-        _sage_logger = get_logger(__name__)
-        _sage_logger.warning(f"sageattention failed to import: {e}. Falling back to native attention.")
+    except (ImportError, OSError, RuntimeError) as e:
+        logger.warning(f"sageattention failed to import: {e}. Falling back to native attention.")
         _CAN_USE_SAGE_ATTN = False
         sageattn = None
         sageattn_qk_int8_pv_fp8_cuda = None
@@ -150,9 +148,8 @@ if _CAN_USE_FLEX_ATTN:
         # pytorch documentation) that the user may compile it. If we import directly, we will not have access to the
         # compiled function.
         import torch.nn.attention.flex_attention as flex_attention
-    except (ImportError, OSError) as e:
-        _flex_logger = get_logger(__name__)
-        _flex_logger.warning(f"flex_attention failed to import: {e}. Falling back to native attention.")
+    except (ImportError, OSError, RuntimeError) as e:
+        logger.warning(f"flex_attention failed to import: {e}. Falling back to native attention.")
         _CAN_USE_FLEX_ATTN = False
         flex_attention = None
 else:
@@ -162,9 +159,8 @@ else:
 if _CAN_USE_NPU_ATTN:
     try:
         from torch_npu import npu_fusion_attention
-    except (ImportError, OSError) as e:
-        _npu_logger = get_logger(__name__)
-        _npu_logger.warning(f"torch_npu failed to import: {e}. Falling back to native attention.")
+    except (ImportError, OSError, RuntimeError) as e:
+        logger.warning(f"torch_npu failed to import: {e}. Falling back to native attention.")
         _CAN_USE_NPU_ATTN = False
         npu_fusion_attention = None
 else:
@@ -174,9 +170,8 @@ else:
 if _CAN_USE_XLA_ATTN:
     try:
         from torch_xla.experimental.custom_kernel import flash_attention as xla_flash_attention
-    except (ImportError, OSError) as e:
-        _xla_logger = get_logger(__name__)
-        _xla_logger.warning(f"torch_xla failed to import: {e}. Falling back to native attention.")
+    except (ImportError, OSError, RuntimeError) as e:
+        logger.warning(f"torch_xla failed to import: {e}. Falling back to native attention.")
         _CAN_USE_XLA_ATTN = False
         xla_flash_attention = None
 else:
@@ -186,9 +181,8 @@ else:
 if _CAN_USE_XFORMERS_ATTN:
     try:
         import xformers.ops as xops
-    except (ImportError, OSError) as e:
-        _xformers_logger = get_logger(__name__)
-        _xformers_logger.warning(f"xformers failed to import: {e}. Falling back to native attention.")
+    except (ImportError, OSError, RuntimeError) as e:
+        logger.warning(f"xformers failed to import: {e}. Falling back to native attention.")
         _CAN_USE_XFORMERS_ATTN = False
         xops = None
 else:
@@ -215,8 +209,6 @@ else:
     _custom_op = custom_op_no_op
     _register_fake = register_fake_no_op
 
-
-logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 # TODO(aryan): Add support for the following:
 # - Sage Attention++
