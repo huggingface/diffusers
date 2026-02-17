@@ -100,7 +100,6 @@ _deps = [
     "compel==0.1.8",
     "datasets",
     "filelock",
-    "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
     "httpx<1.0.0",
     "huggingface-hub>=0.34.0,<2.0",
@@ -137,6 +136,7 @@ _deps = [
     "requests",
     "tensorboard",
     "tiktoken>=0.7.0",
+    "flax>=0.4.1",
     "torch>=1.4",
     "torchvision",
     "transformers>=4.41.2",
@@ -252,6 +252,7 @@ if os.name == "nt":  # windows
 else:
     extras["flax"] = deps_list("jax", "jaxlib", "flax")
 
+
 extras["dev"] = (
     extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
 )
@@ -266,6 +267,7 @@ install_requires = [
     deps["requests"],
     deps["safetensors"],
     deps["Pillow"],
+    deps["torch"],
 ]
 
 version_range_max = max(sys.version_info[1], 10) + 1
