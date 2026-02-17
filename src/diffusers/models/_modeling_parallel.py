@@ -81,6 +81,7 @@ class ContextParallelConfig:
     _ulysses_mesh: torch.distributed.device_mesh.DeviceMesh = None
     _ring_local_rank: int = None
     _ulysses_local_rank: int = None
+    _pre_allocated_all2all_output_tensor_map: Dict[str, List[torch.Tensor]] = None
 
     def __post_init__(self):
         if self.ring_degree is None:
@@ -129,6 +130,7 @@ class ContextParallelConfig:
         self._ulysses_mesh = self._mesh["ulysses"]
         self._ring_local_rank = self._ring_mesh.get_local_rank()
         self._ulysses_local_rank = self._ulysses_mesh.get_local_rank()
+        self._pre_allocated_all2all_output_tensor_map = {}
 
 
 @dataclass
