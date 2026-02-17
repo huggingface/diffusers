@@ -122,7 +122,7 @@ from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
 )
 from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
-from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
+from .deprecated.wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .z_image import (
     ZImageControlNetInpaintPipeline,
     ZImageControlNetPipeline,
