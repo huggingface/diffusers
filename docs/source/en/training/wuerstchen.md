@@ -173,8 +173,3 @@ images = pipeline(
 ).images
 ```
 
-## Next steps
-
-Congratulations on training a Wuerstchen model! To learn more about how to use your new model, the following may be helpful:
-
-- Take a look at the [Wuerstchen](../api/pipelines/wuerstchen#text-to-image-generation) API documentation to learn more about how to use the pipeline for text-to-image generation and its limitations.
