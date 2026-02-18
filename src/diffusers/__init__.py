@@ -177,6 +177,14 @@ else:
             "apply_taylorseer_cache",
         ]
     )
+    _import_structure["image_processor"] = [
+        "IPAdapterMaskProcessor",
+        "InpaintProcessor",
+        "PixArtImageProcessor",
+        "VaeImageProcessor",
+        "VaeImageProcessorLDM3D",
+    ]
+    _import_structure["video_processor"] = ["VideoProcessor"]
     _import_structure["models"].extend(
         [
             "AllegroTransformer3DModel",
@@ -945,6 +953,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             apply_pyramid_attention_broadcast,
             apply_taylorseer_cache,
         )
+        from .image_processor import (
+            InpaintProcessor,
+            IPAdapterMaskProcessor,
+            PixArtImageProcessor,
+            VaeImageProcessor,
+            VaeImageProcessorLDM3D,
+        )
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
@@ -1141,6 +1156,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQDiffusionScheduler,
         )
         from .training_utils import EMAModel
+        from .video_processor import VideoProcessor
 
     try:
         if not (is_torch_available() and is_scipy_available()):
