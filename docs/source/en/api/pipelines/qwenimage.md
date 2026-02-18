@@ -91,46 +91,6 @@ image.save("qwen_fewsteps.png")
 > [!TIP]
 > The `guidance_scale` parameter in the pipeline is there to support future guidance-distilled models when they come up. Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance, please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should enable classifier-free guidance computations.
 
-## Decomposing an image with QwenImageLayeredPipeline
-
-[`QwenImageLayeredPipeline`] decomposes an image into multiple RGBA layers, so you can edit each layer independently without affecting the others.
-
-```py
-from diffusers import QwenImageLayeredPipeline
-from PIL import Image
-from io import BytesIO
-import torch
-import requests
-
-pipeline = QwenImageLayeredPipeline.from_pretrained("Qwen/Qwen-Image-Layered")
-pipeline = pipeline.to("cuda", torch.bfloat16)
-pipeline.set_progress_bar_config(disable=None)
-
-image_url = "https://www.pngkey.com/png/detail/620-6208835_walmart-regular-show-cereal-box-png-walmart-regular.png"
-response = requests.get(image_url)
-image = Image.open(BytesIO(response.content)).convert("RGBA")
-inputs = {
-    "image": image,
-    "generator": torch.Generator(device='cuda').manual_seed(777),
-    "true_cfg_scale": 4.0,
-    "negative_prompt": " ",
-    "num_inference_steps": 50,
-    "num_images_per_prompt": 1,
-    "layers": 4,
-    "resolution": 640,
-    "cfg_normalize": True,
-    "use_en_prompt": True,
-}
-
-with torch.inference_mode():
-    output = pipeline(**inputs)
-    output_image = output.images[0]
-
-for i, image in enumerate(output_image):
-    image.save(f"{i}.png")
-
-```
-
 ## Multi-image reference with QwenImageEditPlusPipeline
 
 With [`QwenImageEditPlusPipeline`], one can provide multiple images as input reference.
