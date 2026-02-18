@@ -8,6 +8,7 @@ deps = {
     "datasets": "datasets",
     "filelock": "filelock",
     "flax": "flax>=0.4.1",
+    "ftfy": "ftfy",
     "hf-doc-builder": "hf-doc-builder>=0.3.0",
     "httpx": "httpx<1.0.0",
     "huggingface-hub": "huggingface-hub>=0.34.0,<2.0",
