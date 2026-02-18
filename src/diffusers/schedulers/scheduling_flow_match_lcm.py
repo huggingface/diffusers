@@ -14,6 +14,7 @@
 
 import math
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import torch
@@ -41,7 +42,7 @@ class FlowMatchLCMSchedulerOutput(BaseOutput):
             denoising loop.
     """
 
-    prev_sample: torch.FloatTensor
+    prev_sample: torch.Tensor
 
 
 class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
@@ -79,11 +80,11 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         use_beta_sigmas (`bool`, defaults to False):
             Whether to use beta sigmas for step sizes in the noise schedule during sampling.
         time_shift_type (`str`, defaults to "exponential"):
-            The type of dynamic resolution-dependent timestep shifting to apply. Either "exponential" or "linear".
-        scale_factors ('list', defaults to None)
+            The type of dynamic resolution-dependent timestep shifting to apply.
+        scale_factors (`list[float]`, *optional*, defaults to `None`):
             It defines how to scale the latents at which predictions are made.
-        upscale_mode ('str', defaults to 'bicubic')
-            Upscaling method, applied if scale-wise generation is considered
+        upscale_mode (`str`, *optional*, defaults to "bicubic"):
+            Upscaling method, applied if scale-wise generation is considered.
     """
 
     _compatibles = []
@@ -101,16 +102,33 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         max_image_seq_len: int = 4096,
         invert_sigmas: bool = False,
         shift_terminal: float | None = None,
-        use_karras_sigmas: bool = False,
-        use_exponential_sigmas: bool = False,
-        use_beta_sigmas: bool = False,
-        time_shift_type: str = "exponential",
+        use_karras_sigmas: bool | None = False,
+        use_exponential_sigmas: bool | None = False,
+        use_beta_sigmas: bool | None = False,
+        time_shift_type: Literal["exponential", "linear"] = "exponential",
         scale_factors: list[float] | None = None,
-        upscale_mode: str = "bicubic",
+        upscale_mode: Literal[
+            "nearest",
+            "linear",
+            "bilinear",
+            "bicubic",
+            "trilinear",
+            "area",
+            "nearest-exact",
+        ] = "bicubic",
     ):
         if self.config.use_beta_sigmas and not is_scipy_available():
             raise ImportError("Make sure to install scipy if you want to use beta sigmas.")
-        if sum([self.config.use_beta_sigmas, self.config.use_exponential_sigmas, self.config.use_karras_sigmas]) > 1:
+        if (
+            sum(
+                [
+                    self.config.use_beta_sigmas,
+                    self.config.use_exponential_sigmas,
+                    self.config.use_karras_sigmas,
+                ]
+            )
+            > 1
+        ):
             raise ValueError(
                 "Only one of `config.use_beta_sigmas`, `config.use_exponential_sigmas`, `config.use_karras_sigmas` can be used."
             )
@@ -162,7 +180,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         return self._begin_index
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
-    def set_begin_index(self, begin_index: int = 0):
+    def set_begin_index(self, begin_index: int = 0) -> None:
         """
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
@@ -172,18 +190,18 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_shift(self, shift: float):
+    def set_shift(self, shift: float) -> None:
         self._shift = shift
 
-    def set_scale_factors(self, scale_factors: list, upscale_mode):
+    def set_scale_factors(self, scale_factors: list[float], upscale_mode: str) -> None:
         """
         Sets scale factors for a scale-wise generation regime.
 
         Args:
-            scale_factors (`list`):
-                The scale factors for each step
+            scale_factors (`list[float]`):
+                The scale factors for each step.
             upscale_mode (`str`):
-                Upscaling method
+                Upscaling method.
         """
         self._scale_factors = scale_factors
         self._upscale_mode = upscale_mode
@@ -238,16 +256,18 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
 
         return sample
 
-    def _sigma_to_t(self, sigma):
+    def _sigma_to_t(self, sigma: float | torch.FloatTensor) -> float | torch.FloatTensor:
         return sigma * self.config.num_train_timesteps
 
-    def time_shift(self, mu: float, sigma: float, t: torch.Tensor):
+    def time_shift(
+        self, mu: float, sigma: float, t: float | np.ndarray | torch.Tensor
+    ) -> float | np.ndarray | torch.Tensor:
         if self.config.time_shift_type == "exponential":
             return self._time_shift_exponential(mu, sigma, t)
         elif self.config.time_shift_type == "linear":
             return self._time_shift_linear(mu, sigma, t)
 
-    def stretch_shift_to_terminal(self, t: torch.Tensor) -> torch.Tensor:
+    def stretch_shift_to_terminal(self, t: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
         r"""
         Stretches and shifts the timestep schedule to ensure it terminates at the configured `shift_terminal` config
         value.
@@ -256,12 +276,13 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         https://github.com/Lightricks/LTX-Video/blob/a01a171f8fe3d99dce2728d60a73fecf4d4238ae/ltx_video/schedulers/rf.py#L51
 
         Args:
-            t (`torch.Tensor`):
-                A tensor of timesteps to be stretched and shifted.
+            t (`torch.Tensor` or `np.ndarray`):
+                A tensor or numpy array of timesteps to be stretched and shifted.
 
         Returns:
-            `torch.Tensor`:
-                A tensor of adjusted timesteps such that the final value equals `self.config.shift_terminal`.
+            `torch.Tensor` or `np.ndarray`:
+                A tensor or numpy array of adjusted timesteps such that the final value equals
+                `self.config.shift_terminal`.
         """
         one_minus_z = 1 - t
         scale_factor = one_minus_z[-1] / (1 - self.config.shift_terminal)
@@ -270,12 +291,12 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: int = None,
-        device: str | torch.device = None,
+        num_inference_steps: int | None = None,
+        device: str | torch.device | None = None,
         sigmas: list[float] | None = None,
-        mu: float = None,
+        mu: float | None = None,
         timesteps: list[float] | None = None,
-    ):
+    ) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -317,43 +338,45 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         is_timesteps_provided = timesteps is not None
 
         if is_timesteps_provided:
-            timesteps = np.array(timesteps).astype(np.float32)
+            timesteps = np.array(timesteps).astype(np.float32)  # type: ignore
 
         if sigmas is None:
             if timesteps is None:
-                timesteps = np.linspace(
-                    self._sigma_to_t(self.sigma_max), self._sigma_to_t(self.sigma_min), num_inference_steps
+                timesteps = np.linspace(  # type: ignore
+                    self._sigma_to_t(self.sigma_max),
+                    self._sigma_to_t(self.sigma_min),
+                    num_inference_steps,
                 )
-            sigmas = timesteps / self.config.num_train_timesteps
+            sigmas = timesteps / self.config.num_train_timesteps  # type: ignore
         else:
-            sigmas = np.array(sigmas).astype(np.float32)
+            sigmas = np.array(sigmas).astype(np.float32)  # type: ignore
             num_inference_steps = len(sigmas)
 
         # 2. Perform timestep shifting. Either no shifting is applied, or resolution-dependent shifting of
         #    "exponential" or "linear" type is applied
         if self.config.use_dynamic_shifting:
-            sigmas = self.time_shift(mu, 1.0, sigmas)
+            sigmas = self.time_shift(mu, 1.0, sigmas)  # type: ignore
         else:
-            sigmas = self.shift * sigmas / (1 + (self.shift - 1) * sigmas)
+            sigmas = self.shift * sigmas / (1 + (self.shift - 1) * sigmas)  # type: ignore
 
         # 3. If required, stretch the sigmas schedule to terminate at the configured `shift_terminal` value
         if self.config.shift_terminal:
-            sigmas = self.stretch_shift_to_terminal(sigmas)
+            sigmas = self.stretch_shift_to_terminal(sigmas)  # type: ignore
 
         # 4. If required, convert sigmas to one of karras, exponential, or beta sigma schedules
         if self.config.use_karras_sigmas:
-            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
+            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)  # type: ignore
         elif self.config.use_exponential_sigmas:
-            sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
+            sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=num_inference_steps)  # type: ignore
         elif self.config.use_beta_sigmas:
-            sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
+            sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=num_inference_steps)  # type: ignore
 
         # 5. Convert sigmas and timesteps to tensors and move to specified device
-        sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
+        sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)  # type: ignore
         if not is_timesteps_provided:
-            timesteps = sigmas * self.config.num_train_timesteps
+            timesteps = sigmas * self.config.num_train_timesteps  # type: ignore
         else:
-            timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32, device=device)
+            timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32, device=device)  # type: ignore
 
         # 6. Append the terminal sigma value.
         #    If a model requires inverted sigma schedule for denoising but timesteps without inversion, the
@@ -370,7 +393,11 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
 
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self,
+        timestep: float | torch.Tensor,
+        schedule_timesteps: torch.Tensor | None = None,
+    ) -> int:
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -382,9 +409,9 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         # case we start in the middle of the denoising schedule (e.g. for image-to-image)
         pos = 1 if len(indices) > 1 else 0
 
-        return indices[pos].item()
+        return int(indices[pos].item())
 
-    def _init_step_index(self, timestep):
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
@@ -459,7 +486,12 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
                 size = [round(self._scale_factors[self._step_index] * size) for size in self._init_size]
                 x0_pred = torch.nn.functional.interpolate(x0_pred, size=size, mode=self._upscale_mode)
 
-        noise = randn_tensor(x0_pred.shape, generator=generator, device=x0_pred.device, dtype=x0_pred.dtype)
+        noise = randn_tensor(
+            x0_pred.shape,
+            generator=generator,
+            device=x0_pred.device,
+            dtype=x0_pred.dtype,
+        )
         prev_sample = (1 - sigma_next) * x0_pred + sigma_next * noise
 
         # upon completion increase step index by one
@@ -473,7 +505,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         return FlowMatchLCMSchedulerOutput(prev_sample=prev_sample)
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
-    def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps) -> torch.Tensor:
+    def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
         """
         Construct the noise schedule as proposed in [Elucidating the Design Space of Diffusion-Based Generative
         Models](https://huggingface.co/papers/2206.00364).
@@ -594,11 +626,15 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         )
         return sigmas
 
-    def _time_shift_exponential(self, mu, sigma, t):
+    def _time_shift_exponential(
+        self, mu: float, sigma: float, t: float | np.ndarray | torch.Tensor
+    ) -> float | np.ndarray | torch.Tensor:
         return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
 
-    def _time_shift_linear(self, mu, sigma, t):
+    def _time_shift_linear(
+        self, mu: float, sigma: float, t: float | np.ndarray | torch.Tensor
+    ) -> float | np.ndarray | torch.Tensor:
         return mu / (mu + (1 / t - 1) ** sigma)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps
