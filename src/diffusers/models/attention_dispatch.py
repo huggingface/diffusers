@@ -272,7 +272,7 @@ class _HubKernelConfig:
 _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     # TODO: temporary revision for now. Remove when merged upstream into `main`.
     AttentionBackendName._FLASH_3_HUB: _HubKernelConfig(
-        repo_id="kernels-community/flash-attn3", function_attr="flash_attn_func", revision="fake-ops-return-probs"
+        repo_id="kernels-community/flash-attn3", function_attr="flash_attn_func", revision="v1"
     ),
     AttentionBackendName._FLASH_3_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn3",
@@ -286,7 +286,7 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
         repo_id="kernels-community/flash-attn2", function_attr="flash_attn_varlen_func", revision=None
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
-        repo_id="kernels-community/sage_attention", function_attr="sageattn", revision=None
+        repo_id="kernels-community/sage-attention", function_attr="sageattn", revision=None
     ),
 }
 
