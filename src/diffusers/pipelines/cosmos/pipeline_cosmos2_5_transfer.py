@@ -17,9 +17,6 @@ from typing import Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL.Image
 import torch
-import torchvision
-import torchvision.transforms
-import torchvision.transforms.functional
 from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -136,7 +133,7 @@ EXAMPLE_DOC_STRING = """
         >>> controls = [Image.fromarray(x.numpy()) for x in controls.permute(1, 2, 3, 0)]
         >>> export_to_video(controls, "edge_controlled_video_edge.mp4", fps=30)
 
-        >>> # Controls-only inference (input video is optional when controls are provided).
+        >>> # Transfer inference with controls.
         >>> video = pipe(
         ...     controls=controls,
         ...     controls_conditioning_scale=1.0,
@@ -168,12 +165,14 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+        controlnet ([`CosmosControlNetModel`]):
+            ControlNet used to condition generation on control inputs.
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->controlnet->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
     # We mark safety_checker as optional here to get around some test failures, but it is not really optional
-    _optional_components = ["safety_checker", "controlnet"]
+    _optional_components = ["safety_checker"]
     _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
@@ -183,7 +182,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         transformer: CosmosTransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
-        controlnet: Optional[CosmosControlNetModel],
+        controlnet: CosmosControlNetModel,
         safety_checker: Optional[CosmosSafetyChecker] = None,
     ):
         super().__init__()
@@ -509,9 +508,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: PipelineImageInput | None = None,
-        video: List[PipelineImageInput] | None = None,
-        controls: Optional[PipelineImageInput | List[PipelineImageInput]] = None,
+        controls: PipelineImageInput | List[PipelineImageInput],
         controls_conditioning_scale: Union[float, List[float]] = 1.0,
         prompt: Union[str, List[str]] | None = None,
         negative_prompt: Union[str, List[str]] = DEFAULT_NEGATIVE_PROMPT,
@@ -538,34 +535,20 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         num_latent_conditional_frames: Optional[int] = None,
     ):
         r"""
-        The call function can be used in two modes: with or without controls.
-
-        When controls are not provided (`controls is None`), inference works in the same manner as predict2.5 (see
-        `Cosmos2_5_PredictPipeline`). This mode strictly uses the base transformer (`self.transformer`) to perform
-        inference and accepts as input an optional `image` or `video` along with a `prompt` / `negative_prompt`, and
-        can be used in the following ways:
-        - **Text2World**: `image=None`, `video=None`, `prompt` provided.
-        - **Image2World**: `image` provided, `video=None`, `prompt` provided.
-        - **Video2World**: `video` provided, `image=None`, `prompt` provided.
-
-        When `controls` are provided and a ControlNet is attached, `controls` drive the conditioning and `video` &
-        `image` is ignored. Controls are assumed to be pre-processed, e.g. edge maps are pre-computed.
+        `controls` drive the conditioning through ControlNet. Controls are assumed to be pre-processed, e.g. edge maps
+        are pre-computed.
 
         Setting `num_frames` will restrict the total number of frames output, if not provided or assigned to None
-        (default) then the number of output frames will match the input `video`, `image` or `controls` respectively.
+        (default) then the number of output frames will match the input `controls`.
+
         Auto-regressive inference is supported and thus a sliding window of `num_frames_per_chunk` frames are used per
         denoising loop. In addition, when auto-regressive inference is performed, the previous
         `num_latent_conditional_frames` or `num_conditional_frames` are used to condition the following denoising
         inference loops.
 
         Args:
-            image (`PipelineImageInput`, *optional*):
-                Image input to condition the first frame. The remaining frames (if any) are initialized from blanks.
-            video (`List[PipelineImageInput]`, *optional*):
-                Video input to condition the output. Only used when `controls` is `None`.
-            controls (`PipelineImageInput`, `List[PipelineImageInput]`, *optional*):
-                Control image or video input used by the ControlNet. If `None`, ControlNet is skipped. If
-                `self.controlnet` is `None`, `controls` is ignored.
+            controls (`PipelineImageInput`, `List[PipelineImageInput]`):
+                Control image or video input used by the ControlNet.
             controls_conditioning_scale (`float` or `List[float]`, *optional*, defaults to `1.0`):
                 The scale factor(s) for the ControlNet outputs. A single float is broadcast to all control blocks.
             prompt (`str` or `List[str]`, *optional*):
@@ -576,9 +559,9 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 The width in pixels of the generated image. If not provided, this will be determined based on the
                 aspect ratio of the input and the provided height.
             num_frames (`int`, *optional*):
-                Number of output frames. Defaults to `None` to output the same number of frames as the input `video`,
-                `image` or `controls`
-            num_inference_steps (`int`, defaults to `35`):
+                Number of output frames. Defaults to `None` to output the same number of frames as the input
+                `controls`.
+            num_inference_steps (`int`, defaults to `36`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, defaults to `3.0`):
@@ -641,17 +624,20 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         if width is None:
-            frame = image or video[0] if image or video else None
-            if frame is None and controls is not None:
-                frame = controls[0] if isinstance(controls, list) else controls
-                if isinstance(frame, (torch.Tensor, np.ndarray)) and len(frame.shape) == 4:
-                    frame = controls[0]
+            frame = controls[0] if isinstance(controls, list) else controls
+            if isinstance(frame, list):
+                frame = frame[0]
+            if isinstance(frame, (torch.Tensor, np.ndarray)):
+                if frame.ndim == 5:
+                    frame = frame[0, 0]
+                elif frame.ndim == 4:
+                    frame = frame[0]
 
-            if frame is None:
-                width = int((height + 16) * (1280 / 720))
-            elif isinstance(frame, PIL.Image.Image):
+            if isinstance(frame, PIL.Image.Image):
                 width = int((height + 16) * (frame.width / frame.height))
             else:
+                if frame.ndim != 3:
+                    raise ValueError("`controls` must contain 3D frames in CHW format.")
                 width = int((height + 16) * (frame.shape[2] / frame.shape[1]))  # NOTE: assuming C H W
 
         if num_latent_conditional_frames is not None and num_conditional_frames is not None:
@@ -746,45 +732,22 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             encoder_hidden_states = prompt_embeds
             neg_encoder_hidden_states = negative_prompt_embeds
 
-        if controls is not None and self.controlnet is None:
-            logger.warning("`controls` was provided but `controlnet` is None; ignoring `controls`.")
-            controls = None
-
-        control_video = None
-        if controls is None:
-            num_frames_in = None
-            if image is not None:
-                if batch_size != 1:
-                    raise ValueError(f"batch_size must be 1 for image input (given {batch_size})")
-
-                image = torchvision.transforms.functional.to_tensor(image).unsqueeze(0)
-                video = torch.cat([image, torch.zeros_like(image).repeat(num_frames_per_chunk - 1, 1, 1, 1)], dim=0)
-                video = video.unsqueeze(0)
-                num_frames_in = 1
-                num_frames_out = num_frames
-            elif video is None:
-                video = torch.zeros(batch_size, num_frames_per_chunk, 3, height, width, dtype=torch.uint8)
-                num_frames_in = 0
-                num_frames_out = num_frames
+        control_video = self.video_processor.preprocess_video(controls, height, width)
+        if control_video.shape[0] != batch_size:
+            if control_video.shape[0] == 1:
+                control_video = control_video.repeat(batch_size, 1, 1, 1, 1)
             else:
-                num_frames_in = len(video)
-                num_frames_out = num_frames or num_frames_in
+                raise ValueError(
+                    f"Expected controls batch size {batch_size} to match prompt batch size, but got {control_video.shape[0]}."
+                )
 
-            if num_frames_out is None or num_frames_out == 0:
-                num_frames_out = num_frames_per_chunk
+        num_frames_out = control_video.shape[2]
+        if num_frames is not None:
+            num_frames_out = min(num_frames_out, num_frames)
+        if num_frames_out == 0:
+            num_frames_out = num_frames_per_chunk
 
-            if num_frames is not None:
-                num_frames_out = min(num_frames_out, num_frames)
-
-            assert num_frames_in <= num_frames_out, f"expected ({num_frames_in=}) <= ({num_frames_out=})"
-
-            video = self.video_processor.preprocess_video(video, height, width)
-            video = _maybe_pad_or_trim_video(video, num_frames_out)
-        else:
-            num_frames_out = len(controls)
-            if num_frames is not None:
-                num_frames_out = min(num_frames_out, num_frames)
-            control_video = self.video_processor.preprocess_video(controls, height, width)
+        control_video = _maybe_pad_or_trim_video(control_video, num_frames_out)
 
         min_chunk_len = 1 if num_frames_out <= 1 else self.vae_scale_factor_temporal + 1
         if num_frames_per_chunk < min_chunk_len:
@@ -826,17 +789,17 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
             return video
 
         latents_arg = latents
-        initial_num_cond_latent_frames = 0 if video is None or controls is not None else num_cond_latent_frames
+        initial_num_cond_latent_frames = 0
         latent_chunks = []
         num_chunks = len(chunk_idxs)
         total_steps = num_inference_steps * num_chunks
         with self.progress_bar(total=total_steps) as progress_bar:
             for chunk_idx, (start_idx, end_idx) in enumerate(chunk_idxs):
-                if chunk_idx == 0 and controls is not None:
+                if chunk_idx == 0:
                     prev_output = torch.zeros((batch_size, num_frames_per_chunk, 3, height, width), dtype=vae_dtype)
                     prev_output = self.video_processor.preprocess_video(prev_output, height, width)
                 else:
-                    prev_output = video_chunks[-1].clone() if chunk_idx != 0 else video.clone()
+                    prev_output = video_chunks[-1].clone()
                     if num_conditional_frames > 0:
                         prev_output[:, :, :num_conditional_frames] = prev_output[:, :, -num_conditional_frames:]
                         prev_output[:, :, num_conditional_frames:] = -1  # -1 == 0 in processed video space
@@ -866,21 +829,25 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 cond_timestep = torch.ones_like(cond_indicator) * conditional_frame_timestep
                 padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
 
-                controls_latents = None
-                if controls is not None:
-                    chunk_control_video = control_video[:, :, start_idx:end_idx, ...].to(
-                        device=device, dtype=self.vae.dtype
-                    )
-                    chunk_control_video = _maybe_pad_or_trim_video(chunk_control_video, num_frames_per_chunk)
+                chunk_control_video = control_video[:, :, start_idx:end_idx, ...].to(
+                    device=device, dtype=self.vae.dtype
+                )
+                chunk_control_video = _maybe_pad_or_trim_video(chunk_control_video, num_frames_per_chunk)
+                if isinstance(generator, list):
+                    controls_latents = [
+                        retrieve_latents(self.vae.encode(chunk_control_video[i].unsqueeze(0)), generator=generator[i])
+                        for i in range(chunk_control_video.shape[0])
+                    ]
+                else:
                     controls_latents = [
                         retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator=generator)
                         for vid in chunk_control_video
                     ]
-                    controls_latents = torch.cat(controls_latents, dim=0).to(transformer_dtype)
+                controls_latents = torch.cat(controls_latents, dim=0).to(transformer_dtype)
 
-                    latents_mean = self.latents_mean.to(device=device, dtype=transformer_dtype)
-                    latents_std = self.latents_std.to(device=device, dtype=transformer_dtype)
-                    controls_latents = (controls_latents - latents_mean) / latents_std
+                latents_mean = self.latents_mean.to(device=device, dtype=transformer_dtype)
+                latents_std = self.latents_std.to(device=device, dtype=transformer_dtype)
+                controls_latents = (controls_latents - latents_mean) / latents_std
 
                 # Denoising loop
                 self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -904,19 +871,17 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                     in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                     in_latents = in_latents.to(transformer_dtype)
                     in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
-                    control_blocks = None
-                    if controls_latents is not None and self.controlnet is not None:
-                        control_output = self.controlnet(
-                            controls_latents=controls_latents,
-                            latents=in_latents,
-                            timestep=in_timestep,
-                            encoder_hidden_states=encoder_hidden_states,
-                            condition_mask=cond_mask,
-                            conditioning_scale=controls_conditioning_scale,
-                            padding_mask=padding_mask,
-                            return_dict=False,
-                        )
-                        control_blocks = control_output[0]
+                    control_output = self.controlnet(
+                        controls_latents=controls_latents,
+                        latents=in_latents,
+                        timestep=in_timestep,
+                        encoder_hidden_states=encoder_hidden_states,
+                        condition_mask=cond_mask,
+                        conditioning_scale=controls_conditioning_scale,
+                        padding_mask=padding_mask,
+                        return_dict=False,
+                    )
+                    control_blocks = control_output[0]
 
                     noise_pred = self.transformer(
                         hidden_states=in_latents,
@@ -930,19 +895,17 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                     noise_pred = gt_velocity + noise_pred * (1 - cond_mask)
 
                     if self.do_classifier_free_guidance:
-                        control_blocks = None
-                        if controls_latents is not None and self.controlnet is not None:
-                            control_output = self.controlnet(
-                                controls_latents=controls_latents,
-                                latents=in_latents,
-                                timestep=in_timestep,
-                                encoder_hidden_states=neg_encoder_hidden_states,  # NOTE: negative prompt
-                                condition_mask=cond_mask,
-                                conditioning_scale=controls_conditioning_scale,
-                                padding_mask=padding_mask,
-                                return_dict=False,
-                            )
-                            control_blocks = control_output[0]
+                        control_output = self.controlnet(
+                            controls_latents=controls_latents,
+                            latents=in_latents,
+                            timestep=in_timestep,
+                            encoder_hidden_states=neg_encoder_hidden_states,  # NOTE: negative prompt
+                            condition_mask=cond_mask,
+                            conditioning_scale=controls_conditioning_scale,
+                            padding_mask=padding_mask,
+                            return_dict=False,
+                        )
+                        control_blocks = control_output[0]
 
                         noise_pred_neg = self.transformer(
                             hidden_states=in_latents,
@@ -959,6 +922,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
 
                     latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
+                    # call the callback, if provided
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
@@ -969,7 +933,6 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                         prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                         negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-                    # call the callback, if provided
                     if i == total_steps - 1 or ((i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
 

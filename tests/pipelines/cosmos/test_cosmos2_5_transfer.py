@@ -55,7 +55,7 @@ class Cosmos2_5_TransferWrapper(Cosmos2_5_TransferPipeline):
 class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = Cosmos2_5_TransferWrapper
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"controls"})
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
@@ -176,9 +176,12 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
+        controls_generator = torch.Generator(device="cpu").manual_seed(seed)
+
         inputs = {
             "prompt": "dance monkey",
             "negative_prompt": "bad quality",
+            "controls": [torch.randn(3, 32, 32, generator=controls_generator) for _ in range(5)],
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 3.0,
@@ -230,7 +233,7 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         self.assertEqual(generated_video.shape, (5, 3, 32, 32))
         self.assertTrue(torch.isfinite(generated_video).all())
 
-    def test_inference_autoregressive_multi_chunk_no_condition_video_ignored(self):
+    def test_inference_autoregressive_multi_chunk_no_condition_frames(self):
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -243,19 +246,10 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         inputs["num_frames_per_chunk"] = 3
         inputs["num_conditional_frames"] = 0
 
-        video_a = torch.zeros(5, 3, 32, 32)
-        video_b = torch.ones(5, 3, 32, 32)
-
-        inputs["video"] = video_a
-        inputs["generator"] = torch.Generator(device=device).manual_seed(0)
-        out_a = pipe(**inputs).frames
-
-        inputs["video"] = video_b
-        inputs["generator"] = torch.Generator(device=device).manual_seed(0)
-        out_b = pipe(**inputs).frames
-
-        # output should be independent of input video
-        self.assertTrue(torch.allclose(out_a, out_b))
+        video = pipe(**inputs).frames
+        generated_video = video[0]
+        self.assertEqual(generated_video.shape, (5, 3, 32, 32))
+        self.assertTrue(torch.isfinite(generated_video).all())
 
     def test_inference_with_controls(self):
         """Test inference with control inputs (ControlNet)."""

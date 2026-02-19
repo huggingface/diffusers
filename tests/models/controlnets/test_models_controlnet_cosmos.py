@@ -149,7 +149,7 @@ class CosmosControlNetModelTests(ModelTesterMixin, unittest.TestCase):
         for no_mask_tensor, with_mask_tensor in zip(
             output_no_mask.control_block_samples, output_with_mask.control_block_samples
         ):
-            self.assertFalse(torch.equal(no_mask_tensor, with_mask_tensor))
+            self.assertFalse(torch.allclose(no_mask_tensor, with_mask_tensor))
 
     def test_conditioning_scale_single(self):
         """Test that a single conditioning scale is broadcast to all blocks."""
