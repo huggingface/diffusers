@@ -199,11 +199,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        # Install pkgs which depend on setuptools<81 for pkg_resources first with no build isolation
-        uv pip install pip==25.2 setuptools==80.10.2
-        uv pip install --no-build-isolation k-diffusion==0.0.12
-        uv pip install --upgrade pip setuptools
-        # Install the rest as normal
         uv pip install -e ".[quality]"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
