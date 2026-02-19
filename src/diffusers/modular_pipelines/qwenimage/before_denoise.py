@@ -558,7 +558,7 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           latents (`Tensor`):
               The initial random noised latents for the denoising process. Can be generated in prepare latents step.
@@ -644,7 +644,7 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
@@ -725,7 +725,7 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           latents (`Tensor`):
               The latents to use for the denoising process. Can be generated in prepare latents step.
@@ -842,7 +842,7 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
               mask for the negative text embeddings. Can be generated from text_encoder step.
 
       Outputs:
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shapes of the images latents, used for RoPE calculation
     """
 
@@ -917,7 +917,7 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
               mask for the negative text embeddings. Can be generated from text_encoder step.
 
       Outputs:
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shapes of the images latents, used for RoPE calculation
     """
 
@@ -995,9 +995,9 @@ class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
           batch_size (`int`, *optional*, defaults to 1):
               Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
               be generated in input step.
-          image_height (`List`):
+          image_height (`list`):
               The heights of the reference images. Can be generated in input step.
-          image_width (`List`):
+          image_width (`list`):
               The widths of the reference images. Can be generated in input step.
           height (`int`):
               The height in pixels of the generated image.
@@ -1009,11 +1009,11 @@ class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
               mask for the negative text embeddings. Can be generated from text_encoder step.
 
       Outputs:
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shapes of the image latents, used for RoPE calculation
-          txt_seq_lens (`List`):
+          txt_seq_lens (`list`):
               The sequence lengths of the prompt embeds, used for RoPE calculation
-          negative_txt_seq_lens (`List`):
+          negative_txt_seq_lens (`list`):
               The sequence lengths of the negative prompt embeds, used for RoPE calculation
     """
 
@@ -1123,11 +1123,11 @@ class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
               mask for the negative text embeddings. Can be generated from text_encoder step.
 
       Outputs:
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shapes of the image latents, used for RoPE calculation
-          txt_seq_lens (`List`):
+          txt_seq_lens (`list`):
               The sequence lengths of the prompt embeds, used for RoPE calculation
-          negative_txt_seq_lens (`List`):
+          negative_txt_seq_lens (`list`):
               The sequence lengths of the negative prompt embeds, used for RoPE calculation
           additional_t_cond (`Tensor`):
               The additional t cond, used for RoPE calculation
@@ -1238,7 +1238,7 @@ class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
 
       Outputs:
-          controlnet_keep (`List`):
+          controlnet_keep (`list`):
               The controlnet keep values
     """
 

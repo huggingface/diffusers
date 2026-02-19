@@ -343,3 +343,7 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
         self.assertLess(
             max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
         )
+
+    @unittest.skip("Test not supported.")
+    def test_pipeline_with_accelerator_device_map(self):
+        pass
