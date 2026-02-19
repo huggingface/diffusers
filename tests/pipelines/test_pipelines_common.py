@@ -2366,6 +2366,11 @@ class PipelineTesterMixin:
 
     def test_pipeline_with_accelerator_device_map(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
+        # Set text encoders to eval mode to match from_pretrained behavior
+        # This ensures deterministic outputs when models are loaded with device_map
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
