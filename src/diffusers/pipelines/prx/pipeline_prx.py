@@ -18,7 +18,6 @@ import re
 import urllib.parse as ul
 from typing import Callable
 
-import ftfy
 import torch
 from transformers import (
     AutoTokenizer,
@@ -34,12 +33,12 @@ from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.prx.pipeline_output import PRXPipelineOutput
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
-from diffusers.utils import (
-    logging,
-    replace_example_docstring,
-)
+from diffusers.utils import is_ftfy_available, logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
 
+
+if is_ftfy_available():
+    import ftfy
 
 DEFAULT_RESOLUTION = 512
 
