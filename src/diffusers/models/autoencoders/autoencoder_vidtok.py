@@ -338,11 +338,23 @@ class VidTokDownsample3D(nn.Module):
             else:
                 x_pad = torch.concatenate((self.causal_cache, x), dim=2)
             self.causal_cache = x_pad[:, :, -1:].clone()
-            x1 = self.avg_pool(x_pad)
+            if x_pad.device.type == 'cpu' and x_pad.dtype == torch.bfloat16:
+                # PyTorch's avg_pool3d lacks CPU support for BFloat16.
+                # To avoid errors, we cast to float32, perform the pooling,
+                # and then cast back to BFloat16 to maintain the expected dtype.
+                x1 = self.avg_pool(x_pad.float()).to(torch.bfloat16)
+            else:
+                x1 = self.avg_pool(x_pad)
         else:
             pad = (0, 0, 0, 0, 0, 1)
             x = F.pad(x, pad, mode="constant", value=0)
-            x1 = self.avg_pool(x)
+            if x.device.type == 'cpu' and x.dtype == torch.bfloat16:
+                # PyTorch's avg_pool3d lacks CPU support for BFloat16.
+                # To avoid errors, we cast to float32, perform the pooling,
+                # and then cast back to BFloat16 to maintain the expected dtype.
+                x1 = self.avg_pool(x.float()).to(torch.bfloat16)
+            else:
+                x1 = self.avg_pool(x)
         x2 = self.conv(x)
         return alpha * x1 + (1 - alpha) * x2
 
