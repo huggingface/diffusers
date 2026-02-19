@@ -507,7 +507,9 @@ class Flux2TransformerBlock(nn.Module):
 
         # Modulation parameters shape: [1, 1, self.dim]
         (shift_msa, scale_msa, gate_msa), (shift_mlp, scale_mlp, gate_mlp) = Flux2Modulation.split(temb_mod_img, 2)
-        (c_shift_msa, c_scale_msa, c_gate_msa), (c_shift_mlp, c_scale_mlp, c_gate_mlp) = Flux2Modulation.split(temb_mod_txt, 2)
+        (c_shift_msa, c_scale_msa, c_gate_msa), (c_shift_mlp, c_scale_mlp, c_gate_mlp) = Flux2Modulation.split(
+            temb_mod_txt, 2
+        )
 
         # Img stream
         norm_hidden_states = self.norm1(hidden_states)
@@ -633,7 +635,7 @@ class Flux2Modulation(nn.Module):
         return mod
 
     @staticmethod
-    #split inside the transformer blocks, to avoid passing tuples into checkpoints https://github.com/huggingface/diffusers/issues/12776
+    # split inside the transformer blocks, to avoid passing tuples into checkpoints https://github.com/huggingface/diffusers/issues/12776
     def split(mod: torch.Tensor, mod_param_sets: int) -> tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], ...]:
         if mod.ndim == 2:
             mod = mod.unsqueeze(1)
