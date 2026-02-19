@@ -1284,6 +1284,12 @@ def _flash_attention_3_hub_backward_op(
 ):
     query, key, value = ctx.saved_tensors
     kernel_fn = ctx._hub_kernel
+    # NOTE: Unlike the FA2 hub kernel, the FA3 hub kernel does not expose separate wrapped forward/backward
+    # primitives (no `wrapped_forward_attr`/`wrapped_backward_attr` in its `_HubKernelConfig`). We
+    # therefore rerun the forward pass under `torch.enable_grad()` and differentiate through it with
+    # `torch.autograd.grad()`. This is a second forward pass during backward; it can be avoided once
+    # the FA3 hub exposes a dedicated fused backward kernel (analogous to `_wrapped_flash_attn_backward`
+    # in the FA2 hub), at which point this can be refactored to match `_flash_attention_hub_backward_op`.
     with torch.enable_grad():
         query_r = query.detach().requires_grad_(True)
         key_r = key.detach().requires_grad_(True)
