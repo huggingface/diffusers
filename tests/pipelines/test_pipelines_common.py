@@ -1157,6 +1157,9 @@ class PipelineTesterMixin:
 
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
