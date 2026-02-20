@@ -1854,6 +1854,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 Whether to push the pipeline to the Hugging Face model hub after saving it.
             **kwargs: Additional keyword arguments passed along to the push to hub method.
         """
+        overwrite_modular_index = kwargs.pop("overwrite_modular_index", False)
+        repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+
         for component_name, component_spec in self._component_specs.items():
             sub_model = getattr(self, component_name, None)
             if sub_model is None:
@@ -1902,16 +1905,33 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
             save_method(os.path.join(save_directory, component_name), **save_kwargs)
 
-        self.save_config(save_directory=save_directory)
-
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
             private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
-            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
+        if overwrite_modular_index:
+            for component_name, component_spec in self._component_specs.items():
+                if component_spec.default_creation_method != "from_pretrained":
+                    continue
+                sub_model = getattr(self, component_name, None)
+                if sub_model is None:
+                    continue
+
+                component_spec.pretrained_model_name_or_path = repo_id
+                component_spec.subfolder = component_name
+                if variant is not None and hasattr(component_spec, "variant"):
+                    component_spec.variant = variant
+
+                library, class_name = _fetch_class_library_tuple(sub_model)
+                component_spec_dict = self._component_spec_to_dict(component_spec)
+                self.register_to_config(**{component_name: (library, class_name, component_spec_dict)})
+
+        self.save_config(save_directory=save_directory)
+
+        if push_to_hub:
             card_content = generate_modular_model_card_content(self.blocks)
             model_card = load_or_create_model_card(
                 repo_id,
