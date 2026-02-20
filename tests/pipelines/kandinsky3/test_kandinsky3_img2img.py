@@ -120,7 +120,7 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         movq = self.dummy_movq
         torch.manual_seed(0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        text_encoder = T5EncoderModel(config).eval()
 
         torch.manual_seed(0)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
@@ -158,7 +158,7 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     def test_dict_tuple_outputs_equivalent(self):
         expected_slice = None
         if torch_device == "cpu":
-            expected_slice = np.array([0.5762, 0.6112, 0.4150, 0.6018, 0.6167, 0.4626, 0.5426, 0.5641, 0.6536])
+            expected_slice = np.array([0.5261, 0.5688, 0.4093, 0.4865, 0.5326, 0.4480, 0.5064, 0.5113, 0.6222])
         super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     def test_kandinsky3_img2img(self):
@@ -178,9 +178,7 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.576259, 0.6132097, 0.41703486, 0.603196, 0.62062526, 0.4655338, 0.5434324, 0.5660727, 0.65433365]
-        )
+        expected_slice = np.array([0.5261, 0.5688, 0.4093, 0.4865, 0.5326, 0.4480, 0.5064, 0.5113, 0.6222])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
             f" expected_slice {expected_slice}, but got {image_slice.flatten()}"

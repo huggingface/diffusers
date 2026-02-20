@@ -113,7 +113,7 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             vision_start_token_id=151652,
             vision_token_id=151654,
         )
-        text_encoder = Qwen2_5_VLForConditionalGeneration(config)
+        text_encoder = Qwen2_5_VLForConditionalGeneration(config).eval()
         tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
         components = {
@@ -160,7 +160,7 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_image.shape, (3, 32, 32))
 
         # fmt: off
-        expected_slice = torch.tensor([0.5646, 0.6369, 0.6019, 0.5640, 0.5830, 0.5520, 0.5717, 0.6315, 0.4167, 0.3563, 0.5640, 0.4849, 0.4961, 0.5237, 0.4084, 0.5014])
+        expected_slice = torch.tensor([0.5633, 0.6368, 0.6015, 0.5637, 0.5817, 0.5528, 0.5718, 0.6326, 0.4147, 0.3556, 0.5623, 0.4833, 0.4971, 0.5262, 0.4087, 0.5021])
         # fmt: on
 
         generated_slice = generated_image.flatten()

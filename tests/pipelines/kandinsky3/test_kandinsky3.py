@@ -109,7 +109,7 @@ class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         movq = self.dummy_movq
         torch.manual_seed(0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        text_encoder = T5EncoderModel(config).eval()
 
         torch.manual_seed(0)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
@@ -156,7 +156,7 @@ class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 16, 16, 3)
 
-        expected_slice = np.array([0.3768, 0.4373, 0.4865, 0.4890, 0.4299, 0.5122, 0.4921, 0.4924, 0.5599])
+        expected_slice = np.array([0.3301, 0.3106, 0.4827, 0.5204, 0.4242, 0.4987, 0.4665, 0.5120, 0.5558])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
             f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
