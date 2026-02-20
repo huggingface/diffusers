@@ -252,6 +252,9 @@ class IFPipelineTesterMixin:
     # This should be handled in the base test and then this method can be removed.
     def _test_save_load_local(self):
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
