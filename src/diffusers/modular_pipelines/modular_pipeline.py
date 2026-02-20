@@ -1916,17 +1916,15 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             for component_name, component_spec in self._component_specs.items():
                 if component_spec.default_creation_method != "from_pretrained":
                     continue
-                sub_model = getattr(self, component_name, None)
-                if sub_model is None:
+                if component_name not in self.config:
                     continue
 
-                component_spec.pretrained_model_name_or_path = repo_id
-                component_spec.subfolder = component_name
-                if variant is not None and hasattr(component_spec, "variant"):
-                    component_spec.variant = variant
+                library, class_name, component_spec_dict = self.config[component_name]
+                component_spec_dict["pretrained_model_name_or_path"] = repo_id
+                component_spec_dict["subfolder"] = component_name
+                if variant is not None and "variant" in component_spec_dict:
+                    component_spec_dict["variant"] = variant
 
-                library, class_name = _fetch_class_library_tuple(sub_model)
-                component_spec_dict = self._component_spec_to_dict(component_spec)
                 self.register_to_config(**{component_name: (library, class_name, component_spec_dict)})
 
         self.save_config(save_directory=save_directory)
