@@ -2244,6 +2244,9 @@ class PipelineTesterMixin:
         from huggingface_hub import export_folder_as_dduf
 
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
