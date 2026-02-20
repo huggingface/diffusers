@@ -1298,6 +1298,9 @@ class PipelineTesterMixin:
         additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for components in pipe.components.values():
             if hasattr(components, "set_default_attn_processor"):
