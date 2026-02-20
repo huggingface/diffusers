@@ -2715,6 +2715,9 @@ class PyramidAttentionBroadcastTesterMixin:
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         num_layers = 2
         components = self.get_dummy_components(num_layers=num_layers)
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
