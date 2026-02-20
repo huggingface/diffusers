@@ -446,16 +446,17 @@ class ModelTesterMixin:
         torch_device not in ["cuda", "xpu"],
         reason="float16 and bfloat16 can only be used with an accelerator",
     )
-    def test_keep_in_fp32_modules(self):
+    def test_keep_in_fp32_modules(self, tmp_path):
         model = self.model_class(**self.get_init_dict())
         fp32_modules = model._keep_in_fp32_modules
 
         if fp32_modules is None or len(fp32_modules) == 0:
             pytest.skip("Model does not have _keep_in_fp32_modules defined.")
 
-        # Test with float16
-        model.to(torch_device)
-        model.to(torch.float16)
+        # Save the model and reload with float16 dtype
+        # _keep_in_fp32_modules is only enforced during from_pretrained loading
+        model.save_pretrained(tmp_path)
+        model = self.model_class.from_pretrained(tmp_path, torch_dtype=torch.float16).to(torch_device)
 
         for name, param in model.named_parameters():
             if any(module_to_keep_in_fp32 in name.split(".") for module_to_keep_in_fp32 in fp32_modules):
@@ -470,7 +471,7 @@ class ModelTesterMixin:
     )
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     @torch.no_grad()
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype, atol=1e-4, rtol=0):
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         fp32_modules = model._keep_in_fp32_modules or []
@@ -490,10 +491,6 @@ class ModelTesterMixin:
         output = model(**inputs, return_dict=False)[0]
         output_loaded = model_loaded(**inputs, return_dict=False)[0]
 
-        self._check_dtype_inference_output(output, output_loaded, dtype)
-
-    def _check_dtype_inference_output(self, output, output_loaded, dtype, atol=1e-4, rtol=0):
-        """Check dtype inference output with configurable tolerance."""
         assert_tensors_close(
             output, output_loaded, atol=atol, rtol=rtol, msg=f"Loaded model output differs for {dtype}"
         )

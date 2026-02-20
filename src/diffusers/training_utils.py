@@ -7,7 +7,7 @@ import re
 import warnings
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Type, Union
+from typing import Any, Iterable
 
 import numpy as np
 import torch
@@ -249,7 +249,7 @@ def compute_dream_and_update_latents(
     target: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
     dream_detail_preservation: float = 1.0,
-) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Implements "DREAM (Diffusion Rectification and Estimation-Adaptive Models)" from
     https://huggingface.co/papers/2312.00210. DREAM helps align training with sampling to help training be more
@@ -294,7 +294,7 @@ def compute_dream_and_update_latents(
     return _noisy_latents, _target
 
 
-def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
+def unet_lora_state_dict(unet: UNet2DConditionModel) -> dict[str, torch.Tensor]:
     r"""
     Returns:
         A state dict containing just the LoRA parameters.
@@ -313,7 +313,7 @@ def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
     return lora_state_dict
 
 
-def cast_training_params(model: Union[torch.nn.Module, List[torch.nn.Module]], dtype=torch.float32):
+def cast_training_params(model: torch.nn.Module | list[torch.nn.Module], dtype=torch.float32):
     """
     Casts the training parameters of the model to the specified data type.
 
@@ -331,7 +331,7 @@ def cast_training_params(model: Union[torch.nn.Module, List[torch.nn.Module]], d
 
 
 def _set_state_dict_into_text_encoder(
-    lora_state_dict: Dict[str, torch.Tensor], prefix: str, text_encoder: torch.nn.Module
+    lora_state_dict: dict[str, torch.Tensor], prefix: str, text_encoder: torch.nn.Module
 ):
     """
     Sets the `lora_state_dict` into `text_encoder` coming from `transformers`.
@@ -349,7 +349,7 @@ def _set_state_dict_into_text_encoder(
     set_peft_model_state_dict(text_encoder, text_encoder_state_dict, adapter_name="default")
 
 
-def _collate_lora_metadata(modules_to_save: Dict[str, torch.nn.Module]) -> Dict[str, Any]:
+def _collate_lora_metadata(modules_to_save: dict[str, torch.nn.Module]) -> dict[str, Any]:
     metadatas = {}
     for module_name, module in modules_to_save.items():
         if module is not None:
@@ -363,8 +363,8 @@ def compute_density_for_timestep_sampling(
     logit_mean: float = None,
     logit_std: float = None,
     mode_scale: float = None,
-    device: Union[torch.device, str] = "cpu",
-    generator: Optional[torch.Generator] = None,
+    device: torch.device | str = "cpu",
+    generator: torch.Generator | None = None,
 ):
     """
     Compute the density for sampling the timesteps when doing SD3 training.
@@ -419,9 +419,7 @@ def free_memory():
 
 
 @contextmanager
-def offload_models(
-    *modules: Union[torch.nn.Module, DiffusionPipeline], device: Union[str, torch.device], offload: bool = True
-):
+def offload_models(*modules: torch.nn.Module | DiffusionPipeline, device: str | torch.device, offload: bool = True):
     """
     Context manager that, if offload=True, moves each module to `device` on enter, then moves it back to its original
     device on exit.
@@ -521,12 +519,12 @@ def get_fsdp_kwargs_from_accelerator(accelerator) -> dict:
 
 def wrap_with_fsdp(
     model: torch.nn.Module,
-    device: Union[str, torch.device],
+    device: str | torch.device,
     offload: bool = True,
     use_orig_params: bool = True,
     limit_all_gathers: bool = True,
-    fsdp_kwargs: Optional[Dict[str, Any]] = None,
-    transformer_layer_cls: Optional[Set[Type[torch.nn.Module]]] = None,
+    fsdp_kwargs: dict[str, Any] | None = None,
+    transformer_layer_cls: set[type[torch.nn.Module]] | None = None,
 ) -> FSDP:
     """
     Wrap a model with FSDP using common defaults and optional transformer auto-wrapping.
@@ -552,10 +550,7 @@ def wrap_with_fsdp(
         logger.info(f"transformer_layer_cls is not provided, auto-inferred as {transformer_layer_cls.__name__}")
 
     # Add auto-wrap policy if transformer layers specified
-    auto_wrap_policy = partial(
-        transformer_auto_wrap_policy,
-        transformer_layer_cls={transformer_layer_cls},
-    )
+    auto_wrap_policy = partial(transformer_auto_wrap_policy, transformer_layer_cls={transformer_layer_cls})
 
     config = {
         "device_id": device,
@@ -585,11 +580,11 @@ class EMAModel:
         min_decay: float = 0.0,
         update_after_step: int = 0,
         use_ema_warmup: bool = False,
-        inv_gamma: Union[float, int] = 1.0,
-        power: Union[float, int] = 2 / 3,
+        inv_gamma: float | int = 1.0,
+        power: float | int = 2 / 3,
         foreach: bool = False,
-        model_cls: Optional[Any] = None,
-        model_config: Dict[str, Any] = None,
+        model_cls: Any | None = None,
+        model_config: dict[str, Any] | None = None,
         **kwargs,
     ):
         """
@@ -603,7 +598,7 @@ class EMAModel:
                 Inverse multiplicative factor of EMA warmup. Default: 1. Only used if `use_ema_warmup` is True.
             power (float): Exponential factor of EMA warmup. Default: 2/3. Only used if `use_ema_warmup` is True.
             foreach (bool): Use torch._foreach functions for updating shadow parameters. Should be faster.
-            device (Optional[Union[str, torch.device]]): The device to store the EMA weights on. If None, the EMA
+            device (str | torch.device | None): The device to store the EMA weights on. If None, the EMA
                         weights will be stored on CPU.
 
         @crowsonkb's notes on EMA Warmup:
