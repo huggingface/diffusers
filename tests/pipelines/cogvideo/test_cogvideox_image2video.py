@@ -238,6 +238,9 @@ class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
             return
 
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
