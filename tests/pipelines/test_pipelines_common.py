@@ -2101,6 +2101,9 @@ class PipelineTesterMixin:
             return
 
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
 
         # We initialize the pipeline with only text encoders and tokenizers,
         # mimicking a real-world scenario.
