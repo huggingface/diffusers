@@ -1249,7 +1249,13 @@ def main(args):
     if args.lora_layers is not None:
         target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
     else:
-        target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
+        # target_modules = ["to_k", "to_q", "to_v", "to_out.0"] # just train transformer_blocks
+
+        # train transformer_blocks and single_transformer_blocks
+        target_modules = ["to_k", "to_q", "to_v", "to_out.0"] + [
+            "to_qkv_mlp_proj",
+            *[f"single_transformer_blocks.{i}.attn.to_out" for i in range(24)],
+        ]
 
     # now we will add new LoRA weights the transformer layers
     transformer_lora_config = LoraConfig(
