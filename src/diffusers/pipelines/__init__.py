@@ -52,6 +52,7 @@ else:
     _import_structure["ddim"] = ["DDIMPipeline"]
     _import_structure["ddpm"] = ["DDPMPipeline"]
     _import_structure["dit"] = ["DiTPipeline"]
+    _import_structure["jit"] = ["JiTPipeline"]
     _import_structure["latent_diffusion"].extend(["LDMSuperResolutionPipeline"])
     _import_structure["pipeline_utils"] = [
         "AudioPipelineOutput",
@@ -542,6 +543,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .ddpm import DDPMPipeline
         from .deprecated import KarrasVePipeline, LDMPipeline, PNDMPipeline, RePaintPipeline, ScoreSdeVePipeline
         from .dit import DiTPipeline
+        from .jit import JiTPipeline
         from .latent_diffusion import LDMSuperResolutionPipeline
         from .pipeline_utils import (
             AudioPipelineOutput,
