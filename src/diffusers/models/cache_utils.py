@@ -28,6 +28,7 @@ class CacheMixin:
         - [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588)
         - [FasterCache](https://huggingface.co/papers/2410.19355)
         - [FirstBlockCache](https://github.com/chengzeyi/ParaAttention/blob/7a266123671b55e7e5a2fe9af3121f07a36afc78/README.md#first-block-cache-our-dynamic-caching)
+        - [TeaCache](https://huggingface.co/papers/2411.19108)
     """
 
     _cache_config = None
@@ -71,11 +72,13 @@ class CacheMixin:
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
             TaylorSeerCacheConfig,
+            TeaCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_mag_cache,
             apply_pyramid_attention_broadcast,
             apply_taylorseer_cache,
+            apply_teacache,
         )
 
         if self.is_cache_enabled:
@@ -91,6 +94,8 @@ class CacheMixin:
             apply_mag_cache(self, config)
         elif isinstance(config, PyramidAttentionBroadcastConfig):
             apply_pyramid_attention_broadcast(self, config)
+        elif isinstance(config, TeaCacheConfig):
+            apply_teacache(self, config)
         elif isinstance(config, TaylorSeerCacheConfig):
             apply_taylorseer_cache(self, config)
         else:
@@ -106,12 +111,14 @@ class CacheMixin:
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
             TaylorSeerCacheConfig,
+            TeaCacheConfig,
         )
         from ..hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
         from ..hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
         from ..hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
         from ..hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
+        from ..hooks.teacache import _TEACACHE_HOOK
 
         if self._cache_config is None:
             logger.warning("Caching techniques have not been enabled, so there's nothing to disable.")
@@ -129,6 +136,8 @@ class CacheMixin:
             registry.remove_hook(_MAG_CACHE_BLOCK_HOOK, recurse=True)
         elif isinstance(self._cache_config, PyramidAttentionBroadcastConfig):
             registry.remove_hook(_PYRAMID_ATTENTION_BROADCAST_HOOK, recurse=True)
+        elif isinstance(self._cache_config, TeaCacheConfig):
+            registry.remove_hook(_TEACACHE_HOOK, recurse=True)
         elif isinstance(self._cache_config, TaylorSeerCacheConfig):
             registry.remove_hook(_TAYLORSEER_CACHE_HOOK, recurse=True)
         else:
