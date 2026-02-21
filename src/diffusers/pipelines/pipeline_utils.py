@@ -2377,3 +2377,176 @@ class StableDiffusionMixin:
             else:
                 self.vae.unfuse_qkv_projections()
                 self.fusing_vae = False
+
+
+class DiscreteDiffusionPipelineMixin:
+    """Shared utilities for discrete (token) diffusion pipelines.
+
+    Provides SAR sampling techniques (top-p, top-k) and common helper methods for pipelines that operate on discrete
+    token sequences.
+    """
+
+    # --- SAR sampling utilities (static methods) ---
+
+    @staticmethod
+    def _top_p_filtering(logits: "torch.Tensor", top_p: Optional[float]) -> "torch.Tensor":
+        """Nucleus (top-p) logit filtering."""
+        if top_p is None or top_p >= 1.0:
+            return logits
+        if not (0.0 < top_p <= 1.0):
+            raise ValueError(f"`top_p` must be in (0, 1], got {top_p}.")
+
+        sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
+        sorted_probs = torch.softmax(sorted_logits, dim=-1)
+        cumulative_probs = sorted_probs.cumsum(dim=-1)
+
+        sorted_indices_to_remove = cumulative_probs > float(top_p)
+        sorted_indices_to_remove[..., 0] = 0
+
+        sorted_logits = sorted_logits.masked_fill(sorted_indices_to_remove, torch.finfo(sorted_logits.dtype).min)
+        filtered = logits.scatter(-1, sorted_indices, sorted_logits)
+        return filtered
+
+    @staticmethod
+    def _top_k_filtering(logits: "torch.Tensor", top_k: Optional[int]) -> "torch.Tensor":
+        """Top-k logit filtering."""
+        if top_k is None or top_k <= 0:
+            return logits
+        if top_k >= logits.shape[-1]:
+            return logits
+        values, _ = torch.topk(logits, k=int(top_k), dim=-1)
+        min_keep = values[..., -1, None]
+        return logits.masked_fill(logits < min_keep, torch.finfo(logits.dtype).min)
+
+    @staticmethod
+    def _sample_with_temperature_topk_topp(
+        logits: "torch.Tensor",
+        *,
+        temperature: float,
+        top_k: Optional[int],
+        top_p: Optional[float],
+        generator: Optional["torch.Generator"],
+        use_multinomial: bool,
+    ) -> "tuple[torch.LongTensor, torch.Tensor]":
+        """Sample tokens from logits with temperature scaling, top-k, and top-p."""
+        vocab_size = logits.shape[-1]
+        flat_logits = logits.reshape(-1, vocab_size)
+
+        filtered = DiscreteDiffusionPipelineMixin._top_k_filtering(flat_logits, top_k=top_k)
+        filtered = DiscreteDiffusionPipelineMixin._top_p_filtering(filtered, top_p=top_p)
+
+        if temperature < 0:
+            raise ValueError(f"`temperature` must be >= 0, got {temperature}.")
+
+        scaled = filtered
+        if temperature > 0.0 and temperature != 1.0:
+            scaled = filtered / float(temperature)
+
+        probs = torch.softmax(scaled.float(), dim=-1)
+        if use_multinomial:
+            token = torch.multinomial(probs, num_samples=1, generator=generator)
+        else:
+            token = scaled.argmax(dim=-1, keepdim=True)
+        token_prob = torch.gather(probs, -1, token)
+
+        return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
+
+    # --- Token/prefix utilities (instance methods) ---
+
+    def _resolve_start_token_id(self) -> Optional[int]:
+        """Resolve BOS or CLS token ID from self.tokenizer."""
+        tok = getattr(self, "tokenizer", None)
+        if tok is None:
+            return None
+        for attr in ("bos_token_id", "cls_token_id"):
+            token_id = getattr(tok, attr, None)
+            if token_id is not None:
+                return int(token_id)
+        return None
+
+    def _normalize_prefix_ids(
+        self, prefix_ids: "torch.LongTensor", batch_size: int, device: "torch.device"
+    ) -> "torch.LongTensor":
+        """Validate shape/dtype and broadcast prefix token IDs."""
+        if prefix_ids.ndim == 1:
+            prefix_ids = prefix_ids.unsqueeze(0)
+        if prefix_ids.ndim != 2:
+            raise ValueError(
+                f"`prefix_ids` must have shape [prefix_len] or [batch, prefix_len], got {prefix_ids.shape}."
+            )
+        if prefix_ids.shape[0] not in (1, batch_size):
+            raise ValueError(
+                f"`prefix_ids` batch dim must be 1 or batch_size={batch_size}, got {prefix_ids.shape[0]}."
+            )
+        if prefix_ids.dtype != torch.long:
+            raise ValueError(f"`prefix_ids` must be int64 token IDs, got dtype={prefix_ids.dtype}.")
+        prefix_ids = prefix_ids.to(device=device)
+        if prefix_ids.shape[0] == 1 and batch_size > 1:
+            prefix_ids = prefix_ids.expand(batch_size, -1)
+        return prefix_ids
+
+    # --- Prompt encoding (instance method) ---
+
+    def _prepare_input_ids(
+        self,
+        *,
+        prompt: Optional[Union[str, List[str]]],
+        messages: Optional[List[Dict[str, str]]],
+        input_ids: Optional["torch.LongTensor"],
+        use_chat_template: bool,
+        add_generation_prompt: bool,
+        chat_template_kwargs: Optional[Dict[str, object]],
+    ) -> "torch.LongTensor":
+        """Convert prompt/messages/input_ids to a [batch, seq] LongTensor."""
+        if input_ids is not None:
+            if input_ids.ndim == 1:
+                input_ids = input_ids.unsqueeze(0)
+            if input_ids.ndim != 2:
+                raise ValueError(f"`input_ids` must be 2D, got shape {tuple(input_ids.shape)}.")
+            if input_ids.dtype != torch.long:
+                raise ValueError(f"`input_ids` must be int64 token IDs, got dtype={input_ids.dtype}.")
+            return input_ids
+
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer is required when `input_ids` is not provided.")
+
+        if messages is not None and prompt is not None:
+            raise ValueError("Provide either `prompt` or `messages`, not both.")
+        if messages is None and prompt is None:
+            raise ValueError("Provide one of `prompt`, `messages`, or `input_ids`.")
+
+        chat_template_kwargs = chat_template_kwargs or {}
+
+        def _extract_input_ids(encoded):
+            if isinstance(encoded, dict) and "input_ids" in encoded:
+                return encoded["input_ids"]
+            if hasattr(encoded, "input_ids"):
+                return encoded.input_ids
+            return encoded
+
+        if messages is not None:
+            encoded = self.tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=add_generation_prompt,
+                tokenize=True,
+                return_tensors="pt",
+                return_dict=True,
+                **chat_template_kwargs,
+            )
+            return _extract_input_ids(encoded)
+
+        if use_chat_template and getattr(self.tokenizer, "chat_template", None):
+            if isinstance(prompt, list):
+                raise ValueError("`prompt` must be a string when `use_chat_template=True`.")
+            encoded = self.tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}],
+                add_generation_prompt=add_generation_prompt,
+                tokenize=True,
+                return_tensors="pt",
+                return_dict=True,
+                **chat_template_kwargs,
+            )
+            return _extract_input_ids(encoded)
+
+        encoded = self.tokenizer(prompt, return_tensors="pt", padding=isinstance(prompt, list))
+        return _extract_input_ids(encoded)

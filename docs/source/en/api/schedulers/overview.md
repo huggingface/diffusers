@@ -54,6 +54,28 @@ Many schedulers are implemented from the [k-diffusion](https://github.com/crowso
 | exponential              | init with `timestep_spacing="linspace"`, `use_exponential_sigmas=True`     |
 | beta                     | init with `timestep_spacing="linspace"`, `use_beta_sigmas=True`            |
 
+## Token diffusion schedulers
+
+These schedulers operate over categorical token IDs instead of continuous latents. They are designed for discrete
+token diffusion models and expose the same `set_timesteps`/`step` interface as other schedulers.
+
+Differences between the discrete token schedulers:
+- `TokenDiffusionScheduler`: token-level diffusion with per-token corruption (e.g. mask/uniform) and a single-step `step` to denoise logits.
+- `BlockTokenDiffusionScheduler`: block-wise token diffusion that updates fixed-size blocks in parallel.
+- `HybridTokenDiffusionScheduler`: hybrid transitions that combine token- and block-wise updates in the same schedule.
+- `DFlashTokenDiffusionScheduler`: block diffusion scheduler specialized for speculative decoding with a draft model and target acceptance.
+- `SDARTokenDiffusionScheduler`: block diffusion scheduler with remasking strategies (sequential/low-confidence/entropy-bounded) per step.
+
+[[autodoc]] TokenDiffusionScheduler
+
+[[autodoc]] BlockTokenDiffusionScheduler
+
+[[autodoc]] HybridTokenDiffusionScheduler
+
+[[autodoc]] DFlashTokenDiffusionScheduler
+
+[[autodoc]] SDARTokenDiffusionScheduler
+
 All schedulers are built from the base [`SchedulerMixin`] class which implements low level utilities shared by all schedulers.
 
 ## SchedulerMixin

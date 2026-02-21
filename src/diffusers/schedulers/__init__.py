@@ -40,6 +40,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["deprecated"] = ["KarrasVeScheduler", "ScoreSdeVpScheduler"]
     _import_structure["scheduling_amused"] = ["AmusedScheduler"]
+    _import_structure["scheduling_block_token_diffusion"] = ["BlockTokenDiffusionScheduler"]
     _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
@@ -50,6 +51,10 @@ else:
     _import_structure["scheduling_ddpm_parallel"] = ["DDPMParallelScheduler"]
     _import_structure["scheduling_ddpm_wuerstchen"] = ["DDPMWuerstchenScheduler"]
     _import_structure["scheduling_deis_multistep"] = ["DEISMultistepScheduler"]
+    _import_structure["scheduling_dflash_token_diffusion"] = [
+        "DFlashTokenDiffusionScheduler",
+        "DFlashTokenDiffusionSchedulerOutput",
+    ]
     _import_structure["scheduling_dpm_cogvideox"] = ["CogVideoXDPMScheduler"]
     _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
@@ -62,6 +67,10 @@ else:
     _import_structure["scheduling_flow_match_heun_discrete"] = ["FlowMatchHeunDiscreteScheduler"]
     _import_structure["scheduling_flow_match_lcm"] = ["FlowMatchLCMScheduler"]
     _import_structure["scheduling_heun_discrete"] = ["HeunDiscreteScheduler"]
+    _import_structure["scheduling_hybrid_token_diffusion"] = [
+        "HybridTokenDiffusionScheduler",
+        "HybridTokenDiffusionSchedulerOutput",
+    ]
     _import_structure["scheduling_ipndm"] = ["IPNDMScheduler"]
     _import_structure["scheduling_k_dpm_2_ancestral_discrete"] = ["KDPM2AncestralDiscreteScheduler"]
     _import_structure["scheduling_k_dpm_2_discrete"] = ["KDPM2DiscreteScheduler"]
@@ -71,8 +80,13 @@ else:
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
     _import_structure["scheduling_sasolver"] = ["SASolverScheduler"]
     _import_structure["scheduling_scm"] = ["SCMScheduler"]
+    _import_structure["scheduling_sdar_token_diffusion"] = [
+        "SDARTokenDiffusionScheduler",
+        "SDARTokenDiffusionSchedulerOutput",
+    ]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
     _import_structure["scheduling_tcd"] = ["TCDScheduler"]
+    _import_structure["scheduling_token_diffusion"] = ["TokenDiffusionScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
     _import_structure["scheduling_utils"] = ["AysSchedules", "KarrasDiffusionSchedulers", "SchedulerMixin"]
@@ -153,6 +167,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_ddpm_parallel import DDPMParallelScheduler
         from .scheduling_ddpm_wuerstchen import DDPMWuerstchenScheduler
         from .scheduling_deis_multistep import DEISMultistepScheduler
+        from .scheduling_dflash_token_diffusion import (
+            DFlashTokenDiffusionScheduler,
+            DFlashTokenDiffusionSchedulerOutput,
+        )
         from .scheduling_dpm_cogvideox import CogVideoXDPMScheduler
         from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
         from .scheduling_dpmsolver_multistep_inverse import DPMSolverMultistepInverseScheduler
@@ -174,6 +192,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_repaint import RePaintScheduler
         from .scheduling_sasolver import SASolverScheduler
         from .scheduling_scm import SCMScheduler
+        from .scheduling_sdar_token_diffusion import SDARTokenDiffusionScheduler, SDARTokenDiffusionSchedulerOutput
         from .scheduling_sde_ve import ScoreSdeVeScheduler
         from .scheduling_tcd import TCDScheduler
         from .scheduling_unclip import UnCLIPScheduler
