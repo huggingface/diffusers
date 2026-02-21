@@ -230,6 +230,7 @@ _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_at
 _aiter_available, _aiter_version = _is_package_available("aiter", get_dist_name=True)
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
+_flashpack_available, _flashpack_version = _is_package_available("flashpack")
 _av_available, _av_version = _is_package_available("av")
 
 
@@ -359,6 +360,10 @@ def is_imageio_available():
 
 def is_gguf_available():
     return _gguf_available
+
+
+def is_flashpack_available():
+    return _flashpack_available
 
 
 def is_torchao_available():
