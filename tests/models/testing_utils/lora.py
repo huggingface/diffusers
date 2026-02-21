@@ -15,6 +15,7 @@
 
 import gc
 import json
+import logging
 import os
 import re
 
@@ -23,10 +24,12 @@ import safetensors.torch
 import torch
 import torch.nn as nn
 
+from diffusers.utils import logging as diffusers_logging
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import check_if_dicts_are_equal
 
 from ...testing_utils import (
+    CaptureLogger,
     assert_tensors_close,
     backend_empty_cache,
     is_lora,
@@ -477,10 +480,7 @@ class LoraHotSwappingForModelTesterMixin:
         with pytest.raises(RuntimeError, match=msg):
             model.enable_lora_hotswap(target_rank=32)
 
-    def test_enable_lora_hotswap_called_after_adapter_added_warning(self, caplog):
-        # ensure that enable_lora_hotswap is called before loading the first adapter
-        import logging
-
+    def test_enable_lora_hotswap_called_after_adapter_added_warning(self):
         lora_config = self._get_lora_config(8, 8, target_modules=["to_q"])
         init_dict = self.get_init_dict()
         model = self.model_class(**init_dict).to(torch_device)
@@ -488,21 +488,26 @@ class LoraHotSwappingForModelTesterMixin:
         msg = (
             "It is recommended to call `enable_lora_hotswap` before loading the first adapter to avoid recompilation."
         )
-        with caplog.at_level(logging.WARNING):
+
+        logger = diffusers_logging.get_logger("diffusers.loaders.peft")
+        logger.setLevel(logging.WARNING)
+        with CaptureLogger(logger) as cap_logger:
             model.enable_lora_hotswap(target_rank=32, check_compiled="warn")
-            assert any(msg in record.message for record in caplog.records)
 
-    def test_enable_lora_hotswap_called_after_adapter_added_ignore(self, caplog):
-        # check possibility to ignore the error/warning
-        import logging
+        assert msg in str(cap_logger.out), f"Expected warning not found. Captured: {cap_logger.out}"
 
+    def test_enable_lora_hotswap_called_after_adapter_added_ignore(self):
         lora_config = self._get_lora_config(8, 8, target_modules=["to_q"])
         init_dict = self.get_init_dict()
         model = self.model_class(**init_dict).to(torch_device)
         model.add_adapter(lora_config)
-        with caplog.at_level(logging.WARNING):
+
+        logger = diffusers_logging.get_logger("diffusers.loaders.peft")
+        logger.setLevel(logging.WARNING)
+        with CaptureLogger(logger) as cap_logger:
             model.enable_lora_hotswap(target_rank=32, check_compiled="ignore")
-            assert len(caplog.records) == 0
+
+        assert cap_logger.out == "", f"Expected no warnings but found: {cap_logger.out}"
 
     def test_enable_lora_hotswap_wrong_check_compiled_argument_raises(self):
         # check that wrong argument value raises an error
@@ -515,9 +520,6 @@ class LoraHotSwappingForModelTesterMixin:
             model.enable_lora_hotswap(target_rank=32, check_compiled="wrong-argument")
 
     def test_hotswap_second_adapter_targets_more_layers_raises(self, tmp_path, caplog):
-        # check the error and log
-        import logging
-
         # at the moment, PEFT requires the 2nd adapter to target the same or a subset of layers
         target_modules0 = ["to_q"]
         target_modules1 = ["to_q", "to_k"]
