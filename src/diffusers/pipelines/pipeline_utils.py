@@ -2109,7 +2109,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
 
         original_config = dict(pipeline.config)
-        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
+        # Preserve the source pipeline's dtype by default instead of converting to float32
+        torch_dtype = kwargs.pop("torch_dtype", pipeline.dtype)
 
         # derive the pipeline class to instantiate
         custom_pipeline = kwargs.pop("custom_pipeline", None)
