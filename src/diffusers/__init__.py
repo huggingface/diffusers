@@ -179,6 +179,7 @@ else:
     )
     _import_structure["models"].extend(
         [
+            "AceStepDiTModel",
             "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
             "AttentionBackendName",
@@ -453,6 +454,8 @@ else:
     )
     _import_structure["pipelines"].extend(
         [
+            "AceStepConditionEncoder",
+            "AceStepPipeline",
             "AllegroPipeline",
             "AltDiffusionImg2ImgPipeline",
             "AltDiffusionPipeline",
@@ -946,6 +949,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             apply_taylorseer_cache,
         )
         from .models import (
+            AceStepDiTModel,
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
             AttentionBackendName,
@@ -1197,6 +1201,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageModularPipeline,
         )
         from .pipelines import (
+            AceStepConditionEncoder,
+            AceStepPipeline,
             AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
