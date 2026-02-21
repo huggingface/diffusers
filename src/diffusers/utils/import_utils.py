@@ -725,6 +725,22 @@ def is_transformers_version(operation: str, version: str):
 
 
 @cache
+def is_kernels_version(operation: str, version: str):
+    """
+    Compares the current Kernels version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _kernels_available:
+        return False
+    return compare_versions(parse(_kernels_version), operation, version)
+
+
+@cache
 def is_hf_hub_version(operation: str, version: str):
     """
     Compares the current Hugging Face Hub version to a given reference with an operation.
