@@ -727,7 +727,7 @@ class StableDiffusionXLPipeline(
         return latents
 
     def _get_add_time_ids(
-        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
+        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=1280
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
