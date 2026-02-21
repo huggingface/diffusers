@@ -84,6 +84,7 @@ if is_torch_available():
             "QwenImageLoraLoaderMixin",
             "ZImageLoraLoaderMixin",
             "Flux2LoraLoaderMixin",
+            "LongCatLoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
@@ -121,6 +122,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 HiDreamImageLoraLoaderMixin,
                 HunyuanVideoLoraLoaderMixin,
                 KandinskyLoraLoaderMixin,
+                LongCatLoraLoaderMixin,
                 LoraLoaderMixin,
                 LTX2LoraLoaderMixin,
                 LTXVideoLoraLoaderMixin,
