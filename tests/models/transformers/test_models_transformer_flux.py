@@ -318,6 +318,10 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Flux Transformer."""
 
+    @property
+    def modules_to_not_convert_for_test(self):
+        return ["norm_out.linear"]
+
 
 class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
     """Quanto quantization tests for Flux Transformer."""
@@ -330,9 +334,17 @@ class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
     def pretrained_model_kwargs(self):
         return {}
 
+    @property
+    def modules_to_not_convert_for_test(self):
+        return ["norm_out.linear"]
+
 
 class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Flux Transformer."""
+
+    @property
+    def modules_to_not_convert_for_test(self):
+        return ["norm_out.linear"]
 
 
 class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
@@ -401,6 +413,10 @@ class TestFluxTransformerGGUFCompile(FluxTransformerTesterConfig, GGUFCompileTes
 
 class TestFluxTransformerModelOpt(FluxTransformerTesterConfig, ModelOptTesterMixin):
     """ModelOpt quantization tests for Flux Transformer."""
+
+    @property
+    def modules_to_not_convert_for_test(self):
+        return ["norm_out.linear"]
 
 
 class TestFluxTransformerModelOptCompile(FluxTransformerTesterConfig, ModelOptCompileTesterMixin):
