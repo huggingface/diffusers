@@ -27,13 +27,9 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 
 | Pipeline | Tasks |
 |---|---|
-| [aMUSEd](amused) | text2image |
 | [AnimateDiff](animatediff) | text2video |
-| [Attend-and-Excite](attend_and_excite) | text2image |
-| [AudioLDM](audioldm) | text2audio |
 | [AudioLDM2](audioldm2) | text2audio |
 | [AuraFlow](aura_flow) | text2image |
-| [BLIP Diffusion](blip_diffusion) | text2image |
 | [Bria 3.2](bria_3_2) | text2image |
 | [CogVideoX](cogvideox) | text2video |
 | [Consistency Models](consistency_models) | unconditional image generation |
@@ -42,17 +38,12 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [ControlNet with Hunyuan-DiT](controlnet_hunyuandit) | text2image |
 | [ControlNet with Stable Diffusion 3](controlnet_sd3) | text2image |
 | [ControlNet with Stable Diffusion XL](controlnet_sdxl) | text2image |
-| [ControlNet-XS](controlnetxs) | text2image |
-| [ControlNet-XS with Stable Diffusion XL](controlnetxs_sdxl) | text2image |
-| [Dance Diffusion](dance_diffusion) | unconditional audio generation |
 | [DDIM](ddim) | unconditional image generation |
 | [DDPM](ddpm) | unconditional image generation |
 | [DeepFloyd IF](deepfloyd_if) | text2image, image2image, inpainting, super-resolution |
-| [DiffEdit](diffedit) | inpainting |
 | [DiT](dit) | text2image |
 | [Flux](flux) | text2image |
 | [Hunyuan-DiT](hunyuandit) | text2image |
-| [I2VGen-XL](i2vgenxl) | image2video |
 | [InstructPix2Pix](pix2pix) | image editing |
 | [Kandinsky 2.1](kandinsky) | text2image, image2image, inpainting, interpolation |
 | [Kandinsky 2.2](kandinsky_v22) | text2image, image2image, inpainting |
@@ -64,15 +55,9 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [LEDITS++](ledits_pp) | image editing |
 | [Lumina-T2X](lumina) | text2image |
 | [Marigold](marigold) | depth-estimation, normals-estimation, intrinsic-decomposition |
-| [MultiDiffusion](panorama) | text2image |
-| [MusicLDM](musicldm) | text2audio |
 | [PAG](pag) | text2image |
-| [Paint by Example](paint_by_example) | inpainting |
-| [PIA](pia) | image2video |
 | [PixArt-α](pixart) | text2image |
 | [PixArt-Σ](pixart_sigma) | text2image |
-| [Self-Attention Guidance](self_attention_guidance) | text2image |
-| [Semantic Guidance](semantic_stable_diffusion) | text2image |
 | [Shap-E](shap_e) | text-to-3D, image-to-3D |
 | [Stable Audio](stable_audio) | text2audio |
 | [Stable Cascade](stable_cascade) | text2image |
@@ -81,12 +66,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Stable Diffusion XL Turbo](stable_diffusion/sdxl_turbo) | text2image, image2image, inpainting |
 | [Stable unCLIP](stable_unclip) | text2image, image variation |
 | [T2I-Adapter](stable_diffusion/adapter) | text2image |
-| [Text2Video](text_to_video) | text2video, video2video |
-| [Text2Video-Zero](text_to_video_zero) | text2video |
-| [unCLIP](unclip) | text2image, image variation |
-| [UniDiffuser](unidiffuser) | text2image, image2text, image variation, text variation, unconditional image generation, unconditional audio generation |
 | [Value-guided planning](value_guided_sampling) | value guided sampling |
-| [Wuerstchen](wuerstchen) | text2image |
 | [VisualCloze](visualcloze) | text2image, image2image, subject driven generation, inpainting, style transfer, image restoration, image editing, [depth,normal,edge,pose]2image, [depth,normal,edge,pose]-estimation, virtual try-on, image relighting |
 
 ## DiffusionPipeline

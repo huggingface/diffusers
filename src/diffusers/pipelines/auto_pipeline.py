@@ -40,6 +40,7 @@ from .controlnet_sd3 import (
     StableDiffusion3ControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
+from .deprecated.wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .flux import (
     FluxControlImg2ImgPipeline,
     FluxControlInpaintPipeline,
@@ -122,7 +123,6 @@ from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
 )
 from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
-from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .z_image import (
     ZImageControlNetInpaintPipeline,
     ZImageControlNetPipeline,

@@ -452,7 +452,7 @@ class AnimateDiffPAGPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.pia.pipeline_pia.PIAPipeline.check_inputs
+    # Copied from diffusers.pipelines.deprecated.pia.pipeline_pia.PIAPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
