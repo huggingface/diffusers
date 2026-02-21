@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import os
 import sys
@@ -20,6 +21,7 @@ import tempfile
 
 import safetensors
 
+from diffusers.loaders.lora_base import LORA_ADAPTER_METADATA_KEY
 
 sys.path.append("..")
 from test_examples_utils import ExamplesTestsAccelerate, run_command  # noqa: E402
@@ -207,6 +209,46 @@ class DreamBoothLoRASD3(ExamplesTestsAccelerate):
             starts_with_transformer = all("attn.to_k" in key for key in lora_state_dict.keys())
             self.assertTrue(starts_with_transformer)
 
+    def test_dreambooth_lora_sd3_with_metadata(self):
+        lora_alpha = 8
+        rank = 4
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+            {self.script_path}
+            --pretrained_model_name_or_path={self.pretrained_model_name_or_path}
+            --instance_data_dir={self.instance_data_dir}
+            --output_dir={tmpdir}
+            --resolution=32
+            --train_batch_size=1
+            --gradient_accumulation_steps=1
+            --max_train_steps=4
+            --lora_alpha={lora_alpha}
+            --rank={rank}
+            --checkpointing_steps=2
+            --max_sequence_length 166
+            """.split()
+
+            test_args.extend(["--instance_prompt", ""])
+            run_command(self._launch_args + test_args)
+
+            state_dict_file = os.path.join(tmpdir, "pytorch_lora_weights.safetensors")
+            self.assertTrue(os.path.isfile(state_dict_file))
+
+            # Check if the metadata was properly serialized.
+            with safetensors.torch.safe_open(state_dict_file, framework="pt", device="cpu") as f:
+                metadata = f.metadata() or {}
+
+            metadata.pop("format", None)
+            raw = metadata.get(LORA_ADAPTER_METADATA_KEY)
+            if raw:
+                raw = json.loads(raw)
+
+            loaded_lora_alpha = raw["transformer.lora_alpha"]
+            self.assertTrue(loaded_lora_alpha == lora_alpha)
+            loaded_lora_rank = raw["transformer.r"]
+            self.assertTrue(loaded_lora_rank == rank)
+
+            
     def test_dreambooth_lora_sd3_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
