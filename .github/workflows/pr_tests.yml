@@ -92,8 +92,9 @@ jobs:
             runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_example_cpu
+        transformers_version: ["main"]
 
-    name: ${{ matrix.config.name }}
+    name: ${{ matrix.config.name }} (transformers ${{ matrix.transformers_version }})
 
     runs-on:
       group: ${{ matrix.config.runner }}
@@ -155,7 +156,7 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v6
       with:
-        name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
+        name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_transformers_${{ matrix.transformers_version }}_test_reports
         path: reports
 
   run_staging_tests:
@@ -220,8 +221,10 @@ jobs:
     needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
+      matrix:
+        transformers_version: ["main"]
 
-    name: LoRA tests with PEFT main
+    name: LoRA tests with PEFT main (transformers ${{ matrix.transformers_version }})
 
     runs-on:
       group: aws-general-8-plus
@@ -247,9 +250,12 @@ jobs:
         uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
         uv pip install -U tokenizers
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
-        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
-
+        if [ "${{ matrix.transformers_version }}" = "main" ]; then
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        else
+          uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
+        fi
+        
     - name: Environment
       run: |
         python utils/print_env.py
@@ -275,6 +281,6 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v6
       with:
-        name: pr_main_test_reports
+        name: pr_lora_transformers_${{ matrix.transformers_version }}_test_reports
         path: reports
 

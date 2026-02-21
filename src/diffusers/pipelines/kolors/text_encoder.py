@@ -781,6 +781,9 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
             self.prefix_encoder = PrefixEncoder(config)
             self.dropout = torch.nn.Dropout(0.1)
 
+        if hasattr(self, "post_init"):
+            self.post_init()
+
     def get_input_embeddings(self):
         return self.embedding.word_embeddings
 
@@ -810,7 +813,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
+        use_cache = use_cache if use_cache is not None else getattr(self.config, "use_cache", None)
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         batch_size, seq_length = input_ids.shape

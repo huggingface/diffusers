@@ -108,7 +108,7 @@ class CogView4PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "dance monkey",
-            "negative_prompt": "",
+            "negative_prompt": "bad",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,

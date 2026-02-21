@@ -1357,7 +1357,12 @@ def enable_full_determinism():
     #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,
     # depending on the CUDA version, so we set them both here
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    # Use larger workspace size for PyTorch 2.10+ to avoid CUBLAS_STATUS_NOT_INITIALIZED errors
+    # (catches 2.11 dev versions which report as >= 2.10)
+    if is_torch_version(">=", "2.10"):
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    else:
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
     torch.use_deterministic_algorithms(True)
 
     # Enable CUDNN deterministic mode

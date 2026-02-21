@@ -18,7 +18,7 @@ from typing import Any, Callable
 import PIL
 import regex as re
 import torch
-from transformers import AutoTokenizer, CLIPProcessor, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import AutoTokenizer, CLIPProcessor, CLIPVisionModelWithProjection, T5EncoderModel, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -157,7 +157,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixi
     def __init__(
         self,
         tokenizer: AutoTokenizer,
-        text_encoder: UMT5EncoderModel,
+        text_encoder: T5EncoderModel | UMT5EncoderModel,
         image_encoder: CLIPVisionModelWithProjection,
         image_processor: CLIPProcessor,
         transformer: SkyReelsV2Transformer3DModel,

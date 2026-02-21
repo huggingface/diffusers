@@ -19,6 +19,7 @@ import numpy as np
 import torch
 from PIL import Image
 from transformers import (
+    AutoConfig,
     AutoTokenizer,
     CLIPImageProcessor,
     CLIPVisionConfig,
@@ -68,7 +69,8 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         # TODO: impl FlowDPMSolverMultistepScheduler
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -239,7 +241,8 @@ class WanFLFToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         # TODO: impl FlowDPMSolverMultistepScheduler
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)

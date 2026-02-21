@@ -48,6 +48,7 @@ _GO_LC_SUPPORTED_PYTORCH_LAYERS = (
     torch.nn.ConvTranspose2d,
     torch.nn.ConvTranspose3d,
     torch.nn.Linear,
+    torch.nn.Embedding,
     # TODO(aryan): look into torch.nn.LayerNorm, torch.nn.GroupNorm later, seems to be causing some issues with CogVideoX
     # because of double invocation of the same norm layer in CogVideoXLayerNorm
 )

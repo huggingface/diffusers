@@ -22,7 +22,12 @@ from tokenizers import Tokenizer as TokenizerFast
 from torch import nn
 
 from ..models.modeling_utils import load_state_dict
-from ..utils import _get_model_file, is_accelerate_available, is_transformers_available, logging
+from ..utils import (
+    _get_model_file,
+    is_accelerate_available,
+    is_transformers_available,
+    logging,
+)
 
 
 if is_transformers_available():
