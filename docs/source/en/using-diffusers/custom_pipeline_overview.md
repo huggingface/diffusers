@@ -15,6 +15,7 @@ specific language governing permissions and limitations under the License.
 # Community pipelines and components
 
 Community pipelines are [`DiffusionPipeline`] classes that are different from the original paper implementation. They provide additional functionality or extend the original pipeline implementation.
+To load a community pipeline, pass a repository id containing a [pipeline.py](https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py) to the `custom_pipeline` argument.
 
 > [!TIP]
 > Check out the community pipelines in [diffusers/examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) with inference and training examples for how to use them.
