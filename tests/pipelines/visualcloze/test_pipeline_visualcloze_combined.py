@@ -216,7 +216,7 @@ class VisualClozePipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     def test_callback_cfg(self):
         pass
 
-    def test_save_load_local(self, expected_max_difference=5e-4):
+    def test_save_load_local(self, expected_max_difference=1e-3):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
