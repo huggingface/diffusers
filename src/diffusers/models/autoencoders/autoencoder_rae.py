@@ -40,7 +40,7 @@ class Dinov2Encoder(nn.Module):
         self,
         hidden_size: int = 768,
         patch_size: int = 14,
-        image_size: int = 224,
+        image_size: int = 518,
         num_hidden_layers: int = 12,
         num_attention_heads: int = 12,
         num_register_tokens: int = 4,
@@ -179,8 +179,6 @@ _ENCODER_TYPES: Dict[str, Type] = {
     "siglip2": Siglip2Encoder,
     "mae": MAEEncoder,
 }
-
-
 
 
 @dataclass
@@ -450,8 +448,6 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
             Hidden size of the encoder model.
         encoder_patch_size (`int`, *optional*, defaults to `14`):
             Patch size of the encoder model.
-        encoder_image_size (`int`, *optional*, defaults to `518`):
-            Image size the encoder was pretrained with. Controls position embedding dimensions.
         patch_size (`int`, *optional*, defaults to `16`):
             Decoder patch size (used for unpatchify and decoder head).
         encoder_input_size (`int`, *optional*, defaults to `224`):
@@ -490,7 +486,6 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         encoder_type: str = "dinov2",
         encoder_hidden_size: int = 768,
         encoder_patch_size: int = 14,
-        encoder_image_size: int = 518,
         decoder_hidden_size: int = 512,
         decoder_num_hidden_layers: int = 8,
         decoder_num_attention_heads: int = 16,
@@ -545,7 +540,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         # Frozen representation encoder (built from config, no downloads)
         encoder_patch_size = int(encoder_patch_size)
         self.encoder: nn.Module = _ENCODER_TYPES[encoder_type](
-            hidden_size=encoder_hidden_size, patch_size=encoder_patch_size, image_size=encoder_image_size
+            hidden_size=encoder_hidden_size, patch_size=encoder_patch_size
         )
 
         # RAE-main: base_patches = (encoder_input_size // encoder_patch_size) ** 2
