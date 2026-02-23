@@ -253,6 +253,7 @@ def convert(args: argparse.Namespace) -> None:
     # Read encoder hidden size and patch size from HF config
     encoder_hidden_size = ENCODER_HIDDEN_SIZE[args.encoder_type]
     encoder_patch_size = ENCODER_PATCH_SIZE[args.encoder_type]
+    encoder_image_size = 518  # fallback default
     try:
         hf_config = AutoConfig.from_pretrained(encoder_name_or_path)
         # For models like SigLIP that nest vision config
@@ -260,6 +261,7 @@ def convert(args: argparse.Namespace) -> None:
             hf_config = hf_config.vision_config
         encoder_hidden_size = hf_config.hidden_size
         encoder_patch_size = hf_config.patch_size
+        encoder_image_size = hf_config.image_size
     except Exception:
         pass
 
@@ -270,6 +272,7 @@ def convert(args: argparse.Namespace) -> None:
         encoder_type=args.encoder_type,
         encoder_hidden_size=encoder_hidden_size,
         encoder_patch_size=encoder_patch_size,
+        encoder_image_size=encoder_image_size,
         encoder_input_size=args.encoder_input_size,
         patch_size=args.patch_size,
         image_size=args.image_size,

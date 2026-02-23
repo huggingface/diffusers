@@ -64,6 +64,7 @@ class AutoencoderRAETests(unittest.TestCase):
             "encoder_type": "tiny_test",
             "encoder_hidden_size": 16,
             "encoder_patch_size": 8,
+            "encoder_image_size": 32,
             "encoder_input_size": 32,
             "patch_size": 4,
             "image_size": 16,

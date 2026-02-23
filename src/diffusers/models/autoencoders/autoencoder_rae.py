@@ -180,12 +180,7 @@ _ENCODER_TYPES: Dict[str, Type] = {
     "mae": MAEEncoder,
 }
 
-# Default encoder image sizes matching the HF pretrained models
-_ENCODER_DEFAULT_IMAGE_SIZE: Dict[str, int] = {
-    "dinov2": 518,
-    "siglip2": 256,
-    "mae": 224,
-}
+
 
 
 @dataclass
@@ -455,6 +450,8 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
             Hidden size of the encoder model.
         encoder_patch_size (`int`, *optional*, defaults to `14`):
             Patch size of the encoder model.
+        encoder_image_size (`int`, *optional*, defaults to `518`):
+            Image size the encoder was pretrained with. Controls position embedding dimensions.
         patch_size (`int`, *optional*, defaults to `16`):
             Decoder patch size (used for unpatchify and decoder head).
         encoder_input_size (`int`, *optional*, defaults to `224`):
@@ -493,6 +490,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         encoder_type: str = "dinov2",
         encoder_hidden_size: int = 768,
         encoder_patch_size: int = 14,
+        encoder_image_size: int = 518,
         decoder_hidden_size: int = 512,
         decoder_num_hidden_layers: int = 8,
         decoder_num_attention_heads: int = 16,
@@ -546,7 +544,6 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
 
         # Frozen representation encoder (built from config, no downloads)
         encoder_patch_size = int(encoder_patch_size)
-        encoder_image_size = _ENCODER_DEFAULT_IMAGE_SIZE.get(encoder_type, 224)
         self.encoder: nn.Module = _ENCODER_TYPES[encoder_type](
             hidden_size=encoder_hidden_size, patch_size=encoder_patch_size, image_size=encoder_image_size
         )
