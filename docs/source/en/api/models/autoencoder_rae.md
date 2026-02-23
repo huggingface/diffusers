@@ -26,22 +26,21 @@ The model follows the standard diffusers autoencoder API:
 import torch
 from diffusers import AutoencoderRAE
 
-model = AutoencoderRAE(
-    encoder_cls="dinov2",
-    encoder_name_or_path="facebook/dinov2-with-registers-base",
-    encoder_input_size=224,
-    patch_size=16,
-    image_size=256,
+# Load a converted model from the Hub
+model = AutoencoderRAE.from_pretrained(
+    "nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08"
 ).to("cuda").eval()
 
 # Encode and decode
-x = torch.randn(1, 3, 256, 256, device="cuda")
+x = torch.randn(1, 3, 224, 224, device="cuda")
 with torch.no_grad():
     latents = model.encode(x).latent
     recon = model.decode(latents).sample
 ```
 
-`encoder_cls` supports `"dinov2"`, `"siglip2"`, and `"mae"`.
+`encoder_type` supports `"dinov2"`, `"siglip2"`, and `"mae"`. The encoder is built from config
+(with random weights) during `__init__`; use `from_pretrained` to load a converted checkpoint
+that includes both encoder and decoder weights.
 
 For latent normalization, use `latents_mean` and `latents_std` (matching other diffusers autoencoders).
 

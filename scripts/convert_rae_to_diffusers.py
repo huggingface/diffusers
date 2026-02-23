@@ -36,6 +36,18 @@ ENCODER_DEFAULT_NAME_OR_PATH = {
     "mae": "facebook/vit-mae-base",
 }
 
+ENCODER_HIDDEN_SIZE = {
+    "dinov2": 768,
+    "siglip2": 768,
+    "mae": 768,
+}
+
+ENCODER_PATCH_SIZE = {
+    "dinov2": 14,
+    "siglip2": 16,
+    "mae": 16,
+}
+
 DEFAULT_DECODER_SUBDIR = {
     "dinov2": "decoders/dinov2/wReg_base",
     "mae": "decoders/mae/base_p16",
@@ -121,14 +133,14 @@ def remap_decoder_attention_keys_for_diffusers(state_dict: dict[str, Any]) -> di
 
 
 def resolve_decoder_file(
-    accessor: RepoAccessor, encoder_cls: str, variant: str, decoder_checkpoint: str | None
+    accessor: RepoAccessor, encoder_type: str, variant: str, decoder_checkpoint: str | None
 ) -> str:
     if decoder_checkpoint is not None:
         if accessor.exists(decoder_checkpoint):
             return decoder_checkpoint
         raise FileNotFoundError(f"Decoder checkpoint not found: {decoder_checkpoint}")
 
-    base = f"{DEFAULT_DECODER_SUBDIR[encoder_cls]}/{variant}"
+    base = f"{DEFAULT_DECODER_SUBDIR[encoder_type]}/{variant}"
     for name in DECODER_FILE_CANDIDATES:
         candidate = f"{base}/{name}"
         if accessor.exists(candidate):
@@ -141,7 +153,7 @@ def resolve_decoder_file(
 
 def resolve_stats_file(
     accessor: RepoAccessor,
-    encoder_cls: str,
+    encoder_type: str,
     dataset_name: str,
     stats_checkpoint: str | None,
 ) -> str | None:
@@ -150,7 +162,7 @@ def resolve_stats_file(
             return stats_checkpoint
         raise FileNotFoundError(f"Stats checkpoint not found: {stats_checkpoint}")
 
-    base = DEFAULT_STATS_SUBDIR[encoder_cls]
+    base = DEFAULT_STATS_SUBDIR[encoder_type]
     for dataset in dataset_case_candidates(dataset_name):
         for name in STATS_FILE_CANDIDATES:
             candidate = f"{base}/{dataset}/{name}"
@@ -181,12 +193,33 @@ def extract_latent_stats(stats_obj: Any) -> tuple[Any | None, Any | None]:
     return mean, latents_std
 
 
+def _load_hf_encoder_state_dict(encoder_type: str, encoder_name_or_path: str) -> dict[str, Any]:
+    """Download the HF encoder and extract the state dict for the inner model."""
+    if encoder_type == "dinov2":
+        from transformers import Dinov2WithRegistersModel
+
+        hf_model = Dinov2WithRegistersModel.from_pretrained(encoder_name_or_path)
+        return hf_model.state_dict()
+    elif encoder_type == "siglip2":
+        from transformers import SiglipModel
+
+        hf_model = SiglipModel.from_pretrained(encoder_name_or_path).vision_model
+        return hf_model.state_dict()
+    elif encoder_type == "mae":
+        from transformers import ViTMAEForPreTraining
+
+        hf_model = ViTMAEForPreTraining.from_pretrained(encoder_name_or_path).vit
+        return hf_model.state_dict()
+    else:
+        raise ValueError(f"Unknown encoder_type: {encoder_type}")
+
+
 def convert(args: argparse.Namespace) -> None:
     accessor = RepoAccessor(args.repo_or_path, cache_dir=args.cache_dir)
-    encoder_name_or_path = args.encoder_name_or_path or ENCODER_DEFAULT_NAME_OR_PATH[args.encoder_cls]
+    encoder_name_or_path = args.encoder_name_or_path or ENCODER_DEFAULT_NAME_OR_PATH[args.encoder_type]
 
-    decoder_relpath = resolve_decoder_file(accessor, args.encoder_cls, args.variant, args.decoder_checkpoint)
-    stats_relpath = resolve_stats_file(accessor, args.encoder_cls, args.dataset_name, args.stats_checkpoint)
+    decoder_relpath = resolve_decoder_file(accessor, args.encoder_type, args.variant, args.decoder_checkpoint)
+    stats_relpath = resolve_stats_file(accessor, args.encoder_type, args.dataset_name, args.stats_checkpoint)
 
     print(f"Using decoder checkpoint: {decoder_relpath}")
     if stats_relpath is not None:
@@ -210,13 +243,39 @@ def convert(args: argparse.Namespace) -> None:
 
     decoder_cfg = DECODER_CONFIGS[args.decoder_config_name]
 
+    # Read encoder normalization stats from the HF image processor (only place that downloads encoder info)
+    from transformers import AutoConfig, AutoImageProcessor
+
+    proc = AutoImageProcessor.from_pretrained(encoder_name_or_path)
+    encoder_norm_mean = list(proc.image_mean)
+    encoder_norm_std = list(proc.image_std)
+
+    # Read encoder hidden size and patch size from HF config
+    encoder_hidden_size = ENCODER_HIDDEN_SIZE[args.encoder_type]
+    encoder_patch_size = ENCODER_PATCH_SIZE[args.encoder_type]
+    try:
+        hf_config = AutoConfig.from_pretrained(encoder_name_or_path)
+        # For models like SigLIP that nest vision config
+        if hasattr(hf_config, "vision_config"):
+            hf_config = hf_config.vision_config
+        encoder_hidden_size = hf_config.hidden_size
+        encoder_patch_size = hf_config.patch_size
+    except Exception:
+        pass
+
+    # Load the actual encoder weights from HF to include in the saved model
+    encoder_state_dict = _load_hf_encoder_state_dict(args.encoder_type, encoder_name_or_path)
+
     model = AutoencoderRAE(
-        encoder_cls=args.encoder_cls,
-        encoder_name_or_path=encoder_name_or_path,
+        encoder_type=args.encoder_type,
+        encoder_hidden_size=encoder_hidden_size,
+        encoder_patch_size=encoder_patch_size,
         encoder_input_size=args.encoder_input_size,
         patch_size=args.patch_size,
         image_size=args.image_size,
         num_channels=args.num_channels,
+        encoder_norm_mean=encoder_norm_mean,
+        encoder_norm_std=encoder_norm_std,
         decoder_hidden_size=decoder_cfg["decoder_hidden_size"],
         decoder_num_hidden_layers=decoder_cfg["decoder_num_hidden_layers"],
         decoder_num_attention_heads=decoder_cfg["decoder_num_attention_heads"],
@@ -225,6 +284,10 @@ def convert(args: argparse.Namespace) -> None:
         latents_std=latents_std,
         scaling_factor=args.scaling_factor,
     )
+
+    # Load encoder weights
+    encoder_load_result = model.encoder.model.load_state_dict(encoder_state_dict, strict=True)
+    print(f"Encoder weights loaded: {encoder_load_result}")
 
     load_result = model.decoder.load_state_dict(decoder_state_dict, strict=False)
     allowed_missing = {"trainable_cls_token"}
@@ -242,8 +305,10 @@ def convert(args: argparse.Namespace) -> None:
 
     metadata = {
         "source": args.repo_or_path,
-        "encoder_cls": args.encoder_cls,
+        "encoder_type": args.encoder_type,
         "encoder_name_or_path": encoder_name_or_path,
+        "encoder_hidden_size": encoder_hidden_size,
+        "encoder_patch_size": encoder_patch_size,
         "decoder_checkpoint": decoder_relpath,
         "stats_checkpoint": stats_relpath,
         "variant": args.variant,
@@ -272,8 +337,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output_path", type=str, required=True, help="Directory to save converted model")
 
-    parser.add_argument("--encoder_cls", type=str, choices=["dinov2", "mae", "siglip2"], required=True)
-    parser.add_argument("--encoder_name_or_path", type=str, default=None, help="Optional encoder HF id/path override")
+    parser.add_argument("--encoder_type", type=str, choices=["dinov2", "mae", "siglip2"], required=True)
+    parser.add_argument(
+        "--encoder_name_or_path", type=str, default=None, help="Optional encoder HF model id or local path override"
+    )
 
     parser.add_argument("--variant", type=str, default="ViTXL_n08", help="Decoder variant folder name")
     parser.add_argument("--dataset_name", type=str, default="imagenet1k", help="Stats dataset folder name")

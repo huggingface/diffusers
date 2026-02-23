@@ -73,8 +73,9 @@ def parse_args():
     parser.add_argument("--checkpointing_steps", type=int, default=1000)
     parser.add_argument("--validation_steps", type=int, default=500)
 
-    parser.add_argument("--encoder_cls", type=str, choices=["dinov2", "siglip2", "mae"], default="dinov2")
-    parser.add_argument("--encoder_name_or_path", type=str, default=None)
+    parser.add_argument("--encoder_type", type=str, choices=["dinov2", "siglip2", "mae"], default="dinov2")
+    parser.add_argument("--encoder_hidden_size", type=int, default=768)
+    parser.add_argument("--encoder_patch_size", type=int, default=14)
     parser.add_argument("--encoder_input_size", type=int, default=224)
     parser.add_argument("--patch_size", type=int, default=16)
     parser.add_argument("--image_size", type=int, default=256)
@@ -123,7 +124,9 @@ def build_transforms(args):
     return transforms.Compose(image_transforms)
 
 
-def compute_losses(model, pixel_values, reconstruction_loss_type: str, use_encoder_loss: bool, encoder_loss_weight: float):
+def compute_losses(
+    model, pixel_values, reconstruction_loss_type: str, use_encoder_loss: bool, encoder_loss_weight: float
+):
     decoded = model(pixel_values).sample
 
     if decoded.shape[-2:] != pixel_values.shape[-2:]:
@@ -198,8 +201,9 @@ def main():
     )
 
     model = AutoencoderRAE(
-        encoder_cls=args.encoder_cls,
-        encoder_name_or_path=args.encoder_name_or_path,
+        encoder_type=args.encoder_type,
+        encoder_hidden_size=args.encoder_hidden_size,
+        encoder_patch_size=args.encoder_patch_size,
         decoder_hidden_size=args.decoder_hidden_size,
         decoder_num_hidden_layers=args.decoder_num_hidden_layers,
         decoder_num_attention_heads=args.decoder_num_attention_heads,

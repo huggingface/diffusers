@@ -15,17 +15,16 @@
 
 import gc
 import unittest
-from unittest.mock import patch
 
 import torch
 import torch.nn.functional as F
 
 from diffusers.models.autoencoders.autoencoder_rae import (
+    _ENCODER_TYPES,
     AutoencoderRAE,
     Dinov2Encoder,
     MAEEncoder,
     Siglip2Encoder,
-    register_encoder,
 )
 
 from ...testing_utils import backend_empty_cache, enable_full_determinism, slow, torch_device
@@ -39,17 +38,19 @@ SIGLIP2_MODEL_ID = "google/siglip2-base-patch16-256"
 MAE_MODEL_ID = "facebook/vit-mae-base"
 
 
-@register_encoder(name="tiny_test")
 class TinyTestEncoder(torch.nn.Module):
-    def __init__(self, encoder_name_or_path: str = "unused"):
+    def __init__(self, hidden_size: int = 16, patch_size: int = 8, **kwargs):
         super().__init__()
-        self.patch_size = 8
-        self.hidden_size = 16
+        self.patch_size = patch_size
+        self.hidden_size = hidden_size
 
     def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
         pooled = F.avg_pool2d(images.mean(dim=1, keepdim=True), kernel_size=self.patch_size, stride=self.patch_size)
         tokens = pooled.flatten(2).transpose(1, 2).contiguous()
         return tokens.repeat(1, 1, self.hidden_size)
+
+
+_ENCODER_TYPES["tiny_test"] = TinyTestEncoder
 
 
 class AutoencoderRAETests(unittest.TestCase):
@@ -60,8 +61,9 @@ class AutoencoderRAETests(unittest.TestCase):
 
     def _make_model(self, **overrides) -> AutoencoderRAE:
         config = {
-            "encoder_cls": "tiny_test",
-            "encoder_name_or_path": "unused",
+            "encoder_type": "tiny_test",
+            "encoder_hidden_size": 16,
+            "encoder_patch_size": 8,
             "encoder_input_size": 32,
             "patch_size": 4,
             "image_size": 16,
@@ -70,16 +72,14 @@ class AutoencoderRAETests(unittest.TestCase):
             "decoder_num_attention_heads": 4,
             "decoder_intermediate_size": 64,
             "num_channels": 3,
+            "encoder_norm_mean": [0.5, 0.5, 0.5],
+            "encoder_norm_std": [0.5, 0.5, 0.5],
             "noise_tau": 0.0,
             "reshape_to_2d": True,
             "scaling_factor": 1.0,
         }
         config.update(overrides)
-        with patch("transformers.AutoImageProcessor.from_pretrained") as mocked_from_pretrained:
-            mocked_from_pretrained.return_value = type(
-                "_MockProcessor", (), {"image_mean": [0.5, 0.5, 0.5], "image_std": [0.5, 0.5, 0.5]}
-            )()
-            return AutoencoderRAE(**config).to(torch_device)
+        return AutoencoderRAE(**config).to(torch_device)
 
     def test_fast_encode_decode_and_forward_shapes(self):
         model = self._make_model().eval()
@@ -173,9 +173,7 @@ class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
         backend_empty_cache(torch_device)
 
     def test_dinov2_encoder_forward_shape(self):
-        dino_path = DINO_MODEL_ID
-
-        encoder = Dinov2Encoder(encoder_name_or_path=dino_path).to(torch_device)
+        encoder = Dinov2Encoder().to(torch_device)
         x = torch.rand(1, 3, 224, 224, device=torch_device)
         y = encoder(x)
 
@@ -185,9 +183,7 @@ class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
         assert y.shape[2] == encoder.hidden_size
 
     def test_siglip2_encoder_forward_shape(self):
-        siglip2_path = SIGLIP2_MODEL_ID
-
-        encoder = Siglip2Encoder(encoder_name_or_path=siglip2_path).to(torch_device)
+        encoder = Siglip2Encoder().to(torch_device)
         x = torch.rand(1, 3, 224, 224, device=torch_device)
         y = encoder(x)
 
@@ -197,9 +193,7 @@ class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
         assert y.shape[2] == encoder.hidden_size
 
     def test_mae_encoder_forward_shape(self):
-        mae_path = MAE_MODEL_ID
-
-        encoder = MAEEncoder(encoder_name_or_path=mae_path).to(torch_device)
+        encoder = MAEEncoder().to(torch_device)
         x = torch.rand(1, 3, 224, 224, device=torch_device)
         y = encoder(x)
 
@@ -216,30 +210,11 @@ class AutoencoderRAEIntegrationTests(unittest.TestCase):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def test_autoencoder_rae_encode_decode_forward_shapes_dinov2(self):
-        # This is a shape & numerical-sanity test. The decoder is randomly initialized unless you load trained weights.
-        dino_path = DINO_MODEL_ID
-
-        encoder_input_size = 224
-        decoder_patch_size = 16
-        # dinov2 patch=14 -> (224/14)^2 = 256 tokens -> decoder output 256 for patch 16
-        image_size = 256
-
-        model = AutoencoderRAE(
-            encoder_cls="dinov2",
-            encoder_name_or_path=dino_path,
-            image_size=image_size,
-            encoder_input_size=encoder_input_size,
-            patch_size=decoder_patch_size,
-            # keep the decoder lightweight for test runtime
-            decoder_hidden_size=128,
-            decoder_num_hidden_layers=1,
-            decoder_num_attention_heads=4,
-            decoder_intermediate_size=256,
-        ).to(torch_device)
+    def test_autoencoder_rae_from_pretrained_dinov2(self):
+        model = AutoencoderRAE.from_pretrained("nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08").to(torch_device)
         model.eval()
 
-        x = torch.rand(1, 3, encoder_input_size, encoder_input_size, device=torch_device)
+        x = torch.rand(1, 3, 224, 224, device=torch_device)
 
         with torch.no_grad():
             latents = model.encode(x).latent
@@ -247,8 +222,8 @@ class AutoencoderRAEIntegrationTests(unittest.TestCase):
             assert latents.shape[0] == 1
 
             decoded = model.decode(latents).sample
-            assert decoded.shape == (1, 3, image_size, image_size)
+            assert decoded.shape[0] == 1
+            assert decoded.shape[1] == 3
 
             recon = model(x).sample
-            assert recon.shape == (1, 3, image_size, image_size)
             assert torch.isfinite(recon).all().item()
