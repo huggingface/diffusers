@@ -36,9 +36,7 @@ class AutoModel(ConfigMixin):
         )
 
     @classmethod
-    def from_config(
-        cls, pretrained_model_name_or_path_or_dict: Optional[Union[str, os.PathLike, dict]] = None, **kwargs
-    ):
+    def from_config(cls, pretrained_model_name_or_path_or_dict: str | os.PathLike | dict | None = None, **kwargs):
         r"""
         Instantiate a model from a config dictionary or a pretrained model configuration file with random weights (no
         pretrained weights are loaded).
