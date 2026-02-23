@@ -262,11 +262,7 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        if [ "${{ matrix.transformers_version }}" = "main" ]; then
-          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        else
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers==${{ matrix.transformers_version }}
-        fi
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip install -e ".[quality,training]"
 
     - name: Environment
@@ -290,6 +286,6 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v6
       with:
-        name: examples_transformers_${{ matrix.transformers_version }}_test_reports
+        name: examples_test_reports
         path: reports
 
