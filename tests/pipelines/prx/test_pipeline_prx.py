@@ -92,7 +92,7 @@ class PRXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         encoder_config = T5GemmaModuleConfig(**encoder_params)
         text_encoder_config = T5GemmaConfig(encoder=encoder_config, is_encoder_decoder=False, **encoder_params)
-        text_encoder = T5GemmaEncoder(text_encoder_config)
+        text_encoder = T5GemmaEncoder(text_encoder_config.encoder)
 
         return {
             "transformer": transformer,
