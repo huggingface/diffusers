@@ -24,6 +24,7 @@ import torch.multiprocessing as mp
 from diffusers.models._modeling_parallel import ContextParallelConfig
 
 from ...testing_utils import is_context_parallel, is_kernels_available, require_torch_multi_accelerator
+from .utils import _maybe_cast_to_bf16
 
 
 def _find_free_port():
@@ -57,6 +58,9 @@ def _context_parallel_worker(
         model = model_class(**init_dict)
         model.to(device)
         model.eval()
+
+        # Cast as needed.
+        model, inputs_dict = _maybe_cast_to_bf16(attention_backend, model, inputs_dict)
 
         # Move inputs to device
         inputs_on_device = {}
@@ -153,6 +157,7 @@ class ContextParallelAttentionBackendsTesterMixin:
         ],
     )
     @pytest.mark.parametrize("ulysses_anything", [True, False])
+    @torch.no_grad()
     def test_context_parallel_attn_backend_inference(self, cp_type, attentiion_backend, ulysses_anything):
         if not torch.distributed.is_available():
             pytest.skip("torch.distributed is not available.")
