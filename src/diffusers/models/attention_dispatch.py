@@ -695,13 +695,8 @@ def _wrapped_flash_attn_3(
         sm_margin=sm_margin,
         return_attn_probs=True,
     )
-    # Handle both old FA3 (always returns tuple) and new FA3 (returns tuple only with return_attn_probs=True)
-    if isinstance(result, tuple):
-        out, lse, *_ = result
-        lse = lse.permute(0, 2, 1)
-    else:
-        out = result
-        lse = torch.empty(q.shape[0], q.shape[2], q.shape[1], device=q.device, dtype=torch.float32)
+    out, lse, *_ = result
+    lse = lse.permute(0, 2, 1)
     return out, lse
 
 
