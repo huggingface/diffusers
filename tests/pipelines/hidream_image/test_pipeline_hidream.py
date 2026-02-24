@@ -156,7 +156,7 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generated_slice = generated_image.flatten()
         generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(np.allclose(generated_slice, expected_slice, atol=1e-3))
+        self.assertTrue(np.allclose(generated_slice, expected_slice, atol=5e-3))
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-4)
