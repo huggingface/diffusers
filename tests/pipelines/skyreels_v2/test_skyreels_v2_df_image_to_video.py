@@ -17,10 +17,7 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import (
-    AutoTokenizer,
-    T5EncoderModel,
-)
+from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLWan,
