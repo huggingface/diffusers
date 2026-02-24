@@ -6,6 +6,10 @@ class QuantoConfig(metaclass=DummyObject):
     _backends = ["optimum_quanto"]
 
     def __init__(self, *args, **kwargs):
+        from .deprecation_utils import deprecate
+
+        deprecation_message = "`QuantoConfig` is deprecated and will be removed in version 1.0.0."
+        deprecate("QuantoConfig", "1.0.0", deprecation_message)
         requires_backends(self, ["optimum_quanto"])
 
     @classmethod
