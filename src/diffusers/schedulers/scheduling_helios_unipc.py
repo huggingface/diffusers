@@ -174,7 +174,6 @@ class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
         """
         return self._begin_index
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
     def set_begin_index(self, begin_index: int = 0):
         """
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
@@ -332,7 +331,6 @@ class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
         return HeliosUniPCSchedulerOutput(prev_sample=prev_sample)
 
     # ---------------------------------- UniPC ----------------------------------
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
     def _sigma_to_alpha_sigma_t(self, sigma):
         if self.config.use_flow_sigmas:
             alpha_t = 1 - sigma
