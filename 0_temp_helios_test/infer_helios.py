@@ -62,7 +62,7 @@ def parse_args():
     # base
     parser.add_argument("--height", type=int, default=384)
     parser.add_argument("--width", type=int, default=640)
-    parser.add_argument("--num_frames", type=int, default=73)
+    parser.add_argument("--num_frames", type=int, default=99)
     parser.add_argument("--num_inference_steps", type=int, default=50)
     parser.add_argument("--guidance_scale", type=float, default=5.0)
     parser.add_argument("--use_dynamic_shifting", action="store_true")
@@ -238,7 +238,10 @@ def main():
         pipe.vae.enable_tiling()
 
     if args.enable_compile:
-        pipe.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True)
+        torch.backends.cudnn.benchmark = True
+        pipe.text_encoder.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
+        pipe.vae.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
+        pipe.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
 
     if args.low_vram_mode:
         pipe.enable_group_offload(
@@ -254,7 +257,7 @@ def main():
         pipe = pipe.to(device)
 
     if world_size > 1 and args.enable_parallelism:
-        transformer.set_attention_backend("flash")
+        # transformer.set_attention_backend("flash")
         pipe.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=world_size))
 
     if args.debug_mode:
