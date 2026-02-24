@@ -23,10 +23,7 @@ import torch.multiprocessing as mp
 
 from diffusers.models._modeling_parallel import ContextParallelConfig
 
-from ...testing_utils import (
-    is_context_parallel,
-    require_torch_multi_accelerator,
-)
+from ...testing_utils import is_context_parallel, is_kernels_available, require_torch_multi_accelerator
 
 
 def _find_free_port():
@@ -38,7 +35,9 @@ def _find_free_port():
     return port
 
 
-def _context_parallel_worker(rank, world_size, master_port, model_class, init_dict, cp_dict, inputs_dict, return_dict):
+def _context_parallel_worker(
+    rank, world_size, master_port, model_class, init_dict, cp_dict, inputs_dict, return_dict, attention_backend=None
+):
     """Worker function for context parallel testing."""
     try:
         # Set up distributed environment
@@ -66,6 +65,13 @@ def _context_parallel_worker(rank, world_size, master_port, model_class, init_di
                 inputs_on_device[key] = value.to(device)
             else:
                 inputs_on_device[key] = value
+
+        # Enable attention backend
+        if attention_backend:
+            try:
+                model.set_attention_backend(attention_backend)
+            except Exception as e:
+                pytest.skip(f"Skipping test because of exception: {e}.")
 
         # Enable context parallelism
         cp_config = ContextParallelConfig(**cp_dict)
@@ -119,6 +125,77 @@ class ContextParallelTesterMixin:
         mp.spawn(
             _context_parallel_worker,
             args=(world_size, master_port, self.model_class, init_dict, cp_dict, inputs_dict, return_dict),
+            nprocs=world_size,
+            join=True,
+        )
+
+        assert return_dict.get("status") == "success", (
+            f"Context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
+        )
+
+
+@is_context_parallel
+@require_torch_multi_accelerator
+class ContextParallelAttentionBackendsTesterMixin:
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"])
+    @pytest.mark.parametrize(
+        "attentiion_backend",
+        [
+            "native",
+            pytest.param(
+                "flash_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+            pytest.param(
+                "_flash_3_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("ulysses_anything", [True, False])
+    def test_context_parallel_attn_backend_inference(self, cp_type, attentiion_backend, ulysses_anything):
+        if not torch.distributed.is_available():
+            pytest.skip("torch.distributed is not available.")
+
+        if getattr(self.model_class, "_cp_plan", None) is None:
+            pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
+
+        if cp_type == "ulysses_degree" and attentiion_backend == "native":
+            pytest.skip("Skipping test because ulysses isn't supported with native attention backend.")
+
+        if ulysses_anything and "ulysses" not in cp_type:
+            pytest.skip("Skipping test as ulysses anything needs the ulysses degree set.")
+
+        world_size = 2
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+
+        # Move all tensors to CPU for multiprocessing
+        inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        cp_dict = {cp_type: world_size}
+        if ulysses_anything:
+            cp_dict.update({"ulysses_anything": ulysses_anything})
+
+        # Find a free port for distributed communication
+        master_port = _find_free_port()
+
+        # Use multiprocessing manager for cross-process communication
+        manager = mp.Manager()
+        return_dict = manager.dict()
+
+        # Spawn worker processes
+        mp.spawn(
+            _context_parallel_worker,
+            args=(
+                world_size,
+                master_port,
+                self.model_class,
+                init_dict,
+                cp_dict,
+                inputs_dict,
+                return_dict,
+                attentiion_backend,
+            ),
             nprocs=world_size,
             join=True,
         )
