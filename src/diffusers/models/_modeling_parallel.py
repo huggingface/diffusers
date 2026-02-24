@@ -60,6 +60,10 @@ class ContextParallelConfig:
         rotate_method (`str`, *optional*, defaults to `"allgather"`):
             Method to use for rotating key/value states across devices in ring attention. Currently, only `"allgather"`
             is supported.
+        ulysses_anything (`bool`, *optional*, defaults to `False`):
+            Whether to enable "Ulysses Anything" mode, which supports arbitrary sequence lengths and head counts that
+            are not evenly divisible by `ulysses_degree`. When enabled, `ulysses_degree` must be greater than 1 and
+            `ring_degree` must be 1.
         mesh (`torch.distributed.device_mesh.DeviceMesh`, *optional*):
             A custom device mesh to use for context parallelism. If provided, this mesh will be used instead of
             creating a new one. This is useful when combining context parallelism with other parallelism strategies
@@ -74,7 +78,7 @@ class ContextParallelConfig:
     convert_to_fp32: bool = True
     # TODO: support alltoall
     rotate_method: Literal["allgather", "alltoall"] = "allgather"
-    mesh: Optional[torch.distributed.device_mesh.DeviceMesh] = None
+    mesh: torch.distributed.device_mesh.DeviceMesh | None = None
     # Whether to enable ulysses anything attention to support
     # any sequence lengths and any head numbers.
     ulysses_anything: bool = False
