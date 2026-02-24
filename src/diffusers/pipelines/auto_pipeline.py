@@ -54,6 +54,7 @@ from .flux import (
 )
 from .flux2 import Flux2KleinPipeline, Flux2Pipeline
 from .glm_image import GlmImagePipeline
+from .helios import HeliosPipeline
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -174,6 +175,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
         ("glm_image", GlmImagePipeline),
+        ("helios", HeliosPipeline),
         ("cogview4-control", CogView4ControlPipeline),
         ("qwenimage", QwenImagePipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
