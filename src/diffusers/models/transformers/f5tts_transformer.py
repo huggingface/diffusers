@@ -227,7 +227,6 @@ class F5TextEmbedding(nn.Module):
         self.mask_padding = mask_padding  # mask filler and batch padding tokens or not
 
         if conv_layers > 0:
-            self.extra_modeling = True
             self.precompute_max_pos = 4096  # ~44s of 24khz audio
             self.register_buffer(
                 "freqs_cis", precompute_freqs_cis(text_dim, self.precompute_max_pos), persistent=False
@@ -235,8 +234,7 @@ class F5TextEmbedding(nn.Module):
             self.text_blocks = nn.Sequential(
                 *[F5ConvNeXtV2Block(text_dim, text_dim * conv_mult) for _ in range(conv_layers)]
             )
-        else:
-            self.extra_modeling = False
+
 
     def forward(self, text: int["b nt"], seq_len, drop_text=False):  # noqa: F722
         text = text + 1  # use 0 as filler token. preprocess of batch pad -1, see list_str_to_idx()
@@ -251,22 +249,21 @@ class F5TextEmbedding(nn.Module):
 
         text = self.text_embed(text)  # b n -> b n d
 
-        # possible extra modeling
-        if self.extra_modeling:
-            # sinus pos emb
-            batch_start = torch.zeros((batch,), dtype=torch.long)
-            pos_idx = get_pos_embed_indices(batch_start, seq_len, max_pos=self.precompute_max_pos)
-            text_pos_embed = self.freqs_cis[pos_idx]
-            text = text + text_pos_embed
 
-            # convnextv2 blocks
-            if self.mask_padding:
+        # sinus pos emb
+        batch_start = torch.zeros((batch,), dtype=torch.long)
+        pos_idx = get_pos_embed_indices(batch_start, seq_len, max_pos=self.precompute_max_pos)
+        text_pos_embed = self.freqs_cis[pos_idx]
+        text = text + text_pos_embed
+
+        # convnextv2 blocks
+        if self.mask_padding:
+            text = text.masked_fill(text_mask.unsqueeze(-1).expand(-1, -1, text.size(-1)), 0.0)
+            for block in self.text_blocks:
+                text = block(text)
                 text = text.masked_fill(text_mask.unsqueeze(-1).expand(-1, -1, text.size(-1)), 0.0)
-                for block in self.text_blocks:
-                    text = block(text)
-                    text = text.masked_fill(text_mask.unsqueeze(-1).expand(-1, -1, text.size(-1)), 0.0)
-            else:
-                text = self.text_blocks(text)
+        else:
+            text = self.text_blocks(text)
 
         return text
 
