@@ -328,6 +328,12 @@ class ComponentSpec:
                 else getattr(self.type_hint, "from_pretrained")
             )
 
+            # `torch_dtype` is not an accepted parameter for tokenizers and processors.
+            # As a result, it gets stored in `init_kwargs`, which are written to the config
+            # during save. This causes JSON serialization to fail when saving the component.
+            if not issubclass(self.type_hint, torch.nn.Module):
+                kwargs.pop("torch_dtype", None)
+
             try:
                 component = load_method(pretrained_model_name_or_path, **load_kwargs, **kwargs)
             except Exception as e:
