@@ -25,11 +25,11 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Generate video with model")
 
     # === Model paths ===
-    parser.add_argument("--base_model_path", type=str, default="/mnt/bn/yufan-dev-my/ysh_new/Codes/Helios/1_formal_ckpts/Helios-Base")
+    parser.add_argument("--base_model_path", type=str, default="BestWishYsh/Helios-Base")
     parser.add_argument(
         "--transformer_path",
         type=str,
-        default="/mnt/bn/yufan-dev-my/ysh_new/Codes/Helios/1_formal_ckpts/Helios-Base",
+        default="BestWishYsh/Helios-Base",
     )
     parser.add_argument(
         "--lora_path",

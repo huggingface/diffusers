@@ -1,6 +1,6 @@
 CUDA_VISIBLE_DEVICES=0 python infer_helios.py \
-    --base_model_path "/mnt/bn/yufan-dev-my/ysh_new/Codes/Helios/1_formal_ckpts/Helios-Base" \
-    --transformer_path "/mnt/bn/yufan-dev-my/ysh_new/Codes/Helios/1_formal_ckpts/Helios-Base" \
+    --base_model_path "BestWishYsh/Helios-Base" \
+    --transformer_path "BestWishYsh/Helios-Base" \
     --sample_type "t2v" \
     --prompt "A dynamic time-lapse video showing the rapidly moving scenery from the window of a speeding train. The camera captures various elements such as lush green fields, towering trees, quaint countryside houses, and distant mountain ranges passing by quickly. The train window frames the view, adding a sense of speed and motion as the landscape rushes past. The camera remains static but emphasizes the fast-paced movement outside. The overall atmosphere is serene yet exhilarating, capturing the essence of travel and exploration. Medium shot focusing on the train window and the rushing scenery beyond." \
     --use_dynamic_shifting \
