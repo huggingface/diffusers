@@ -256,3 +256,27 @@ class PRXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_image = torch.zeros(3, 32, 32)
         max_diff = np.abs(generated_image - expected_image).max()
         self.assertLessEqual(max_diff, 1e10)
+
+    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    def test_save_load_dduf(self):
+        pass
+
+    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    def test_loading_with_variants(self):
+        pass
+
+    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    def test_pipeline_with_accelerator_device_map(self):
+        pass
+
+    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    def test_save_load_local(self):
+        pass
+
+    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    def test_save_load_optional_components(self):
+        pass
+
+    @unittest.skip("Custom T5GemmaEncoder not compatible with transformers v5.")
+    def test_torch_dtype_dict(self):
+        pass
