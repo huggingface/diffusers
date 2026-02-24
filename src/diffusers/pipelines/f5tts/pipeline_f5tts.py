@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from torch.nn.utils.rnn import pad_sequence
 
-from diffusers.models.transformers.f5tts_transformer import F5ConditioningEncoder, F5DiTModel, MelSpec
+from diffusers.models.transformers.f5tts_transformer import F5ConditioningEncoder, F5Transformer1DModel, MelSpec
 from diffusers.pipelines.pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils.torch_utils import randn_tensor
@@ -23,7 +23,7 @@ class F5FlowPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        transformer: F5DiTModel,
+        transformer: F5Transformer1DModel,
         conditioning_encoder: F5ConditioningEncoder,
         scheduler: FlowMatchEulerDiscreteScheduler,
         vocab_char_map: Optional[Dict[str, int]] = None,
@@ -335,73 +335,3 @@ class F5FlowPipeline(DiffusionPipeline):
             return (audio,)
         return AudioPipelineOutput(audios=audio)
 
-
-if __name__ == "__main__":
-    print("entering main funcitn")
-
-    dit_config = {
-        "dim": 1024,
-        "depth": 22,
-        "heads": 16,
-        "ff_mult": 2,
-        "text_dim": 512,
-        "text_num_embeds": 256,
-        "text_mask_padding": True,
-        "qk_norm": None,  # null | rms_norm
-        "conv_layers": 4,
-        "pe_attn_head": None,
-        "attn_backend": "torch",  # torch | flash_attn
-        "attn_mask_enabled": False,
-        "checkpoint_activations": False,  # recompute activations and save memory for extra compute
-    }
-
-    mel_spec_config = {
-        "target_sample_rate": 24000,
-        "n_mel_channels": 100,
-        "hop_length": 256,
-        "win_length": 1024,
-        "n_fft": 1024,
-    }
-
-    with open("vocab.txt", "r", encoding="utf-8") as f:
-        vocab_char_map = {}
-        for i, char in enumerate(f):
-            vocab_char_map[char[:-1]] = i
-    vocab_size = len(vocab_char_map)
-
-    dit = F5DiTModel(**dit_config)
-    print("DiT model initialized with config:", dit_config)
-
-    conditioning_encoder_config = {
-        "dim": 1024,
-        "text_num_embeds": vocab_size,
-        "text_dim": 512,
-        "text_mask_padding": True,
-        "conv_layers": 4,
-        "mel_dim": mel_spec_config["n_mel_channels"],
-    }
-    conditioning_encoder = F5ConditioningEncoder(**conditioning_encoder_config)
-    print("Conditioning Encoder initialized with config:", conditioning_encoder_config)
-
-    scheduler = FlowMatchEulerDiscreteScheduler()
-
-    f5_pipeline = F5FlowPipeline(
-        transformer=dit, conditioning_encoder=conditioning_encoder, vocab_char_map=vocab_char_map, scheduler=scheduler
-    )
-    print("F5FlowPipeline initialized with DiT and Conditioning Encoder.")
-
-    import torch
-
-    ref_audio = torch.randn(2, 16000)  # Dummy reference audio
-    duration = 250
-
-    ref_text = "This is a test sentence."  # Dummy reference text
-    gen_text = "This is a generated sentence."  # Dummy generated text
-
-    ref_text = [ref_text] * 2
-    gen_text = [gen_text] * 2
-
-    x = f5_pipeline(
-        ref_audio=ref_audio, ref_text=ref_text, gen_text=gen_text, num_inference_steps=2, return_dict=False
-    )
-    print("Generated output shape:", x[0].shape)

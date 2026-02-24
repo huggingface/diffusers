@@ -19,11 +19,9 @@ from ..modeling_utils import ModelMixin
 from ..normalization import GlobalResponseNorm
 
 
-# import jieba
-# from pypinyin import Style, lazy_pinyin
 
 
-class AdaLayerNorm2(nn.Module):
+class F5AdaLayerNorm(nn.Module):
     def __init__(self, dim):
         super().__init__()
 
@@ -59,17 +57,7 @@ class F5FeedForward(nn.Module):
 # modified from diffusers/src/diffusers/models/attention_processor.py
 
 
-def is_package_available(package_name: str) -> bool:
-    try:
-        import importlib
-
-        package_exists = importlib.util.find_spec(package_name) is not None
-        return package_exists
-    except Exception:
-        return False
-
-
-class DiTBlock(nn.Module):
+class F5TransformerBlock(nn.Module):
     def __init__(
         self,
         dim,
@@ -84,7 +72,7 @@ class DiTBlock(nn.Module):
     ):
         super().__init__()
 
-        self.attn_norm = AdaLayerNorm2(dim)
+        self.attn_norm = F5AdaLayerNorm(dim)
         self.attn = Attention(
             processor=F5TTSAttnProcessor2_0(
                 pe_attn_head=pe_attn_head,
@@ -158,7 +146,7 @@ class SinusPositionEmbedding(nn.Module):
         return emb
 
 
-class TimestepEmbedding(nn.Module):
+class F5TimestepEmbedding(nn.Module):
     def __init__(self, dim, freq_embed_dim=256):
         super().__init__()
         self.time_embed = SinusPositionEmbedding(freq_embed_dim)
@@ -197,7 +185,7 @@ def get_pos_embed_indices(start, length, max_pos, scale=1.0):
     return pos
 
 
-class ConvNeXtV2Block(nn.Module):
+class F5ConvNeXtV2Block(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -231,7 +219,7 @@ class ConvNeXtV2Block(nn.Module):
 # Text embedding
 
 
-class TextEmbedding(nn.Module):
+class F5TextEmbedding(nn.Module):
     def __init__(self, text_num_embeds, text_dim, mask_padding=True, conv_layers=0, conv_mult=2):
         super().__init__()
         self.text_embed = nn.Embedding(text_num_embeds + 1, text_dim)  # use 0 as filler token
@@ -245,7 +233,7 @@ class TextEmbedding(nn.Module):
                 "freqs_cis", precompute_freqs_cis(text_dim, self.precompute_max_pos), persistent=False
             )
             self.text_blocks = nn.Sequential(
-                *[ConvNeXtV2Block(text_dim, text_dim * conv_mult) for _ in range(conv_layers)]
+                *[F5ConvNeXtV2Block(text_dim, text_dim * conv_mult) for _ in range(conv_layers)]
             )
         else:
             self.extra_modeling = False
@@ -317,7 +305,7 @@ class F5ConditioningEncoder(ModelMixin, ConfigMixin):
         mel_dim,
     ):
         super().__init__()
-        self.text_embed = TextEmbedding(
+        self.text_embed = F5TextEmbedding(
             text_num_embeds, text_dim, mask_padding=text_mask_padding, conv_layers=conv_layers
         )
         self.input_embed = InputEmbedding(mel_dim, text_dim, dim)
@@ -353,7 +341,7 @@ class F5ConditioningEncoder(ModelMixin, ConfigMixin):
         return self.text_embed.text_embed.weight.device
 
 
-class AdaLayerNorm_Final(nn.Module):
+class F5AdaLayerNormFinal(nn.Module):
     def __init__(self, dim):
         super().__init__()
 
@@ -370,7 +358,7 @@ class AdaLayerNorm_Final(nn.Module):
         return x
 
 
-class F5DiTModel(ModelMixin, ConfigMixin):
+class F5Transformer1DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
@@ -394,7 +382,7 @@ class F5DiTModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        self.time_embed = TimestepEmbedding(dim)
+        self.time_embed = F5TimestepEmbedding(dim)
         if text_dim is None:
             text_dim = mel_dim
         self.dim = dim
@@ -403,7 +391,7 @@ class F5DiTModel(ModelMixin, ConfigMixin):
 
         self.transformer_blocks = nn.ModuleList(
             [
-                DiTBlock(
+                F5TransformerBlock(
                     dim=dim,
                     heads=heads,
                     dim_head=dim_head,
@@ -421,7 +409,7 @@ class F5DiTModel(ModelMixin, ConfigMixin):
 
         # can't use diffusers AdaLayerNorm here, because for chunk_dim = 1, it has shift, scale instead of scale, shift
         # better to have this as a separate class than hackily using diffusers AdaLayerNorm
-        self.norm_out = AdaLayerNorm_Final(dim)  # final modulation
+        self.norm_out = F5AdaLayerNormFinal(dim)  # final modulation
         self.proj_out = nn.Linear(dim, mel_dim)
 
     def forward(
