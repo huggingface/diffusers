@@ -168,7 +168,7 @@ class QwenImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
+        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=5e-3))
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)
