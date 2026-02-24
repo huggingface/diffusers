@@ -143,7 +143,7 @@ class ContextParallelTesterMixin:
 class ContextParallelAttentionBackendsTesterMixin:
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"])
     @pytest.mark.parametrize(
-        "attentiion_backend",
+        "attention_backend",
         [
             "native",
             pytest.param(
@@ -158,15 +158,16 @@ class ContextParallelAttentionBackendsTesterMixin:
     )
     @pytest.mark.parametrize("ulysses_anything", [True, False])
     @torch.no_grad()
-    def test_context_parallel_attn_backend_inference(self, cp_type, attentiion_backend, ulysses_anything):
+    def test_context_parallel_attn_backend_inference(self, cp_type, attention_backend, ulysses_anything):
         if not torch.distributed.is_available():
             pytest.skip("torch.distributed is not available.")
 
         if getattr(self.model_class, "_cp_plan", None) is None:
             pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
 
-        if cp_type == "ring_degree" and attentiion_backend == "native":
-            pytest.skip("Skipping test because ulysses isn't supported with native attention backend.")
+        if cp_type == "ring_degree":
+            if attention_backend == "native":
+                pytest.skip("Skipping test because ulysses isn't supported with native attention backend.")
 
         if ulysses_anything and "ulysses" not in cp_type:
             pytest.skip("Skipping test as ulysses anything needs the ulysses degree set.")
@@ -199,7 +200,7 @@ class ContextParallelAttentionBackendsTesterMixin:
                 cp_dict,
                 inputs_dict,
                 return_dict,
-                attentiion_backend,
+                attention_backend,
             ),
             nprocs=world_size,
             join=True,
