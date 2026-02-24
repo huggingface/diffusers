@@ -160,7 +160,7 @@ class ContextParallelAttentionBackendsTesterMixin:
         if getattr(self.model_class, "_cp_plan", None) is None:
             pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
 
-        if cp_type == "ulysses_degree" and attentiion_backend == "native":
+        if cp_type == "ring_degree" and attentiion_backend == "native":
             pytest.skip("Skipping test because ulysses isn't supported with native attention backend.")
 
         if ulysses_anything and "ulysses" not in cp_type:
