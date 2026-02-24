@@ -75,10 +75,7 @@ if _CAN_USE_FLASH_ATTN:
     except (ImportError, OSError, RuntimeError) as e:
         # Handle ABI mismatch or other import failures gracefully.
         # This can happen when flash_attn was compiled against a different PyTorch version.
-        logger.warning(
-            f"flash_attn is installed but failed to import: {e}. "
-            f"Falling back to native PyTorch attention."
-        )
+        logger.warning(f"flash_attn is installed but failed to import: {e}. Falling back to native PyTorch attention.")
         _CAN_USE_FLASH_ATTN = False
         flash_attn_func = None
         flash_attn_varlen_func = None
