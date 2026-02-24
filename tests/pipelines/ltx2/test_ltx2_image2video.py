@@ -224,7 +224,57 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         expected_audio_slice = torch.tensor(
             [
-                0.0236,  0.0499,  0.1230,  0.1094,  0.1713,  0.1044,  0.1729,  0.1009, 0.0672, -0.0069,  0.0688,  0.0097,  0.0808,  0.1231,  0.0986,  0.0739
+                0.0294, 0.0498, 0.1269, 0.1135, 0.1639, 0.1116, 0.1730, 0.0931, 0.0672, -0.0069, 0.0688, 0.0097, 0.0808, 0.1231, 0.0986, 0.0739
+            ]
+        )
+        # fmt: on
+
+        video = video.flatten()
+        audio = audio.flatten()
+        generated_video_slice = torch.cat([video[:8], video[-8:]])
+        generated_audio_slice = torch.cat([audio[:8], audio[-8:]])
+
+        assert torch.allclose(expected_video_slice, generated_video_slice, atol=1e-4, rtol=1e-4)
+        assert torch.allclose(expected_audio_slice, generated_audio_slice, atol=1e-4, rtol=1e-4)
+
+    def test_two_stages_inference(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["output_type"] = "latent"
+        first_stage_output = pipe(**inputs)
+        video_latent = first_stage_output.frames
+        audio_latent = first_stage_output.audio
+
+        self.assertEqual(video_latent.shape, (1, 4, 3, 16, 16))
+        self.assertEqual(audio_latent.shape, (1, 2, 5, 2))
+        self.assertEqual(audio_latent.shape[1], components["vocoder"].config.out_channels)
+
+        inputs["latents"] = video_latent
+        inputs["audio_latents"] = audio_latent
+        inputs["output_type"] = "pt"
+        second_stage_output = pipe(**inputs)
+        video = second_stage_output.frames
+        audio = second_stage_output.audio
+
+        self.assertEqual(video.shape, (1, 5, 3, 32, 32))
+        self.assertEqual(audio.shape[0], 1)
+        self.assertEqual(audio.shape[1], components["vocoder"].config.out_channels)
+
+        # fmt: off
+        expected_video_slice = torch.tensor(
+            [
+                0.2665, 0.6915, 0.2939, 0.6767, 0.2552, 0.6215, 0.1765, 0.6248, 0.2800, 0.2356, 0.3480, 0.5395, 0.3190, 0.4128, 0.4784, 0.4086
+            ]
+        )
+        expected_audio_slice = torch.tensor(
+            [
+                0.0273, 0.0490, 0.1253, 0.1129, 0.1655, 0.1057, 0.1707, 0.0943, 0.0672, -0.0069, 0.0688, 0.0097, 0.0808, 0.1231, 0.0986, 0.0739
             ]
         )
         # fmt: on

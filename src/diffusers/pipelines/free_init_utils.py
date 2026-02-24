@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import Tuple, Union
 
 import torch
 import torch.fft as fft
@@ -73,8 +72,8 @@ class FreeInitMixin:
 
     def _get_free_init_freq_filter(
         self,
-        shape: Tuple[int, ...],
-        device: Union[str, torch.dtype],
+        shape: tuple[int, ...],
+        device: str | torch.dtype,
         filter_type: str,
         order: float,
         spatial_stop_frequency: float,

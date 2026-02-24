@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -104,7 +104,7 @@ class GlmImageAdaLayerNormZero(nn.Module):
 
     def forward(
         self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         dtype = hidden_states.dtype
         norm_hidden_states = self.norm(hidden_states).to(dtype=dtype)
         norm_encoder_hidden_states = self.norm_context(encoder_hidden_states).to(dtype=dtype)
@@ -143,41 +143,86 @@ class GlmImageAdaLayerNormZero(nn.Module):
 
 
 class GlmImageLayerKVCache:
-    """KV cache for GlmImage model."""
+    """KV cache for GlmImage model.
+    Supports per-sample caching for batch processing where each sample may have different condition images.
+    """
 
     def __init__(self):
-        self.k_cache = None
-        self.v_cache = None
-        self.mode: Optional[str] = None  # "write", "read", "skip"
+        self.k_caches: list[torch.Tensor | None] = []
+        self.v_caches: list[torch.Tensor | None] = []
+        self.mode: str | None = None  # "write", "read", "skip"
+        self.current_sample_idx: int = 0  # Current sample index for writing
 
     def store(self, k: torch.Tensor, v: torch.Tensor):
-        if self.k_cache is None:
-            self.k_cache = k
-            self.v_cache = v
+        """Store KV cache for the current sample."""
+        # k, v shape: (1, seq_len, num_heads, head_dim)
+        if len(self.k_caches) <= self.current_sample_idx:
+            # First time storing for this sample
+            self.k_caches.append(k)
+            self.v_caches.append(v)
         else:
-            self.k_cache = torch.cat([self.k_cache, k], dim=1)
-            self.v_cache = torch.cat([self.v_cache, v], dim=1)
+            # Append to existing cache for this sample (multiple condition images)
+            self.k_caches[self.current_sample_idx] = torch.cat([self.k_caches[self.current_sample_idx], k], dim=1)
+            self.v_caches[self.current_sample_idx] = torch.cat([self.v_caches[self.current_sample_idx], v], dim=1)
 
     def get(self, k: torch.Tensor, v: torch.Tensor):
-        if self.k_cache.shape[0] != k.shape[0]:
-            k_cache_expanded = self.k_cache.expand(k.shape[0], -1, -1, -1)
-            v_cache_expanded = self.v_cache.expand(v.shape[0], -1, -1, -1)
-        else:
-            k_cache_expanded = self.k_cache
-            v_cache_expanded = self.v_cache
+        """Get combined KV cache for all samples in the batch.
 
-        k_cache = torch.cat([k_cache_expanded, k], dim=1)
-        v_cache = torch.cat([v_cache_expanded, v], dim=1)
-        return k_cache, v_cache
+        Args:
+            k: Current key tensor, shape (batch_size, seq_len, num_heads, head_dim)
+            v: Current value tensor, shape (batch_size, seq_len, num_heads, head_dim)
+        Returns:
+            Combined key and value tensors with cached values prepended.
+        """
+        batch_size = k.shape[0]
+        num_cached_samples = len(self.k_caches)
+        if num_cached_samples == 0:
+            return k, v
+        if num_cached_samples == 1:
+            # Single cache, expand for all batch samples (shared condition images)
+            k_cache_expanded = self.k_caches[0].expand(batch_size, -1, -1, -1)
+            v_cache_expanded = self.v_caches[0].expand(batch_size, -1, -1, -1)
+        elif num_cached_samples == batch_size:
+            # Per-sample cache, concatenate along batch dimension
+            k_cache_expanded = torch.cat(self.k_caches, dim=0)
+            v_cache_expanded = torch.cat(self.v_caches, dim=0)
+        else:
+            # Mismatch: try to handle by repeating the caches
+            # This handles cases like num_images_per_prompt > 1
+            repeat_factor = batch_size // num_cached_samples
+            if batch_size % num_cached_samples == 0:
+                k_cache_list = []
+                v_cache_list = []
+                for i in range(num_cached_samples):
+                    k_cache_list.append(self.k_caches[i].expand(repeat_factor, -1, -1, -1))
+                    v_cache_list.append(self.v_caches[i].expand(repeat_factor, -1, -1, -1))
+                k_cache_expanded = torch.cat(k_cache_list, dim=0)
+                v_cache_expanded = torch.cat(v_cache_list, dim=0)
+            else:
+                raise ValueError(
+                    f"Cannot match {num_cached_samples} cached samples to batch size {batch_size}. "
+                    f"Batch size must be a multiple of the number of cached samples."
+                )
+
+        k_combined = torch.cat([k_cache_expanded, k], dim=1)
+        v_combined = torch.cat([v_cache_expanded, v], dim=1)
+        return k_combined, v_combined
 
     def clear(self):
-        self.k_cache = None
-        self.v_cache = None
+        self.k_caches = []
+        self.v_caches = []
         self.mode = None
+        self.current_sample_idx = 0
+
+    def next_sample(self):
+        """Move to the next sample for writing."""
+        self.current_sample_idx += 1
 
 
 class GlmImageKVCache:
-    """Container for all layers' KV caches."""
+    """Container for all layers' KV caches.
+    Supports per-sample caching for batch processing where each sample may have different condition images.
+    """
 
     def __init__(self, num_layers: int):
         self.num_layers = num_layers
@@ -186,11 +231,17 @@ class GlmImageKVCache:
     def __getitem__(self, layer_idx: int) -> GlmImageLayerKVCache:
         return self.caches[layer_idx]
 
-    def set_mode(self, mode: Optional[str]):
+    def set_mode(self, mode: str):
         if mode is not None and mode not in ["write", "read", "skip"]:
             raise ValueError(f"Invalid mode: {mode}, must be one of 'write', 'read', 'skip'")
         for cache in self.caches:
             cache.mode = mode
+
+    def next_sample(self):
+        """Move to the next sample for writing. Call this after processing
+        all condition images for one batch sample."""
+        for cache in self.caches:
+            cache.next_sample()
 
     def clear(self):
         for cache in self.caches:
@@ -218,10 +269,10 @@ class GlmImageAttnProcessor:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        kv_cache: Optional[GlmImageLayerKVCache] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        kv_cache: GlmImageLayerKVCache | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         dtype = encoder_hidden_states.dtype
 
         batch_size, text_seq_length, embed_dim = encoder_hidden_states.shape
@@ -330,14 +381,12 @@ class GlmImageTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[
-            Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]
-        ] = None,
-        attention_mask: Optional[Dict[str, torch.Tensor]] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        kv_cache: Optional[GlmImageLayerKVCache] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        temb: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]] | None = None,
+        attention_mask: dict[str, torch.Tensor] | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        kv_cache: GlmImageLayerKVCache | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # 1. Timestep conditioning
         (
             norm_hidden_states,
@@ -388,7 +437,7 @@ class GlmImageRotaryPosEmbed(nn.Module):
         self.patch_size = patch_size
         self.theta = theta
 
-    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, height, width = hidden_states.shape
         height, width = height // self.patch_size, width // self.patch_size
 
@@ -553,14 +602,12 @@ class GlmImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         timestep: torch.LongTensor,
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-        attention_mask: Optional[torch.Tensor] = None,
-        kv_caches: Optional[GlmImageKVCache] = None,
-        image_rotary_emb: Optional[
-            Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]
-        ] = None,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+        attention_mask: torch.Tensor | None = None,
+        kv_caches: GlmImageKVCache | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]] | None = None,
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         batch_size, num_channels, height, width = hidden_states.shape
 
         # 1. RoPE

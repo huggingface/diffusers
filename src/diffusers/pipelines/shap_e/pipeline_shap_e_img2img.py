@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -83,7 +82,7 @@ class ShapEPipelineOutput(BaseOutput):
             A list of images for 3D rendering.
     """
 
-    images: Union[PIL.Image.Image, np.ndarray]
+    images: PIL.Image.Image | np.ndarray
 
 
 class ShapEImg2ImgPipeline(DiffusionPipeline):
@@ -147,7 +146,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         num_images_per_prompt,
         do_classifier_free_guidance,
     ):
-        if isinstance(image, List) and isinstance(image[0], torch.Tensor):
+        if isinstance(image, list) and isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
 
         if not isinstance(image, torch.Tensor):
@@ -174,21 +173,21 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image]],
+        image: PIL.Image.Image | list[PIL.Image.Image],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
         guidance_scale: float = 4.0,
         frame_size: int = 64,
-        output_type: Optional[str] = "pil",  # pil, np, latent, mesh
+        output_type: str | None = "pil",  # pil, np, latent, mesh
         return_dict: bool = True,
     ):
         """
         The call function to the pipeline for generation.
 
         Args:
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
                 `Image` or tensor representing an image batch to be used as the starting point. Can also accept image
                 latents as image, but if passing latents directly it is not encoded again.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -196,7 +195,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -231,7 +230,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             batch_size = len(image)
         else:
             raise ValueError(
-                f"`image` has to be of type `PIL.Image.Image`, `torch.Tensor`, `List[PIL.Image.Image]` or `List[torch.Tensor]` but is {type(image)}"
+                f"`image` has to be of type `PIL.Image.Image`, `torch.Tensor`, `list[PIL.Image.Image]` or `list[torch.Tensor]` but is {type(image)}"
             )
 
         device = self._execution_device
