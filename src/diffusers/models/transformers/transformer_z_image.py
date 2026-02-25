@@ -578,11 +578,10 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         x_freqs_cis = x_freqs_cis[:, : x.shape[1]]
 
         x_attn_mask = torch.zeros((bsz, x_max_item_seqlen), dtype=torch.bool, device=device)
-        if torch.all(x_attn_mask):
-            x_attn_mask = None
-
         for i, seq_len in enumerate(x_item_seqlens):
             x_attn_mask[i, :seq_len] = 1
+        if torch.all(x_attn_mask):
+            x_attn_mask = None
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for layer in self.noise_refiner:
