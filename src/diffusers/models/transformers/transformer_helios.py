@@ -671,9 +671,9 @@ class HeliosTransformer3DModel(
         qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
         added_kv_proj_dim: Optional[int] = None,
-        guidance_cross_attn: bool = False,
-        zero_history_timestep: bool = False,
-        has_multi_term_memory_patch: bool = False,
+        guidance_cross_attn: bool = True,
+        zero_history_timestep: bool = True,
+        has_multi_term_memory_patch: bool = True,
         is_amplify_history: bool = False,
         history_scale_mode: str = "per_head",  # [scalar, per_head]
     ) -> None:

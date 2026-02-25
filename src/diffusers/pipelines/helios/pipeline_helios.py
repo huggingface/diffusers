@@ -407,9 +407,9 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         self,
         batch_size: int,
         num_channels_latents: int = 16,
-        height: int = 480,
-        width: int = 832,
-        num_frames: int = 81,
+        height: int = 384,
+        width: int = 640,
+        num_frames: int = 33,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -891,7 +891,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         negative_prompt: Union[str, List[str]] = None,
         height: int = 384,
         width: int = 640,
-        num_frames: int = 73,
+        num_frames: int = 132,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
@@ -954,11 +954,11 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to avoid during image generation. If not defined, pass `negative_prompt_embeds`
                 instead. Ignored when not using guidance (`guidance_scale` < `1`).
-            height (`int`, defaults to `480`):
+            height (`int`, defaults to `384`):
                 The height in pixels of the generated image.
-            width (`int`, defaults to `832`):
+            width (`int`, defaults to `640`):
                 The width in pixels of the generated image.
-            num_frames (`int`, defaults to `81`):
+            num_frames (`int`, defaults to `132`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
