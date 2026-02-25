@@ -5,11 +5,14 @@ CUDA_VISIBLE_DEVICES=0 python infer_helios.py \
     --image_path "https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/wave.jpg" \
     --prompt "A towering emerald wave surges forward, its crest curling with raw power and energy. Sunlight glints off the translucent water, illuminating the intricate textures and deep green hues within the wave’s body. A thick spray erupts from the breaking crest, casting a misty veil that dances above the churning surface. As the perspective widens, the immense scale of the wave becomes apparent, revealing the restless expanse of the ocean stretching beyond. The scene captures the ocean’s untamed beauty and relentless force, with every droplet and ripple shimmering in the light. The dynamic motion and vivid colors evoke both awe and respect for nature’s might." \
     --is_enable_stage2 \
+    --stage2_num_inference_steps_list 20 20 20 \
     --use_dynamic_shifting \
     --use_cfg_zero_star \
     --use_zero_init \
     --zero_steps 1 \
     --output_folder "./output_helios/stage-2"
 
+
+    # --stage2_num_inference_steps_list 17 17 17 \
     # --use_default_loader \
     # --enable_compile \

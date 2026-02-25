@@ -13,5 +13,6 @@ CUDA_VISIBLE_DEVICES=0 python infer_helios.py \
     --is_amplify_first_chunk \
     --output_folder "./output_helios/stage-3"
 
-    # --use_default_loader \
+
+    # --stage2_num_inference_steps_list 1 1 1 \
     # --enable_compile \

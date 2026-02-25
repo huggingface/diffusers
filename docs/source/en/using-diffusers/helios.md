@@ -48,16 +48,83 @@ pipe.to("cuda")
 ## Text-to-Video Showcases
 
 <table>
+  <tr>
+    <th style="text-align: center;">Prompt</th>
+    <th style="text-align: center;">Generated Video</th>
+  </tr>
+  <tr>
+    <td><small>A Viking warrior driving a modern city bus filled with passengers. The Viking has long blonde hair tied back, a beard, and is adorned with a fur-lined helmet and armor. He wears a traditional tunic and trousers, but also sports a seatbelt as he focuses on navigating the busy streets. The interior of the bus is typical, with rows of seats occupied by diverse passengers going about their daily routines. The exterior shots show the bustling urban environment, including tall buildings and traffic. Medium shot focusing on the Viking at the wheel, with occasional close-ups of his determined expression.
+    </small></td>
+    <td>
+      <video width="4000" controls>
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/t2v_showcases1.mp4" type="video/mp4">
+      </video>
+    </td>
+  </tr>
+  <tr>
+    <td><small>A documentary-style nature photography shot from a camera truck moving to the left, capturing a crab quickly scurrying into its burrow. The crab has a hard, greenish-brown shell and long claws, moving with determined speed across the sandy ground. Its body is slightly arched as it burrows into the sand, leaving a small trail behind. The background shows a shallow beach with scattered rocks and seashells, and the horizon features a gentle curve of the coastline. The photo has a natural and realistic texture, emphasizing the crab's natural movement and the texture of the sand. A close-up shot from a slightly elevated angle.
+    </small></td>
+    <td>
+      <video width="4000" controls>
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/t2v_showcases2.mp4" type="video/mp4">
+      </video>
+    </td>
+  </tr>
 </table>
 
 ## Image-to-Video Showcases
 
 <table>
+  <tr>
+    <th style="text-align: center;">Image</th>
+    <th style="text-align: center;">Prompt</th>
+    <th style="text-align: center;">Generated Video</th>
+  </tr>
+  <tr>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/i2v_showcases1.jpg" style="height: auto; width: 300px;"></td>
+    <td><small>A sleek red Kia car speeds along a rural road under a cloudy sky, its modern design and dynamic movement emphasized by the blurred motion of the surrounding fields and trees stretching into the distance. The car's glossy exterior reflects the overcast sky, highlighting its aerodynamic shape and sporty stance. The license plate reads "KIA 626," and the vehicle's headlights are on, adding to the sense of motion and energy. The road curves gently, with the car positioned slightly off-center, creating a sense of forward momentum. A dynamic front three-quarter view captures the car's powerful presence against the serene backdrop of rolling hills and scattered trees.
+    </small></td>
+    <td>
+      <video width="2000" controls>
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/i2v_showcases1.mp4" type="video/mp4">
+      </video>
+    </td>
+  </tr>
+  <tr>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/i2v_showcases2.jpg" style="height: auto; width: 300px;"></td>
+    <td><small>A close-up captures a fluffy orange cat with striking green eyes and white whiskers, gazing intently towards the camera. The cat's fur is soft and well-groomed, with a mix of warm orange and cream tones. Its large, expressive eyes are a vivid green, reflecting curiosity and alertness. The cat's nose is small and pink, and its mouth is slightly open, revealing a hint of its pink tongue. The background is softly blurred, suggesting a cozy indoor setting with neutral tones. The photo has a shallow depth of field, focusing sharply on the cat's face while the background remains out of focus. A close-up shot from a slightly elevated perspective.
+    </small></td>
+    <td>
+      <video width="2000" controls>
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/i2v_showcases2.mp4" type="video/mp4">
+      </video>
+    </td>
+  </tr>
 </table>
 
 ## Interactive-Video Showcases
 
 <table>
+  <tr>
+    <th style="text-align: center;">Prompt</th>
+    <th style="text-align: center;">Generated Video</th>
+  </tr>
+  <tr>
+    <td><small>The prompt can be found <a href="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/interactive_showcases1.txt">here</a></small></td>
+    <td>
+      <video width="680" controls>
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/interactive_showcases1.mp4" type="video/mp4">
+      </video>
+    </td>
+  </tr>
+  <tr>
+    <td><small>The prompt can be found <a href="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/interactive_showcases2.txt">here</a></small></td>
+    <td>
+      <video width="680" controls>
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/interactive_showcases2.mp4" type="video/mp4">
+      </video>
+    </td>
+  </tr>
 </table>
 
 ## Resources
