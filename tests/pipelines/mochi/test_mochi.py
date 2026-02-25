@@ -18,7 +18,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLMochi, FlowMatchEulerDiscreteScheduler, MochiPipeline, MochiTransformer3DModel
 
@@ -89,7 +89,8 @@ class MochiPipelineFastTests(
 
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler()
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         components = {
@@ -207,6 +208,9 @@ class MochiPipelineFastTests(
             return
 
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
