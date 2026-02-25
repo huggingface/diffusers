@@ -658,7 +658,7 @@ class HeliosTransformer3DModel(
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int] = (1, 2, 2),
+        patch_size: tuple[int, ...] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
         in_channels: int = 16,
@@ -668,9 +668,12 @@ class HeliosTransformer3DModel(
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
+        qk_norm: str | None = "rms_norm_across_heads",
         eps: float = 1e-6,
-        added_kv_proj_dim: Optional[int] = None,
+        image_dim: int | None = None,
+        added_kv_proj_dim: int | None = None,
+        rope_dim: tuple[int, ...] = (44, 42, 42),
+        rope_theta: float = 10000.0,
         guidance_cross_attn: bool = True,
         zero_history_timestep: bool = True,
         has_multi_term_memory_patch: bool = True,
@@ -683,7 +686,7 @@ class HeliosTransformer3DModel(
         out_channels = out_channels or in_channels
 
         # 1. Patch & position embedding
-        self.rope = HeliosRotaryPosEmbed(rope_dim=(44, 42, 42), theta=10000.0)
+        self.rope = HeliosRotaryPosEmbed(rope_dim=rope_dim, theta=rope_theta)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # 2. Initial Multi Term Memory Patch

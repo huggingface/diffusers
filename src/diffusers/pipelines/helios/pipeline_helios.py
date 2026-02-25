@@ -223,7 +223,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
-        scheduler: Union[UniPCMultistepScheduler, HeliosUniPCScheduler],
+        scheduler: UniPCMultistepScheduler | HeliosUniPCScheduler,
         transformer: HeliosTransformer3DModel,
     ):
         super().__init__()
