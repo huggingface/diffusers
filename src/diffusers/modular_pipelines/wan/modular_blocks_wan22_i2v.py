@@ -14,6 +14,7 @@
 
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
+from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
     WanAdditionalInputsStep,
     WanPrepareLatentsStep,
@@ -40,7 +41,36 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # ====================
 
 
+# auto_docstring
 class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
+    """
+    Image2Video Vae Image Encoder step that resize the image and encode the first frame image to its latent
+    representation
+
+      Components:
+          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+
+      Inputs:
+          image (`Image`):
+              TODO: Add description.
+          height (`int`, *optional*, defaults to 480):
+              TODO: Add description.
+          width (`int`, *optional*, defaults to 832):
+              TODO: Add description.
+          num_frames (`int`, *optional*, defaults to 81):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          resized_image (`Image`):
+              TODO: Add description.
+          first_frame_latents (`Tensor`):
+              video latent representation with the first frame image condition
+          image_condition_latents (`Tensor | NoneType`):
+              TODO: Add description.
+    """
+
     model_name = "wan-i2v"
     block_classes = [WanImageResizeStep, WanVaeEncoderStep, WanPrepareFirstFrameLatentsStep]
     block_names = ["image_resize", "vae_encoder", "prepare_first_frame_latents"]
@@ -56,7 +86,52 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
 
 
 # inputs (text + image_condition_latents) -> set_timesteps -> prepare_latents -> denoise (latents)
+# auto_docstring
 class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    denoise block that takes encoded text and image latent conditions and runs the denoising process.
+
+      Components:
+          transformer (`WanTransformer3DModel`) scheduler (`UniPCMultistepScheduler`) guider (`ClassifierFreeGuidance`)
+          guider_2 (`ClassifierFreeGuidance`) transformer_2 (`WanTransformer3DModel`)
+
+      Configs:
+          boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
+          noise stages.
+
+      Inputs:
+          num_videos_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              Pre-generated text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              Pre-generated negative text embeddings. Can be generated from text_encoder step.
+          height (`None`, *optional*):
+              TODO: Add description.
+          width (`None`, *optional*):
+              TODO: Add description.
+          num_frames (`None`, *optional*):
+              TODO: Add description.
+          image_condition_latents (`None`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          timesteps (`None`, *optional*):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "wan-i2v"
     block_classes = [
         WanTextInputStep,
@@ -75,15 +150,11 @@ class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "denoise block that takes encoded text and image latent conditions and runs the denoising process.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `WanTextInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `WanAdditionalInputsStep` is used to adjust the batch size of the latent conditions\n"
-            + " - `WanSetTimestepsStep` is used to set the timesteps\n"
-            + " - `WanPrepareLatentsStep` is used to prepare the latents\n"
-            + " - `Wan22Image2VideoDenoiseStep` is used to denoise the latents in wan2.2\n"
-        )
+        return "denoise block that takes encoded text and image latent conditions and runs the denoising process."
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("latents")]
 
 
 # ====================
@@ -91,7 +162,57 @@ class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 # ====================
 
 
+# auto_docstring
 class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
+    """
+    Modular pipeline for image-to-video using Wan2.2.
+
+      Components:
+          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) vae
+          (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer (`WanTransformer3DModel`) scheduler
+          (`UniPCMultistepScheduler`) guider_2 (`ClassifierFreeGuidance`) transformer_2 (`WanTransformer3DModel`)
+
+      Configs:
+          boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
+          noise stages.
+
+      Inputs:
+          prompt (`None`, *optional*):
+              TODO: Add description.
+          negative_prompt (`None`, *optional*):
+              TODO: Add description.
+          max_sequence_length (`None`, *optional*, defaults to 512):
+              TODO: Add description.
+          image (`Image`):
+              TODO: Add description.
+          height (`int`, *optional*, defaults to 480):
+              TODO: Add description.
+          width (`int`, *optional*, defaults to 832):
+              TODO: Add description.
+          num_frames (`int`, *optional*, defaults to 81):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          num_videos_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          timesteps (`None`, *optional*):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          output_type (`str`, *optional*, defaults to np):
+              The output type of the decoded videos
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+    """
+
     model_name = "wan-i2v"
     block_classes = [
         WanTextEncoderStep,
@@ -108,10 +229,8 @@ class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return (
-            "Modular pipeline for image-to-video using Wan2.2.\n"
-            + " - `WanTextEncoderStep` encodes the text\n"
-            + " - `WanImage2VideoVaeEncoderStep` encodes the image\n"
-            + " - `Wan22Image2VideoCoreDenoiseStep` denoes the latents\n"
-            + " - `WanVaeDecoderStep` decodes the latents to video frames\n"
-        )
+        return "Modular pipeline for image-to-video using Wan2.2."
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("videos")]

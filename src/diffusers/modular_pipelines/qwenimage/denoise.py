@@ -518,11 +518,11 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
 
       Outputs:
@@ -576,11 +576,11 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
           mask (`Tensor`):
               The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.
@@ -645,13 +645,13 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
               The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.
           controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
               Scale for ControlNet conditioning. (updated in prepare_controlnet_inputs step.)
-          controlnet_keep (`List`):
+          controlnet_keep (`list`):
               The controlnet keep values. Can be generated in prepare_controlnet_inputs step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
 
       Outputs:
@@ -711,13 +711,13 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
               The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.
           controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
               Scale for ControlNet conditioning. (updated in prepare_controlnet_inputs step.)
-          controlnet_keep (`List`):
+          controlnet_keep (`list`):
               The controlnet keep values. Can be generated in prepare_controlnet_inputs step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
           mask (`Tensor`):
               The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.
@@ -787,11 +787,11 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
           image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.
 
       Outputs:
@@ -846,11 +846,11 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
           image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.
           mask (`Tensor`):
               The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.
@@ -910,11 +910,11 @@ class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
           image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.
 
       Outputs:

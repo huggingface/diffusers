@@ -112,6 +112,8 @@ def _load_transformers_model_from_dduf(
                 tensors = safetensors.torch.load(mmap)
                 # Update the state dictionary with tensors
                 state_dict.update(tensors)
+            # `from_pretrained` sets the model to eval mode by default, which is the
+            # correct behavior for inference. Do not call `model.train()` here.
             return cls.from_pretrained(
                 pretrained_model_name_or_path=None,
                 config=config,
