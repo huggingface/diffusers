@@ -42,19 +42,18 @@ class Dinov2Encoder(nn.Module):
         patch_size: int = 14,
         image_size: int = 518,
         num_hidden_layers: int = 12,
-        num_attention_heads: int = 12,
-        num_register_tokens: int = 4,
+        **kwargs,
     ):
         super().__init__()
         from transformers import Dinov2WithRegistersConfig, Dinov2WithRegistersModel
 
+        num_attention_heads = hidden_size // 64  # all dinov2 variants use head_dim=64
         config = Dinov2WithRegistersConfig(
             hidden_size=hidden_size,
             patch_size=patch_size,
             image_size=image_size,
-            num_hidden_layers=num_hidden_layers,
             num_attention_heads=num_attention_heads,
-            num_register_tokens=num_register_tokens,
+            num_hidden_layers=num_hidden_layers,
         )
         self.model = Dinov2WithRegistersModel(config)
         self.model.requires_grad_(False)
@@ -85,28 +84,26 @@ class Siglip2Encoder(nn.Module):
         hidden_size: int = 768,
         patch_size: int = 16,
         image_size: int = 256,
-        num_hidden_layers: int = 12,
-        num_attention_heads: int = 12,
-        intermediate_size: int = 3072,
+        **kwargs,
     ):
         super().__init__()
         from transformers import SiglipVisionConfig, SiglipVisionModel
 
+        num_attention_heads = hidden_size // 64  # all siglip2 variants use head_dim=64
+        num_hidden_layers = kwargs.get("num_hidden_layers", 12)
         config = SiglipVisionConfig(
             hidden_size=hidden_size,
             patch_size=patch_size,
             image_size=image_size,
-            num_hidden_layers=num_hidden_layers,
             num_attention_heads=num_attention_heads,
-            intermediate_size=intermediate_size,
+            num_hidden_layers=num_hidden_layers,
         )
         self.model = SiglipVisionModel(config)
         self.model.requires_grad_(False)
         # remove the affine of final layernorm
-        self.model.post_layernorm.elementwise_affine = False
-        # remove the param
-        self.model.post_layernorm.weight = None
-        self.model.post_layernorm.bias = None
+        self.model.vision_model.post_layernorm.elementwise_affine = False
+        self.model.vision_model.post_layernorm.weight = None
+        self.model.vision_model.post_layernorm.bias = None
         self.hidden_size = hidden_size
         self.patch_size = patch_size
 
@@ -129,20 +126,19 @@ class MAEEncoder(nn.Module):
         hidden_size: int = 768,
         patch_size: int = 16,
         image_size: int = 224,
-        num_hidden_layers: int = 12,
-        num_attention_heads: int = 12,
-        intermediate_size: int = 3072,
+        **kwargs,
     ):
         super().__init__()
         from transformers import ViTMAEConfig, ViTMAEModel
 
+        num_attention_heads = hidden_size // 64  # all MAE variants use head_dim=64
+        num_hidden_layers = kwargs.get("num_hidden_layers", 12)
         config = ViTMAEConfig(
             hidden_size=hidden_size,
             patch_size=patch_size,
             image_size=image_size,
-            num_hidden_layers=num_hidden_layers,
             num_attention_heads=num_attention_heads,
-            intermediate_size=intermediate_size,
+            num_hidden_layers=num_hidden_layers,
             mask_ratio=0.0,
         )
         self.model = ViTMAEModel(config)
@@ -319,6 +315,12 @@ class RAEDecoder(nn.Module):
         self.trainable_cls_token = nn.Parameter(tensor)
 
     def _initialize_weights(self, num_patches: int):
+        # Skip initialization when parameters are on meta device (e.g. during
+        # accelerate.init_empty_weights() used by low_cpu_mem_usage loading).
+        # The weights will be loaded from the checkpoint afterwards.
+        if self.decoder_pos_embed.device.type == "meta":
+            return
+
         grid_size = int(num_patches**0.5)
         pos_embed = get_2d_sincos_pos_embed(
             self.decoder_pos_embed.shape[-1],
@@ -448,6 +450,8 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
             Hidden size of the encoder model.
         encoder_patch_size (`int`, *optional*, defaults to `14`):
             Patch size of the encoder model.
+        encoder_num_hidden_layers (`int`, *optional*, defaults to `12`):
+            Number of hidden layers in the encoder model.
         patch_size (`int`, *optional*, defaults to `16`):
             Decoder patch size (used for unpatchify and decoder head).
         encoder_input_size (`int`, *optional*, defaults to `224`):
@@ -486,6 +490,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         encoder_type: str = "dinov2",
         encoder_hidden_size: int = 768,
         encoder_patch_size: int = 14,
+        encoder_num_hidden_layers: int = 12,
         decoder_hidden_size: int = 512,
         decoder_num_hidden_layers: int = 8,
         decoder_num_attention_heads: int = 16,
@@ -540,7 +545,9 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         # Frozen representation encoder (built from config, no downloads)
         encoder_patch_size = int(encoder_patch_size)
         self.encoder: nn.Module = _ENCODER_TYPES[encoder_type](
-            hidden_size=encoder_hidden_size, patch_size=encoder_patch_size
+            hidden_size=encoder_hidden_size,
+            patch_size=encoder_patch_size,
+            num_hidden_layers=encoder_num_hidden_layers,
         )
 
         # RAE-main: base_patches = (encoder_input_size // encoder_patch_size) ** 2

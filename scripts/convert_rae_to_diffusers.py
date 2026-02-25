@@ -203,8 +203,11 @@ def _load_hf_encoder_state_dict(encoder_type: str, encoder_name_or_path: str) ->
     elif encoder_type == "siglip2":
         from transformers import SiglipModel
 
+        # SiglipModel.vision_model is a SiglipVisionTransformer.
+        # Our Siglip2Encoder wraps it inside SiglipVisionModel which nests it
+        # under .vision_model, so we add the prefix to match the diffusers key layout.
         hf_model = SiglipModel.from_pretrained(encoder_name_or_path).vision_model
-        return hf_model.state_dict()
+        return {f"vision_model.{k}": v for k, v in hf_model.state_dict().items()}
     elif encoder_type == "mae":
         from transformers import ViTMAEForPreTraining
 
