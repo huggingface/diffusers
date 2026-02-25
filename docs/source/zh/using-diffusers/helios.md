@@ -57,7 +57,7 @@ pipe.to("cuda")
     </small></td>
     <td>
       <video width="4000" controls>
-        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/t2v_showcases1.mp4" type="video/mp4">
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/t2v_showcases1.mp4" type="video/mp4">
       </video>
     </td>
   </tr>
@@ -66,7 +66,7 @@ pipe.to("cuda")
     </small></td>
     <td>
       <video width="4000" controls>
-        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/t2v_showcases2.mp4" type="video/mp4">
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/t2v_showcases2.mp4" type="video/mp4">
       </video>
     </td>
   </tr>
@@ -81,22 +81,22 @@ pipe.to("cuda")
     <th style="text-align: center;">Generated Video</th>
   </tr>
   <tr>
-    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/i2v_showcases1.jpg" style="height: auto; width: 300px;"></td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/i2v_showcases1.jpg" style="height: auto; width: 300px;"></td>
     <td><small>A sleek red Kia car speeds along a rural road under a cloudy sky, its modern design and dynamic movement emphasized by the blurred motion of the surrounding fields and trees stretching into the distance. The car's glossy exterior reflects the overcast sky, highlighting its aerodynamic shape and sporty stance. The license plate reads "KIA 626," and the vehicle's headlights are on, adding to the sense of motion and energy. The road curves gently, with the car positioned slightly off-center, creating a sense of forward momentum. A dynamic front three-quarter view captures the car's powerful presence against the serene backdrop of rolling hills and scattered trees.
     </small></td>
     <td>
       <video width="2000" controls>
-        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/i2v_showcases1.mp4" type="video/mp4">
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/i2v_showcases1.mp4" type="video/mp4">
       </video>
     </td>
   </tr>
   <tr>
-    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/i2v_showcases2.jpg" style="height: auto; width: 300px;"></td>
+    <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/i2v_showcases2.jpg" style="height: auto; width: 300px;"></td>
     <td><small>A close-up captures a fluffy orange cat with striking green eyes and white whiskers, gazing intently towards the camera. The cat's fur is soft and well-groomed, with a mix of warm orange and cream tones. Its large, expressive eyes are a vivid green, reflecting curiosity and alertness. The cat's nose is small and pink, and its mouth is slightly open, revealing a hint of its pink tongue. The background is softly blurred, suggesting a cozy indoor setting with neutral tones. The photo has a shallow depth of field, focusing sharply on the cat's face while the background remains out of focus. A close-up shot from a slightly elevated perspective.
     </small></td>
     <td>
       <video width="2000" controls>
-        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/i2v_showcases2.mp4" type="video/mp4">
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/i2v_showcases2.mp4" type="video/mp4">
       </video>
     </td>
   </tr>
@@ -110,18 +110,18 @@ pipe.to("cuda")
     <th style="text-align: center;">Generated Video</th>
   </tr>
   <tr>
-    <td><small>The prompt can be found <a href="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/interactive_showcases1.txt">here</a></small></td>
+    <td><small>The prompt can be found <a href="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/interactive_showcases1.txt">here</a></small></td>
     <td>
       <video width="680" controls>
-        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/interactive_showcases1.mp4" type="video/mp4">
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/interactive_showcases1.mp4" type="video/mp4">
       </video>
     </td>
   </tr>
   <tr>
-    <td><small>The prompt can be found <a href="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/interactive_showcases2.txt">here</a></small></td>
+    <td><small>The prompt can be found <a href="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/interactive_showcases2.txt">here</a></small></td>
     <td>
       <video width="680" controls>
-        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/interactive_showcases2.mp4" type="video/mp4">
+        <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/interactive_showcases2.mp4" type="video/mp4">
       </video>
     </td>
   </tr>

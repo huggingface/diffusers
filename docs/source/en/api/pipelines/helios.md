@@ -202,7 +202,7 @@ apparent, revealing the restless expanse of the ocean stretching beyond. The sce
 relentless force, with every droplet and ripple shimmering in the light. The dynamic motion and vivid colors evoke both awe and 
 respect for nature’s might.
 """
-image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/wave.jpg"
+image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/wave.jpg"
 
 output = pipeline(
     prompt=prompt,
@@ -222,7 +222,7 @@ emphasizing its dynamic movement. The road curves gently, with a guardrail visib
 the scene. The motion blur captures the sense of speed and energy, creating a thrilling and exhilarating atmosphere. 
 A front-facing shot from a slightly elevated angle, highlighting the car's aggressive stance and the surrounding greenery.
 """
-video_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/car.mp4"
+video_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/car.mp4"
 
 output = pipeline(
     prompt=prompt,
@@ -298,7 +298,7 @@ apparent, revealing the restless expanse of the ocean stretching beyond. The sce
 relentless force, with every droplet and ripple shimmering in the light. The dynamic motion and vivid colors evoke both awe and 
 respect for nature’s might.
 """
-image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/wave.jpg"
+image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/wave.jpg"
 
 output = pipeline(
     prompt=prompt,
@@ -323,7 +323,7 @@ emphasizing its dynamic movement. The road curves gently, with a guardrail visib
 the scene. The motion blur captures the sense of speed and energy, creating a thrilling and exhilarating atmosphere. 
 A front-facing shot from a slightly elevated angle, highlighting the car's aggressive stance and the surrounding greenery.
 """
-video_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/car.mp4"
+video_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/car.mp4"
 
 output = pipeline(
     prompt=prompt,
@@ -404,7 +404,7 @@ apparent, revealing the restless expanse of the ocean stretching beyond. The sce
 relentless force, with every droplet and ripple shimmering in the light. The dynamic motion and vivid colors evoke both awe and 
 respect for nature’s might.
 """
-image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/wave.jpg"
+image_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/wave.jpg"
 
 output = pipeline(
     prompt=prompt,
@@ -429,7 +429,7 @@ emphasizing its dynamic movement. The road curves gently, with a guardrail visib
 the scene. The motion blur captures the sense of speed and energy, creating a thrilling and exhilarating atmosphere. 
 A front-facing shot from a slightly elevated angle, highlighting the car's aggressive stance and the surrounding greenery.
 """
-video_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/refs%2Fpr%2F587/diffusers/helios/car.mp4"
+video_path = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/helios/car.mp4"
 
 output = pipeline(
     prompt=prompt,
