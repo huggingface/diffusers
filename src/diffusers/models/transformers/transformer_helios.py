@@ -22,7 +22,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import apply_lora_scale, deprecate, logging
+from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -118,7 +118,7 @@ class HeliosAttnProcessor:
             history_seq_len = hidden_states.shape[1] - original_context_length
 
             if history_seq_len > 0:
-                scale_key = attn.get_scale_key()
+                scale_key = 1.0 + torch.sigmoid(attn.history_key_scale) * (attn.max_scale - 1.0)
                 if attn.history_scale_mode == "per_head":
                     scale_key = scale_key.view(1, 1, -1, 1)
                 key = torch.cat([key[:, :history_seq_len] * scale_key, key[:, history_seq_len:]], dim=1)
@@ -140,8 +140,6 @@ class HeliosAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
-
-
 
 
 class HeliosAttention(torch.nn.Module, AttentionModuleMixin):
@@ -205,16 +203,6 @@ class HeliosAttention(torch.nn.Module, AttentionModuleMixin):
                 raise ValueError(f"Unknown history_scale_mode: {history_scale_mode}")
             self.history_scale_mode = history_scale_mode
             self.max_scale = 10.0
-            self.register_buffer("_scale_cache", None)
-
-    def get_scale_key(self):
-        if self.history_key_scale.requires_grad:
-            scale = 1.0 + torch.sigmoid(self.history_key_scale) * (self.max_scale - 1.0)
-        else:
-            if self._scale_cache is None:
-                self._scale_cache = 1.0 + torch.sigmoid(self.history_key_scale) * (self.max_scale - 1.0)
-            scale = self._scale_cache
-        return scale
 
     def fuse_projections(self):
         if getattr(self, "fused_projections", False):
