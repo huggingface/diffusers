@@ -560,7 +560,6 @@ class HeliosTransformer3DModel(
         cross_attn_norm: bool = True,
         qk_norm: str | None = "rms_norm_across_heads",
         eps: float = 1e-6,
-        image_dim: int | None = None,
         added_kv_proj_dim: int | None = None,
         rope_dim: tuple[int, ...] = (44, 42, 42),
         rope_theta: float = 10000.0,
