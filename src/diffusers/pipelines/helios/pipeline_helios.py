@@ -119,8 +119,8 @@ def calculate_shift(
 
 
 def apply_schedule_shift(
+    image_seq_len,
     sigmas,
-    noise,
     sigmas_two=None,
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
@@ -133,7 +133,6 @@ def apply_schedule_shift(
 ):
     if mu is None:
         # Resolution-dependent shifting of timestep schedules as per section 5.3.2 of SD3 paper
-        image_seq_len = (noise.shape[-1] * noise.shape[-2] * noise.shape[-3]) // 4  # patch size 1,2,2
         mu = calculate_shift(
             image_seq_len,
             base_seq_len,
@@ -737,9 +736,13 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     start_point_list.append(latents)
 
             if use_dynamic_shifting:
+                patch_size = self.transformer.config.patch_size
+                image_seq_len = (latents.shape[-1] * latents.shape[-2] * latents.shape[-3]) // (
+                    patch_size[0] * patch_size[1] * patch_size[2]
+                )
                 temp_sigmas = apply_schedule_shift(
+                    image_seq_len,
                     self.scheduler.sigmas,
-                    latents,
                     base_seq_len=self.scheduler.config.get("base_image_seq_len", 256),
                     max_seq_len=self.scheduler.config.get("max_image_seq_len", 4096),
                     base_shift=self.scheduler.config.get("base_shift", 0.5),
@@ -1319,12 +1322,16 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 self.scheduler.set_timesteps(num_inference_steps, device=device)
 
                 if use_dynamic_shifting:
+                    patch_size = self.transformer.config.patch_size
+                    image_seq_len = (latents.shape[-1] * latents.shape[-2] * latents.shape[-3]) // (
+                        patch_size[0] * patch_size[1] * patch_size[2]
+                    )
                     sigmas = torch.linspace(
                         0.999, 0.0, steps=num_inference_steps + 1, dtype=torch.float32, device=device
                     )[:-1]
                     sigmas = apply_schedule_shift(
-                        sigmas=sigmas,
-                        noise=latents,
+                        image_seq_len,
+                        sigmas,
                         base_seq_len=self.scheduler.config.get("base_image_seq_len", 256),
                         max_seq_len=self.scheduler.config.get("max_image_seq_len", 4096),
                         base_shift=self.scheduler.config.get("base_shift", 0.5),
