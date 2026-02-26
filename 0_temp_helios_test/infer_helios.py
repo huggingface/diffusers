@@ -66,7 +66,6 @@ def parse_args():
     parser.add_argument("--num_inference_steps", type=int, default=50)
     parser.add_argument("--guidance_scale", type=float, default=5.0)
     parser.add_argument("--use_dynamic_shifting", action="store_true")
-    parser.add_argument("--vae_decode_type", type=str, default="default", choices=["default", "once", "default_fast"])
     # cfg zero
     parser.add_argument("--use_cfg_zero_star", action="store_true")
     parser.add_argument("--use_zero_init", action="store_true")
@@ -234,9 +233,6 @@ def main():
         pipe.load_lora_weights(args.lora_path, adapter_name="default")
         pipe.set_adapters(["default"], adapter_weights=[1.0])
 
-    if args.vae_decode_type == "once":
-        pipe.vae.enable_tiling()
-
     if args.enable_compile:
         torch.backends.cudnn.benchmark = True
         pipe.text_encoder.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
@@ -295,7 +291,6 @@ def main():
                     num_inference_steps=args.num_inference_steps,
                     guidance_scale=args.guidance_scale,
                     generator=torch.Generator(device="cuda").manual_seed(args.seed),
-                    vae_decode_type=args.vae_decode_type,
                     # stage 1
                     history_sizes=[16, 2, 1],
                     latent_window_size=args.latent_window_size,
@@ -358,7 +353,6 @@ def main():
                         num_inference_steps=args.num_inference_steps,
                         guidance_scale=args.guidance_scale,
                         generator=torch.Generator(device="cuda").manual_seed(args.seed),
-                        vae_decode_type=args.vae_decode_type,
                         # stage 1
                         history_sizes=[16, 2, 1],
                         latent_window_size=args.latent_window_size,
@@ -429,7 +423,6 @@ def main():
                         num_inference_steps=args.num_inference_steps,
                         guidance_scale=args.guidance_scale,
                         generator=torch.Generator(device="cuda").manual_seed(args.seed),
-                        vae_decode_type=args.vae_decode_type,
                         # stage 1
                         history_sizes=[16, 2, 1],
                         latent_window_size=args.latent_window_size,
@@ -489,7 +482,6 @@ def main():
                         num_inference_steps=args.num_inference_steps,
                         guidance_scale=args.guidance_scale,
                         generator=torch.Generator(device="cuda").manual_seed(args.seed),
-                        vae_decode_type=args.vae_decode_type,
                         # stage 1
                         history_sizes=[16, 2, 1],
                         latent_window_size=args.latent_window_size,
@@ -534,7 +526,6 @@ def main():
                 num_inference_steps=args.num_inference_steps,
                 guidance_scale=args.guidance_scale,
                 generator=torch.Generator(device="cuda").manual_seed(args.seed),
-                vae_decode_type=args.vae_decode_type,
                 # stage 1
                 history_sizes=[16, 2, 1],
                 latent_window_size=args.latent_window_size,

@@ -14,7 +14,6 @@
 
 import html
 import math
-from enum import Enum
 from itertools import accumulate
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -178,11 +177,6 @@ def convert_flow_pred_to_x0(flow_pred, xt, timestep, sigmas, timesteps):
     sigma_t = sigmas[timestep_id].reshape(-1, 1, 1, 1, 1)
     x0_pred = xt - sigma_t * flow_pred
     return x0_pred.to(original_dtype)
-
-
-class VAEDecodeType(str, Enum):
-    DEFAULT = "default"
-    DEFAULT_BATCH = "default_batch"
 
 
 class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
@@ -937,8 +931,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         use_dmd: bool = False,
         is_skip_first_section: bool = False,
         is_amplify_first_chunk: bool = False,
-        # ------------ other ------------
-        vae_decode_type: VAEDecodeType = "default",  # "default", "default_batch"
     ):
         r"""
         The call function to the pipeline for generation.
@@ -1441,65 +1433,17 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     slice(-latent_window_size, None),
                 )
 
-                if vae_decode_type == "default":
-                    current_latents = real_history_latents[index_slice].to(vae_dtype) / latents_std + latents_mean
-                    current_video = self.vae.decode(current_latents, return_dict=False)[0]
+                current_latents = real_history_latents[index_slice].to(vae_dtype) / latents_std + latents_mean
+                current_video = self.vae.decode(current_latents, return_dict=False)[0]
 
-                    if history_video is None:
-                        history_video = current_video
-                    else:
-                        history_video = torch.cat([history_video, current_video], dim=2)
+                if history_video is None:
+                    history_video = current_video
+                else:
+                    history_video = torch.cat([history_video, current_video], dim=2)
 
         self._current_timestep = None
 
         if output_type != "latent":
-            if vae_decode_type == "default_batch":
-                total_latent_frames = real_history_latents.shape[2]
-                batch_size = real_history_latents.shape[0]
-                num_chunks = total_latent_frames // latent_window_size
-
-                chunks = (
-                    real_history_latents.reshape(
-                        batch_size,
-                        -1,
-                        num_chunks,
-                        latent_window_size,
-                        real_history_latents.shape[-2],
-                        real_history_latents.shape[-1],
-                    )
-                    .permute(0, 2, 1, 3, 4, 5)
-                    .reshape(
-                        batch_size * num_chunks,
-                        -1,
-                        latent_window_size,
-                        real_history_latents.shape[-2],
-                        real_history_latents.shape[-1],
-                    )
-                )
-
-                chunks = chunks.to(vae_dtype) / latents_std + latents_mean
-                batch_video = self.vae.decode(chunks, return_dict=False)[0]
-
-                video_frames_per_chunk = batch_video.shape[2]
-                history_video = (
-                    batch_video.reshape(
-                        batch_size,
-                        num_chunks,
-                        -1,
-                        video_frames_per_chunk,
-                        batch_video.shape[-2],
-                        batch_video.shape[-1],
-                    )
-                    .permute(0, 2, 1, 3, 4, 5)
-                    .reshape(
-                        batch_size,
-                        -1,
-                        num_chunks * video_frames_per_chunk,
-                        batch_video.shape[-2],
-                        batch_video.shape[-1],
-                    )
-                )
-
             generated_frames = history_video.size(2)
             generated_frames = (
                 generated_frames - 1
