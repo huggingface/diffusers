@@ -141,7 +141,6 @@ def apply_schedule_shift(
             max_seq_len if max_seq_len is not None else 4096,
             base_shift if base_shift is not None else 0.5,
             max_shift if max_shift is not None else 1.15,
-            exp_max if exp_max is not None else 7.0,
         )
         if is_exponential:
             mu = min(mu, math.log(exp_max))
