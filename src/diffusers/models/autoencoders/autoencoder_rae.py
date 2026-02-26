@@ -589,17 +589,15 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         self.register_buffer("encoder_mean", encoder_mean_tensor, persistent=True)
         self.register_buffer("encoder_std", encoder_std_tensor, persistent=True)
 
-        # Optional latent normalization (RAE-main uses mean/var)
+        # Latent normalization buffers (defaults are no-ops; actual values come from checkpoint)
         latents_mean_tensor = _as_optional_tensor(latents_mean)
-        self.do_latent_normalization = latents_mean is not None or latents_std is not None
-        if latents_mean_tensor is not None:
-            self.register_buffer("_latents_mean", latents_mean_tensor, persistent=True)
-        else:
-            self._latents_mean = None
-        if latents_std_tensor is not None:
-            self.register_buffer("_latents_std", latents_std_tensor, persistent=True)
-        else:
-            self._latents_std = None
+        if latents_mean_tensor is None:
+            latents_mean_tensor = torch.zeros(1)
+        self.register_buffer("_latents_mean", latents_mean_tensor, persistent=True)
+
+        if latents_std_tensor is None:
+            latents_std_tensor = torch.ones(1)
+        self.register_buffer("_latents_std", latents_std_tensor, persistent=True)
 
         # ViT-MAE style decoder
         decoder_config = SimpleNamespace(
@@ -646,17 +644,13 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         return x * std + mean
 
     def _maybe_normalize_latents(self, z: torch.Tensor) -> torch.Tensor:
-        if not self.do_latent_normalization:
-            return z
-        latents_mean = self._latents_mean.to(device=z.device, dtype=z.dtype) if self._latents_mean is not None else 0
-        latents_std = self._latents_std.to(device=z.device, dtype=z.dtype) if self._latents_std is not None else 1
+        latents_mean = self._latents_mean.to(device=z.device, dtype=z.dtype)
+        latents_std = self._latents_std.to(device=z.device, dtype=z.dtype)
         return (z - latents_mean) / (latents_std + 1e-5)
 
     def _maybe_denormalize_latents(self, z: torch.Tensor) -> torch.Tensor:
-        if not self.do_latent_normalization:
-            return z
-        latents_mean = self._latents_mean.to(device=z.device, dtype=z.dtype) if self._latents_mean is not None else 0
-        latents_std = self._latents_std.to(device=z.device, dtype=z.dtype) if self._latents_std is not None else 1
+        latents_mean = self._latents_mean.to(device=z.device, dtype=z.dtype)
+        latents_std = self._latents_std.to(device=z.device, dtype=z.dtype)
         return z * (latents_std + 1e-5) + latents_mean
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
