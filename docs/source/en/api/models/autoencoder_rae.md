@@ -1,4 +1,4 @@
-<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2026 The NYU Vision-X and HuggingFace Teams. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -12,42 +12,71 @@ specific language governing permissions and limitations under the License.
 
 # AutoencoderRAE
 
-`AutoencoderRAE` is a representation autoencoder that combines a frozen vision encoder (DINOv2, SigLIP2, or MAE) with a ViT-MAE-style decoder.
+The Representation Autoencoder (RAE) model introduced in [Diffusion Transformers with Representation Autoencoders](https://huggingface.co/papers/2510.11690) by Boyang Zheng, Nanye Ma, Shengbang Tong, Saining Xie from NYU VISIONx.
 
-Paper: [Diffusion Transformers with Representation Autoencoders](https://huggingface.co/papers/2510.11690).
+RAE combines a frozen pretrained vision encoder (DINOv2, SigLIP2, or MAE) with a trainable ViT-MAE-style decoder. In the two-stage RAE training recipe, the autoencoder is trained in stage 1 (reconstruction), and then a diffusion model is trained on the resulting latent space in stage 2 (generation).
 
-The model follows the standard diffusers autoencoder API:
-- `encode(...)` returns an `EncoderOutput` with a `latent` tensor.
-- `decode(...)` returns a `DecoderOutput` with a `sample` tensor.
+The following RAE models are released and supported in Diffusers:
 
-## Usage
+| Model | Encoder | Latent shape (224px input) |
+|:------|:--------|:---------------------------|
+| [`nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08`](https://huggingface.co/nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08) | DINOv2-base | 768 x 16 x 16 |
+| [`nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08-i512`](https://huggingface.co/nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08-i512) | DINOv2-base (512px) | 768 x 32 x 32 |
+| [`nyu-visionx/RAE-dinov2-wReg-small-ViTXL-n08`](https://huggingface.co/nyu-visionx/RAE-dinov2-wReg-small-ViTXL-n08) | DINOv2-small | 384 x 16 x 16 |
+| [`nyu-visionx/RAE-dinov2-wReg-large-ViTXL-n08`](https://huggingface.co/nyu-visionx/RAE-dinov2-wReg-large-ViTXL-n08) | DINOv2-large | 1024 x 16 x 16 |
+| [`nyu-visionx/RAE-siglip2-base-p16-i256-ViTXL-n08`](https://huggingface.co/nyu-visionx/RAE-siglip2-base-p16-i256-ViTXL-n08) | SigLIP2-base | 768 x 16 x 16 |
+| [`nyu-visionx/RAE-mae-base-p16-ViTXL-n08`](https://huggingface.co/nyu-visionx/RAE-mae-base-p16-ViTXL-n08) | MAE-base | 768 x 16 x 16 |
+
+## Loading a pretrained model
+
+```python
+from diffusers import AutoencoderRAE
+
+model = AutoencoderRAE.from_pretrained(
+    "nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08"
+).to("cuda").eval()
+```
+
+## Encoding and decoding a real image
 
 ```python
 import torch
 from diffusers import AutoencoderRAE
+from PIL import Image
+from torchvision.transforms.functional import to_tensor, to_pil_image
 
-# Load a converted model from the Hub
 model = AutoencoderRAE.from_pretrained(
     "nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08"
 ).to("cuda").eval()
 
-# Encode and decode
-x = torch.randn(1, 3, 224, 224, device="cuda")
+image = Image.open("cat.png").convert("RGB").resize((224, 224))
+x = to_tensor(image).unsqueeze(0).to("cuda")  # (1, 3, 224, 224), values in [0, 1]
+
 with torch.no_grad():
-    latents = model.encode(x).latent
+    latents = model.encode(x).latent        # (1, 768, 16, 16)
+    recon = model.decode(latents).sample     # (1, 3, 256, 256)
+
+recon_image = to_pil_image(recon[0].clamp(0, 1).cpu())
+recon_image.save("recon.png")
+```
+
+## Latent normalization
+
+Some pretrained checkpoints include per-channel `latents_mean` and `latents_std` statistics for normalizing the latent space. When present, `encode` and `decode` automatically apply the normalization and denormalization, respectively.
+
+```python
+model = AutoencoderRAE.from_pretrained(
+    "nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08"
+).to("cuda").eval()
+
+# Latent normalization is handled automatically inside encode/decode
+# when the checkpoint config includes latents_mean/latents_std.
+with torch.no_grad():
+    latents = model.encode(x).latent   # normalized latents
     recon = model.decode(latents).sample
 ```
 
-`encoder_type` supports `"dinov2"`, `"siglip2"`, and `"mae"`. The encoder is built from config
-(with random weights) during `__init__`; use `from_pretrained` to load a converted checkpoint
-that includes both encoder and decoder weights.
-
-For latent normalization, use `latents_mean` and `latents_std` (matching other diffusers autoencoders).
-
-See `examples/research_projects/autoencoder_rae/train_autoencoder_rae.py` for a stage-1 style training script
-(reconstruction and optional encoder-feature losses are computed in the training loop, following diffusers training conventions).
-
-## AutoencoderRAE class
+## AutoencoderRAE
 
 [[autodoc]] AutoencoderRAE
   - encode
