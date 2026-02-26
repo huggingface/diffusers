@@ -835,7 +835,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         dmd_timesteps: torch.FloatTensor | None = None,
         all_timesteps: torch.FloatTensor | None = None,
     ):
-        prev_sample = self.convert_flow_pred_to_x0(
+        pred_image_or_video = self.convert_flow_pred_to_x0(
             flow_pred=model_output,
             xt=sample,
             timestep=torch.full((model_output.shape[0],), timestep, dtype=torch.long, device=model_output.device),
@@ -844,7 +844,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         )
         if cur_sampling_step < len(all_timesteps) - 1:
             prev_sample = self.add_noise(
-                prev_sample,
+                pred_image_or_video,
                 dmd_noisy_tensor,
                 torch.full(
                     (model_output.shape[0],),
@@ -855,6 +855,8 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
                 sigmas=dmd_sigmas,
                 timesteps=dmd_timesteps,
             )
+        else:
+            prev_sample = pred_image_or_video
 
         if not return_dict:
             return (prev_sample,)

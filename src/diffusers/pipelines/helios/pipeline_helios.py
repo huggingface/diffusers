@@ -798,7 +798,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         latents,
                         generator=generator,
                         return_dict=False,
-                        cur_sampling_step=i,
+                        cur_sampling_step=idx,
                         dmd_noisy_tensor=start_point_list[i_s] if start_point_list is not None else None,
                         dmd_sigmas=self.scheduler.sigmas,
                         dmd_timesteps=self.scheduler.timesteps,
