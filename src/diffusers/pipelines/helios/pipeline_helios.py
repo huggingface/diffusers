@@ -105,13 +105,13 @@ def prompt_clean(text):
     return text
 
 
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
     max_seq_len: int = 4096,
     base_shift: float = 0.5,
     max_shift: float = 1.15,
-    exp_max=7.0,
 ):
     m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
     b = base_shift - m * base_seq_len
