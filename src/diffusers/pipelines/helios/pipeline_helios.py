@@ -358,6 +358,10 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
+        use_interpolate_prompt=False,
+        num_videos_per_prompt=None,
+        interpolate_time_list=None,
+        interpolation_steps=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -389,6 +393,16 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
+
+        if use_interpolate_prompt:
+            assert num_videos_per_prompt == 1, f"num_videos_per_prompt must be 1, got {num_videos_per_prompt}"
+            assert isinstance(prompt, list), "prompt must be a list"
+            assert len(prompt) == len(interpolate_time_list), (
+                f"Length mismatch: {len(prompt)} vs {len(interpolate_time_list)}"
+            )
+            assert min(interpolate_time_list) > interpolation_steps, (
+                f"Minimum value {min(interpolate_time_list)} must be greater than {interpolation_steps}"
+            )
 
     def prepare_latents(
         self,
@@ -490,7 +504,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         self,
         prompt_embeds_1: torch.Tensor,
         prompt_embeds_2: torch.Tensor,
-        interpolation_steps: int = 4,
+        interpolation_steps: int = 3,
     ):
         x = torch.lerp(
             prompt_embeds_1,
@@ -1001,19 +1015,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         if image is not None and video is not None:
             raise ValueError("image and video cannot be provided simultaneously")
 
-        if use_interpolate_prompt:
-            assert num_videos_per_prompt == 1, f"num_videos_per_prompt must be 1, got {num_videos_per_prompt}"
-            assert isinstance(prompt, list), "prompt must be a list"
-            assert len(prompt) == len(interpolate_time_list), (
-                f"Length mismatch: {len(prompt)} vs {len(interpolate_time_list)}"
-            )
-            assert min(interpolate_time_list) > interpolation_steps, (
-                f"Minimum value {min(interpolate_time_list)} must be greater than {interpolation_steps}"
-            )
-            interpolate_interval_idx = None
-            interpolate_embeds = None
-            interpolate_cumulative_list = list(accumulate(interpolate_time_list))
-
         history_sizes = sorted(history_sizes, reverse=True)  # From big to small
 
         latents_mean = (
@@ -1037,6 +1038,10 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             prompt_embeds,
             negative_prompt_embeds,
             callback_on_step_end_tensor_inputs,
+            use_interpolate_prompt,
+            num_videos_per_prompt,
+            interpolate_time_list,
+            interpolation_steps,
         )
 
         num_frames = max(num_frames, 1)
@@ -1058,6 +1063,11 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         # 3. Encode input prompt
+        if use_interpolate_prompt:
+            interpolate_interval_idx = None
+            interpolate_embeds = None
+            interpolate_cumulative_list = list(accumulate(interpolate_time_list))
+
         all_prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask = (
             self.encode_prompt(
                 prompt=prompt,
