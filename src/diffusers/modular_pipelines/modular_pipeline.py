@@ -1852,20 +1852,44 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 If expressed as an integer, the unit is bytes.
             push_to_hub (`bool`, *optional*, defaults to `False`):
                 Whether to push the pipeline to the Hugging Face model hub after saving it.
-            **kwargs: Additional keyword arguments passed along to the push to hub method.
+            **kwargs: Additional keyword arguments:
+                - `overwrite_modular_index` (`bool`, *optional*, defaults to `False`):
+                    When saving a Modular Pipeline, its components in `modular_model_index.json` may reference repos
+                    different from the destination repo. Setting this to `True` updates all component references in
+                    `modular_model_index.json` so they point to the repo specified by `repo_id`.
+                - `repo_id` (`str`, *optional*):
+                    The repository ID to push the pipeline to. Defaults to the last component of `save_directory`.
+                - `commit_message` (`str`, *optional*):
+                    Commit message for the push to hub operation.
+                - `private` (`bool`, *optional*):
+                    Whether the repository should be private.
+                - `create_pr` (`bool`, *optional*, defaults to `False`):
+                    Whether to create a pull request instead of pushing directly.
+                - `token` (`str`, *optional*):
+                    The Hugging Face token to use for authentication.
         """
         overwrite_modular_index = kwargs.pop("overwrite_modular_index", False)
         repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
 
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", None)
+            create_pr = kwargs.pop("create_pr", False)
+            token = kwargs.pop("token", None)
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
+
         for component_name, component_spec in self._component_specs.items():
-            sub_model = getattr(self, component_name, None)
-            if sub_model is None:
+            if component_spec.default_creation_method != "from_pretrained":
                 continue
 
-            model_cls = sub_model.__class__
-            if is_compiled_module(sub_model):
-                sub_model = _unwrap_model(sub_model)
-                model_cls = sub_model.__class__
+            component = getattr(self, component_name, None)
+            if component is None:
+                continue
+
+            model_cls = component.__class__
+            if is_compiled_module(component):
+                component = _unwrap_model(component)
+                model_cls = component.__class__
 
             save_method_name = None
             for library_name, library_classes in LOADABLE_CLASSES.items():
@@ -1886,10 +1910,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     break
 
             if save_method_name is None:
-                logger.warning(f"self.{component_name}={sub_model} of type {type(sub_model)} cannot be saved.")
+                logger.warning(f"self.{component_name}={component} of type {type(component)} cannot be saved.")
                 continue
 
-            save_method = getattr(sub_model, save_method_name)
+            save_method = getattr(component, save_method_name)
             save_method_signature = inspect.signature(save_method)
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
             save_method_accept_variant = "variant" in save_method_signature.parameters
@@ -1903,28 +1927,17 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             if save_method_accept_max_shard_size and max_shard_size is not None:
                 save_kwargs["max_shard_size"] = max_shard_size
 
-            save_method(os.path.join(save_directory, component_name), **save_kwargs)
+            component_save_path = os.path.join(save_directory, component_name)
+            save_method(component_save_path, **save_kwargs)
 
-        if push_to_hub:
-            commit_message = kwargs.pop("commit_message", None)
-            private = kwargs.pop("private", None)
-            create_pr = kwargs.pop("create_pr", False)
-            token = kwargs.pop("token", None)
-            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
+            if component_name not in self.config:
+                continue
 
-        if overwrite_modular_index:
-            for component_name, component_spec in self._component_specs.items():
-                if component_spec.default_creation_method != "from_pretrained":
-                    continue
-                if component_name not in self.config:
-                    continue
-
+            has_no_load_id = not hasattr(component, "_diffusers_load_id") or component._diffusers_load_id == "null"
+            if overwrite_modular_index or has_no_load_id:
                 library, class_name, component_spec_dict = self.config[component_name]
-                component_spec_dict["pretrained_model_name_or_path"] = repo_id
+                component_spec_dict["pretrained_model_name_or_path"] = repo_id if push_to_hub else save_directory
                 component_spec_dict["subfolder"] = component_name
-                if variant is not None and "variant" in component_spec_dict:
-                    component_spec_dict["variant"] = variant
-
                 self.register_to_config(**{component_name: (library, class_name, component_spec_dict)})
 
         self.save_config(save_directory=save_directory)
@@ -2208,8 +2221,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             ```
 
         Notes:
-            - Components with trained weights should be loaded with `AutoModel.from_pretrained()` or
-            `ComponentSpec.load()` so that loading specs are preserved for serialization.
+            - Components loaded with `AutoModel.from_pretrained()` or `ComponentSpec.load()` will have
+            loading specs preserved for serialization. Custom or locally loaded components without Hub references will
+            have their `modular_model_index.json` entries updated automatically during `save_pretrained()`.
             - ConfigMixin objects without weights (e.g., schedulers, guiders) can be passed directly.
         """
 
@@ -2231,14 +2245,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 new_component_spec = current_component_spec
                 if hasattr(self, name) and getattr(self, name) is not None:
                     logger.warning(f"ModularPipeline.update_components: setting {name} to None (spec unchanged)")
-            elif current_component_spec.default_creation_method == "from_pretrained" and not (
-                hasattr(component, "_diffusers_load_id") and component._diffusers_load_id is not None
-            ):
-                logger.warning(
-                    f"ModularPipeline.update_components: {name} has no valid _diffusers_load_id. "
-                    f"This will result in empty loading spec, use ComponentSpec.load() for proper specs"
-                )
-                new_component_spec = ComponentSpec(name=name, type_hint=type(component))
             else:
                 new_component_spec = ComponentSpec.from_component(name, component)
 

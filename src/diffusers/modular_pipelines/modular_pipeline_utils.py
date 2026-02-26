@@ -311,6 +311,12 @@ class ComponentSpec:
                 f"`type_hint` is required when loading a single file model but is missing for component: {self.name}"
             )
 
+        # `torch_dtype` is not an accepted parameter for tokenizers and processors.
+        # As a result, it gets stored in `init_kwargs`, which are written to the config
+        # during save. This causes JSON serialization to fail when saving the component.
+        if self.type_hint is not None and not issubclass(self.type_hint, torch.nn.Module):
+            kwargs.pop("torch_dtype", None)
+
         if self.type_hint is None:
             try:
                 from diffusers import AutoModel
