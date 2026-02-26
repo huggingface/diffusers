@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The NYU Vision-X and HuggingFace Teams. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,18 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
 from ...utils.accelerate_utils import apply_forward_hook
+from ...utils.import_utils import is_transformers_available
+
+if is_transformers_available():
+    from transformers import (
+        Dinov2WithRegistersConfig,
+        Dinov2WithRegistersModel,
+        SiglipVisionConfig,
+        SiglipVisionModel,
+        ViTMAEConfig,
+        ViTMAEModel,
+    )
+
 from ..activations import get_activation
 from ..attention import AttentionMixin
 from ..attention_processor import Attention
@@ -45,8 +57,6 @@ class Dinov2Encoder(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        from transformers import Dinov2WithRegistersConfig, Dinov2WithRegistersModel
-
         num_attention_heads = hidden_size // 64  # all dinov2 variants use head_dim=64
         config = Dinov2WithRegistersConfig(
             hidden_size=hidden_size,
@@ -61,8 +71,6 @@ class Dinov2Encoder(nn.Module):
         self.model.layernorm.weight = None
         self.model.layernorm.bias = None
 
-        self.patch_size = patch_size
-        self.hidden_size = hidden_size
 
     def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
         """
@@ -87,8 +95,6 @@ class Siglip2Encoder(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        from transformers import SiglipVisionConfig, SiglipVisionModel
-
         num_attention_heads = hidden_size // 64  # all siglip2 variants use head_dim=64
         num_hidden_layers = kwargs.get("num_hidden_layers", 12)
         config = SiglipVisionConfig(
@@ -104,8 +110,6 @@ class Siglip2Encoder(nn.Module):
         self.model.vision_model.post_layernorm.elementwise_affine = False
         self.model.vision_model.post_layernorm.weight = None
         self.model.vision_model.post_layernorm.bias = None
-        self.hidden_size = hidden_size
-        self.patch_size = patch_size
 
     def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
         """
@@ -129,8 +133,6 @@ class MAEEncoder(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        from transformers import ViTMAEConfig, ViTMAEModel
-
         num_attention_heads = hidden_size // 64  # all MAE variants use head_dim=64
         num_hidden_layers = kwargs.get("num_hidden_layers", 12)
         config = ViTMAEConfig(
@@ -148,7 +150,6 @@ class MAEEncoder(nn.Module):
         # remove the param
         self.model.layernorm.weight = None
         self.model.layernorm.bias = None
-        self.hidden_size = hidden_size
         self.patch_size = patch_size
 
     def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
