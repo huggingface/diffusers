@@ -14,7 +14,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional
 
 import numpy as np
 import torch
@@ -43,7 +42,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         shift: float = 1.0,  # Following Stable diffusion 3,
         stages: int = 3,
-        stage_range: List = [0, 1 / 3, 2 / 3, 1],
+        stage_range: list = [0, 1 / 3, 2 / 3, 1],
         gamma: float = 1 / 3,
         # For UniPC
         thresholding: bool = False,
@@ -52,7 +51,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         predict_x0: bool = True,
         solver_type: str = "bh2",
         lower_order_final: bool = True,
-        disable_corrector: List[int] = [],
+        disable_corrector: list[int] = [],
         solver_p: SchedulerMixin = None,
         use_flow_sigmas: bool = True,
         version: str = "v1",
@@ -280,9 +279,9 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: float | torch.FloatTensor = None,
         sample: torch.FloatTensor = None,
-        generator: Optional[torch.Generator] = None,
-        sigma: Optional[torch.FloatTensor] = None,
-        sigma_next: Optional[torch.FloatTensor] = None,
+        generator: torch.Generator | None = None,
+        sigma: torch.FloatTensor | None = None,
+        sigma_next: torch.FloatTensor | None = None,
         return_dict: bool = True,
     ) -> HeliosSchedulerOutput | tuple:
         assert (sigma is None) == (sigma_next is None), "sigma and sigma_next must both be None or both be not None"
@@ -853,7 +852,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: float | torch.FloatTensor = None,
         sample: torch.FloatTensor = None,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
         # For DMD
         cur_sampling_step: int = 0,

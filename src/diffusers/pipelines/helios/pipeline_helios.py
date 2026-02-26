@@ -15,7 +15,7 @@
 import html
 import math
 from itertools import accumulate
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable
 
 import regex as re
 import torch
@@ -207,11 +207,11 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: str | list[str] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 226,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -252,19 +252,19 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         negative_prompt: str | list[str] | None = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
         max_sequence_length: int = 226,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -390,10 +390,10 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         height: int = 384,
         width: int = 640,
         num_frames: int = 33,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -420,11 +420,11 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         image: torch.Tensor,
         latents_mean: torch.Tensor,
         latents_std: torch.Tensor,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        fake_latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        fake_latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         device = device or self._execution_device
         if latents is None:
@@ -444,10 +444,10 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         latents_mean: torch.Tensor,
         latents_std: torch.Tensor,
         latent_window_size: int,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         device = device or self._execution_device
         video = video.to(device=device, dtype=self.vae.dtype)
@@ -510,7 +510,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         prompt_embeds: torch.Tensor = None,
         negative_prompt_embeds: torch.Tensor = None,
         timesteps: torch.Tensor = None,
-        guidance_scale: Optional[float] = 5.0,
+        guidance_scale: float | None = 5.0,
         indices_hidden_states: torch.Tensor = None,
         indices_latents_history_short: torch.Tensor = None,
         indices_latents_history_mid: torch.Tensor = None,
@@ -518,22 +518,22 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         latents_history_short: torch.Tensor = None,
         latents_history_mid: torch.Tensor = None,
         latents_history_long: torch.Tensor = None,
-        attention_kwargs: Optional[dict] = None,
-        device: Optional[torch.device] = None,
+        attention_kwargs: dict | None = None,
+        device: torch.device | None = None,
         transformer_dtype: torch.dtype = None,
         use_dynamic_shifting: bool = False,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         # ------------ CFG Zero ------------
-        use_cfg_zero_star: Optional[bool] = False,
-        use_zero_init: Optional[bool] = True,
-        zero_steps: Optional[int] = 1,
+        use_cfg_zero_star: bool | None = False,
+        use_zero_init: bool | None = True,
+        zero_steps: int | None = 1,
         # -------------- DMD --------------
         use_dmd: bool = False,
         dmd_sigmas: torch.Tensor = None,
         dmd_timesteps: torch.Tensor = None,
         is_amplify_first_chunk: bool = False,
         # ------------ Callback ------------
-        callback_on_step_end: Optional[callable] = None,
+        callback_on_step_end: callable | None = None,
         callback_on_step_end_tensor_inputs: list = None,
         progress_bar=None,
     ):
@@ -637,10 +637,10 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         self,
         latents: torch.Tensor = None,
         stage2_num_stages: int = None,
-        stage2_num_inference_steps_list: List[int] = None,
+        stage2_num_inference_steps_list: list[int] = None,
         prompt_embeds: torch.Tensor = None,
         negative_prompt_embeds: torch.Tensor = None,
-        guidance_scale: Optional[float] = 5.0,
+        guidance_scale: float | None = 5.0,
         indices_hidden_states: torch.Tensor = None,
         indices_latents_history_short: torch.Tensor = None,
         indices_latents_history_mid: torch.Tensor = None,
@@ -648,20 +648,20 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         latents_history_short: torch.Tensor = None,
         latents_history_mid: torch.Tensor = None,
         latents_history_long: torch.Tensor = None,
-        attention_kwargs: Optional[dict] = None,
-        device: Optional[torch.device] = None,
+        attention_kwargs: dict | None = None,
+        device: torch.device | None = None,
         transformer_dtype: torch.dtype = None,
         use_dynamic_shifting: bool = False,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         # ------------ CFG Zero ------------
-        use_cfg_zero_star: Optional[bool] = False,
-        use_zero_init: Optional[bool] = True,
-        zero_steps: Optional[int] = 1,
+        use_cfg_zero_star: bool | None = False,
+        use_zero_init: bool | None = True,
+        zero_steps: int | None = 1,
         # -------------- DMD --------------
         use_dmd: bool = False,
         is_amplify_first_chunk: bool = False,
         # ------------ Callback ------------
-        callback_on_step_end: Optional[callable] = None,
+        callback_on_step_end: callable | None = None,
         callback_on_step_end_tensor_inputs: list = None,
         progress_bar=None,
     ):
@@ -862,36 +862,34 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        negative_prompt: Union[str, List[str]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
         height: int = 384,
         width: int = 640,
         num_frames: int = 132,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
-        num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "np",
+        num_videos_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        output_type: str | None = "np",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
         # ------------ I2V ------------
-        image: Optional[PipelineImageInput] = None,
-        image_latents: Optional[torch.Tensor] = None,
-        fake_image_latents: Optional[torch.Tensor] = None,
+        image: PipelineImageInput | None = None,
+        image_latents: torch.Tensor | None = None,
+        fake_image_latents: torch.Tensor | None = None,
         add_noise_to_image_latents: bool = True,
         image_noise_sigma_min: float = 0.111,
         image_noise_sigma_max: float = 0.135,
         # ------------ V2V ------------
-        video: Optional[PipelineImageInput] = None,
-        video_latents: Optional[torch.Tensor] = None,
+        video: PipelineImageInput | None = None,
+        video_latents: torch.Tensor | None = None,
         add_noise_to_video_latents: bool = True,
         video_noise_sigma_min: float = 0.111,
         video_noise_sigma_max: float = 0.135,
@@ -909,9 +907,9 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         stage2_num_stages: int = 3,
         stage2_num_inference_steps_list: list = [10, 10, 10],
         # ------------ CFG Zero ------------
-        use_cfg_zero_star: Optional[bool] = False,
-        use_zero_init: Optional[bool] = True,
-        zero_steps: Optional[int] = 1,
+        use_cfg_zero_star: bool | None = False,
+        use_zero_init: bool | None = True,
+        zero_steps: int | None = 1,
         # ------------ DMD ------------
         use_dmd: bool = False,
         is_skip_first_section: bool = False,
@@ -921,9 +919,9 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, pass `prompt_embeds` instead.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to avoid during image generation. If not defined, pass `negative_prompt_embeds`
                 instead. Ignored when not using guidance (`guidance_scale` < `1`).
             height (`int`, defaults to `384`):
@@ -943,7 +941,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 the text `prompt`, usually at the expense of lower image quality.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -966,7 +964,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
                 DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`. `callback_kwargs` will include a
                 list of all tensors as specified by `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
