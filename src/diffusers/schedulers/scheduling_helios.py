@@ -11,14 +11,14 @@ from diffusers.utils import BaseOutput, deprecate
 
 
 @dataclass
-class HeliosUniPCSchedulerOutput(BaseOutput):
+class HeliosSchedulerOutput(BaseOutput):
     prev_sample: torch.FloatTensor
     model_outputs: torch.FloatTensor
     last_sample: torch.FloatTensor
     this_order: int
 
 
-class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
+class HeliosScheduler(SchedulerMixin, ConfigMixin):
     _compatibles = []
     order = 1
 
@@ -41,6 +41,7 @@ class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
         solver_p: SchedulerMixin = None,
         use_flow_sigmas: bool = True,
         version: str = "v1",
+        scheduler_type: str = "unipc",
     ):
         self.version = version
         self.timestep_ratios = {}  # The timestep ratio for each stage
@@ -236,6 +237,7 @@ class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self.reset_scheduler_history()
 
+    # ---------------------------------- Euler ----------------------------------
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
@@ -258,7 +260,7 @@ class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
         else:
             self._step_index = self._begin_index
 
-    def step(
+    def step_euler(
         self,
         model_output: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor] = None,
@@ -267,30 +269,7 @@ class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
         sigma: Optional[torch.FloatTensor] = None,
         sigma_next: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
-    ) -> Union[HeliosUniPCSchedulerOutput, Tuple]:
-        """
-        Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
-        process from the learned model outputs (most often the predicted noise).
-
-        Args:
-            model_output (`torch.FloatTensor`):
-                The direct output from learned diffusion model.
-            timestep (`float`):
-                The current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
-                A current instance of a sample created by the diffusion process.
-            generator (`torch.Generator`, *optional*):
-                A random number generator.
-            return_dict (`bool`):
-                Whether or not to return a [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] or
-                tuple.
-
-        Returns:
-            [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] or `tuple`:
-                If return_dict is `True`, [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] is
-                returned, otherwise a tuple is returned where the first element is the sample tensor.
-        """
-
+    ) -> Union[HeliosSchedulerOutput, Tuple]:
         assert (sigma is None) == (sigma_next is None), "sigma and sigma_next must both be None or both be not None"
 
         if sigma is None and sigma_next is None:
@@ -328,7 +307,7 @@ class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample,)
 
-        return HeliosUniPCSchedulerOutput(prev_sample=prev_sample)
+        return HeliosSchedulerOutput(prev_sample=prev_sample)
 
     # ---------------------------------- UniPC ----------------------------------
     def _sigma_to_alpha_sigma_t(self, sigma):
@@ -712,7 +691,7 @@ class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
         cus_lower_order_num: int = None,
         cus_this_order: int = None,
         cus_last_sample: torch.Tensor = None,
-    ) -> Union[HeliosUniPCSchedulerOutput, Tuple]:
+    ) -> Union[HeliosSchedulerOutput, Tuple]:
         if self.num_inference_steps is None:
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
@@ -743,8 +722,6 @@ class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
         if model_outputs is not None and timestep_list is not None:
             self.model_outputs = model_outputs[:-1]
             self.timestep_list = timestep_list[:-1]
-
-        # print("1", self.step_index, self.timestep_list)
 
         if use_corrector:
             sample = self.multistep_uni_c_bh_update(
@@ -794,12 +771,38 @@ class HeliosUniPCScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample, model_outputs, self.last_sample, self.this_order)
 
-        return HeliosUniPCSchedulerOutput(
+        return HeliosSchedulerOutput(
             prev_sample=prev_sample,
             model_outputs=model_outputs,
             last_sample=self.last_sample,
             this_order=self.this_order,
         )
+
+    # ---------------------------------- Merge ----------------------------------
+    def step(
+        self,
+        model_output: torch.FloatTensor,
+        timestep: Union[float, torch.FloatTensor] = None,
+        sample: torch.FloatTensor = None,
+        return_dict: bool = True,
+        scheduler_type: str = "unipc",
+    ) -> Union[HeliosSchedulerOutput, Tuple]:
+        if scheduler_type == "unipc":
+            self.step_euler(
+                model_output=model_output,
+                timestep=timestep,
+                sample=sample,
+                return_dict=return_dict,
+            )
+        elif scheduler_type == "euler":
+            self.step_unipc(
+                model_output=model_output,
+                timestep=timestep,
+                sample=sample,
+                return_dict=return_dict,
+            )
+        else:
+            raise NotImplementedError
 
     def reset_scheduler_history(self):
         self.model_outputs = [None] * self.config.solver_order

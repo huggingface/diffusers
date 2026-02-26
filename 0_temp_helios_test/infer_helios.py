@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from diffusers import HeliosTransformer3DModel
 from diffusers import HeliosPipeline
-from diffusers.schedulers.scheduling_helios_unipc import HeliosUniPCScheduler
+from diffusers.schedulers.scheduling_helios import HeliosScheduler
 
 from diffusers import ContextParallelConfig
 from diffusers.models import AutoencoderKLWan
@@ -208,7 +208,7 @@ def main():
         torch_dtype=torch.float32,
     )
     if args.is_enable_stage2:
-        scheduler = HeliosUniPCScheduler(
+        scheduler = HeliosScheduler(
             shift=args.stage2_timestep_shift,
             stages=args.stage2_num_stages,
             stage_range=args.stage2_stage_range,

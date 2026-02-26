@@ -26,7 +26,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import HeliosLoraLoaderMixin
 from ...models import AutoencoderKLWan, HeliosTransformer3DModel
-from ...schedulers import HeliosUniPCScheduler, UniPCMultistepScheduler
+from ...schedulers import HeliosScheduler, UniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -210,7 +210,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
-        scheduler: UniPCMultistepScheduler | HeliosUniPCScheduler,
+        scheduler: UniPCMultistepScheduler | HeliosScheduler,
         transformer: HeliosTransformer3DModel,
     ):
         super().__init__()
@@ -838,10 +838,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     else:
                         latents = pred_image_or_video
                 else:
-                    if scheduler_type == "unipc":
-                        latents = self.scheduler.step_unipc(noise_pred.float(), t, latents, return_dict=False)[0]
-                    else:
-                        latents = self.scheduler.step(noise_pred.float(), t, latents, return_dict=False)[0]
+                    latents = self.scheduler.step(noise_pred.float(), t, latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}

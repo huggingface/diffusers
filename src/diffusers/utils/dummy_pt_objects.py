@@ -2758,7 +2758,7 @@ class FlowMatchLCMScheduler(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class HeliosUniPCScheduler(metaclass=DummyObject):
+class HeliosScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

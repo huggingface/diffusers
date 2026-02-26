@@ -10,11 +10,11 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# HeliosUniPCScheduler
+# HeliosScheduler
 
-`HeliosUniPCScheduler` is based on the pyramidal flow-matching sampling introduced in [Helios](https://huggingface.co/papers).
+`HeliosScheduler` is based on the pyramidal flow-matching sampling introduced in [Helios](https://huggingface.co/papers).
 
-## HeliosUniPCScheduler
-[[autodoc]] HeliosUniPCScheduler
+## HeliosScheduler
+[[autodoc]] HeliosScheduler
 
-scheduling_helios_unipc
+scheduling_helios
