@@ -1,0 +1,902 @@
+import argparse
+import importlib
+import logging
+import math
+import os
+import random
+import shutil
+from contextlib import nullcontext
+from pathlib import Path
+
+import datasets
+import numpy as np
+import torch
+import torch.nn.functional as F
+import torch.utils.checkpoint
+import transformers
+from accelerate import Accelerator
+from accelerate.logging import get_logger
+from accelerate.utils import ProjectConfiguration, set_seed
+from datasets import load_dataset
+from huggingface_hub import create_repo, upload_folder
+from packaging import version
+from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict, set_peft_model_state_dict
+from torchvision import transforms
+from tqdm.auto import tqdm
+
+
+import diffusers
+from diffusers import Cosmos2_5_PredictBasePipeline
+from diffusers.optimization import get_scheduler
+from diffusers.training_utils import cast_training_params, compute_snr
+from diffusers.utils import (
+    check_min_version,
+    convert_state_dict_to_diffusers,
+    is_wandb_available,
+    export_to_video, 
+    load_image, 
+    load_video,
+)
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
+from diffusers.utils.torch_utils import is_compiled_module
+
+
+if is_wandb_available():
+    import wandb
+
+
+logger = get_logger(__name__, log_level="INFO")
+
+
+H, W = 704, 1280
+
+
+def log_validation(
+    pipeline,
+    args,
+    accelerator,
+    epoch,
+    is_final_validation=False,
+):
+    logger.info(
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f" {args.validation_prompt}."
+    )
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+    generator = torch.Generator(device=accelerator.device)
+    if args.seed is not None:
+        generator = generator.manual_seed(args.seed)
+    images = []
+    if torch.backends.mps.is_available():
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
+
+    with autocast_ctx:
+        for _ in range(args.num_validation_images):
+            images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
+
+    for tracker in accelerator.trackers:
+        phase_name = "test" if is_final_validation else "validation"
+        if tracker.name == "tensorboard":
+            np_images = np.stack([np.asarray(img) for img in images])
+            tracker.writer.add_images(phase_name, np_images, epoch, dataformats="NHWC")
+        if tracker.name == "wandb":
+            tracker.log(
+                {
+                    phase_name: [
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                    ]
+                }
+            )
+    return images
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--pretrained_model_name_or_path",
+        type=str,
+        default="nvidia/Cosmos-Predict2.5-2B",
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--revision",
+        type=str,
+        default="pre-trained",
+        choices=["pre-trained", "post-trained"],
+        required=False,
+        help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
+    )
+    parser.add_argument(
+        "--dataset_name",
+        type=str,
+        default=None,
+        help=(
+            "The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,"
+            " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
+            " or to a folder containing files that 🤗 Datasets can understand."
+        ),
+    )
+    parser.add_argument(
+        "--dataset_config_name",
+        type=str,
+        default=None,
+        help="The config of the Dataset, leave as None if there's only one config.",
+    )
+    parser.add_argument(
+        "--train_data_dir",
+        type=str,
+        default="datasets/cosmos_nemo_assets",
+        help=(
+            "A folder containing the training data."
+        ),
+    )
+    parser.add_argument(
+        "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=4,
+        help="Number of images that should be generated during validation with `validation_prompt`.",
+    )
+    parser.add_argument(
+        "--validation_epochs",
+        type=int,
+        default=1,
+        help=(
+            "Run fine-tuning validation every X epochs. The validation process consists of running the prompt"
+            " `args.validation_prompt` multiple times: `args.num_validation_images`."
+        ),
+    )
+    parser.add_argument(
+        "--max_train_samples",
+        type=int,
+        default=None,
+        help=(
+            "For debugging purposes or quicker training, truncate the number of training examples to this "
+            "value if set."
+        ),
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="sd-model-finetuned-lora",
+        help="The output directory where the model predictions and checkpoints will be written.",
+    )
+    parser.add_argument(
+        "--cache_dir",
+        type=str,
+        default=None,
+        help="The directory where the downloaded models and datasets will be stored.",
+    )
+    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument(
+        "--train_batch_size", type=int, default=1, help="Batch size (per device) for the training dataloader."
+    )
+    parser.add_argument("--num_train_epochs", type=int, default=100)
+    parser.add_argument(
+        "--max_train_steps",
+        type=int,
+        default=None,
+        help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps",
+        type=int,
+        default=1,
+        help="Number of updates steps to accumulate before performing a backward/update pass.",
+    )
+    parser.add_argument(
+        "--gradient_checkpointing",
+        action="store_true",
+        help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
+    )
+    parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=1e-4,
+        help="Initial learning rate (after the potential warmup period) to use.",
+    )
+    parser.add_argument(
+        "--scale_lr",
+        action="store_true",
+        default=False,
+        help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
+    )
+    parser.add_argument(
+        "--lr_scheduler",
+        type=str,
+        default="constant",
+        help=(
+            'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
+            ' "constant", "constant_with_warmup"]'
+        ),
+    )
+    parser.add_argument(
+        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--conditional_frame_timestep", type=float, default=0.1,
+    )
+    parser.add_argument(
+        "--snr_gamma",
+        type=float,
+        default=None,
+        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
+        "More details here: https://huggingface.co/papers/2303.09556.",
+    )
+    parser.add_argument(
+        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+    )
+    parser.add_argument(
+        "--allow_tf32",
+        action="store_true",
+        help=(
+            "Whether or not to allow TF32 on Ampere GPUs. Can be used to speed up training. For more information, see"
+            " https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices"
+        ),
+    )
+    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
+    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
+    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
+    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
+    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--hub_model_id",
+        type=str,
+        default=None,
+        help="The name of the repository to keep in sync with the local `output_dir`.",
+    )
+    parser.add_argument(
+        "--logging_dir",
+        type=str,
+        default="logs",
+        help=(
+            "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
+            " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
+        ),
+    )
+    parser.add_argument(
+        "--mixed_precision",
+        type=str,
+        default=None,
+        choices=["no", "fp16", "bf16"],
+        help=(
+            "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
+            " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
+            " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
+        ),
+    )
+    parser.add_argument(
+        "--report_to",
+        type=str,
+        default="tensorboard",
+        help=(
+            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
+            ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
+        ),
+    )
+    parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--checkpointing_steps",
+        type=int,
+        default=500,
+        help=(
+            "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
+            " training using `--resume_from_checkpoint`."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoints_total_limit",
+        type=int,
+        default=None,
+        help=("Max number of checkpoints to store."),
+    )
+    parser.add_argument(
+        "--resume_from_checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Whether training should be resumed from a previous checkpoint. Use a path saved by"
+            ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
+        ),
+    )
+    parser.add_argument(
+        "--lora_rank",
+        type=int,
+        default=32,
+        help=("The dimension of the LoRA update matrices."),
+    )
+    parser.add_argument(
+        "--lora_alpha",
+        type=int,
+        default=32,
+        help=("The alpha parameter for Lora scaling."),
+    )
+    parser.add_argument(
+        "--use_dora",
+        action="store_true",
+        help="Whether or not to use DoRA (Weight-Decomposed Low-Rank Adaptation).",
+    )
+
+    args = parser.parse_args()
+    env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
+    if env_local_rank != -1 and env_local_rank != args.local_rank:
+        args.local_rank = env_local_rank
+
+    # Sanity checks
+    if args.dataset_name is None and args.train_data_dir is None:
+        raise ValueError("Need either a dataset name or a training folder.")
+
+    return args
+
+from torchvision import transforms as T
+from torch.utils.data import DataLoader, Dataset, DistributedSampler
+from decord import VideoReader, cpu
+import json
+from typing import Any, Callable, Optional
+from cosmos_predict2._src.predict2.datasets.local_datasets.dataset_utils import ResizePreprocess, ToTensorVideo
+
+
+class VideoDataset(Dataset):
+    def __init__(
+        self,
+        dataset_dir: str,
+        num_frames: int,
+        video_size: tuple[int, int],
+        prompt_type: str | None = None,  # "long", "short", "medium", or None for auto
+        caption_format: str = "auto",  # "text", "json", or "auto"
+        video_paths: Optional[list[str]] = None,
+    ) -> None:
+        """Dataset class for loading image-text-to-video generation data.
+
+        Args:
+            dataset_dir (str): Base path to the dataset directory
+            num_frames (int): Number of frames to load per sequence
+            video_size (tuple[int, int]): Target size (H,W) for video frames
+            prompt_type (str | None): Which prompt to use from JSON ("long", "short", "medium").
+                                     If None, uses the first available prompt type.
+                                     Only applicable when using JSON format.
+            caption_format (str): Caption format - "text", "json", or "auto" to detect automatically
+
+        Returns dict with:
+            - video: RGB frames tensor [T,C,H,W]
+            - video_name: Dict with episode/frame metadata
+        """
+
+        super().__init__()
+        self.dataset_dir = dataset_dir
+        self.sequence_length = num_frames
+        self.prompt_type = prompt_type
+        self.caption_format = caption_format
+
+        # Determine caption format and directory
+        self._setup_caption_format()
+
+        video_dir = os.path.join(self.dataset_dir, "videos")
+
+        if video_paths is None:
+            self.video_paths = [os.path.join(video_dir, f) for f in os.listdir(video_dir) if f.endswith(".mp4")]
+            self.video_paths = sorted(self.video_paths)
+        else:
+            self.video_paths = video_paths
+        print(f"{len(self.video_paths)} videos in total")
+
+        self.num_failed_loads = 0
+        self.preprocess = T.Compose([ToTensorVideo(), ResizePreprocess((video_size[0], video_size[1]))])
+
+    def __str__(self) -> str:
+        return f"{len(self.video_paths)} samples from {self.dataset_dir}"
+
+    def __len__(self) -> int:
+        return len(self.video_paths)
+
+    def _load_video(self, video_path: str) -> tuple[np.ndarray, float]:
+        vr = VideoReader(video_path, ctx=cpu(0), num_threads=2)
+        total_frames = len(vr)
+        if total_frames < self.sequence_length:
+            raise ValueError(
+                f"Video {video_path} has only {total_frames} frames, "
+                f"at least {self.sequence_length} frames are required."
+            )
+
+        # randomly sample a sequence of frames
+        max_start_idx = total_frames - self.sequence_length
+        start_frame = np.random.randint(0, max_start_idx)
+        end_frame = start_frame + self.sequence_length
+        frame_ids = np.arange(start_frame, end_frame).tolist()
+
+        frame_data = vr.get_batch(frame_ids).asnumpy()
+        vr.seek(0)  # set video reader point back to 0 to clean up cache
+
+        try:
+            fps = vr.get_avg_fps()
+        except Exception:  # failed to read FPS, assume it is 16
+            fps = 16
+        del vr  # delete the reader to avoid memory leak
+        return frame_data, fps
+
+    def _setup_caption_format(self) -> None:
+        """Determine the caption format and set up the caption directory."""
+        metas_dir = os.path.join(self.dataset_dir, "metas")
+        captions_dir = os.path.join(self.dataset_dir, "captions")
+
+        if self.caption_format == "auto":
+            # Auto-detect based on directory existence
+            if os.path.exists(captions_dir) and any(f.endswith(".json") for f in os.listdir(captions_dir)):
+                self.caption_format = "json"
+                self.caption_dir = captions_dir
+            elif os.path.exists(metas_dir) and any(f.endswith(".txt") for f in os.listdir(metas_dir)):
+                self.caption_format = "text"
+                self.caption_dir = metas_dir
+            else:
+                raise ValueError(
+                    f"Could not auto-detect caption format. Neither 'metas/*.txt' nor 'captions/*.json' found in {self.dataset_dir}"
+                )
+        elif self.caption_format == "json":
+            if not os.path.exists(captions_dir):
+                raise ValueError(f"JSON format specified but 'captions' directory not found in {self.dataset_dir}")
+            self.caption_dir = captions_dir
+        elif self.caption_format == "text":
+            if not os.path.exists(metas_dir):
+                raise ValueError(f"Text format specified but 'metas' directory not found in {self.dataset_dir}")
+            self.caption_dir = metas_dir
+        else:
+            raise ValueError(f"Invalid caption_format: {self.caption_format}. Must be 'text', 'json', or 'auto'")
+
+    def _load_text(self, text_source: Path) -> str:
+        """Load text caption from file."""
+        try:
+            return text_source.read_text().strip()
+        except Exception as e:
+            print(f"Failed to read caption file {text_source}: {e}")
+            return ""
+
+    def _load_json_caption(self, json_path: Path) -> str:
+        """Load caption from JSON file with prompt type selection."""
+        try:
+            with open(json_path, "r") as f:
+                content = f.read()
+                # Handle JSON that might not have top-level object
+                if not content.strip().startswith("{"):
+                    # Wrap in object if needed
+                    data = json.loads("{" + content + "}")
+                else:
+                    data = json.loads(content)
+
+            # Get the first model's captions (e.g., "qwen3_vl_30b_a3b")
+            model_key = next(iter(data.keys()))
+            captions = data[model_key]
+
+            if self.prompt_type:
+                # Use specified prompt type
+                if self.prompt_type in captions:
+                    return captions[self.prompt_type]
+                else:
+                    print(
+                        f"Prompt type '{self.prompt_type}' not found in {json_path}. "
+                        f"Available: {list(captions.keys())}. Using first available."
+                    )
+
+            # Use first available prompt type
+            first_prompt = next(iter(captions.values()))
+            return first_prompt
+
+        except Exception as e:
+            print(f"Failed to read JSON caption file {json_path}: {e}")
+            return ""
+
+    def _get_frames(self, video_path: str) -> tuple[torch.Tensor, float]:
+        frames, fps = self._load_video(video_path)
+        frames = frames.astype(np.uint8)
+        frames = torch.from_numpy(frames).permute(0, 3, 1, 2)  # [T, C, H, W]
+        frames = self.preprocess(frames)
+        frames = torch.clamp(frames * 255.0, 0, 255).to(torch.uint8)
+        return frames, fps
+
+    def __getitem__(self, index: int) -> dict | Any:
+        try:
+            data = dict()
+            video, fps = self._get_frames(self.video_paths[index])
+            video = video.permute(1, 0, 2, 3)  # Rearrange from [T, C, H, W] to [C, T, H, W]
+
+            # Load caption based on format
+            video_path = self.video_paths[index]
+            video_basename = os.path.basename(video_path).replace(".mp4", "")
+
+            if self.caption_format == "json":
+                caption_path = os.path.join(self.caption_dir, f"{video_basename}.json")
+                caption = self._load_json_caption(Path(caption_path))
+            else:  # text format
+                caption_path = os.path.join(self.caption_dir, f"{video_basename}.txt")
+                caption = self._load_text(Path(caption_path))
+
+            data["video"] = video
+            data["caption"] = caption
+
+            _, _, h, w = video.shape
+
+            data["fps"] = fps
+            data["image_size"] = torch.tensor([h, w, h, w])
+            data["num_frames"] = self.sequence_length
+            data["padding_mask"] = torch.zeros(1, h, w)
+
+            return data
+        except Exception as e:
+            self.num_failed_loads += 1
+            print(
+                f"Failed to load video {self.video_paths[index]} (total failures: {self.num_failed_loads}): {e}\n"
+            )
+            # Randomly sample another video
+            return self[np.random.randint(len(self.video_paths))]
+
+
+def build_dataloader(args):
+    dataset = VideoDataset(
+            video_paths=None,
+            num_frames=93,
+            video_size=[H, W],
+            dataset_dir=args.train_data_dir,
+        )
+    
+    dataloader = DataLoader(
+            dataset=dataset,
+            sampler=None,
+            batch_size=args.train_batch_size,
+            drop_last=True,
+            num_workers=4,
+            pin_memory=True,
+        )
+    return dataloader
+
+
+def create_condition_mask(latent_shape, device, dtype, num_cond_latent_frames=2):
+    bsz, _C, _T, _H, _W = latent_shape
+    cond_indicator = torch.zeros(bsz, 1, _T, 1, 1, dtype=dtype, device=device)
+    cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0
+    cond_mask = cond_indicator.expand(-1, -1, -1, _H, _W)
+    return cond_indicator, cond_mask
+
+
+def get_flow_xt_and_target_v(clean_latent, t, cond_mask):
+    # https://github.com/nvidia-cosmos/cosmos-predict2.5/blob/main/cosmos_predict2/_src/predict2/models/text2world_model_rectified_flow.py#L779
+    noise = torch.randn_like(clean_latent)
+    target_velocity = noise - clean_latent
+    xt_B_C_T_H_W = noise * t + clean_latent * (1 - t)
+
+    # https://github.com/nvidia-cosmos/cosmos-predict2.5/blob/main/cosmos_predict2/_src/predict2/models/video2world_model_rectified_flow.py#L104
+    xt_B_C_T_H_W = clean_latent * cond_mask + xt_B_C_T_H_W * (1 - cond_mask)
+    return xt_B_C_T_H_W, target_velocity
+
+
+def sample_train_sigma_t(batch_size, distribution, device, dtype=torch.float32, shift=5):
+    if distribution == "uniform":
+        t = torch.rand((batch_size,)).to(device=device, dtype=dtype)
+    elif distribution == "logitnormal":
+        t = torch.sigmoid(torch.randn((batch_size,))).to(device=device, dtype=dtype)
+    else:
+        raise NotImplementedError(f"Time distribution {distribution} is not implemented.")
+    sigma_t = shift * t / (1 + (shift - 1) * t)
+    return sigma_t#.unsqueeze(1)
+
+
+
+def main():
+    args = parse_args()
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `hf auth login` to authenticate with the Hub."
+        )
+
+    logging_dir = Path(args.output_dir, args.logging_dir)
+
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+
+    accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        mixed_precision=args.mixed_precision,
+        log_with=args.report_to,
+        project_config=accelerator_project_config,
+    )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
+
+    # Make one log on every process with the configuration for debugging.
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+    )
+    logger.info(accelerator.state, main_process_only=False)
+    if accelerator.is_local_main_process:
+        datasets.utils.logging.set_verbosity_warning()
+        transformers.utils.logging.set_verbosity_warning()
+        diffusers.utils.logging.set_verbosity_info()
+    else:
+        datasets.utils.logging.set_verbosity_error()
+        transformers.utils.logging.set_verbosity_error()
+        diffusers.utils.logging.set_verbosity_error()
+
+    # If passed along, set the training seed now.
+    if args.seed is not None:
+        set_seed(args.seed)
+
+    # Handle the repository creation
+    if accelerator.is_main_process:
+        if args.output_dir is not None:
+            os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Initialize models
+    pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        revision=f"diffusers/base/{args.revision}",
+        torch_dtype=torch.bfloat16,
+    )
+    
+    dit = pipe.transformer
+    vae = pipe.vae
+    text_encoder = pipe.text_encoder
+
+    dit.requires_grad_(False)
+    vae.requires_grad_(False)
+    text_encoder.requires_grad_(False)
+
+    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora dit) to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    
+    target_modules_list = ['to_q', 'to_k', 'to_v', 'to_out.0', 'ff.net.0.proj', 'ff.net.2']
+    dit_lora_config = LoraConfig(
+        r=args.lora_rank,
+        lora_alpha=args.lora_alpha,
+        init_lora_weights=True,
+        target_modules=target_modules_list,
+        use_dora=args.use_dora,
+    )
+    logger.info(f"Add LoRA: rank={args.lora_rank}, alpha={args.lora_alpha}, targets={target_modules_list}, use_dora={args.use_dora}")
+
+    # Move dit, vae and text_encoder to device and cast to weight_dtype
+    device=accelerator.device
+    dit.to(device, dtype=weight_dtype)
+    vae.to(device, dtype=weight_dtype)
+    text_encoder.to(device, dtype=weight_dtype)
+
+    # Add adapter and make sure the trainable params are in float32.
+    dit.add_adapter(dit_lora_config)
+    
+    if args.mixed_precision in ["fp16", "bf16"]:
+        # only upcast trainable parameters (LoRA) into fp32
+        cast_training_params(dit, dtype=torch.float32)
+
+    lora_layers = filter(lambda p: p.requires_grad, dit.parameters())
+    trainable_params = sum(p.numel() for p in dit.parameters() if p.requires_grad)
+
+    if args.gradient_checkpointing:
+        dit.enable_gradient_checkpointing()
+
+    # Enable TF32 for faster training on Ampere GPUs,
+    # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
+    if args.allow_tf32:
+        torch.backends.cuda.matmul.allow_tf32 = True
+
+    if args.scale_lr:
+        args.learning_rate = (
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+        )
+
+    # Initialize the optimizer
+    optimizer_cls = torch.optim.AdamW
+
+    optimizer = optimizer_cls(
+        lora_layers,
+        lr=args.learning_rate,
+        betas=(args.adam_beta1, args.adam_beta2),
+        weight_decay=args.adam_weight_decay,
+        eps=args.adam_epsilon,
+    )
+
+    train_dataloader = build_dataloader(args)
+
+    # Scheduler and math around the number of training steps.
+    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
+    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
+    if args.max_train_steps is None:
+        len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
+        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
+        num_training_steps_for_scheduler = (
+            args.num_train_epochs * num_update_steps_per_epoch * accelerator.num_processes
+        )
+    else:
+        num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
+    lr_scheduler = get_scheduler(
+        args.lr_scheduler,
+        optimizer=optimizer,
+        num_warmup_steps=num_warmup_steps_for_scheduler,
+        num_training_steps=num_training_steps_for_scheduler,
+    )
+
+    # Prepare everything with our `accelerator`.
+    dit, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        dit, optimizer, train_dataloader, lr_scheduler
+    )
+
+    # Register the hooks for efficient saving and loading of LoRA weights
+    #accelerator.register_save_state_pre_hook(save_model_hook)
+    #accelerator.register_load_state_pre_hook(load_model_hook)
+
+    # We need to recalculate our total training steps as the size of the training dataloader may have changed.
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    if args.max_train_steps is None:
+        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+        if num_training_steps_for_scheduler != args.max_train_steps * accelerator.num_processes:
+            logger.warning(
+                f"The length of the 'train_dataloader' after 'accelerator.prepare' ({len(train_dataloader)}) does not match "
+                f"the expected length ({len_train_dataloader_after_sharding}) when the learning rate scheduler was created. "
+                f"This inconsistency may result in the learning rate scheduler not functioning properly."
+            )
+    # Afterwards we recalculate our number of training epochs
+    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+
+    # We need to initialize the trackers we use, and also store our configuration.
+    # The trackers initializes automatically on the main process.
+    if accelerator.is_main_process:
+        accelerator.init_trackers("text2image-fine-tune", config=vars(args))
+
+    # Train
+    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+
+    logger.info("***** Running training *****")
+    logger.info(f"  Num examples = {len(train_dataloader.dataset)}")
+    logger.info(f"Total Trainable Parameters: {trainable_params/10**9:.2f}B")
+    logger.info(f"  Num Epochs = {args.num_train_epochs}")
+    logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
+    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+    logger.info(f"  Gradient Checkpointing = {args.gradient_checkpointing}, allow_tf32 = {args.allow_tf32}")
+    logger.info(f"  Total optimization steps = {args.max_train_steps}")
+    global_step = 0
+    first_epoch = 0
+    initial_global_step = 0
+    progress_bar = tqdm(
+        range(0, args.max_train_steps),
+        initial=initial_global_step,
+        desc="Steps",
+        # Only show the progress bar once on each machine.
+        disable=not accelerator.is_local_main_process,
+    )
+
+    transformer_dtype = dit.dtype
+    noise_scheduler = pipe.scheduler
+    noise_scheduler.set_timesteps(num_training_steps_for_scheduler, device=device)
+    padding_mask = torch.zeros(1, 1, H, W, dtype=transformer_dtype, device=device)
+    cond_indicator = None
+    
+    latents_mean = torch.tensor(vae.config.latents_mean).view(1, vae.config.z_dim, 1, 1, 1).to(device)
+    latents_std = torch.tensor(vae.config.latents_std).view(1, vae.config.z_dim, 1, 1, 1).to(device)
+
+    torch.set_grad_enabled(True) # disabled by Cosmos2_5_PredictBasePipeline
+    for epoch in range(first_epoch, args.num_train_epochs):
+        dit.train()
+        train_loss = 0.0
+        for step, batch in enumerate(train_dataloader):
+            with accelerator.accumulate(dit):
+                # Encode ground-truth video to latents
+                # https://github.com/nvidia-cosmos/cosmos-predict2.5/blob/main/cosmos_predict2/_src/predict2/tokenizers/wan2pt1.py#L532
+                raw_state = batch["video"].to(device=device, dtype=vae.dtype)
+                mu = vae.encode(raw_state).latent_dist.mean # deterministic
+                clean_latent = ((mu - latents_mean) / latents_std).contiguous().float()
+                assert clean_latent.requires_grad == False
+                torch.cuda.empty_cache()
+
+                # Encode text to text embeddings
+                prompt_embeds, _ = pipe.encode_prompt(
+                    prompt=batch["caption"],
+                    do_classifier_free_guidance=False,
+                    device=device,
+                )
+                assert prompt_embeds.requires_grad == False
+
+                # Create indicator and mask to make the first few frames of x_t be the ground truth frames
+                bsz = clean_latent.shape[0]
+                if cond_indicator is None:
+                    cond_indicator, cond_mask = \
+                        create_condition_mask(clean_latent.shape, device=device, dtype=transformer_dtype)
+                
+                # Sample a random timestep
+                sigma_t = sample_train_sigma_t(bsz, distribution='logitnormal', device=device)
+                in_timestep = cond_indicator * args.conditional_frame_timestep + (1 - cond_indicator) * sigma_t
+                
+                # 1. Sample noise 2. Get the target velocity 3. Get xt by interpolation between noise and clean
+                xt_B_C_T_H_W, target_velocity = get_flow_xt_and_target_v(clean_latent, sigma_t, cond_mask)
+
+                # Denoise
+                pred_velocity = dit(
+                    hidden_states=xt_B_C_T_H_W,
+                    condition_mask=cond_mask,
+                    timestep=in_timestep,
+                    encoder_hidden_states=prompt_embeds,
+                    padding_mask=padding_mask,
+                    return_dict=False,
+                )[0]
+                
+                loss = F.mse_loss(pred_velocity.float(), target_velocity.float(), reduction="mean")
+                
+                # Gather the losses across all processes for logging (if we use distributed training).
+                avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
+                train_loss += avg_loss.item() / args.gradient_accumulation_steps
+
+                # Backpropagate
+                accelerator.backward(loss)
+                if accelerator.sync_gradients:
+                    params_to_clip = lora_layers
+                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+
+            # Checks if the accelerator has performed an optimization step behind the scenes
+            if accelerator.sync_gradients:
+                progress_bar.update(1)
+                global_step += 1
+                accelerator.log({"train_loss": train_loss}, step=global_step)
+                train_loss = 0.0
+
+                if global_step % args.checkpointing_steps == 0:
+                    if accelerator.is_main_process:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
+
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
+
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+
+                        logger.info(f"Saved state to {save_path}")
+
+            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            progress_bar.set_postfix(**logs)
+
+            if global_step >= args.max_train_steps:
+                break
+    # TODO: Save the lora layers
+
+    accelerator.end_training()
+
+
+if __name__ == "__main__":
+    main()
