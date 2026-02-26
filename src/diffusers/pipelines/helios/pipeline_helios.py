@@ -601,9 +601,10 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     noise_pred,
                     t,
                     latents,
-                    return_dict=False,
                     generator=generator,
+                    return_dict=False,
                     cur_sampling_step=i,
+                    dmd_noisy_tensor=randn_tensor(noise_pred.shape, generator=generator, device=device),
                     dmd_sigmas=dmd_sigmas,
                     dmd_timesteps=dmd_timesteps,
                     all_timesteps=timesteps,
@@ -686,15 +687,9 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         i = 0
         for i_s in range(stage2_num_stages):
-            if use_dmd:
-                if is_amplify_first_chunk:
-                    self.scheduler.set_timesteps(stage2_num_inference_steps_list[i_s] * 2 + 1, i_s, device=device)
-                else:
-                    self.scheduler.set_timesteps(stage2_num_inference_steps_list[i_s] + 1, i_s, device=device)
-                self.scheduler.timesteps = self.scheduler.timesteps[:-1]
-                self.scheduler.sigmas = torch.cat([self.scheduler.sigmas[:-2], self.scheduler.sigmas[-1:]])
-            else:
-                self.scheduler.set_timesteps(stage2_num_inference_steps_list[i_s], i_s, device=device)
+            self.scheduler.set_timesteps(
+                stage2_num_inference_steps_list[i_s], i_s, device=device, is_amplify_first_chunk=is_amplify_first_chunk
+            )
 
             if i_s > 0:
                 height *= 2
@@ -800,9 +795,10 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         noise_pred,
                         t,
                         latents,
-                        return_dict=False,
                         generator=generator,
+                        return_dict=False,
                         cur_sampling_step=i,
+                        dmd_noisy_tensor=start_point_list[i_s],
                         dmd_sigmas=self.scheduler.sigmas,
                         dmd_timesteps=self.scheduler.timesteps,
                         all_timesteps=timesteps,

@@ -207,27 +207,12 @@ def main():
         subfolder="vae",
         torch_dtype=torch.float32,
     )
-    if args.is_enable_stage2:
-        scheduler = HeliosScheduler(
-            shift=args.stage2_timestep_shift,
-            stages=args.stage2_num_stages,
-            stage_range=args.stage2_stage_range,
-            gamma=args.stage2_scheduler_gamma,
-        )
-        pipe = HeliosPipeline.from_pretrained(
-            args.base_model_path,
-            transformer=transformer,
-            vae=vae,
-            scheduler=scheduler,
-            torch_dtype=args.weight_dtype,
-        )
-    else:
-        pipe = HeliosPipeline.from_pretrained(
-            args.base_model_path,
-            transformer=transformer,
-            vae=vae,
-            torch_dtype=args.weight_dtype,
-        )
+    pipe = HeliosPipeline.from_pretrained(
+        args.base_model_path,
+        transformer=transformer,
+        vae=vae,
+        torch_dtype=args.weight_dtype,
+    )
 
     if args.lora_path is not None:
         pipe.load_lora_weights(args.lora_path, adapter_name="default")

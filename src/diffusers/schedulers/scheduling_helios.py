@@ -21,15 +21,14 @@ import torch
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..schedulers.scheduling_utils import SchedulerMixin
 from ..utils import BaseOutput, deprecate
-from ..utils.torch_utils import randn_tensor
 
 
 @dataclass
 class HeliosSchedulerOutput(BaseOutput):
     prev_sample: torch.FloatTensor
-    model_outputs: torch.FloatTensor
-    last_sample: torch.FloatTensor
-    this_order: int
+    model_outputs: torch.FloatTensor | None = None
+    last_sample: torch.FloatTensor | None = None
+    this_order: int | None = None
 
 
 class HeliosScheduler(SchedulerMixin, ConfigMixin):
@@ -207,10 +206,17 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: int,
         stage_index: int,
         device: str | torch.device = None,
+        is_amplify_first_chunk: bool = False,
     ):
         """
         Setting the timesteps and sigmas for each stage
         """
+        if self.config.scheduler_type == "dmd":
+            if is_amplify_first_chunk:
+                num_inference_steps = num_inference_steps * 2 + 1
+            else:
+                num_inference_steps = num_inference_steps + 1
+
         self.num_inference_steps = num_inference_steps
         self.init_sigmas()
 
@@ -250,6 +256,10 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
 
         self._step_index = None
         self.reset_scheduler_history()
+
+        if self.config.scheduler_type == "dmd":
+            self.timesteps = self.timesteps[:-1]
+            self.sigmas = torch.cat([self.sigmas[:-2], self.sigmas[-1:]])
 
     # ---------------------------------- Euler ----------------------------------
     def index_for_timestep(self, timestep, schedule_timesteps=None):
@@ -818,7 +828,9 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         timestep: float | torch.FloatTensor = None,
         sample: torch.FloatTensor = None,
         generator: torch.Generator | None = None,
+        return_dict: bool = True,
         cur_sampling_step: int = 0,
+        dmd_noisy_tensor: torch.FloatTensor | None = None,
         dmd_sigmas: torch.FloatTensor | None = None,
         dmd_timesteps: torch.FloatTensor | None = None,
         all_timesteps: torch.FloatTensor | None = None,
@@ -833,7 +845,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         if cur_sampling_step < len(all_timesteps) - 1:
             prev_sample = self.add_noise(
                 prev_sample,
-                randn_tensor(prev_sample.shape, generator=generator, device=model_output.device),
+                dmd_noisy_tensor,
                 torch.full(
                     (model_output.shape[0],),
                     all_timesteps[cur_sampling_step + 1],
@@ -843,6 +855,9 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
                 sigmas=dmd_sigmas,
                 timesteps=dmd_timesteps,
             )
+
+        if not return_dict:
+            return (prev_sample,)
 
         return HeliosSchedulerOutput(prev_sample=prev_sample)
 
@@ -856,6 +871,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
         # For DMD
         cur_sampling_step: int = 0,
+        dmd_noisy_tensor: torch.FloatTensor | None = None,
         dmd_sigmas: torch.FloatTensor | None = None,
         dmd_timesteps: torch.FloatTensor | None = None,
         all_timesteps: torch.FloatTensor | None = None,
@@ -876,12 +892,14 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
                 return_dict=return_dict,
             )
         elif self.config.scheduler_type == "dmd":
-            self.step_dmd(
+            return self.step_dmd(
                 model_output=model_output,
                 timestep=timestep,
                 sample=sample,
                 generator=generator,
+                return_dict=return_dict,
                 cur_sampling_step=cur_sampling_step,
+                dmd_noisy_tensor=dmd_noisy_tensor,
                 dmd_sigmas=dmd_sigmas,
                 dmd_timesteps=dmd_timesteps,
                 all_timesteps=all_timesteps,
