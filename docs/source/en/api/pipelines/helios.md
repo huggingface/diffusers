@@ -28,9 +28,9 @@
 
 The following Helios models are supported in Diffusers:
 
-- [Helios-Base](https://huggingface.co/BestWishYsh/Helios-Base): Best Quality
-- [Helios-Mid](https://huggingface.co/BestWishYsh/Helios-Mid): Intermediate Weight
-- [Helios-Distilled](https://huggingface.co/BestWishYsh/Helios-Distilled): Best Efficiency
+- [Helios-Base](https://huggingface.co/BestWishYsh/Helios-Base): Best Quality, with v-prediction, standard CFG and UniPCMultistepScheduler.
+- [Helios-Mid](https://huggingface.co/BestWishYsh/Helios-Mid): Intermediate Weight, with v-prediction, CFG-Zero* and custom HeliosScheduler.
+- [Helios-Distilled](https://huggingface.co/BestWishYsh/Helios-Distilled): Best Efficiency, with x0-prediction and custom HeliosScheduler.
 
 > [!TIP]
 > Click on the Helios models in the right sidebar for more examples of video generation.
