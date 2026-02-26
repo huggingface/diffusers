@@ -73,9 +73,27 @@ def parse_args():
     parser.add_argument("--checkpointing_steps", type=int, default=1000)
     parser.add_argument("--validation_steps", type=int, default=500)
 
+    parser.add_argument(
+        "--pretrained_model_name_or_path",
+        type=str,
+        default=None,
+        help="Path to a pretrained AutoencoderRAE model (or HF Hub id) to resume training from.",
+    )
+    parser.add_argument(
+        "--encoder_name_or_path",
+        type=str,
+        default=None,
+        help=(
+            "HF Hub id or local path of the pretrained encoder (e.g. 'facebook/dinov2-with-registers-base'). "
+            "When --pretrained_model_name_or_path is not set, the encoder weights are loaded from this path "
+            "into a freshly constructed AutoencoderRAE. Ignored when --pretrained_model_name_or_path is set."
+        ),
+    )
+
     parser.add_argument("--encoder_type", type=str, choices=["dinov2", "siglip2", "mae"], default="dinov2")
     parser.add_argument("--encoder_hidden_size", type=int, default=768)
     parser.add_argument("--encoder_patch_size", type=int, default=14)
+    parser.add_argument("--encoder_num_hidden_layers", type=int, default=12)
     parser.add_argument("--encoder_input_size", type=int, default=224)
     parser.add_argument("--patch_size", type=int, default=16)
     parser.add_argument("--image_size", type=int, default=256)
@@ -154,6 +172,31 @@ def compute_losses(
     return decoded, loss, reconstruction_loss, encoder_loss
 
 
+def _load_pretrained_encoder_weights(model, encoder_type, encoder_name_or_path):
+    """Load pretrained HF transformers encoder weights into the model's encoder."""
+    if encoder_type == "dinov2":
+        from transformers import Dinov2WithRegistersModel
+
+        hf_encoder = Dinov2WithRegistersModel.from_pretrained(encoder_name_or_path)
+        state_dict = hf_encoder.state_dict()
+    elif encoder_type == "siglip2":
+        from transformers import SiglipModel
+
+        hf_encoder = SiglipModel.from_pretrained(encoder_name_or_path).vision_model
+        # Add vision_model. prefix to match SiglipVisionModel wrapper in our encoder
+        state_dict = {f"vision_model.{k}": v for k, v in hf_encoder.state_dict().items()}
+    elif encoder_type == "mae":
+        from transformers import ViTMAEForPreTraining
+
+        hf_encoder = ViTMAEForPreTraining.from_pretrained(encoder_name_or_path).vit
+        state_dict = hf_encoder.state_dict()
+    else:
+        raise ValueError(f"Unknown encoder_type: {encoder_type}")
+
+    # Load into encoder.model (strict=False because we removed layernorm weight/bias)
+    model.encoder.model.load_state_dict(state_dict, strict=False)
+
+
 def main():
     args = parse_args()
     if args.resolution != args.image_size:
@@ -200,23 +243,31 @@ def main():
         drop_last=True,
     )
 
-    model = AutoencoderRAE(
-        encoder_type=args.encoder_type,
-        encoder_hidden_size=args.encoder_hidden_size,
-        encoder_patch_size=args.encoder_patch_size,
-        decoder_hidden_size=args.decoder_hidden_size,
-        decoder_num_hidden_layers=args.decoder_num_hidden_layers,
-        decoder_num_attention_heads=args.decoder_num_attention_heads,
-        decoder_intermediate_size=args.decoder_intermediate_size,
-        patch_size=args.patch_size,
-        encoder_input_size=args.encoder_input_size,
-        image_size=args.image_size,
-        num_channels=args.num_channels,
-        noise_tau=args.noise_tau,
-        reshape_to_2d=args.reshape_to_2d,
-        use_encoder_loss=args.use_encoder_loss,
-        scaling_factor=args.scaling_factor,
-    )
+    if args.pretrained_model_name_or_path is not None:
+        model = AutoencoderRAE.from_pretrained(args.pretrained_model_name_or_path)
+        logger.info(f"Loaded pretrained AutoencoderRAE from {args.pretrained_model_name_or_path}")
+    else:
+        model = AutoencoderRAE(
+            encoder_type=args.encoder_type,
+            encoder_hidden_size=args.encoder_hidden_size,
+            encoder_patch_size=args.encoder_patch_size,
+            encoder_num_hidden_layers=args.encoder_num_hidden_layers,
+            decoder_hidden_size=args.decoder_hidden_size,
+            decoder_num_hidden_layers=args.decoder_num_hidden_layers,
+            decoder_num_attention_heads=args.decoder_num_attention_heads,
+            decoder_intermediate_size=args.decoder_intermediate_size,
+            patch_size=args.patch_size,
+            encoder_input_size=args.encoder_input_size,
+            image_size=args.image_size,
+            num_channels=args.num_channels,
+            noise_tau=args.noise_tau,
+            reshape_to_2d=args.reshape_to_2d,
+            use_encoder_loss=args.use_encoder_loss,
+            scaling_factor=args.scaling_factor,
+        )
+        if args.encoder_name_or_path is not None:
+            _load_pretrained_encoder_weights(model, args.encoder_type, args.encoder_name_or_path)
+            logger.info(f"Loaded pretrained encoder weights from {args.encoder_name_or_path}")
     model.encoder.requires_grad_(False)
     model.decoder.requires_grad_(True)
     model.train()

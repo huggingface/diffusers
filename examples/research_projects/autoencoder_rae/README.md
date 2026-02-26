@@ -10,12 +10,32 @@ It follows the same high-level training recipe as the official RAE stage-1 setup
 
 ## Quickstart
 
+### Resume or finetune from pretrained weights
+
+```bash
+accelerate launch examples/research_projects/autoencoder_rae/train_autoencoder_rae.py \
+  --pretrained_model_name_or_path nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08 \
+  --train_data_dir /path/to/imagenet_like_folder \
+  --output_dir /tmp/autoencoder-rae \
+  --resolution 256 \
+  --train_batch_size 8 \
+  --learning_rate 1e-4 \
+  --num_train_epochs 10 \
+  --report_to wandb \
+  --reconstruction_loss_type l1 \
+  --use_encoder_loss \
+  --encoder_loss_weight 0.1
+```
+
+### Train from scratch with a pretrained encoder
+
 ```bash
 accelerate launch examples/research_projects/autoencoder_rae/train_autoencoder_rae.py \
   --train_data_dir /path/to/imagenet_like_folder \
   --output_dir /tmp/autoencoder-rae \
   --resolution 256 \
-  --encoder_cls dinov2 \
+  --encoder_type dinov2 \
+  --encoder_name_or_path facebook/dinov2-with-registers-base \
   --encoder_input_size 224 \
   --patch_size 16 \
   --image_size 256 \
