@@ -682,6 +682,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         latents = latents.reshape(batch_size, num_frmaes, num_channel, height, width).permute(0, 2, 1, 3, 4)
 
         batch_size = latents.shape[0]
+        start_point_list = None
         if use_dmd:
             start_point_list = [latents]
 
@@ -798,7 +799,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         generator=generator,
                         return_dict=False,
                         cur_sampling_step=i,
-                        dmd_noisy_tensor=start_point_list[i_s],
+                        dmd_noisy_tensor=start_point_list[i_s] if start_point_list is not None else None,
                         dmd_sigmas=self.scheduler.sigmas,
                         dmd_timesteps=self.scheduler.timesteps,
                         all_timesteps=timesteps,
