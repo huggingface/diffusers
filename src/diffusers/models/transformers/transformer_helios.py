@@ -142,14 +142,6 @@ class HeliosAttnProcessor:
         return hidden_states
 
 
-class HeliosAttnProcessor2_0:
-    def __new__(cls, *args, **kwargs):
-        deprecation_message = (
-            "The HeliosAttnProcessor2_0 class is deprecated and will be removed in a future version. "
-            "Please use HeliosAttnProcessor instead. "
-        )
-        deprecate("HeliosAttnProcessor2_0", "1.0.0", deprecation_message, standard_warn=False)
-        return HeliosAttnProcessor(*args, **kwargs)
 
 
 class HeliosAttention(torch.nn.Module, AttentionModuleMixin):
