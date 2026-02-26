@@ -331,28 +331,28 @@ class HeliosRotaryPosEmbed(nn.Module):
     @lru_cache(maxsize=32)
     def _get_spatial_meshgrid(self, height, width, device_str):
         device = torch.device(device_str)
-        gy = torch.arange(height, device=device, dtype=torch.float32)
-        gx = torch.arange(width, device=device, dtype=torch.float32)
-        GY, GX = torch.meshgrid(gy, gx, indexing="ij")
-        return GY, GX
+        grid_y_coords = torch.arange(height, device=device, dtype=torch.float32)
+        grid_x_coords = torch.arange(width, device=device, dtype=torch.float32)
+        grid_y, grid_x = torch.meshgrid(grid_y_coords, grid_x_coords, indexing="ij")
+        return grid_y, grid_x
 
     @torch.no_grad()
     def forward(self, frame_indices, height, width, device):
-        B = frame_indices.shape[0]
-        T = frame_indices.shape[1]
+        batch_size = frame_indices.shape[0]
+        num_frames = frame_indices.shape[1]
 
         frame_indices = frame_indices.to(device=device, dtype=torch.float32)
-        GY, GX = self._get_spatial_meshgrid(height, width, str(device))
+        grid_y, grid_x = self._get_spatial_meshgrid(height, width, str(device))
 
-        GT = frame_indices[:, :, None, None].expand(B, T, height, width)
-        GY_batch = GY[None, None, :, :].expand(B, T, -1, -1)
-        GX_batch = GX[None, None, :, :].expand(B, T, -1, -1)
+        grid_t = frame_indices[:, :, None, None].expand(batch_size, num_frames, height, width)
+        grid_y_batch = grid_y[None, None, :, :].expand(batch_size, num_frames, -1, -1)
+        grid_x_batch = grid_x[None, None, :, :].expand(batch_size, num_frames, -1, -1)
 
-        FCT, FST = self.get_frequency_batched(self.freqs_base_t, GT)
-        FCY, FSY = self.get_frequency_batched(self.freqs_base_y, GY_batch)
-        FCX, FSX = self.get_frequency_batched(self.freqs_base_x, GX_batch)
+        freqs_cos_t, freqs_sin_t = self.get_frequency_batched(self.freqs_base_t, grid_t)
+        freqs_cos_y, freqs_sin_y = self.get_frequency_batched(self.freqs_base_y, grid_y_batch)
+        freqs_cos_x, freqs_sin_x = self.get_frequency_batched(self.freqs_base_x, grid_x_batch)
 
-        result = torch.cat([FCT, FCY, FCX, FST, FSY, FSX], dim=0)
+        result = torch.cat([freqs_cos_t, freqs_cos_y, freqs_cos_x, freqs_sin_t, freqs_sin_y, freqs_sin_x], dim=0)
 
         return result.permute(1, 0, 2, 3, 4)
 
