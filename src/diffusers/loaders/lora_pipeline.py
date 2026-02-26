@@ -5472,6 +5472,10 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
+        is_peft_format = any(k.startswith("base_model.model.") for k in state_dict)
+        if is_peft_format:
+            state_dict = {k.replace("base_model.model.", "diffusion_model."): v for k, v in state_dict.items()}
+
         is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
         if is_ai_toolkit:
             state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
