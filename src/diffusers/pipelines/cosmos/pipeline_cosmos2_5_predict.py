@@ -32,6 +32,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from ...loaders import CosmosLoraLoaderMixin
 from .pipeline_output import CosmosPipelineOutput
 
 
@@ -181,7 +182,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
+class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
     r"""
     Pipeline for [Cosmos Predict2.5](https://github.com/nvidia-cosmos/cosmos-predict2.5) base model.
 
