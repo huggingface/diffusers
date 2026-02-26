@@ -533,8 +533,8 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         dmd_timesteps: torch.Tensor = None,
         is_amplify_first_chunk: bool = False,
         # ------------ Callback ------------
-        callback_on_step_end: callable | None = None,
-        callback_on_step_end_tensor_inputs: list = None,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         progress_bar=None,
     ):
         batch_size = latents.shape[0]
@@ -661,8 +661,8 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         use_dmd: bool = False,
         is_amplify_first_chunk: bool = False,
         # ------------ Callback ------------
-        callback_on_step_end: callable | None = None,
-        callback_on_step_end_tensor_inputs: list = None,
+        callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         progress_bar=None,
     ):
         batch_size, num_channel, num_frmaes, height, width = latents.shape
