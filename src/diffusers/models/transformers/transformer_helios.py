@@ -295,26 +295,16 @@ class HeliosTimeTextEmbedding(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         is_return_encoder_hidden_states: bool = True,
     ):
-        B = None
-        F = None
-        if timestep.ndim == 2:
-            B, F = timestep.shape
-            timestep = timestep.flatten()
-
-        timestep = self.timesteps_proj(timestep)  # torch.Size([2]) -> torch.Size([2, 256])
+        timestep = self.timesteps_proj(timestep)
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
             timestep = timestep.to(time_embedder_dtype)
-        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)  # torch.Size([2, 1536])
-        timestep_proj = self.time_proj(self.act_fn(temb))  # torch.Size([2, 9216]
-
-        if B is not None and F is not None:
-            temb = temb.reshape(B, F, -1)
-            timestep_proj = timestep_proj.reshape(B, F, -1)
+        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
+        timestep_proj = self.time_proj(self.act_fn(temb))
 
         if encoder_hidden_states is not None and is_return_encoder_hidden_states:
-            encoder_hidden_states = self.text_embedder(encoder_hidden_states)  # torch.Size([2, 512, 1536])
+            encoder_hidden_states = self.text_embedder(encoder_hidden_states)
 
         return temb, timestep_proj, encoder_hidden_states
 
