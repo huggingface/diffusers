@@ -134,13 +134,12 @@ def apply_schedule_shift(
 ):
     if mu is None:
         # Resolution-dependent shifting of timestep schedules as per section 5.3.2 of SD3 paper
-        image_seq_len = (noise.shape[-1] * noise.shape[-2] * noise.shape[-3]) // 4  # patch size 1,2,2
         mu = calculate_shift(
             image_seq_len,
-            base_seq_len if base_seq_len is not None else 256,
-            max_seq_len if max_seq_len is not None else 4096,
-            base_shift if base_shift is not None else 0.5,
-            max_shift if max_shift is not None else 1.15,
+            base_seq_len,
+            max_seq_len,
+            base_shift,
+            max_shift,
         )
         if is_exponential:
             mu = min(mu, math.log(exp_max))
