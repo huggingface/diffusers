@@ -85,6 +85,7 @@ if is_torch_available():
             "QwenImageLoraLoaderMixin",
             "ZImageLoraLoaderMixin",
             "Flux2LoraLoaderMixin",
+            "CosmosLoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
