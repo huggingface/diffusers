@@ -21,7 +21,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import regex as re
 import torch
 import torch.nn.functional as F
-from einops import rearrange
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -134,6 +133,7 @@ def apply_schedule_shift(
 ):
     if mu is None:
         # Resolution-dependent shifting of timestep schedules as per section 5.3.2 of SD3 paper
+        image_seq_len = (noise.shape[-1] * noise.shape[-2] * noise.shape[-3]) // 4  # patch size 1,2,2
         mu = calculate_shift(
             image_seq_len,
             base_seq_len,
@@ -682,12 +682,8 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         callback_on_step_end_tensor_inputs: list = None,
         progress_bar=None,
     ):
-        num_frmaes, height, width = (
-            latents.shape[-3],
-            latents.shape[-2],
-            latents.shape[-1],
-        )
-        latents = rearrange(latents, "b c t h w -> (b t) c h w")
+        batch_size, num_channel, num_frmaes, height, width = latents.shape
+        latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frmaes, num_channel, height, width)
         for _ in range(stage2_num_stages - 1):
             height //= 2
             width //= 2
@@ -699,7 +695,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 )
                 * 2
             )
-        latents = rearrange(latents, "(b t) c h w -> b c t h w", t=num_frmaes)
+        latents = latents.reshape(batch_size, num_frmaes, num_channel, height, width).permute(0, 2, 1, 3, 4)
 
         batch_size = latents.shape[0]
         if use_dmd:
@@ -721,9 +717,11 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 height *= 2
                 width *= 2
                 num_frames = latents.shape[2]
-                latents = rearrange(latents, "b c t h w -> (b t) c h w")
+                latents = latents.permute(0, 2, 1, 3, 4).reshape(
+                    batch_size * num_frmaes, num_channel, height // 2, width // 2
+                )
                 latents = F.interpolate(latents, size=(height, width), mode="nearest")
-                latents = rearrange(latents, "(b t) c h w -> b c t h w", t=num_frames)
+                latents = latents.reshape(batch_size, num_frmaes, num_channel, height, width).permute(0, 2, 1, 3, 4)
                 # Fix the stage
                 ori_sigma = 1 - self.scheduler.ori_start_sigmas[i_s]  # the original coeff of signal
                 gamma = self.scheduler.config.gamma
