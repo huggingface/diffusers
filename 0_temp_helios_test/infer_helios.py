@@ -300,7 +300,6 @@ def main():
                     is_enable_stage2=args.is_enable_stage2,
                     stage2_num_stages=args.stage2_num_stages,
                     stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
-                    scheduler_type="unipc",
                     # stage 3
                     use_dmd=args.is_enable_stage3,
                     is_skip_first_section=args.is_skip_first_section,
@@ -362,7 +361,6 @@ def main():
                         is_enable_stage2=args.is_enable_stage2,
                         stage2_num_stages=args.stage2_num_stages,
                         stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
-                        scheduler_type="unipc",
                         # stage 3
                         use_dmd=args.is_enable_stage3,
                         is_skip_first_section=args.is_skip_first_section,
@@ -432,7 +430,6 @@ def main():
                         is_enable_stage2=args.is_enable_stage2,
                         stage2_num_stages=args.stage2_num_stages,
                         stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
-                        scheduler_type="unipc",
                         # stage 3
                         use_dmd=args.is_enable_stage3,
                         is_skip_first_section=args.is_skip_first_section,
@@ -491,7 +488,6 @@ def main():
                         is_enable_stage2=args.is_enable_stage2,
                         stage2_num_stages=args.stage2_num_stages,
                         stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
-                        scheduler_type="unipc",
                         # stage 3
                         use_dmd=args.is_enable_stage3,
                         is_skip_first_section=args.is_skip_first_section,
@@ -535,7 +531,6 @@ def main():
                 is_enable_stage2=args.is_enable_stage2,
                 stage2_num_stages=args.stage2_num_stages,
                 stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
-                scheduler_type="unipc",
                 # stage 3
                 use_dmd=args.is_enable_stage3,
                 is_skip_first_section=args.is_skip_first_section,

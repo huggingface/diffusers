@@ -1,13 +1,28 @@
+# Copyright 2025 The Helios Team and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional
 
 import numpy as np
 import torch
 
-from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.schedulers.scheduling_utils import SchedulerMixin
-from diffusers.utils import BaseOutput, deprecate
+from ..configuration_utils import ConfigMixin, register_to_config
+from ..schedulers.scheduling_utils import SchedulerMixin
+from ..utils import BaseOutput, deprecate
+from ..utils.torch_utils import randn_tensor
 
 
 @dataclass
@@ -41,7 +56,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         solver_p: SchedulerMixin = None,
         use_flow_sigmas: bool = True,
         version: str = "v1",
-        scheduler_type: str = "unipc",
+        scheduler_type: str = "unipc",  # ["euler", "unipc", "dmd"]
     ):
         self.version = version
         self.timestep_ratios = {}  # The timestep ratio for each stage
@@ -192,7 +207,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_inference_steps: int,
         stage_index: int,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
     ):
         """
         Setting the timesteps and sigmas for each stage
@@ -263,13 +278,13 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
     def step_euler(
         self,
         model_output: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor] = None,
+        timestep: float | torch.FloatTensor = None,
         sample: torch.FloatTensor = None,
         generator: Optional[torch.Generator] = None,
         sigma: Optional[torch.FloatTensor] = None,
         sigma_next: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
-    ) -> Union[HeliosSchedulerOutput, Tuple]:
+    ) -> HeliosSchedulerOutput | tuple:
         assert (sigma is None) == (sigma_next is None), "sigma and sigma_next must both be None or both be not None"
 
         if sigma is None and sigma_next is None:
@@ -679,7 +694,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
     def step_unipc(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor] = None,
+        timestep: int | torch.Tensor = None,
         sample: torch.Tensor = None,
         return_dict: bool = True,
         model_outputs: list = None,
@@ -691,7 +706,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         cus_lower_order_num: int = None,
         cus_this_order: int = None,
         cus_last_sample: torch.Tensor = None,
-    ) -> Union[HeliosSchedulerOutput, Tuple]:
+    ) -> HeliosSchedulerOutput | tuple:
         if self.num_inference_steps is None:
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
@@ -778,28 +793,99 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
             this_order=self.this_order,
         )
 
+    # ---------------------------------- For DMD ----------------------------------
+    def add_noise(self, original_samples, noise, timestep, sigmas, timesteps):
+        sigmas = sigmas.to(noise.device)
+        timesteps = timesteps.to(noise.device)
+        timestep_id = torch.argmin((timesteps.unsqueeze(0) - timestep.unsqueeze(1)).abs(), dim=1)
+        sigma = sigmas[timestep_id].reshape(-1, 1, 1, 1, 1)
+        sample = (1 - sigma) * original_samples + sigma * noise
+        return sample.type_as(noise)
+
+    def convert_flow_pred_to_x0(self, flow_pred, xt, timestep, sigmas, timesteps):
+        # use higher precision for calculations
+        original_dtype = flow_pred.dtype
+        device = flow_pred.device
+        flow_pred, xt, sigmas, timesteps = (x.double().to(device) for x in (flow_pred, xt, sigmas, timesteps))
+
+        timestep_id = torch.argmin((timesteps.unsqueeze(0) - timestep.unsqueeze(1)).abs(), dim=1)
+        sigma_t = sigmas[timestep_id].reshape(-1, 1, 1, 1, 1)
+        x0_pred = xt - sigma_t * flow_pred
+        return x0_pred.to(original_dtype)
+
+    def step_dmd(
+        self,
+        model_output: torch.FloatTensor,
+        timestep: float | torch.FloatTensor = None,
+        sample: torch.FloatTensor = None,
+        generator: torch.Generator | None = None,
+        cur_sampling_step: int = 0,
+        dmd_sigmas: torch.FloatTensor | None = None,
+        dmd_timesteps: torch.FloatTensor | None = None,
+        all_timesteps: torch.FloatTensor | None = None,
+    ):
+        prev_sample = self.convert_flow_pred_to_x0(
+            flow_pred=model_output,
+            xt=sample,
+            timestep=torch.full((model_output.shape[0],), timestep, dtype=torch.long, device=model_output.device),
+            sigmas=dmd_sigmas,
+            timesteps=dmd_timesteps,
+        )
+        if cur_sampling_step < len(all_timesteps) - 1:
+            prev_sample = self.add_noise(
+                prev_sample,
+                randn_tensor(prev_sample.shape, generator=generator, device=model_output.device),
+                torch.full(
+                    (model_output.shape[0],),
+                    all_timesteps[cur_sampling_step + 1],
+                    dtype=torch.long,
+                    device=model_output.device,
+                ),
+                sigmas=dmd_sigmas,
+                timesteps=dmd_timesteps,
+            )
+
+        return HeliosSchedulerOutput(prev_sample=prev_sample)
+
     # ---------------------------------- Merge ----------------------------------
     def step(
         self,
         model_output: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor] = None,
+        timestep: float | torch.FloatTensor = None,
         sample: torch.FloatTensor = None,
+        generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-        scheduler_type: str = "unipc",
-    ) -> Union[HeliosSchedulerOutput, Tuple]:
-        if scheduler_type == "unipc":
-            self.step_euler(
+        # For DMD
+        cur_sampling_step: int = 0,
+        dmd_sigmas: torch.FloatTensor | None = None,
+        dmd_timesteps: torch.FloatTensor | None = None,
+        all_timesteps: torch.FloatTensor | None = None,
+    ) -> HeliosSchedulerOutput | tuple:
+        if self.config.scheduler_type == "euler":
+            return self.step_euler(
+                model_output=model_output,
+                timestep=timestep,
+                sample=sample,
+                generator=generator,
+                return_dict=return_dict,
+            )
+        elif self.config.scheduler_type == "unipc":
+            return self.step_unipc(
                 model_output=model_output,
                 timestep=timestep,
                 sample=sample,
                 return_dict=return_dict,
             )
-        elif scheduler_type == "euler":
-            self.step_unipc(
+        elif self.config.scheduler_type == "dmd":
+            self.step_dmd(
                 model_output=model_output,
                 timestep=timestep,
                 sample=sample,
-                return_dict=return_dict,
+                generator=generator,
+                cur_sampling_step=cur_sampling_step,
+                dmd_sigmas=dmd_sigmas,
+                dmd_timesteps=dmd_timesteps,
+                all_timesteps=all_timesteps,
             )
         else:
             raise NotImplementedError

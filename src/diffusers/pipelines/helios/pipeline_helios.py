@@ -1,4 +1,4 @@
-# Copyright 2025 The Wan Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The Helios Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -156,27 +156,6 @@ def apply_schedule_shift(
             return sigmas, mu
         else:
             return sigmas
-
-
-def add_noise(original_samples, noise, timestep, sigmas, timesteps):
-    sigmas = sigmas.to(noise.device)
-    timesteps = timesteps.to(noise.device)
-    timestep_id = torch.argmin((timesteps.unsqueeze(0) - timestep.unsqueeze(1)).abs(), dim=1)
-    sigma = sigmas[timestep_id].reshape(-1, 1, 1, 1, 1)
-    sample = (1 - sigma) * original_samples + sigma * noise
-    return sample.type_as(noise)
-
-
-def convert_flow_pred_to_x0(flow_pred, xt, timestep, sigmas, timesteps):
-    # use higher precision for calculations
-    original_dtype = flow_pred.dtype
-    device = flow_pred.device
-    flow_pred, xt, sigmas, timesteps = (x.double().to(device) for x in (flow_pred, xt, sigmas, timesteps))
-
-    timestep_id = torch.argmin((timesteps.unsqueeze(0) - timestep.unsqueeze(1)).abs(), dim=1)
-    sigma_t = sigmas[timestep_id].reshape(-1, 1, 1, 1, 1)
-    x0_pred = xt - sigma_t * flow_pred
-    return x0_pred.to(original_dtype)
 
 
 class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
@@ -542,7 +521,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         attention_kwargs: Optional[dict] = None,
         device: Optional[torch.device] = None,
         transformer_dtype: torch.dtype = None,
-        scheduler_type: str = "unipc",
         use_dynamic_shifting: bool = False,
         generator: Optional[torch.Generator] = None,
         # ------------ CFG Zero ------------
@@ -618,27 +596,25 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 else:
                     noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-            if use_dmd:
-                pred_image_or_video = convert_flow_pred_to_x0(
-                    flow_pred=noise_pred,
-                    xt=latent_model_input,
-                    timestep=t * torch.ones(batch_size, dtype=torch.long, device=noise_pred.device),
-                    sigmas=dmd_sigmas,
-                    timesteps=dmd_timesteps,
-                )
-                if i < len(timesteps) - 1:
-                    latents = add_noise(
-                        pred_image_or_video,
-                        randn_tensor(pred_image_or_video.shape, generator=generator, device=device),
-                        timesteps[i + 1] * torch.ones(batch_size, dtype=torch.long, device=noise_pred.device),
-                        sigmas=dmd_sigmas,
-                        timesteps=dmd_timesteps,
-                    )
-                else:
-                    latents = pred_image_or_video
+            if isinstance(self.scheduler, HeliosScheduler):
+                latents = self.scheduler.step(
+                    noise_pred,
+                    t,
+                    latents,
+                    return_dict=False,
+                    generator=generator,
+                    cur_sampling_step=i,
+                    dmd_sigmas=dmd_sigmas,
+                    dmd_timesteps=dmd_timesteps,
+                    all_timesteps=timesteps,
+                )[0]
             else:
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                latents = self.scheduler.step(
+                    noise_pred,
+                    t,
+                    latents,
+                    return_dict=False,
+                )[0]
 
             if callback_on_step_end is not None:
                 callback_kwargs = {}
@@ -675,8 +651,8 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         attention_kwargs: Optional[dict] = None,
         device: Optional[torch.device] = None,
         transformer_dtype: torch.dtype = None,
-        scheduler_type: str = "unipc",  # unipc, euler
         use_dynamic_shifting: bool = False,
+        generator: Optional[torch.Generator] = None,
         # ------------ CFG Zero ------------
         use_cfg_zero_star: Optional[bool] = False,
         use_zero_init: Optional[bool] = True,
@@ -819,26 +795,25 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     else:
                         noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                if use_dmd:
-                    pred_image_or_video = convert_flow_pred_to_x0(
-                        flow_pred=noise_pred,
-                        xt=latents,
-                        timestep=timestep,
-                        sigmas=self.scheduler.sigmas,
-                        timesteps=self.scheduler.timesteps,
-                    )
-                    if idx < len(timesteps) - 1:
-                        latents = add_noise(
-                            pred_image_or_video,
-                            start_point_list[i_s],
-                            timesteps[idx + 1] * torch.ones(batch_size, dtype=torch.long, device=noise_pred.device),
-                            sigmas=self.scheduler.sigmas,
-                            timesteps=self.scheduler.timesteps,
-                        )
-                    else:
-                        latents = pred_image_or_video
+                if isinstance(self.scheduler, HeliosScheduler):
+                    latents = self.scheduler.step(
+                        noise_pred,
+                        t,
+                        latents,
+                        return_dict=False,
+                        generator=generator,
+                        cur_sampling_step=i,
+                        dmd_sigmas=self.scheduler.sigmas,
+                        dmd_timesteps=self.scheduler.timesteps,
+                        all_timesteps=timesteps,
+                    )[0]
                 else:
-                    latents = self.scheduler.step(noise_pred.float(), t, latents, return_dict=False)[0]
+                    latents = self.scheduler.step(
+                        noise_pred,
+                        t,
+                        latents,
+                        return_dict=False,
+                    )[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -933,7 +908,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         is_enable_stage2: bool = False,
         stage2_num_stages: int = 3,
         stage2_num_inference_steps_list: list = [10, 10, 10],
-        scheduler_type: str = "unipc",  # unipc, euler
         # ------------ CFG Zero ------------
         use_cfg_zero_star: Optional[bool] = False,
         use_zero_init: Optional[bool] = True,
@@ -1377,7 +1351,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         attention_kwargs=attention_kwargs,
                         device=device,
                         transformer_dtype=transformer_dtype,
-                        scheduler_type=scheduler_type,
                         use_dynamic_shifting=use_dynamic_shifting,
                         # ------------ CFG Zero ------------
                         use_cfg_zero_star=use_cfg_zero_star,
@@ -1408,7 +1381,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         attention_kwargs=attention_kwargs,
                         device=device,
                         transformer_dtype=transformer_dtype,
-                        scheduler_type=scheduler_type,
                         use_dynamic_shifting=use_dynamic_shifting,
                         generator=generator,
                         # ------------ CFG Zero ------------
