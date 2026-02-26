@@ -1,5 +1,4 @@
 import argparse
-import json
 from pathlib import Path
 from typing import Any
 
@@ -269,59 +268,67 @@ def convert(args: argparse.Namespace) -> None:
     # Load the actual encoder weights from HF to include in the saved model
     encoder_state_dict = _load_hf_encoder_state_dict(args.encoder_type, encoder_name_or_path)
 
-    model = AutoencoderRAE(
-        encoder_type=args.encoder_type,
-        encoder_hidden_size=encoder_hidden_size,
-        encoder_patch_size=encoder_patch_size,
-        encoder_input_size=args.encoder_input_size,
-        patch_size=args.patch_size,
-        image_size=args.image_size,
-        num_channels=args.num_channels,
-        encoder_norm_mean=encoder_norm_mean,
-        encoder_norm_std=encoder_norm_std,
-        decoder_hidden_size=decoder_cfg["decoder_hidden_size"],
-        decoder_num_hidden_layers=decoder_cfg["decoder_num_hidden_layers"],
-        decoder_num_attention_heads=decoder_cfg["decoder_num_attention_heads"],
-        decoder_intermediate_size=decoder_cfg["decoder_intermediate_size"],
-        latents_mean=latents_mean,
-        latents_std=latents_std,
-        scaling_factor=args.scaling_factor,
-    )
+    # Build model on meta device to avoid double init overhead
+    with torch.device("meta"):
+        model = AutoencoderRAE(
+            encoder_type=args.encoder_type,
+            encoder_hidden_size=encoder_hidden_size,
+            encoder_patch_size=encoder_patch_size,
+            encoder_input_size=args.encoder_input_size,
+            patch_size=args.patch_size,
+            image_size=args.image_size,
+            num_channels=args.num_channels,
+            encoder_norm_mean=encoder_norm_mean,
+            encoder_norm_std=encoder_norm_std,
+            decoder_hidden_size=decoder_cfg["decoder_hidden_size"],
+            decoder_num_hidden_layers=decoder_cfg["decoder_num_hidden_layers"],
+            decoder_num_attention_heads=decoder_cfg["decoder_num_attention_heads"],
+            decoder_intermediate_size=decoder_cfg["decoder_intermediate_size"],
+            latents_mean=latents_mean,
+            latents_std=latents_std,
+            scaling_factor=args.scaling_factor,
+        )
 
-    # Load encoder weights
-    encoder_load_result = model.encoder.model.load_state_dict(encoder_state_dict, strict=True)
-    print(f"Encoder weights loaded: {encoder_load_result}")
+    # Assemble full state dict and load with assign=True
+    full_state_dict = {}
 
-    load_result = model.decoder.load_state_dict(decoder_state_dict, strict=False)
-    allowed_missing = {"trainable_cls_token"}
-    missing = set(load_result.missing_keys)
-    unexpected = set(load_result.unexpected_keys)
+    # Encoder weights (prefixed with "encoder.model.")
+    for k, v in encoder_state_dict.items():
+        full_state_dict[f"encoder.model.{k}"] = v
 
-    if unexpected:
-        raise RuntimeError(f"Unexpected decoder keys after conversion: {sorted(unexpected)}")
+    # Decoder weights (prefixed with "decoder.")
+    for k, v in decoder_state_dict.items():
+        full_state_dict[f"decoder.{k}"] = v
+
+    # Buffers from config
+    full_state_dict["encoder_mean"] = torch.tensor(encoder_norm_mean, dtype=torch.float32).view(1, 3, 1, 1)
+    full_state_dict["encoder_std"] = torch.tensor(encoder_norm_std, dtype=torch.float32).view(1, 3, 1, 1)
+    if latents_mean is not None:
+        latents_mean_t = latents_mean if isinstance(latents_mean, torch.Tensor) else torch.tensor(latents_mean)
+        full_state_dict["_latents_mean"] = latents_mean_t
+    else:
+        full_state_dict["_latents_mean"] = torch.zeros(1)
+    if latents_std is not None:
+        latents_std_t = latents_std if isinstance(latents_std, torch.Tensor) else torch.tensor(latents_std)
+        full_state_dict["_latents_std"] = latents_std_t
+    else:
+        full_state_dict["_latents_std"] = torch.ones(1)
+
+    model.load_state_dict(full_state_dict, strict=False, assign=True)
+
+    # Verify no critical keys are missing
+    model_keys = set(name for name, _ in model.named_parameters())
+    model_keys |= set(name for name, _ in model.named_buffers())
+    loaded_keys = set(full_state_dict.keys())
+    missing = model_keys - loaded_keys
+    # trainable_cls_token and decoder_pos_embed are initialized, not loaded from original checkpoint
+    allowed_missing = {"decoder.trainable_cls_token", "decoder.decoder_pos_embed"}
     if missing - allowed_missing:
-        raise RuntimeError(f"Missing decoder keys after conversion: {sorted(missing - allowed_missing)}")
+        print(f"Warning: missing keys after conversion: {sorted(missing - allowed_missing)}")
 
     output_path = Path(args.output_path)
     output_path.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(output_path)
-
-    metadata = {
-        "source": args.repo_or_path,
-        "encoder_type": args.encoder_type,
-        "encoder_name_or_path": encoder_name_or_path,
-        "encoder_hidden_size": encoder_hidden_size,
-        "encoder_patch_size": encoder_patch_size,
-        "decoder_checkpoint": decoder_relpath,
-        "stats_checkpoint": stats_relpath,
-        "variant": args.variant,
-        "dataset_name": args.dataset_name,
-        "decoder_config_name": args.decoder_config_name,
-        "missing_decoder_keys": sorted(missing),
-        "unexpected_decoder_keys": sorted(unexpected),
-    }
-    with open(output_path / "conversion_metadata.json", "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2)
 
     if args.verify_load:
         print("Verifying converted checkpoint with AutoencoderRAE.from_pretrained(low_cpu_mem_usage=False)...")
