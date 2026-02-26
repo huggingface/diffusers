@@ -14,6 +14,7 @@
 
 import inspect
 import re
+import warnings
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from types import UnionType
@@ -503,6 +504,10 @@ OUTPUT_PARAM_TEMPLATES = {
         "type_hint": list[PIL.Image.Image],
         "description": "Generated images.",
     },
+    "videos": {
+        "type_hint": list[PIL.Image.Image],
+        "description": "The generated videos.",
+    },
     "latents": {
         "type_hint": torch.Tensor,
         "description": "Denoised latents.",
@@ -887,6 +892,30 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
     return "\n".join(formatted_configs)
 
 
+def format_workflow(workflow_map):
+    """Format a workflow map into a readable string representation.
+
+    Args:
+        workflow_map: Dictionary mapping workflow names to trigger inputs
+
+    Returns:
+        A formatted string representing all workflows
+    """
+    if workflow_map is None:
+        return ""
+
+    lines = ["Supported workflows:"]
+    for workflow_name, trigger_inputs in workflow_map.items():
+        required_inputs = [k for k, v in trigger_inputs.items() if v]
+        if required_inputs:
+            inputs_str = ", ".join(f"`{t}`" for t in required_inputs)
+            lines.append(f"  - `{workflow_name}`: requires {inputs_str}")
+        else:
+            lines.append(f"  - `{workflow_name}`: default (no additional inputs required)")
+
+    return "\n".join(lines)
+
+
 def make_doc_string(
     inputs,
     outputs,
@@ -941,6 +970,72 @@ def make_doc_string(
     output += format_output_params(outputs, indent_level=2)
 
     return output
+
+
+def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> list[InputParam]:
+    """
+    Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if current
+    default value is None and new default value is not None. Warns if multiple non-None default values exist for the
+    same input.
+
+    Args:
+        named_input_lists: List of tuples containing (block_name, input_param_list) pairs
+
+    Returns:
+        List[InputParam]: Combined list of unique InputParam objects
+    """
+    combined_dict = {}  # name -> InputParam
+    value_sources = {}  # name -> block_name
+
+    for block_name, inputs in named_input_lists:
+        for input_param in inputs:
+            if input_param.name is None and input_param.kwargs_type is not None:
+                input_name = "*_" + input_param.kwargs_type
+            else:
+                input_name = input_param.name
+            if input_name in combined_dict:
+                current_param = combined_dict[input_name]
+                if (
+                    current_param.default is not None
+                    and input_param.default is not None
+                    and current_param.default != input_param.default
+                ):
+                    warnings.warn(
+                        f"Multiple different default values found for input '{input_name}': "
+                        f"{current_param.default} (from block '{value_sources[input_name]}') and "
+                        f"{input_param.default} (from block '{block_name}'). Using {current_param.default}."
+                    )
+                if current_param.default is None and input_param.default is not None:
+                    combined_dict[input_name] = input_param
+                    value_sources[input_name] = block_name
+            else:
+                combined_dict[input_name] = input_param
+                value_sources[input_name] = block_name
+
+    return list(combined_dict.values())
+
+
+def combine_outputs(*named_output_lists: list[tuple[str, list[OutputParam]]]) -> list[OutputParam]:
+    """
+    Combines multiple lists of OutputParam objects from different blocks. For duplicate outputs, keeps the first
+    occurrence of each output name.
+
+    Args:
+        named_output_lists: List of tuples containing (block_name, output_param_list) pairs
+
+    Returns:
+        List[OutputParam]: Combined list of unique OutputParam objects
+    """
+    combined_dict = {}  # name -> OutputParam
+
+    for block_name, outputs in named_output_lists:
+        for output_param in outputs:
+            if (output_param.name not in combined_dict) or (
+                combined_dict[output_param.name].kwargs_type is None and output_param.kwargs_type is not None
+            ):
+                combined_dict[output_param.name] = output_param
+
+    return list(combined_dict.values())
 
 
 def generate_modular_model_card_content(blocks) -> dict[str, Any]:

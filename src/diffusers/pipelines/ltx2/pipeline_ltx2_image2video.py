@@ -22,7 +22,7 @@ from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTo
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
-from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
+from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LTX2Pipeline
+        >>> from diffusers import LTX2ImageToVideoPipeline
         >>> from diffusers.pipelines.ltx2.export_utils import encode_video
         >>> from diffusers.utils import load_image
 
@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
         >>> frame_rate = 24.0
-        >>> video = pipe(
+        >>> video, audio = pipe(
         ...     image=image,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
@@ -202,7 +202,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixin):
+class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     r"""
     Pipeline for image-to-video generation.
 

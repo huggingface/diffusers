@@ -17,7 +17,7 @@ from typing import Callable
 
 import numpy as np
 import torch
-from transformers import BertModel, BertTokenizer, CLIPImageProcessor, MT5Tokenizer, T5EncoderModel
+from transformers import BertModel, BertTokenizer, CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 
@@ -208,7 +208,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         feature_extractor: CLIPImageProcessor | None = None,
         requires_safety_checker: bool = True,
         text_encoder_2: T5EncoderModel | None = None,
-        tokenizer_2: MT5Tokenizer | None = None,
+        tokenizer_2: T5Tokenizer | None = None,
         pag_applied_layers: str | list[str] = "blocks.1",  # "blocks.16.attn1", "blocks.16", "16", 16
     ):
         super().__init__()

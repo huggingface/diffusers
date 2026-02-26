@@ -100,6 +100,14 @@ class ModularPipelineTesterMixin:
             "See existing pipeline tests for reference."
         )
 
+    @property
+    def expected_workflow_blocks(self) -> dict:
+        raise NotImplementedError(
+            "You need to set the attribute `expected_workflow_blocks` in the child test class. "
+            "`expected_workflow_blocks` is a dictionary that maps workflow names to list of block names. "
+            "See existing pipeline tests for reference."
+        )
+
     def setup_method(self):
         # clean up the VRAM before each test
         torch.compiler.reset()
@@ -340,6 +348,34 @@ class ModularPipelineTesterMixin:
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+    def test_workflow_map(self):
+        blocks = self.pipeline_blocks_class()
+        if blocks._workflow_map is None:
+            pytest.skip("Skipping test as _workflow_map is not set")
+
+        assert hasattr(self, "expected_workflow_blocks") and self.expected_workflow_blocks, (
+            "expected_workflow_blocks must be defined in the test class"
+        )
+
+        for workflow_name, expected_blocks in self.expected_workflow_blocks.items():
+            workflow_blocks = blocks.get_workflow(workflow_name)
+            actual_blocks = list(workflow_blocks.sub_blocks.items())
+
+            # Check that the number of blocks matches
+            assert len(actual_blocks) == len(expected_blocks), (
+                f"Workflow '{workflow_name}' has {len(actual_blocks)} blocks, expected {len(expected_blocks)}"
+            )
+
+            # Check that each block name and type matches
+            for i, ((actual_name, actual_block), (expected_name, expected_class_name)) in enumerate(
+                zip(actual_blocks, expected_blocks)
+            ):
+                assert actual_name == expected_name
+                assert actual_block.__class__.__name__ == expected_class_name, (
+                    f"Workflow '{workflow_name}': block '{actual_name}' has type "
+                    f"{actual_block.__class__.__name__}, expected {expected_class_name}"
+                )
 
 
 class ModularGuiderTesterMixin:

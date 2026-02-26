@@ -19,6 +19,30 @@ from diffusers.modular_pipelines import ZImageAutoBlocks, ZImageModularPipeline
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
+ZIMAGE_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "ZImageTextEncoderStep"),
+        ("denoise.input", "ZImageTextInputStep"),
+        ("denoise.prepare_latents", "ZImagePrepareLatentsStep"),
+        ("denoise.set_timesteps", "ZImageSetTimestepsStep"),
+        ("denoise.denoise", "ZImageDenoiseStep"),
+        ("decode", "ZImageVaeDecoderStep"),
+    ],
+    "image2image": [
+        ("text_encoder", "ZImageTextEncoderStep"),
+        ("vae_encoder", "ZImageVaeImageEncoderStep"),
+        ("denoise.input", "ZImageTextInputStep"),
+        ("denoise.additional_inputs", "ZImageAdditionalInputsStep"),
+        ("denoise.prepare_latents", "ZImagePrepareLatentsStep"),
+        ("denoise.set_timesteps", "ZImageSetTimestepsStep"),
+        ("denoise.set_timesteps_with_strength", "ZImageSetTimestepsWithStrengthStep"),
+        ("denoise.prepare_latents_with_image", "ZImagePrepareLatentswithImageStep"),
+        ("denoise.denoise", "ZImageDenoiseStep"),
+        ("decode", "ZImageVaeDecoderStep"),
+    ],
+}
+
+
 class TestZImageModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = ZImageModularPipeline
     pipeline_blocks_class = ZImageAutoBlocks
@@ -26,6 +50,7 @@ class TestZImageModularPipelineFast(ModularPipelineTesterMixin):
 
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
+    expected_workflow_blocks = ZIMAGE_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)

@@ -121,7 +121,7 @@ class FluxTextInputStep(ModularPipelineBlocks):
 
 
 # Adapted from `QwenImageAdditionalInputsStep`
-class FluxInputsDynamicStep(ModularPipelineBlocks):
+class FluxAdditionalInputsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     def __init__(
@@ -243,7 +243,7 @@ class FluxInputsDynamicStep(ModularPipelineBlocks):
         return components, state
 
 
-class FluxKontextInputsDynamicStep(FluxInputsDynamicStep):
+class FluxKontextAdditionalInputsStep(FluxAdditionalInputsStep):
     model_name = "flux-kontext"
 
     def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
@@ -256,7 +256,7 @@ class FluxKontextInputsDynamicStep(FluxInputsDynamicStep):
                 continue
 
             # 1. Calculate height/width from latents
-            # Unlike the `FluxInputsDynamicStep`, we don't overwrite the `block.height` and `block.width`
+            # Unlike the `FluxAdditionalInputsStep`, we don't overwrite the `block.height` and `block.width`
             height, width = calculate_dimension_from_latents(image_latent_tensor, components.vae_scale_factor)
             if not hasattr(block_state, "image_height"):
                 block_state.image_height = height
@@ -303,6 +303,7 @@ class FluxKontextInputsDynamicStep(FluxInputsDynamicStep):
 class FluxKontextSetResolutionStep(ModularPipelineBlocks):
     model_name = "flux-kontext"
 
+    @property
     def description(self):
         return (
             "Determines the height and width to be used during the subsequent computations.\n"

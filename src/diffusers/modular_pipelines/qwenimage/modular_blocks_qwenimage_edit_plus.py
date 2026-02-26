@@ -58,7 +58,7 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
           (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           prompt (`str`):
               The prompt or prompts to guide image generation.
@@ -66,9 +66,9 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
 
       Outputs:
-          resized_image (`List`):
+          resized_image (`list`):
               Images resized to 1024x1024 target area for VAE encoding
-          resized_cond_image (`List`):
+          resized_cond_image (`list`):
               Images resized to 384x384 target area for VL text encoding
           prompt_embeds (`Tensor`):
               The prompt embeddings.
@@ -108,15 +108,15 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
           (`AutoencoderKLQwenImage`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
       Outputs:
-          resized_image (`List`):
+          resized_image (`list`):
               Images resized to 1024x1024 target area for VAE encoding
-          resized_cond_image (`List`):
+          resized_cond_image (`list`):
               Images resized to 384x384 target area for VL text encoding
           processed_image (`Tensor`):
               The processed image
@@ -189,9 +189,9 @@ class QwenImageEditPlusInputStep(SequentialPipelineBlocks):
               The negative prompt embeddings. (batch-expanded)
           negative_prompt_embeds_mask (`Tensor`):
               The negative prompt embeddings mask. (batch-expanded)
-          image_height (`List`):
+          image_height (`list`):
               The image heights calculated from the image latents dimension
-          image_width (`List`):
+          image_width (`list`):
               The image widths calculated from the image latents dimension
           height (`int`):
               if not provided, updated to image height
@@ -253,9 +253,9 @@ class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -315,7 +315,7 @@ class QwenImageEditPlusDecodeStep(SequentialPipelineBlocks):
               Output format: 'pil', 'np', 'pt'.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images. (tensor output of the vae decoder.)
     """
 
@@ -357,7 +357,7 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
           transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
-          image (`Union[Image, List]`):
+          image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
           prompt (`str`):
               The prompt or prompts to guide image generation.
@@ -375,9 +375,9 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
               Pre-generated noisy latents for image generation.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`List`, *optional*):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
@@ -385,7 +385,7 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
               Output format: 'pil', 'np', 'pt'.
 
       Outputs:
-          images (`List`):
+          images (`list`):
               Generated images.
     """
 
