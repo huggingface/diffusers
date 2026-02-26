@@ -309,86 +309,6 @@ class HeliosTimeTextEmbedding(nn.Module):
         return temb, timestep_proj, encoder_hidden_states
 
 
-class HeliosMultiTermMemoryPatch(nn.Module):
-    def __init__(self, in_channels, inner_dim):
-        super().__init__()
-        self.patch_short = nn.Conv3d(in_channels, inner_dim, kernel_size=(1, 2, 2), stride=(1, 2, 2))
-        self.patch_mid = nn.Conv3d(in_channels, inner_dim, kernel_size=(2, 4, 4), stride=(2, 4, 4))
-        self.patch_long = nn.Conv3d(in_channels, inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
-
-    def forward(
-        self,
-        hidden_states,
-        rope_freqs,
-        rope_fn,
-        indices_latents_history_short=None,
-        indices_latents_history_mid=None,
-        indices_latents_history_long=None,
-        latents_history_short=None,
-        latents_history_mid=None,
-        latents_history_long=None,
-    ):
-        # Process clean latents (1x)
-        if latents_history_short is not None and indices_latents_history_short is not None:
-            latents_history_short = latents_history_short.to(hidden_states)
-            latents_history_short = self.patch_short(latents_history_short)
-            _, _, _, H1, W1 = latents_history_short.shape
-            latents_history_short = latents_history_short.flatten(2).transpose(1, 2)
-
-            rope_freqs_history_short = rope_fn(
-                frame_indices=indices_latents_history_short,
-                height=H1,
-                width=W1,
-                device=latents_history_short.device,
-            )
-            rope_freqs_history_short = rope_freqs_history_short.flatten(2).transpose(1, 2)
-
-            hidden_states = torch.cat([latents_history_short, hidden_states], dim=1)
-            rope_freqs = torch.cat([rope_freqs_history_short, rope_freqs], dim=1)
-
-        # Process 2x history latents
-        if latents_history_mid is not None and indices_latents_history_mid is not None:
-            latents_history_mid = latents_history_mid.to(hidden_states)
-            latents_history_mid = pad_for_3d_conv(latents_history_mid, (2, 4, 4))
-            latents_history_mid = self.patch_mid(latents_history_mid)
-            latents_history_mid = latents_history_mid.flatten(2).transpose(1, 2)
-
-            rope_freqs_history_mid = rope_fn(
-                frame_indices=indices_latents_history_mid,
-                height=H1,
-                width=W1,
-                device=latents_history_mid.device,
-            )
-            rope_freqs_history_mid = pad_for_3d_conv(rope_freqs_history_mid, (2, 2, 2))
-            rope_freqs_history_mid = center_down_sample_3d(rope_freqs_history_mid, (2, 2, 2))
-            rope_freqs_history_mid = rope_freqs_history_mid.flatten(2).transpose(1, 2)
-
-            hidden_states = torch.cat([latents_history_mid, hidden_states], dim=1)
-            rope_freqs = torch.cat([rope_freqs_history_mid, rope_freqs], dim=1)
-
-        # Process 4x history latents
-        if latents_history_long is not None and indices_latents_history_long is not None:
-            latents_history_long = latents_history_long.to(hidden_states)
-            latents_history_long = pad_for_3d_conv(latents_history_long, (4, 8, 8))
-            latents_history_long = self.patch_long(latents_history_long)
-            latents_history_long = latents_history_long.flatten(2).transpose(1, 2)
-
-            rope_freqs_history_long = rope_fn(
-                frame_indices=indices_latents_history_long,
-                height=H1,
-                width=W1,
-                device=latents_history_long.device,
-            )
-            rope_freqs_history_long = pad_for_3d_conv(rope_freqs_history_long, (4, 4, 4))
-            rope_freqs_history_long = center_down_sample_3d(rope_freqs_history_long, (4, 4, 4))
-            rope_freqs_history_long = rope_freqs_history_long.flatten(2).transpose(1, 2)
-
-            hidden_states = torch.cat([latents_history_long, hidden_states], dim=1)
-            rope_freqs = torch.cat([rope_freqs_history_long, rope_freqs], dim=1)
-
-        return hidden_states, rope_freqs
-
-
 class HeliosRotaryPosEmbed(nn.Module):
     def __init__(self, rope_dim, theta):
         super().__init__()
@@ -663,7 +583,9 @@ class HeliosTransformer3DModel(
         self.zero_history_timestep = zero_history_timestep
         self.inner_dim = inner_dim
         if has_multi_term_memory_patch:
-            self.multi_term_memory_patch = HeliosMultiTermMemoryPatch(in_channels, self.inner_dim)
+            self.patch_short = nn.Conv3d(in_channels, self.inner_dim, kernel_size=(1, 2, 2), stride=(1, 2, 2))
+            self.patch_mid = nn.Conv3d(in_channels, self.inner_dim, kernel_size=(2, 4, 4), stride=(2, 4, 4))
+            self.patch_long = nn.Conv3d(in_channels, self.inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
 
         # 3. Condition embeddings
         self.condition_embedder = HeliosTimeTextEmbedding(
@@ -698,67 +620,6 @@ class HeliosTransformer3DModel(
         self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
         self.gradient_checkpointing = False
-
-    def process_input_hidden_states(
-        self,
-        latents,
-        indices_hidden_states=None,
-        indices_latents_history_short=None,
-        indices_latents_history_mid=None,
-        indices_latents_history_long=None,
-        latents_history_short=None,
-        latents_history_mid=None,
-        latents_history_long=None,
-    ):
-        height_list = []
-        width_list = []
-        temporal_list = []
-        seq_list = []
-
-        hidden_states = self.patch_embedding(latents)
-        B, C, T, H, W = hidden_states.shape
-
-        if indices_hidden_states is None:
-            indices_hidden_states = torch.arange(0, T).unsqueeze(0).expand(B, -1)
-
-        hidden_states = hidden_states.flatten(2).transpose(
-            1, 2
-        )  # torch.Size([1, 3072, 9, 44, 34]) -> torch.Size([1, 13464, 3072])
-
-        rope_freqs = self.rope(
-            frame_indices=indices_hidden_states,
-            height=H,
-            width=W,
-            device=hidden_states.device,
-        )  # torch.Size([1, 9]) -> torch.Size([1, 256, 9, 44, 34])
-        rope_freqs = rope_freqs.flatten(2).transpose(1, 2)  # torch.Size([1, 13464, 256])
-
-        height_list.append(H)
-        width_list.append(W)
-        temporal_list.append(T)
-        seq_list.append(hidden_states.shape[1])
-
-        if latents_history_short is not None:
-            hidden_states, rope_freqs = self.multi_term_memory_patch(
-                hidden_states=hidden_states,
-                rope_freqs=rope_freqs,
-                rope_fn=self.rope,
-                latents_history_short=latents_history_short,
-                indices_latents_history_short=indices_latents_history_short,
-                latents_history_mid=latents_history_mid,
-                indices_latents_history_mid=indices_latents_history_mid,
-                latents_history_long=latents_history_long,
-                indices_latents_history_long=indices_latents_history_long,
-            )
-
-        return (
-            hidden_states,
-            rope_freqs,
-            height_list,
-            width_list,
-            temporal_list,
-            seq_list,
-        )
 
     @apply_lora_scale("attention_kwargs")
     def forward(
@@ -807,23 +668,91 @@ class HeliosTransformer3DModel(
         batch_size = hidden_states.shape[0]
         p_t, p_h, p_w = self.config.patch_size
 
-        (
-            hidden_states,
-            rotary_emb,
-            post_patch_height_list,
-            post_patch_width_list,
-            post_patch_num_frames_list,
-            original_context_length_list,
-        ) = self.process_input_hidden_states(
-            latents=hidden_states,
-            indices_hidden_states=indices_hidden_states,
-            indices_latents_history_short=indices_latents_history_short,
-            indices_latents_history_mid=indices_latents_history_mid,
-            indices_latents_history_long=indices_latents_history_long,
-            latents_history_short=latents_history_short,
-            latents_history_mid=latents_history_mid,
-            latents_history_long=latents_history_long,
-        )  # hidden: [high, mid, low] -> [low, mid, high]
+        # hidden: [high, mid, low] -> [low, mid, high]
+        post_patch_height_list = []
+        post_patch_width_list = []
+        post_patch_num_frames_list = []
+        original_context_length_list = []
+
+        # Process noisy latents
+        hidden_states = self.patch_embedding(hidden_states)
+        B, C, T, H, W = hidden_states.shape
+
+        if indices_hidden_states is None:
+            indices_hidden_states = torch.arange(0, T).unsqueeze(0).expand(B, -1)
+
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        rotary_emb = self.rope(
+            frame_indices=indices_hidden_states,
+            height=H,
+            width=W,
+            device=hidden_states.device,
+        )
+        rotary_emb = rotary_emb.flatten(2).transpose(1, 2)
+
+        post_patch_height_list.append(H)
+        post_patch_width_list.append(W)
+        post_patch_num_frames_list.append(T)
+        original_context_length_list.append(hidden_states.shape[1])
+
+        # Process short history latents
+        if latents_history_short is not None and indices_latents_history_short is not None:
+            latents_history_short = latents_history_short.to(hidden_states)
+            latents_history_short = self.patch_short(latents_history_short)
+            _, _, _, H1, W1 = latents_history_short.shape
+            latents_history_short = latents_history_short.flatten(2).transpose(1, 2)
+
+            rotary_emb_history_short = self.rope(
+                frame_indices=indices_latents_history_short,
+                height=H1,
+                width=W1,
+                device=latents_history_short.device,
+            )
+            rotary_emb_history_short = rotary_emb_history_short.flatten(2).transpose(1, 2)
+
+            hidden_states = torch.cat([latents_history_short, hidden_states], dim=1)
+            rotary_emb = torch.cat([rotary_emb_history_short, rotary_emb], dim=1)
+
+        # Process mid history latents
+        if latents_history_mid is not None and indices_latents_history_mid is not None:
+            latents_history_mid = latents_history_mid.to(hidden_states)
+            latents_history_mid = pad_for_3d_conv(latents_history_mid, (2, 4, 4))
+            latents_history_mid = self.patch_mid(latents_history_mid)
+            latents_history_mid = latents_history_mid.flatten(2).transpose(1, 2)
+
+            rotary_emb_history_mid = self.rope(
+                frame_indices=indices_latents_history_mid,
+                height=H1,
+                width=W1,
+                device=latents_history_mid.device,
+            )
+            rotary_emb_history_mid = pad_for_3d_conv(rotary_emb_history_mid, (2, 2, 2))
+            rotary_emb_history_mid = center_down_sample_3d(rotary_emb_history_mid, (2, 2, 2))
+            rotary_emb_history_mid = rotary_emb_history_mid.flatten(2).transpose(1, 2)
+
+            hidden_states = torch.cat([latents_history_mid, hidden_states], dim=1)
+            rotary_emb = torch.cat([rotary_emb_history_mid, rotary_emb], dim=1)
+
+        # Process long history latents
+        if latents_history_long is not None and indices_latents_history_long is not None:
+            latents_history_long = latents_history_long.to(hidden_states)
+            latents_history_long = pad_for_3d_conv(latents_history_long, (4, 8, 8))
+            latents_history_long = self.patch_long(latents_history_long)
+            latents_history_long = latents_history_long.flatten(2).transpose(1, 2)
+
+            rotary_emb_history_long = self.rope(
+                frame_indices=indices_latents_history_long,
+                height=H1,
+                width=W1,
+                device=latents_history_long.device,
+            )
+            rotary_emb_history_long = pad_for_3d_conv(rotary_emb_history_long, (4, 4, 4))
+            rotary_emb_history_long = center_down_sample_3d(rotary_emb_history_long, (4, 4, 4))
+            rotary_emb_history_long = rotary_emb_history_long.flatten(2).transpose(1, 2)
+
+            hidden_states = torch.cat([latents_history_long, hidden_states], dim=1)
+            rotary_emb = torch.cat([rotary_emb_history_long, rotary_emb], dim=1)
+
         post_patch_num_frames = sum(post_patch_num_frames_list)
         post_patch_height = sum(post_patch_height_list)
         post_patch_width = sum(post_patch_width_list)

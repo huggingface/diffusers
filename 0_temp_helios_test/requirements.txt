@@ -5,7 +5,7 @@ triton==3.3.1
 # diffusers==0.36.0
 # transformers==4.57.6
 # sentence-transformers==5.2.3
-git+https://github.com/SHYuanBest/diffusers.git@test
+# git+https://github.com/SHYuanBest/diffusers.git@test
 git+https://github.com/huggingface/transformers.git
 git+https://github.com/huggingface/sentence-transformers.git
 accelerate==1.12.0
