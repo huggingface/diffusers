@@ -82,6 +82,21 @@ def _get_qkv_projections(attn: "HeliosAttention", hidden_states: torch.Tensor, e
     return query, key, value
 
 
+class HeliosOutputNorm(nn.Module):
+    def __init__(self, dim: int, eps: float = 1e-6, elementwise_affine: bool = False):
+        super().__init__()
+        self.scale_shift_table = nn.Parameter(torch.randn(1, 2, dim) / dim**0.5)
+        self.norm = FP32LayerNorm(dim, eps, elementwise_affine=False)
+
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor, original_context_length: int):
+        temb = temb[:, -original_context_length:, :]
+        shift, scale = (self.scale_shift_table.unsqueeze(0).to(temb.device) + temb.unsqueeze(2)).chunk(2, dim=2)
+        shift, scale = shift.squeeze(2).to(hidden_states.device), scale.squeeze(2).to(hidden_states.device)
+        hidden_states = hidden_states[:, -original_context_length:, :]
+        hidden_states = (self.norm(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
+        return hidden_states
+
+
 class HeliosAttnProcessor:
     _attention_backend = None
     _parallel_config = None
@@ -523,7 +538,7 @@ class HeliosTransformer3DModel(
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
-    _no_split_modules = ["HeliosTransformerBlock"]
+    _no_split_modules = ["HeliosTransformerBlock", "HeliosOutputNorm"]
     _keep_in_fp32_modules = [
         "time_embedder",
         "scale_shift_table",
@@ -614,9 +629,8 @@ class HeliosTransformer3DModel(
         )
 
         # 5. Output norm & projection
-        self.norm_out = FP32LayerNorm(inner_dim, eps, elementwise_affine=False)
+        self.norm_out = HeliosOutputNorm(inner_dim, eps, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size))
-        self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
         self.gradient_checkpointing = False
 
@@ -637,18 +651,11 @@ class HeliosTransformer3DModel(
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
-
-
+        # 1. Input
         batch_size = hidden_states.shape[0]
         p_t, p_h, p_w = self.config.patch_size
 
-        # hidden: [high, mid, low] -> [low, mid, high]
-        post_patch_height_list = []
-        post_patch_width_list = []
-        post_patch_num_frames_list = []
-        original_context_length_list = []
-
-        # Process noisy latents
+        # 2. Process noisy latents
         hidden_states = self.patch_embedding(hidden_states)
         B, C, T, H, W = hidden_states.shape
 
@@ -664,12 +671,12 @@ class HeliosTransformer3DModel(
         )
         rotary_emb = rotary_emb.flatten(2).transpose(1, 2)
 
-        post_patch_height_list.append(H)
-        post_patch_width_list.append(W)
-        post_patch_num_frames_list.append(T)
-        original_context_length_list.append(hidden_states.shape[1])
+        post_patch_height = H
+        post_patch_width = W
+        post_patch_num_frames = T
+        original_context_length = hidden_states.shape[1]
 
-        # Process short history latents
+        # 3. Process short history latents
         if latents_history_short is not None and indices_latents_history_short is not None:
             latents_history_short = latents_history_short.to(hidden_states)
             latents_history_short = self.patch_short(latents_history_short)
@@ -687,7 +694,7 @@ class HeliosTransformer3DModel(
             hidden_states = torch.cat([latents_history_short, hidden_states], dim=1)
             rotary_emb = torch.cat([rotary_emb_history_short, rotary_emb], dim=1)
 
-        # Process mid history latents
+        # 4. Process mid history latents
         if latents_history_mid is not None and indices_latents_history_mid is not None:
             latents_history_mid = latents_history_mid.to(hidden_states)
             latents_history_mid = pad_for_3d_conv(latents_history_mid, (2, 4, 4))
@@ -707,7 +714,7 @@ class HeliosTransformer3DModel(
             hidden_states = torch.cat([latents_history_mid, hidden_states], dim=1)
             rotary_emb = torch.cat([rotary_emb_history_mid, rotary_emb], dim=1)
 
-        # Process long history latents
+        # 5. Process long history latents
         if latents_history_long is not None and indices_latents_history_long is not None:
             latents_history_long = latents_history_long.to(hidden_states)
             latents_history_long = pad_for_3d_conv(latents_history_long, (4, 8, 8))
@@ -727,10 +734,6 @@ class HeliosTransformer3DModel(
             hidden_states = torch.cat([latents_history_long, hidden_states], dim=1)
             rotary_emb = torch.cat([rotary_emb_history_long, rotary_emb], dim=1)
 
-        post_patch_num_frames = sum(post_patch_num_frames_list)
-        post_patch_height = sum(post_patch_height_list)
-        post_patch_width = sum(post_patch_width_list)
-        original_context_length = sum(original_context_length_list)
         history_context_length = hidden_states.shape[1] - original_context_length
 
         if indices_hidden_states is not None and self.zero_history_timestep:
@@ -762,7 +765,7 @@ class HeliosTransformer3DModel(
         if timestep_proj.ndim == 4:
             timestep_proj = timestep_proj.permute(0, 2, 1, 3)
 
-        # 4. Transformer blocks
+        # 6. Transformer blocks
         hidden_states = hidden_states.contiguous()
         encoder_hidden_states = encoder_hidden_states.contiguous()
         rotary_emb = rotary_emb.contiguous()
@@ -786,27 +789,11 @@ class HeliosTransformer3DModel(
                     original_context_length,
                 )
 
-        # 5. Output norm, projection & unpatchify
-        if temb.ndim == 3:
-            temb = temb[:, -original_context_length:, :]
-            shift, scale = (self.scale_shift_table.unsqueeze(0).to(temb.device) + temb.unsqueeze(2)).chunk(2, dim=2)
-            shift = shift.squeeze(2)
-            scale = scale.squeeze(2)
-        else:
-            # batch_size, inner_dim
-            shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
-
-        # Move the shift and scale tensors to the same device as hidden_states.
-        # When using multi-GPU inference via accelerate these will be on the
-        # first device rather than the last device, which hidden_states ends up
-        # on.
-        shift = shift.to(hidden_states.device)
-        scale = scale.to(hidden_states.device)
-
-        hidden_states = hidden_states[:, -original_context_length:, :]
-        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
+        # 7. Normalization
+        hidden_states = self.norm_out(hidden_states, temb, original_context_length)
         hidden_states = self.proj_out(hidden_states)
 
+        # 8. Unpatchify
         hidden_states = hidden_states.reshape(
             batch_size, post_patch_num_frames, post_patch_height, post_patch_width, p_t, p_h, p_w, -1
         )
