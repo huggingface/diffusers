@@ -157,7 +157,7 @@ auto_blocks.get_execution_blocks(mask=True)
 
 ## ConditionalPipelineBlocks
 
-[`~modular_pipelines.AutoPipelineBlocks`] is a special case of [`~modular_pipelines.ConditionalPipelineBlocks`]. While [`~modular_pipelines.AutoPipelineBlocks`] selects blocks based on whether a trigger input is provided or not, [`~modular_pipelines.ConditionalPipelineBlocks`] lets you implement a `select_block` method with any custom selection logic.
+[`~modular_pipelines.AutoPipelineBlocks`] is a special case of [`~modular_pipelines.ConditionalPipelineBlocks`]. While [`~modular_pipelines.AutoPipelineBlocks`] selects blocks based on whether a trigger input is provided or not, [`~modular_pipelines.ConditionalPipelineBlocks`] is able to select a block based on custom selection logic provided in the `select_block` method.
 
 Here is the same example written using [`~modular_pipelines.ConditionalPipelineBlocks`] directly:
 
