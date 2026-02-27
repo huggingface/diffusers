@@ -175,9 +175,11 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         return components
 
-    def get_dummy_upsample_component(self, in_channels=4):
+    def get_dummy_upsample_component(self, in_channels=4, mid_channels=32, num_blocks_per_stage=1):
         upsampler = LTX2LatentUpsamplerModel(
             in_channels=in_channels,
+            mid_channels=mid_channels,
+            num_blocks_per_stage=num_blocks_per_stage,
         )
 
         return upsampler
@@ -332,12 +334,12 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # fmt: off
         expected_video_slice = torch.tensor(
             [
-                0.2583, 0.7033, 0.2097, 0.7988, 0.3044, 0.7046, 0.1868, 0.7743, 0.3372, 0.4316, 0.4479, 0.3709, 0.3015, 0.4384, 0.4203, 0.4189
+                0.4497, 0.6757, 0.4219, 0.7686, 0.4525, 0.6483, 0.3969, 0.7404, 0.3541, 0.3039, 0.4592, 0.3521, 0.3665, 0.2785, 0.3336, 0.3079
             ]
         )
         expected_audio_slice = torch.tensor(
             [
-                0.0267, 0.0494, 0.1244, 0.1120, 0.1668, 0.1062, 0.1730, 0.0940, 0.0672, -0.0069, 0.0688, 0.0097, 0.0808, 0.1231, 0.0986, 0.0739
+                0.0271, 0.0492, 0.1249, 0.1126, 0.1661, 0.1060, 0.1717, 0.0944, 0.0672, -0.0069, 0.0688, 0.0097, 0.0808, 0.1231, 0.0986, 0.0739
             ]
         )
         # fmt: on
