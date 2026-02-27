@@ -638,14 +638,6 @@ class HeliosTransformer3DModel(
         attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
 
-        if indices_hidden_states is not None and indices_hidden_states.ndim == 1:
-            indices_hidden_states = indices_hidden_states.unsqueeze(0)
-        if indices_latents_history_short is not None and indices_latents_history_short.ndim == 1:
-            indices_latents_history_short = indices_latents_history_short.unsqueeze(0)
-        if indices_latents_history_mid is not None and indices_latents_history_mid.ndim == 1:
-            indices_latents_history_mid = indices_latents_history_mid.unsqueeze(0)
-        if indices_latents_history_long is not None and indices_latents_history_long.ndim == 1:
-            indices_latents_history_long = indices_latents_history_long.unsqueeze(0)
 
         batch_size = hidden_states.shape[0]
         p_t, p_h, p_w = self.config.patch_size
