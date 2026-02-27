@@ -705,7 +705,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                 mask_shape = (batch_size, 1, num_frames, height, width)
                 conditioning_mask = latents.new_zeros(mask_shape)
                 conditioning_mask[:, :, 0] = 1.0
-                
+
                 latents = self._normalize_latents(
                     latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
                 )

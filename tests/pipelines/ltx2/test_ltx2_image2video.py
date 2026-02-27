@@ -24,9 +24,9 @@ from diffusers import (
     LTX2ImageToVideoPipeline,
     LTX2VideoTransformer3DModel,
 )
-from diffusers.pipelines.ltx2 import LTX2TextConnectors, LTX2LatentUpsamplePipeline
-from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
+from diffusers.pipelines.ltx2 import LTX2LatentUpsamplePipeline, LTX2TextConnectors
 from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
+from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 
 from ...testing_utils import enable_full_determinism
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
