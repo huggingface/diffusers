@@ -637,23 +637,6 @@ class HeliosTransformer3DModel(
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
-        assert (
-            len(
-                {
-                    x is None
-                    for x in [
-                        indices_hidden_states,
-                        indices_latents_history_short,
-                        indices_latents_history_mid,
-                        indices_latents_history_long,
-                        latents_history_short,
-                        latents_history_mid,
-                        latents_history_long,
-                    ]
-                }
-            )
-            == 1
-        ), "All history latents and indices must either all exist or all be None"
 
         if indices_hidden_states is not None and indices_hidden_states.ndim == 1:
             indices_hidden_states = indices_hidden_states.unsqueeze(0)
