@@ -28,6 +28,7 @@ accelerate launch examples/research_projects/autoencoder_rae/train_autoencoder_r
 ```
 
 ### Train from scratch with a pretrained encoder
+The following command launches RAE training with "facebook/dinov2-with-registers-base" as the base.
 
 ```bash
 accelerate launch examples/research_projects/autoencoder_rae/train_autoencoder_rae.py \
