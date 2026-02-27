@@ -28,7 +28,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import HeliosLoraLoaderMixin
 from ...models import AutoencoderKLWan, HeliosTransformer3DModel
-from ...schedulers import HeliosScheduler, UniPCMultistepScheduler
+from ...schedulers import HeliosScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -119,66 +119,6 @@ def calculate_shift(
     return mu
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
-def retrieve_timesteps(
-    scheduler,
-    num_inference_steps: int | None = None,
-    device: str | torch.device | None = None,
-    timesteps: list[int] | None = None,
-    sigmas: list[float] | None = None,
-    **kwargs,
-):
-    r"""
-    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
-    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
-
-    Args:
-        scheduler (`SchedulerMixin`):
-            The scheduler to get timesteps from.
-        num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
-            must be `None`.
-        device (`str` or `torch.device`, *optional*):
-            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`list[int]`, *optional*):
-            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
-            `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`list[float]`, *optional*):
-            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
-            `num_inference_steps` and `timesteps` must be `None`.
-
-    Returns:
-        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
-        second element is the number of inference steps.
-    """
-    if timesteps is not None and sigmas is not None:
-        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
-    if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accepts_timesteps:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" timestep schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    elif sigmas is not None:
-        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accept_sigmas:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" sigmas schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
-
-
 class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
     r"""
     Pipeline for text-to-video / image-to-video / video-to-video generation using Helios.
@@ -195,7 +135,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
         transformer ([`HeliosTransformer3DModel`]):
             Conditional Transformer to denoise the input latents.
-        scheduler ([`UniPCMultistepScheduler`]):
+        scheduler ([`HeliosScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
@@ -210,7 +150,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
-        scheduler: UniPCMultistepScheduler | HeliosScheduler,
+        scheduler: HeliosScheduler,
         transformer: HeliosTransformer3DModel,
     ):
         super().__init__()
@@ -708,6 +648,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 mu=mu,
                 is_amplify_first_chunk=is_amplify_first_chunk,
             )
+            timesteps = self.scheduler.timesteps
 
             if i_s > 0:
                 height *= 2
@@ -731,8 +672,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
                 if use_dmd:
                     start_point_list.append(latents)
-
-            timesteps = self.scheduler.timesteps
 
             for idx, t in enumerate(timesteps):
                 timestep = t.expand(latents.shape[0]).to(torch.int64)
@@ -1296,9 +1235,8 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     self.scheduler.config.get("base_shift", 0.5),
                     self.scheduler.config.get("max_shift", 1.15),
                 )
-                timesteps, num_inference_steps = retrieve_timesteps(
-                    self.scheduler, num_inference_steps, device, sigmas=sigmas, mu=mu
-                )
+                self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas, mu=mu)
+                timesteps = self.scheduler.timesteps
                 num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
                 self._num_timesteps = len(timesteps)
             else:

@@ -14,7 +14,6 @@ from tqdm import tqdm
 
 from diffusers import HeliosTransformer3DModel
 from diffusers import HeliosPipeline
-from diffusers.schedulers.scheduling_helios import HeliosScheduler
 
 from diffusers import ContextParallelConfig
 from diffusers.models import AutoencoderKLWan

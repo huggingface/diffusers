@@ -54,12 +54,10 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         disable_corrector: list[int] = [],
         solver_p: SchedulerMixin = None,
         use_flow_sigmas: bool = True,
-        version: str = "v1",
         scheduler_type: str = "unipc",  # ["euler", "unipc", "dmd"]
         use_dynamic_shifting: bool = False,
         time_shift_type: Literal["exponential", "linear"] = "linear",
     ):
-        self.version = version
         self.timestep_ratios = {}  # The timestep ratio for each stage
         self.timesteps_per_stage = {}  # The detailed timesteps per stage (fix max and min per stage)
         self.sigmas_per_stage = {}  # always uniform [1000, 0]
@@ -140,16 +138,6 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
             self.start_sigmas[i_s] = start_sigma
             self.end_sigmas[i_s] = end_sigma
 
-            if self.version == "v2":
-                new_start_indice = (
-                    len(self.sigmas) - torch.searchsorted(self.sigmas.flip(0), start_sigma, right=True)
-                ).item()
-                self.sigmas_per_stage[i_s] = self.sigmas[new_start_indice:end_indice]
-                self.timesteps_per_stage[i_s] = self.timesteps[new_start_indice:end_indice]
-
-        if self.version == "v2":
-            return
-
         # Determine the ratio of each stage according to flow length
         tot_distance = sum(stage_distance)
         for i_s in range(stages):
@@ -207,8 +195,9 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int,
-        stage_index: int,
+        stage_index: int| None = None,
         device: str | torch.device = None,
+        sigmas: bool | None = None,
         mu: bool | None = None,
         is_amplify_first_chunk: bool = False,
     ):
@@ -224,39 +213,28 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
         self.init_sigmas()
 
-        if self.version == "v1":
+        if self.config.stages == 1:
+            if sigmas is None:
+                sigmas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)[:-1].astype(np.float32)
+                if self.config.shift != 1.0:
+                    assert not self.config.use_dynamic_shifting
+                    sigmas = self.time_shift(shift, 1.0, sigmas)
+            timesteps = (sigmas * self.config.num_train_timesteps).copy()
+            sigmas = torch.from_numpy(sigmas)
+        else:
             stage_timesteps = self.timesteps_per_stage[stage_index]
-            timestep_max = stage_timesteps[0].item()
-            timestep_min = stage_timesteps[-1].item()
-
             timesteps = np.linspace(
-                timestep_max,
-                timestep_min,
+                stage_timesteps[0].item(),
+                stage_timesteps[-1].item(),
                 num_inference_steps,
             )
-            self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
             stage_sigmas = self.sigmas_per_stage[stage_index]
-            sigma_max = stage_sigmas[0].item()
-            sigma_min = stage_sigmas[-1].item()
+            ratios = np.linspace(stage_sigmas[0].item(), stage_sigmas[-1].item(), num_inference_steps)
+            sigmas = torch.from_numpy(ratios)
 
-            ratios = np.linspace(sigma_max, sigma_min, num_inference_steps)
-            sigmas = torch.from_numpy(ratios).to(device=device)
-            self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
-        else:
-            total_steps = len(self.timesteps_per_stage[stage_index])
-            indices = np.linspace(0, total_steps - 1, num_inference_steps, dtype=int)
-
-            self.timesteps = self.timesteps_per_stage[stage_index][indices].to(device=device)
-
-            if stage_index == (self.config.stages - 1):
-                sigmas = self.sigmas_per_stage[stage_index][indices].to(device=device)
-                self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
-            else:
-                sigmas = self.sigmas_per_stage[stage_index][indices].to(device=device)
-                self.sigmas = torch.cat(
-                    [sigmas, torch.tensor([self.ori_start_sigmas[stage_index + 1]], device=sigmas.device)]
-                )
+        self.timesteps = torch.from_numpy(timesteps).to(device=device)
+        self.sigmas = torch.cat([sigmas, torch.zeros(1)]).to(device=device)
 
         self._step_index = None
         self.reset_scheduler_history()
@@ -266,10 +244,14 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
             self.sigmas = torch.cat([self.sigmas[:-2], self.sigmas[-1:]])
 
         if self.config.use_dynamic_shifting:
+            assert self.config.shift == 1.0
             self.sigmas = self.time_shift(mu, 1.0, self.sigmas)
-            self.timesteps = self.timesteps_per_stage[stage_index].min() + self.sigmas[:-1] * (
-                self.timesteps_per_stage[stage_index].max() - self.timesteps_per_stage[stage_index].min()
-            )
+            if self.config.stages == 1:
+                self.timesteps = self.sigmas[:-1] * self.config.num_train_timesteps
+            else:
+                self.timesteps = self.timesteps_per_stage[stage_index].min() + self.sigmas[:-1] * (
+                    self.timesteps_per_stage[stage_index].max() - self.timesteps_per_stage[stage_index].min()
+                )
 
     # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler.time_shift
     def time_shift(self, mu: float, sigma: float, t: torch.Tensor):
