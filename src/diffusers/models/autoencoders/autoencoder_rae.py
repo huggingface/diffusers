@@ -171,7 +171,7 @@ class MAEEncoder(nn.Module):
         return image_features
 
 
-_ENCODER_TYPES: Dict[str, Type] = {
+_ENCODER_TYPES: dict[str, Type] = {
     "dinov2": Dinov2Encoder,
     "siglip2": Siglip2Encoder,
     "mae": MAEEncoder,
