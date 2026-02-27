@@ -192,7 +192,7 @@ The inputs listed in `block_trigger_inputs` are passed as keyword arguments to `
 
 ## Workflows
 
-Pipelines that contain conditional blocks ([~modular_pipelines.AutoPipelineBlocks] or [~modular_pipelines.ConditionalPipelineBlocks]) can support multiple workflows — for example, our SDXL modular pipeline supports a dozen workflows all in one pipeline. But this also means it can be confusing for users to know what workflows are supported and how to run them. For pipeline builders, it's useful to be able to extract only the blocks relevant to a specific workflow.
+Pipelines that contain conditional blocks ([`~modular_pipelines.AutoPipelineBlocks`] or [`~modular_pipelines.ConditionalPipelineBlocks]`) can support multiple workflows — for example, our SDXL modular pipeline supports a dozen workflows all in one pipeline. But this also means it can be confusing for users to know what workflows are supported and how to run them. For pipeline builders, it's useful to be able to extract only the blocks relevant to a specific workflow.
 
 We recommend defining a `_workflow_map` to give each workflow a name and explicitly list the inputs it requires.
 
