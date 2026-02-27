@@ -364,6 +364,10 @@ class ModularPipelineTesterMixin:
             with open(index_file) as f:
                 index_contents = json.load(f)
 
+            compulsory_keys = {"_blocks_class_name", "_class_name", "_diffusers_version"}
+            for k in compulsory_keys:
+                assert k in index_contents
+
             to_check_attrs = {"pretrained_model_name_or_path", "revision", "subfolder"}
             for component in components:
                 spec = components_spec[component]
