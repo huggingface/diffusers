@@ -48,8 +48,7 @@ This modular pipeline is composed of the following blocks:
 
 ## Model Components
 
-{components_description} {configs_section}
-{io_specification_section}
+{components_description} {configs_section} {io_specification_section}
 """
 
 
@@ -1155,7 +1154,9 @@ def generate_modular_model_card_content(blocks) -> dict[str, Any]:
         # use that as the shared output for all workflows
         blocks_outputs = blocks.outputs
         blocks_intermediate = getattr(blocks, "intermediate_outputs", None)
-        shared_outputs = blocks_outputs if blocks_intermediate is not None and blocks_outputs != blocks_intermediate else None
+        shared_outputs = (
+            blocks_outputs if blocks_intermediate is not None and blocks_outputs != blocks_intermediate else None
+        )
 
         # Summary section using existing format_workflow
         parts.append("## Supported Workflows\n")
