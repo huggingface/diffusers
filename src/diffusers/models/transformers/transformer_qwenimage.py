@@ -169,7 +169,7 @@ def compute_text_seq_len_from_mask(
         active_positions.max(dim=1).values + 1,
         torch.as_tensor(text_seq_len, device=encoder_hidden_states.device),
     )
-    return text_seq_len, per_sample_len, encoder_hidden_states_mask
+    return text_seq_len, per_sample_len.tolist(), encoder_hidden_states_mask
 
 
 class QwenTimestepProjEmbeddings(nn.Module):
