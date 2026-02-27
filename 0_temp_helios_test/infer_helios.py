@@ -71,7 +71,7 @@ def parse_args():
     parser.add_argument("--use_zero_init", action="store_true")
     parser.add_argument("--zero_steps", type=int, default=1)
     # stage 1
-    parser.add_argument("--latent_window_size", type=int, default=9)
+    parser.add_argument("--num_latent_frames_per_chunk", type=int, default=9)
     # stage 2
     parser.add_argument("--is_enable_stage2", action="store_true")
     parser.add_argument("--stage2_num_stages", type=int, default=3)
@@ -81,7 +81,7 @@ def parse_args():
     parser.add_argument("--stage2_num_inference_steps_list", type=int, nargs="+", default=[20, 20, 20])
     # stage 3
     parser.add_argument("--is_enable_stage3", action="store_true")
-    parser.add_argument("--is_skip_first_section", action="store_true")
+    parser.add_argument("--is_skip_first_chunk", action="store_true")
     parser.add_argument("--is_amplify_first_chunk", action="store_true")
 
     # === Prompts ===
@@ -278,7 +278,7 @@ def main():
                     generator=torch.Generator(device="cuda").manual_seed(args.seed),
                     # stage 1
                     history_sizes=[16, 2, 1],
-                    latent_window_size=args.latent_window_size,
+                    num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                     keep_first_frame=True,
                     use_dynamic_shifting=args.use_dynamic_shifting,
                     # stage 2
@@ -287,7 +287,7 @@ def main():
                     stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
                     # stage 3
                     use_dmd=args.is_enable_stage3,
-                    is_skip_first_section=args.is_skip_first_section,
+                    is_skip_first_chunk=args.is_skip_first_chunk,
                     is_amplify_first_chunk=args.is_amplify_first_chunk,
                     # cfg zero
                     use_cfg_zero_star=args.use_cfg_zero_star,
@@ -339,7 +339,7 @@ def main():
                         generator=torch.Generator(device="cuda").manual_seed(args.seed),
                         # stage 1
                         history_sizes=[16, 2, 1],
-                        latent_window_size=args.latent_window_size,
+                        num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                         keep_first_frame=True,
                         use_dynamic_shifting=args.use_dynamic_shifting,
                         # stage 2
@@ -348,7 +348,7 @@ def main():
                         stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
                         # stage 3
                         use_dmd=args.is_enable_stage3,
-                        is_skip_first_section=args.is_skip_first_section,
+                        is_skip_first_chunk=args.is_skip_first_chunk,
                         is_amplify_first_chunk=args.is_amplify_first_chunk,
                         # cfg zero
                         use_cfg_zero_star=args.use_cfg_zero_star,
@@ -408,7 +408,7 @@ def main():
                         generator=torch.Generator(device="cuda").manual_seed(args.seed),
                         # stage 1
                         history_sizes=[16, 2, 1],
-                        latent_window_size=args.latent_window_size,
+                        num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                         keep_first_frame=True,
                         use_dynamic_shifting=args.use_dynamic_shifting,
                         # stage 2
@@ -417,7 +417,7 @@ def main():
                         stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
                         # stage 3
                         use_dmd=args.is_enable_stage3,
-                        is_skip_first_section=args.is_skip_first_section,
+                        is_skip_first_chunk=args.is_skip_first_chunk,
                         is_amplify_first_chunk=args.is_amplify_first_chunk,
                         # cfg zero
                         use_cfg_zero_star=args.use_cfg_zero_star,
@@ -466,7 +466,7 @@ def main():
                         generator=torch.Generator(device="cuda").manual_seed(args.seed),
                         # stage 1
                         history_sizes=[16, 2, 1],
-                        latent_window_size=args.latent_window_size,
+                        num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                         keep_first_frame=True,
                         use_dynamic_shifting=args.use_dynamic_shifting,
                         # stage 2
@@ -475,7 +475,7 @@ def main():
                         stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
                         # stage 3
                         use_dmd=args.is_enable_stage3,
-                        is_skip_first_section=args.is_skip_first_section,
+                        is_skip_first_chunk=args.is_skip_first_chunk,
                         is_amplify_first_chunk=args.is_amplify_first_chunk,
                         # cfg zero
                         use_cfg_zero_star=args.use_cfg_zero_star,
@@ -509,7 +509,7 @@ def main():
                 generator=torch.Generator(device="cuda").manual_seed(args.seed),
                 # stage 1
                 history_sizes=[16, 2, 1],
-                latent_window_size=args.latent_window_size,
+                num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                 keep_first_frame=True,
                 use_dynamic_shifting=args.use_dynamic_shifting,
                 # stage 2
@@ -518,7 +518,7 @@ def main():
                 stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
                 # stage 3
                 use_dmd=args.is_enable_stage3,
-                is_skip_first_section=args.is_skip_first_section,
+                is_skip_first_chunk=args.is_skip_first_chunk,
                 is_amplify_first_chunk=args.is_amplify_first_chunk,
                 # cfg zero
                 use_cfg_zero_star=args.use_cfg_zero_star,

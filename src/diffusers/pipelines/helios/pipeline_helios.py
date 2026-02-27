@@ -443,7 +443,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         video: torch.Tensor,
         latents_mean: torch.Tensor,
         latents_std: torch.Tensor,
-        latent_window_size: int,
+        num_latent_frames_per_chunk: int,
         dtype: torch.dtype | None = None,
         device: torch.device | None = None,
         generator: torch.Generator | list[torch.Generator] | None = None,
@@ -453,13 +453,13 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         video = video.to(device=device, dtype=self.vae.dtype)
         if latents is None:
             num_frames = video.shape[2]
-            min_frames = (latent_window_size - 1) * 4 + 1
+            min_frames = (num_latent_frames_per_chunk - 1) * 4 + 1
             num_chunks = num_frames // min_frames
             if num_chunks == 0:
                 raise ValueError(
                     f"Video must have at least {min_frames} frames "
                     f"(got {num_frames} frames). "
-                    f"Required: (latent_window_size - 1) * 4 + 1 = ({latent_window_size} - 1) * 4 + 1 = {min_frames}"
+                    f"Required: (num_latent_frames_per_chunk - 1) * 4 + 1 = ({num_latent_frames_per_chunk} - 1) * 4 + 1 = {min_frames}"
                 )
             total_valid_frames = num_chunks * min_frames
             start_frame = num_frames - total_valid_frames
@@ -896,7 +896,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         interpolation_steps: int = 3,
         # ------------ Stage 1 ------------
         history_sizes: list = [16, 2, 1],
-        latent_window_size: int = 9,
+        num_latent_frames_per_chunk: int = 9,
         use_dynamic_shifting: bool = False,
         keep_first_frame: bool = True,
         # ------------ Stage 2 ------------
@@ -1092,7 +1092,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 video,
                 latents_mean=latents_mean,
                 latents_std=latents_std,
-                latent_window_size=latent_window_size,
+                num_latent_frames_per_chunk=num_latent_frames_per_chunk,
                 dtype=torch.float32,
                 device=device,
                 generator=generator,
@@ -1110,10 +1110,10 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             )
 
             noisy_latents_chunks = []
-            num_latent_chunks = video_latents.shape[2] // latent_window_size
+            num_latent_chunks = video_latents.shape[2] // num_latent_frames_per_chunk
             for i in range(num_latent_chunks):
-                chunk_start = i * latent_window_size
-                chunk_end = chunk_start + latent_window_size
+                chunk_start = i * num_latent_frames_per_chunk
+                chunk_end = chunk_start + num_latent_frames_per_chunk
                 latent_chunk = video_latents[:, :, chunk_start:chunk_end, :, :]
 
                 chunk_frames = latent_chunk.shape[2]
@@ -1133,8 +1133,8 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
-        window_num_frames = (latent_window_size - 1) * self.vae_scale_factor_temporal + 1
-        num_latent_sections = max(1, (num_frames + window_num_frames - 1) // window_num_frames)
+        window_num_frames = (num_latent_frames_per_chunk - 1) * self.vae_scale_factor_temporal + 1
+        num_latent_chunk = max(1, (num_frames + window_num_frames - 1) // window_num_frames)
         history_video = None
         total_generated_latent_frames = 0
 
@@ -1164,13 +1164,13 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         # 6. Denoising loop
         if use_interpolate_prompt:
-            if num_latent_sections < max(interpolate_cumulative_list):
-                num_latent_sections = sum(interpolate_cumulative_list)
-                print(f"Update num_latent_sections to: {num_latent_sections}")
+            if num_latent_chunk < max(interpolate_cumulative_list):
+                num_latent_chunk = sum(interpolate_cumulative_list)
+                print(f"Update num_latent_chunk to: {num_latent_chunk}")
 
-        for k in range(num_latent_sections):
+        for k in range(num_latent_chunk):
             if use_interpolate_prompt:
-                assert num_latent_sections >= max(interpolate_cumulative_list)
+                assert num_latent_chunk >= max(interpolate_cumulative_list)
 
                 current_interval_idx = 0
                 for idx, cumulative_val in enumerate(interpolate_cumulative_list):
@@ -1199,62 +1199,62 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             else:
                 prompt_embeds = all_prompt_embeds
 
-            is_first_section = k == 0
-            is_second_section = k == 1
+            is_first_chunk = k == 0
+            is_second_chunk = k == 1
             if keep_first_frame:
-                if is_first_section:
-                    history_sizes_first_section = [1] + history_sizes.copy()
-                    history_latents_first_section = torch.zeros(
+                if is_first_chunk:
+                    history_sizes_first_chunk = [1] + history_sizes.copy()
+                    history_latents_first_chunk = torch.zeros(
                         batch_size,
                         num_channels_latents,
-                        sum(history_sizes_first_section),
+                        sum(history_sizes_first_chunk),
                         height // self.vae_scale_factor_spatial,
                         width // self.vae_scale_factor_spatial,
                         device=device,
                         dtype=torch.float32,
                     )
                     if fake_image_latents is not None:
-                        history_latents_first_section = torch.cat(
-                            [history_latents_first_section, fake_image_latents], dim=2
+                        history_latents_first_chunk = torch.cat(
+                            [history_latents_first_chunk, fake_image_latents], dim=2
                         )
                     if video_latents is not None:
-                        history_frames = history_latents_first_section.shape[2]
+                        history_frames = history_latents_first_chunk.shape[2]
                         video_frames = video_latents.shape[2]
                         if video_frames < history_frames:
                             keep_frames = history_frames - video_frames
-                            history_latents_first_section = torch.cat(
-                                [history_latents_first_section[:, :, :keep_frames, :, :], video_latents], dim=2
+                            history_latents_first_chunk = torch.cat(
+                                [history_latents_first_chunk[:, :, :keep_frames, :, :], video_latents], dim=2
                             )
                         else:
-                            history_latents_first_section = video_latents
+                            history_latents_first_chunk = video_latents
 
-                    indices = torch.arange(0, sum([1, *history_sizes, latent_window_size]))
+                    indices = torch.arange(0, sum([1, *history_sizes, num_latent_frames_per_chunk]))
                     (
                         indices_prefix,
                         indices_latents_history_long,
                         indices_latents_history_mid,
                         indices_latents_history_1x,
                         indices_hidden_states,
-                    ) = indices.split([1, *history_sizes, latent_window_size], dim=0)
+                    ) = indices.split([1, *history_sizes, num_latent_frames_per_chunk], dim=0)
                     indices_latents_history_short = torch.cat([indices_prefix, indices_latents_history_1x], dim=0)
 
                     latents_prefix, latents_history_long, latents_history_mid, latents_history_1x = (
-                        history_latents_first_section[:, :, -sum(history_sizes_first_section) :].split(
-                            history_sizes_first_section, dim=2
+                        history_latents_first_chunk[:, :, -sum(history_sizes_first_chunk) :].split(
+                            history_sizes_first_chunk, dim=2
                         )
                     )
                     if image_latents is not None:
                         latents_prefix = image_latents
                     latents_history_short = torch.cat([latents_prefix, latents_history_1x], dim=2)
                 else:
-                    indices = torch.arange(0, sum([1, *history_sizes, latent_window_size]))
+                    indices = torch.arange(0, sum([1, *history_sizes, num_latent_frames_per_chunk]))
                     (
                         indices_prefix,
                         indices_latents_history_long,
                         indices_latents_history_mid,
                         indices_latents_history_1x,
                         indices_hidden_states,
-                    ) = indices.split([1, *history_sizes, latent_window_size], dim=0)
+                    ) = indices.split([1, *history_sizes, num_latent_frames_per_chunk], dim=0)
                     indices_latents_history_short = torch.cat([indices_prefix, indices_latents_history_1x], dim=0)
 
                     latents_prefix = image_latents
@@ -1263,13 +1263,13 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     ].split(history_sizes, dim=2)
                     latents_history_short = torch.cat([latents_prefix, latents_history_1x], dim=2)
             else:
-                indices = torch.arange(0, sum([*history_sizes, latent_window_size]))
+                indices = torch.arange(0, sum([*history_sizes, num_latent_frames_per_chunk]))
                 (
                     indices_latents_history_long,
                     indices_latents_history_mid,
                     indices_latents_history_short,
                     indices_hidden_states,
-                ) = indices.split([*history_sizes, latent_window_size], dim=0)
+                ) = indices.split([*history_sizes, num_latent_frames_per_chunk], dim=0)
                 latents_history_long, latents_history_mid, latents_history_short = history_latents[
                     :, :, -sum(history_sizes) :
                 ].split(history_sizes, dim=2)
@@ -1323,7 +1323,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             else:
                 num_inference_steps = (
                     sum(stage2_num_inference_steps_list) * 2
-                    if is_amplify_first_chunk and use_dmd and is_first_section
+                    if is_amplify_first_chunk and use_dmd and is_first_chunk
                     else sum(stage2_num_inference_steps_list)
                 )
 
@@ -1353,7 +1353,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         zero_steps=zero_steps,
                         # -------------- DMD --------------
                         use_dmd=use_dmd,
-                        is_amplify_first_chunk=is_amplify_first_chunk and is_first_section,
+                        is_amplify_first_chunk=is_amplify_first_chunk and is_first_chunk,
                         # ------------ Callback ------------
                         callback_on_step_end=callback_on_step_end,
                         callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
@@ -1386,7 +1386,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         use_dmd=use_dmd,
                         dmd_sigmas=dmd_sigmas,
                         dmd_timesteps=dmd_timesteps,
-                        is_amplify_first_chunk=is_amplify_first_chunk and is_first_section,
+                        is_amplify_first_chunk=is_amplify_first_chunk and is_first_chunk,
                         # ------------ Callback ------------
                         callback_on_step_end=callback_on_step_end,
                         callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
@@ -1394,7 +1394,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     )
 
                 if keep_first_frame and (
-                    (is_first_section and image_latents is None) or (is_skip_first_section and is_second_section)
+                    (is_first_chunk and image_latents is None) or (is_skip_first_chunk and is_second_chunk)
                 ):
                     image_latents = latents[:, :, 0:1, :, :]
 
@@ -1404,7 +1404,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 index_slice = (
                     slice(None),
                     slice(None),
-                    slice(-latent_window_size, None),
+                    slice(-num_latent_frames_per_chunk, None),
                 )
 
                 current_latents = real_history_latents[index_slice].to(vae_dtype) / latents_std + latents_mean
