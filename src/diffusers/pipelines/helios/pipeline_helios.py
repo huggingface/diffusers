@@ -13,10 +13,12 @@
 # limitations under the License.
 
 import html
+import inspect
 import math
 from itertools import accumulate
 from typing import Any, Callable
 
+import numpy as np
 import regex as re
 import torch
 import torch.nn.functional as F
@@ -117,45 +119,64 @@ def calculate_shift(
     return mu
 
 
-def apply_schedule_shift(
-    image_seq_len,
-    sigmas,
-    sigmas_two=None,
-    base_seq_len: int = 256,
-    max_seq_len: int = 4096,
-    base_shift: float = 0.5,
-    max_shift: float = 1.15,
-    exp_max: float = 7.0,
-    is_exponential: bool = False,
-    mu: float = None,
-    return_mu: bool = False,
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
+    **kwargs,
 ):
-    if mu is None:
-        # Resolution-dependent shifting of timestep schedules as per section 5.3.2 of SD3 paper
-        mu = calculate_shift(
-            image_seq_len,
-            base_seq_len,
-            max_seq_len,
-            base_shift,
-            max_shift,
-        )
-        if is_exponential:
-            mu = min(mu, math.log(exp_max))
-            mu = math.exp(mu)
+    r"""
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
-    if sigmas_two is not None:
-        sigmas = (sigmas * mu) / (1 + (mu - 1) * sigmas)
-        sigmas_two = (sigmas_two * mu) / (1 + (mu - 1) * sigmas_two)
-        if return_mu:
-            return sigmas, sigmas_two, mu
-        else:
-            return sigmas, sigmas_two
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`list[int]`, *optional*):
+            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+            `num_inference_steps` and `sigmas` must be `None`.
+        sigmas (`list[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` and `timesteps` must be `None`.
+
+    Returns:
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if timesteps is not None and sigmas is not None:
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    elif sigmas is not None:
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accept_sigmas:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" sigmas schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
     else:
-        sigmas = (sigmas * mu) / (1 + (mu - 1) * sigmas)
-        if return_mu:
-            return sigmas, mu
-        else:
-            return sigmas
+        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
 
 
 class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
@@ -523,15 +544,11 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         transformer_dtype: torch.dtype = None,
         use_dynamic_shifting: bool = False,
         generator: torch.Generator | None = None,
+        num_warmup_steps: int | None = None,
         # ------------ CFG Zero ------------
         use_cfg_zero_star: bool | None = False,
         use_zero_init: bool | None = True,
         zero_steps: int | None = 1,
-        # -------------- DMD --------------
-        use_dmd: bool = False,
-        dmd_sigmas: torch.Tensor = None,
-        dmd_timesteps: torch.Tensor = None,
-        is_amplify_first_chunk: bool = False,
         # ------------ Callback ------------
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
@@ -563,7 +580,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     return_dict=False,
                 )[0]
 
-            if self.do_classifier_free_guidance and not use_dmd:
+            if self.do_classifier_free_guidance:
                 with self.transformer.cache_context("uncond"):
                     noise_uncond = self.transformer(
                         hidden_states=latent_model_input,
@@ -596,26 +613,12 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 else:
                     noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-            if isinstance(self.scheduler, HeliosScheduler):
-                latents = self.scheduler.step(
-                    noise_pred,
-                    t,
-                    latents,
-                    generator=generator,
-                    return_dict=False,
-                    cur_sampling_step=i,
-                    dmd_noisy_tensor=randn_tensor(noise_pred.shape, generator=generator, device=device),
-                    dmd_sigmas=dmd_sigmas,
-                    dmd_timesteps=dmd_timesteps,
-                    all_timesteps=timesteps,
-                )[0]
-            else:
-                latents = self.scheduler.step(
-                    noise_pred,
-                    t,
-                    latents,
-                    return_dict=False,
-                )[0]
+            latents = self.scheduler.step(
+                noise_pred,
+                t,
+                latents,
+                return_dict=False,
+            )[0]
 
             if callback_on_step_end is not None:
                 callback_kwargs = {}
@@ -627,7 +630,8 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                 negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-            progress_bar.update()
+            if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                progress_bar.update()
 
             if XLA_AVAILABLE:
                 xm.mark_step()
@@ -688,8 +692,23 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         i = 0
         for i_s in range(stage2_num_stages):
+            patch_size = self.transformer.config.patch_size
+            image_seq_len = (latents.shape[-1] * latents.shape[-2] * latents.shape[-3]) // (
+                patch_size[0] * patch_size[1] * patch_size[2]
+            )
+            mu = calculate_shift(
+                image_seq_len,
+                self.scheduler.config.get("base_image_seq_len", 256),
+                self.scheduler.config.get("max_image_seq_len", 4096),
+                self.scheduler.config.get("base_shift", 0.5),
+                self.scheduler.config.get("max_shift", 1.15),
+            )
             self.scheduler.set_timesteps(
-                stage2_num_inference_steps_list[i_s], i_s, device=device, is_amplify_first_chunk=is_amplify_first_chunk
+                stage2_num_inference_steps_list[i_s],
+                i_s,
+                device=device,
+                mu=mu,
+                is_amplify_first_chunk=is_amplify_first_chunk,
             )
 
             if i_s > 0:
@@ -714,26 +733,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
                 if use_dmd:
                     start_point_list.append(latents)
-
-            if use_dynamic_shifting:
-                patch_size = self.transformer.config.patch_size
-                image_seq_len = (latents.shape[-1] * latents.shape[-2] * latents.shape[-3]) // (
-                    patch_size[0] * patch_size[1] * patch_size[2]
-                )
-                temp_sigmas = apply_schedule_shift(
-                    image_seq_len,
-                    self.scheduler.sigmas,
-                    base_seq_len=self.scheduler.config.get("base_image_seq_len", 256),
-                    max_seq_len=self.scheduler.config.get("max_image_seq_len", 4096),
-                    base_shift=self.scheduler.config.get("base_shift", 0.5),
-                    max_shift=self.scheduler.config.get("max_shift", 1.15),
-                )
-                temp_timesteps = self.scheduler.timesteps_per_stage[i_s].min() + temp_sigmas[:-1] * (
-                    self.scheduler.timesteps_per_stage[i_s].max() - self.scheduler.timesteps_per_stage[i_s].min()
-                )
-
-                self.scheduler.sigmas = temp_sigmas
-                self.scheduler.timesteps = temp_timesteps
 
             timesteps = self.scheduler.timesteps
 
@@ -865,6 +864,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         width: int = 640,
         num_frames: int = 132,
         num_inference_steps: int = 50,
+        sigmas: list[float] = None,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: int | None = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
@@ -1054,7 +1054,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 negative_prompt_embeds = negative_prompt_embeds[0].unsqueeze(0)
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
-        # 4. Prepare image
+        # 4. Prepare image or video
         if image is not None:
             image = self.video_processor.preprocess(image, height=height, width=width)
             image_latents, fake_image_latents = self.prepare_image_latents(
@@ -1287,38 +1287,22 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             )
 
             if not is_enable_stage2:
-                self.scheduler.set_timesteps(num_inference_steps, device=device)
-
-                if use_dynamic_shifting:
-                    patch_size = self.transformer.config.patch_size
-                    image_seq_len = (latents.shape[-1] * latents.shape[-2] * latents.shape[-3]) // (
-                        patch_size[0] * patch_size[1] * patch_size[2]
-                    )
-                    sigmas = torch.linspace(
-                        0.999, 0.0, steps=num_inference_steps + 1, dtype=torch.float32, device=device
-                    )[:-1]
-                    sigmas = apply_schedule_shift(
-                        image_seq_len,
-                        sigmas,
-                        base_seq_len=self.scheduler.config.get("base_image_seq_len", 256),
-                        max_seq_len=self.scheduler.config.get("max_image_seq_len", 4096),
-                        base_shift=self.scheduler.config.get("base_shift", 0.5),
-                        max_shift=self.scheduler.config.get("max_shift", 1.15),
-                    )
-                    timesteps = sigmas * 1000.0  # rescale to [0, 1000.0)
-                    timesteps = timesteps.to(device)
-                    sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
-                    self.scheduler.timesteps = timesteps
-                    self.scheduler.sigmas = sigmas
-
-                timesteps = self.scheduler.timesteps
-
-                dmd_sigmas = None
-                dmd_timesteps = None
-                if use_dmd:
-                    dmd_sigmas = self.scheduler.sigmas.to(self.transformer.device)
-                    dmd_timesteps = self.scheduler.timesteps.to(self.transformer.device)
-
+                patch_size = self.transformer.config.patch_size
+                image_seq_len = (latents.shape[-1] * latents.shape[-2] * latents.shape[-3]) // (
+                    patch_size[0] * patch_size[1] * patch_size[2]
+                )
+                sigmas = np.linspace(0.999, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
+                mu = calculate_shift(
+                    image_seq_len,
+                    self.scheduler.config.get("base_image_seq_len", 256),
+                    self.scheduler.config.get("max_image_seq_len", 4096),
+                    self.scheduler.config.get("base_shift", 0.5),
+                    self.scheduler.config.get("max_shift", 1.15),
+                )
+                timesteps, num_inference_steps = retrieve_timesteps(
+                    self.scheduler, num_inference_steps, device, sigmas=sigmas, mu=mu
+                )
+                num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
                 self._num_timesteps = len(timesteps)
             else:
                 num_inference_steps = (
@@ -1378,15 +1362,11 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         transformer_dtype=transformer_dtype,
                         use_dynamic_shifting=use_dynamic_shifting,
                         generator=generator,
+                        num_warmup_steps=num_warmup_steps,
                         # ------------ CFG Zero ------------
                         use_cfg_zero_star=use_cfg_zero_star,
                         use_zero_init=use_zero_init,
                         zero_steps=zero_steps,
-                        # -------------- DMD --------------
-                        use_dmd=use_dmd,
-                        dmd_sigmas=dmd_sigmas,
-                        dmd_timesteps=dmd_timesteps,
-                        is_amplify_first_chunk=is_amplify_first_chunk and is_first_chunk,
                         # ------------ Callback ------------
                         callback_on_step_end=callback_on_step_end,
                         callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,

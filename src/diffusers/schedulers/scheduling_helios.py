@@ -14,6 +14,7 @@
 
 import math
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import torch
@@ -55,6 +56,8 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         use_flow_sigmas: bool = True,
         version: str = "v1",
         scheduler_type: str = "unipc",  # ["euler", "unipc", "dmd"]
+        use_dynamic_shifting: bool = False,
+        time_shift_type: Literal["exponential", "linear"] = "linear",
     ):
         self.version = version
         self.timestep_ratios = {}  # The timestep ratio for each stage
@@ -206,6 +209,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: int,
         stage_index: int,
         device: str | torch.device = None,
+        mu: bool | None = None,
         is_amplify_first_chunk: bool = False,
     ):
         """
@@ -260,6 +264,42 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
         if self.config.scheduler_type == "dmd":
             self.timesteps = self.timesteps[:-1]
             self.sigmas = torch.cat([self.sigmas[:-2], self.sigmas[-1:]])
+
+        if self.config.use_dynamic_shifting:
+            self.sigmas = self.time_shift(mu, 1.0, self.sigmas)
+            self.timesteps = self.timesteps_per_stage[stage_index].min() + self.sigmas[:-1] * (
+                self.timesteps_per_stage[stage_index].max() - self.timesteps_per_stage[stage_index].min()
+            )
+
+    # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler.time_shift
+    def time_shift(self, mu: float, sigma: float, t: torch.Tensor):
+        """
+        Apply time shifting to the sigmas.
+
+        Args:
+            mu (`float`):
+                The mu parameter for the time shift.
+            sigma (`float`):
+                The sigma parameter for the time shift.
+            t (`torch.Tensor`):
+                The input timesteps.
+
+        Returns:
+            `torch.Tensor`:
+                The time-shifted timesteps.
+        """
+        if self.config.time_shift_type == "exponential":
+            return self._time_shift_exponential(mu, sigma, t)
+        elif self.config.time_shift_type == "linear":
+            return self._time_shift_linear(mu, sigma, t)
+
+    # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler._time_shift_exponential
+    def _time_shift_exponential(self, mu, sigma, t):
+        return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
+
+    # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler._time_shift_linear
+    def _time_shift_linear(self, mu, sigma, t):
+        return mu / (mu + (1 / t - 1) ** sigma)
 
     # ---------------------------------- Euler ----------------------------------
     def index_for_timestep(self, timestep, schedule_timesteps=None):
