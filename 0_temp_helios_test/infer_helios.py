@@ -279,7 +279,7 @@ def main():
                     # stage 1
                     history_sizes=[16, 2, 1],
                     latent_window_size=args.latent_window_size,
-                    is_keep_x0=True,
+                    keep_first_frame=True,
                     use_dynamic_shifting=args.use_dynamic_shifting,
                     # stage 2
                     is_enable_stage2=args.is_enable_stage2,
@@ -340,7 +340,7 @@ def main():
                         # stage 1
                         history_sizes=[16, 2, 1],
                         latent_window_size=args.latent_window_size,
-                        is_keep_x0=True,
+                        keep_first_frame=True,
                         use_dynamic_shifting=args.use_dynamic_shifting,
                         # stage 2
                         is_enable_stage2=args.is_enable_stage2,
@@ -409,7 +409,7 @@ def main():
                         # stage 1
                         history_sizes=[16, 2, 1],
                         latent_window_size=args.latent_window_size,
-                        is_keep_x0=True,
+                        keep_first_frame=True,
                         use_dynamic_shifting=args.use_dynamic_shifting,
                         # stage 2
                         is_enable_stage2=args.is_enable_stage2,
@@ -467,7 +467,7 @@ def main():
                         # stage 1
                         history_sizes=[16, 2, 1],
                         latent_window_size=args.latent_window_size,
-                        is_keep_x0=True,
+                        keep_first_frame=True,
                         use_dynamic_shifting=args.use_dynamic_shifting,
                         # stage 2
                         is_enable_stage2=args.is_enable_stage2,
@@ -510,7 +510,7 @@ def main():
                 # stage 1
                 history_sizes=[16, 2, 1],
                 latent_window_size=args.latent_window_size,
-                is_keep_x0=True,
+                keep_first_frame=True,
                 use_dynamic_shifting=args.use_dynamic_shifting,
                 # stage 2
                 is_enable_stage2=args.is_enable_stage2,

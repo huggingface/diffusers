@@ -898,7 +898,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         history_sizes: list = [16, 2, 1],
         latent_window_size: int = 9,
         use_dynamic_shifting: bool = False,
-        is_keep_x0: bool = True,
+        keep_first_frame: bool = True,
         # ------------ Stage 2 ------------
         is_enable_stage2: bool = False,
         stage2_num_stages: int = 3,
@@ -1138,7 +1138,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         history_video = None
         total_generated_latent_frames = 0
 
-        if not is_keep_x0:
+        if not keep_first_frame:
             history_sizes[-1] = history_sizes[-1] + 1
         history_latents = torch.zeros(
             batch_size,
@@ -1201,7 +1201,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
             is_first_section = k == 0
             is_second_section = k == 1
-            if is_keep_x0:
+            if keep_first_frame:
                 if is_first_section:
                     history_sizes_first_section = [1] + history_sizes.copy()
                     history_latents_first_section = torch.zeros(
@@ -1393,7 +1393,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         progress_bar=progress_bar,
                     )
 
-                if is_keep_x0 and (
+                if keep_first_frame and (
                     (is_first_section and image_latents is None) or (is_skip_first_section and is_second_section)
                 ):
                     image_latents = latents[:, :, 0:1, :, :]
