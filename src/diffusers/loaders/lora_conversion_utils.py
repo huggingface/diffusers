@@ -856,7 +856,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 )
             state_dict = {k: v for k, v in state_dict.items() if not k.startswith("text_encoders.t5xxl.transformer.")}
 
-        has_diffb = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_")) for k in state_dict)
+        has_diffb = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_", "lora_te1_")) for k in state_dict)
         if has_diffb:
             zero_status_diff_b = state_dict_all_zero(state_dict, ".diff_b")
             if zero_status_diff_b:
@@ -895,7 +895,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         state_dict = {
             _custom_replace(k, limit_substrings): v
             for k, v in state_dict.items()
-            if k.startswith(("lora_unet_", "lora_te_"))
+            if k.startswith(("lora_unet_", "lora_te_", "lora_te1_"))
         }
 
         if any("text_projection" in k for k in state_dict):

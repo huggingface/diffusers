@@ -699,9 +699,13 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         mask_shape = (batch_size, 1, num_frames, height, width)
 
         if latents is not None:
-            conditioning_mask = latents.new_zeros(mask_shape)
-            conditioning_mask[:, :, 0] = 1.0
             if latents.ndim == 5:
+                # conditioning_mask needs to the same shape as latents in two stages generation.
+                batch_size, _, num_frames, height, width = latents.shape
+                mask_shape = (batch_size, 1, num_frames, height, width)
+                conditioning_mask = latents.new_zeros(mask_shape)
+                conditioning_mask[:, :, 0] = 1.0
+
                 latents = self._normalize_latents(
                     latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
                 )
@@ -710,6 +714,9 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                 latents = self._pack_latents(
                     latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
                 )
+            else:
+                conditioning_mask = latents.new_zeros(mask_shape)
+                conditioning_mask[:, :, 0] = 1.0
             conditioning_mask = self._pack_latents(
                 conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
             ).squeeze(-1)
