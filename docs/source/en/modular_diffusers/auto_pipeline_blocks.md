@@ -218,7 +218,7 @@ pipeline_blocks.available_workflows
 # ['text2image', 'image2image', 'inpaint']
 ```
 
-And retrieve the execution blocks for a specific workflow. This returns a [`~modular_pipelines.SequentialPipelineBlocks`] containing only the blocks that would actually execute for that workflow, which is useful for inspecting and debugging.
+Retrieve a specific workflow with `get_workflow` to inspect and debug a specific block that executes the workflow.
 
 ```py
 pipeline_blocks.get_workflow("inpaint")
