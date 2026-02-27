@@ -65,7 +65,6 @@ def parse_args():
     parser.add_argument("--num_frames", type=int, default=99)
     parser.add_argument("--num_inference_steps", type=int, default=50)
     parser.add_argument("--guidance_scale", type=float, default=5.0)
-    parser.add_argument("--use_dynamic_shifting", action="store_true")
     # cfg zero
     parser.add_argument("--use_cfg_zero_star", action="store_true")
     parser.add_argument("--use_zero_init", action="store_true")
@@ -280,7 +279,6 @@ def main():
                     history_sizes=[16, 2, 1],
                     num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                     keep_first_frame=True,
-                    use_dynamic_shifting=args.use_dynamic_shifting,
                     # stage 2
                     is_enable_stage2=args.is_enable_stage2,
                     stage2_num_stages=args.stage2_num_stages,
@@ -341,7 +339,6 @@ def main():
                         history_sizes=[16, 2, 1],
                         num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                         keep_first_frame=True,
-                        use_dynamic_shifting=args.use_dynamic_shifting,
                         # stage 2
                         is_enable_stage2=args.is_enable_stage2,
                         stage2_num_stages=args.stage2_num_stages,
@@ -410,7 +407,6 @@ def main():
                         history_sizes=[16, 2, 1],
                         num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                         keep_first_frame=True,
-                        use_dynamic_shifting=args.use_dynamic_shifting,
                         # stage 2
                         is_enable_stage2=args.is_enable_stage2,
                         stage2_num_stages=args.stage2_num_stages,
@@ -468,7 +464,6 @@ def main():
                         history_sizes=[16, 2, 1],
                         num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                         keep_first_frame=True,
-                        use_dynamic_shifting=args.use_dynamic_shifting,
                         # stage 2
                         is_enable_stage2=args.is_enable_stage2,
                         stage2_num_stages=args.stage2_num_stages,
@@ -511,7 +506,6 @@ def main():
                 history_sizes=[16, 2, 1],
                 num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                 keep_first_frame=True,
-                use_dynamic_shifting=args.use_dynamic_shifting,
                 # stage 2
                 is_enable_stage2=args.is_enable_stage2,
                 stage2_num_stages=args.stage2_num_stages,

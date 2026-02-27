@@ -542,7 +542,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         attention_kwargs: dict | None = None,
         device: torch.device | None = None,
         transformer_dtype: torch.dtype = None,
-        use_dynamic_shifting: bool = False,
         generator: torch.Generator | None = None,
         num_warmup_steps: int | None = None,
         # ------------ CFG Zero ------------
@@ -656,7 +655,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         attention_kwargs: dict | None = None,
         device: torch.device | None = None,
         transformer_dtype: torch.dtype = None,
-        use_dynamic_shifting: bool = False,
         generator: torch.Generator | None = None,
         # ------------ CFG Zero ------------
         use_cfg_zero_star: bool | None = False,
@@ -897,7 +895,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         # ------------ Stage 1 ------------
         history_sizes: list = [16, 2, 1],
         num_latent_frames_per_chunk: int = 9,
-        use_dynamic_shifting: bool = False,
         keep_first_frame: bool = True,
         # ------------ Stage 2 ------------
         is_enable_stage2: bool = False,
@@ -1330,7 +1327,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         attention_kwargs=attention_kwargs,
                         device=device,
                         transformer_dtype=transformer_dtype,
-                        use_dynamic_shifting=use_dynamic_shifting,
                         # ------------ CFG Zero ------------
                         use_cfg_zero_star=use_cfg_zero_star,
                         use_zero_init=use_zero_init,
@@ -1360,7 +1356,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         attention_kwargs=attention_kwargs,
                         device=device,
                         transformer_dtype=transformer_dtype,
-                        use_dynamic_shifting=use_dynamic_shifting,
                         generator=generator,
                         num_warmup_steps=num_warmup_steps,
                         # ------------ CFG Zero ------------

@@ -8,7 +8,6 @@ CUDA_VISIBLE_DEVICES=1 python infer_helios.py \
     --is_enable_stage2 \
     --stage2_num_inference_steps_list 2 2 2 \
     --is_enable_stage3 \
-    --use_dynamic_shifting \
     --is_amplify_first_chunk \
     --output_folder "./output_helios/stage-3"
 
