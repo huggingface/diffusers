@@ -210,7 +210,7 @@ class MyPipelineBlocks(SequentialPipelineBlocks):
     }
 ```
 
- All of our built-in modular pipelines come with workflows defined. You can list them all supported workflows like this:
+All of our built-in modular pipelines come with pre-defined workflows. The `available_workflows` property lists all supported workflows:
 
 ```py
 pipeline_blocks = MyPipelineBlocks()
