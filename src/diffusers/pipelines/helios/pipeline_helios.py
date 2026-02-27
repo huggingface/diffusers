@@ -909,7 +909,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         zero_steps: int | None = 1,
         # ------------ DMD ------------
         use_dmd: bool = False,
-        is_skip_first_section: bool = False,
+        is_skip_first_chunk: bool = False,
         is_amplify_first_chunk: bool = False,
     ):
         r"""
