@@ -13,7 +13,7 @@ import torch.distributed as dist
 from tqdm import tqdm
 
 from diffusers import HeliosTransformer3DModel
-from diffusers import HeliosPipeline
+from diffusers import HeliosPipeline, HeliosPyramidPipeline
 
 from diffusers import ContextParallelConfig
 from diffusers.models import AutoencoderKLWan
@@ -205,12 +205,20 @@ def main():
         subfolder="vae",
         torch_dtype=torch.float32,
     )
-    pipe = HeliosPipeline.from_pretrained(
-        args.base_model_path,
-        transformer=transformer,
-        vae=vae,
-        torch_dtype=args.weight_dtype,
-    )
+    if not args.is_enable_stage2:
+        pipe = HeliosPipeline.from_pretrained(
+            args.base_model_path,
+            transformer=transformer,
+            vae=vae,
+            torch_dtype=args.weight_dtype,
+        )
+    else:
+        pipe = HeliosPyramidPipeline.from_pretrained(
+            args.base_model_path,
+            transformer=transformer,
+            vae=vae,
+            torch_dtype=args.weight_dtype,
+        )
 
     if args.lora_path is not None:
         pipe.load_lora_weights(args.lora_path, adapter_name="default")
@@ -239,259 +247,8 @@ def main():
         # transformer.set_attention_backend("flash")
         pipe.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=world_size))
 
-    if args.debug_mode:
-
-        def parse_list_input(input_string):
-            input_string = input_string.strip("[]").strip()
-            if "," in input_string:
-                return [int(x.strip()) for x in input_string.split(",") if x.strip()]
-            else:
-                return [int(x.strip()) for x in input_string.split() if x.strip()]
-
-        while True:
-            user_input = input("Please enter stage2_num_inference_steps_list (e.g., 10 20 30): ").strip()
-
-            if user_input.lower() in ["q", "quit", "exit"]:
-                break
-
-            try:
-                pyramid_steps = parse_list_input(user_input)
-                print(f"✅ Parsing successful: {pyramid_steps}")
-            except ValueError as e:
-                print(f"❌ Input format error: {e}")
-                print("Please re-enter...\n")
-                continue
-
-            args.stage2_num_inference_steps_list = pyramid_steps
-
-            with torch.no_grad():
-                output = pipe(
-                    prompt=prompt,
-                    negative_prompt=args.negative_prompt,
-                    height=args.height,
-                    width=args.width,
-                    num_frames=args.num_frames,  # 73 109 145 181 215
-                    num_inference_steps=args.num_inference_steps,
-                    guidance_scale=args.guidance_scale,
-                    generator=torch.Generator(device="cuda").manual_seed(args.seed),
-                    # stage 1
-                    history_sizes=[16, 2, 1],
-                    num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
-                    keep_first_frame=True,
-                    # stage 2
-                    is_enable_stage2=args.is_enable_stage2,
-                    stage2_num_stages=args.stage2_num_stages,
-                    stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
-                    # stage 3
-                    use_dmd=args.is_enable_stage3,
-                    is_skip_first_chunk=args.is_skip_first_chunk,
-                    is_amplify_first_chunk=args.is_amplify_first_chunk,
-                    # cfg zero
-                    use_cfg_zero_star=args.use_cfg_zero_star,
-                    use_zero_init=args.use_zero_init,
-                    zero_steps=args.zero_steps,
-                    # i2v
-                    image=load_image(image_path).resize((args.width, args.height)) if image_path is not None else None,
-                    # t2v
-                    video=load_video(video_path) if video_path is not None else None,
-                    # interpolate_prompt
-                    use_interpolate_prompt=args.use_interpolate_prompt,
-                    interpolation_steps=args.interpolation_steps,
-                    interpolate_time_list=interpolate_time_list,
-                ).frames[0]
-
-            if not args.enable_parallelism or rank == 0:
-                file_count = len(
-                    [f for f in os.listdir(args.output_folder) if os.path.isfile(os.path.join(args.output_folder, f))]
-                )
-                output_path = os.path.join(
-                    args.output_folder, f"{file_count:04d}_{args.sample_type}_{int(time.time())}.mp4"
-                )
-                export_to_video(output, output_path, fps=24)
-    elif args.prompt_txt_path is not None:
-        with open(args.prompt_txt_path, "r") as f:
-            prompt_list = [line.strip() for line in f.readlines() if line.strip()]
-        if not args.enable_parallelism:
-            prompt_list_with_idx = [(i, prompt) for i, prompt in enumerate(prompt_list)]
-            prompt_list_with_idx = prompt_list_with_idx[rank::world_size]
-        else:
-            prompt_list_with_idx = [(i, prompt) for i, prompt in enumerate(prompt_list)]
-
-        for idx, prompt in tqdm(prompt_list_with_idx, desc="Processing prompts"):
-            output_path = os.path.join(args.output_folder, f"{idx}.mp4")
-            if os.path.exists(output_path):
-                print("skipping!")
-                continue
-
-            with torch.no_grad():
-                try:
-                    output = pipe(
-                        prompt=prompt,
-                        negative_prompt=args.negative_prompt,
-                        height=args.height,
-                        width=args.width,
-                        num_frames=args.num_frames,  # 73 109 145 181 215
-                        num_inference_steps=args.num_inference_steps,
-                        guidance_scale=args.guidance_scale,
-                        generator=torch.Generator(device="cuda").manual_seed(args.seed),
-                        # stage 1
-                        history_sizes=[16, 2, 1],
-                        num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
-                        keep_first_frame=True,
-                        # stage 2
-                        is_enable_stage2=args.is_enable_stage2,
-                        stage2_num_stages=args.stage2_num_stages,
-                        stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
-                        # stage 3
-                        use_dmd=args.is_enable_stage3,
-                        is_skip_first_chunk=args.is_skip_first_chunk,
-                        is_amplify_first_chunk=args.is_amplify_first_chunk,
-                        # cfg zero
-                        use_cfg_zero_star=args.use_cfg_zero_star,
-                        use_zero_init=args.use_zero_init,
-                        zero_steps=args.zero_steps,
-                        # i2v
-                        image=load_image(image_path).resize((args.width, args.height))
-                        if image_path is not None
-                        else None,
-                        # t2v
-                        video=load_video(video_path) if video_path is not None else None,
-                        # interpolate_prompt
-                        use_interpolate_prompt=args.use_interpolate_prompt,
-                        interpolation_steps=args.interpolation_steps,
-                        interpolate_time_list=interpolate_time_list,
-                    ).frames[0]
-                except Exception:
-                    continue
-            if not args.enable_parallelism or rank == 0:
-                export_to_video(output, output_path, fps=24)
-    elif args.interactive_prompt_csv_path is not None:
-        df = pd.read_csv(args.interactive_prompt_csv_path)
-
-        df = df.sort_values(by=["id", "prompt_index"])
-        all_video_ids = df["id"].unique()
-
-        if not args.enable_parallelism:
-            my_video_ids = all_video_ids[rank::world_size]
-        else:
-            my_video_ids = all_video_ids
-
-        for video_id in tqdm(my_video_ids, desc="Processing prompts"):
-            output_path = os.path.join(args.output_folder, f"{video_id}.mp4")
-
-            if os.path.exists(output_path):
-                print(f"skipping {output_path}!")
-                continue
-
-            group_df = df[df["id"] == video_id]
-
-            if "refined_prompt" in df.columns:
-                prompt_list = group_df["refined_prompt"].fillna(group_df["prompt"]).tolist()
-            else:
-                prompt_list = group_df["prompt"].tolist()
-            interpolate_time_list = [7] * len(prompt_list)
-
-            with torch.no_grad():
-                try:
-                    output = pipe(
-                        prompt=prompt_list,
-                        negative_prompt=args.negative_prompt,
-                        height=args.height,
-                        width=args.width,
-                        num_frames=args.num_frames,  # 73 109 145 181 215
-                        num_inference_steps=args.num_inference_steps,
-                        guidance_scale=args.guidance_scale,
-                        generator=torch.Generator(device="cuda").manual_seed(args.seed),
-                        # stage 1
-                        history_sizes=[16, 2, 1],
-                        num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
-                        keep_first_frame=True,
-                        # stage 2
-                        is_enable_stage2=args.is_enable_stage2,
-                        stage2_num_stages=args.stage2_num_stages,
-                        stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
-                        # stage 3
-                        use_dmd=args.is_enable_stage3,
-                        is_skip_first_chunk=args.is_skip_first_chunk,
-                        is_amplify_first_chunk=args.is_amplify_first_chunk,
-                        # cfg zero
-                        use_cfg_zero_star=args.use_cfg_zero_star,
-                        use_zero_init=args.use_zero_init,
-                        zero_steps=args.zero_steps,
-                        # i2v
-                        image=load_image(image_path).resize((args.width, args.height))
-                        if image_path is not None
-                        else None,
-                        # t2v
-                        video=load_video(video_path) if video_path is not None else None,
-                        # interpolate_prompt
-                        use_interpolate_prompt=args.use_interpolate_prompt,
-                        interpolation_steps=args.interpolation_steps,
-                        interpolate_time_list=interpolate_time_list,
-                    ).frames[0]
-                except Exception:
-                    continue
-            if not args.enable_parallelism or rank == 0:
-                export_to_video(output, output_path, fps=24)
-    elif args.image_prompt_csv_path is not None:
-        df = pd.read_csv(args.image_prompt_csv_path)
-        if not args.enable_parallelism:
-            df = df.iloc[rank::world_size]
-
-        for idx, row in tqdm(df.iterrows(), total=len(df), desc="Processing prompts"):
-            # output_path = os.path.join(args.output_folder, f"{idx}.mp4")
-            output_path = os.path.join(args.output_folder, f"{row['id']}.mp4")
-            if os.path.exists(output_path):
-                print("skipping!")
-                continue
-
-            prompt = row.get("refined_prompt") or row["prompt"]
-            image_path = os.path.join(args.base_image_prompt_path, row["image_name"])
-
-            with torch.no_grad():
-                try:
-                    output = pipe(
-                        prompt=prompt,
-                        negative_prompt=args.negative_prompt,
-                        height=args.height,
-                        width=args.width,
-                        num_frames=args.num_frames,  # 73 109 145 181 215
-                        num_inference_steps=args.num_inference_steps,
-                        guidance_scale=args.guidance_scale,
-                        generator=torch.Generator(device="cuda").manual_seed(args.seed),
-                        # stage 1
-                        history_sizes=[16, 2, 1],
-                        num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
-                        keep_first_frame=True,
-                        # stage 2
-                        is_enable_stage2=args.is_enable_stage2,
-                        stage2_num_stages=args.stage2_num_stages,
-                        stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
-                        # stage 3
-                        use_dmd=args.is_enable_stage3,
-                        is_skip_first_chunk=args.is_skip_first_chunk,
-                        is_amplify_first_chunk=args.is_amplify_first_chunk,
-                        # cfg zero
-                        use_cfg_zero_star=args.use_cfg_zero_star,
-                        use_zero_init=args.use_zero_init,
-                        zero_steps=args.zero_steps,
-                        # i2v
-                        image=load_image(image_path).resize((args.width, args.height))
-                        if image_path is not None
-                        else None,
-                        # t2v
-                        video=load_video(video_path) if video_path is not None else None,
-                        # interpolate_prompt
-                        use_interpolate_prompt=args.use_interpolate_prompt,
-                        interpolation_steps=args.interpolation_steps,
-                        interpolate_time_list=interpolate_time_list,
-                    ).frames[0]
-                except Exception:
-                    continue
-            if not args.enable_parallelism or rank == 0:
-                export_to_video(output, output_path, fps=24)
-    else:
-        with torch.no_grad():
+    with torch.no_grad():
+        if not args.is_enable_stage2:
             output = pipe(
                 prompt=prompt,
                 negative_prompt=args.negative_prompt,
@@ -505,13 +262,36 @@ def main():
                 history_sizes=[16, 2, 1],
                 num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
                 keep_first_frame=True,
+                is_skip_first_chunk=args.is_skip_first_chunk,
+                # i2v
+                image=load_image(image_path).resize((args.width, args.height)) if image_path is not None else None,
+                # t2v
+                video=load_video(video_path) if video_path is not None else None,
+                # interpolate_prompt
+                use_interpolate_prompt=args.use_interpolate_prompt,
+                interpolation_steps=args.interpolation_steps,
+                interpolate_time_list=interpolate_time_list,
+            ).frames[0]
+        else:
+            output = pipe(
+                prompt=prompt,
+                negative_prompt=args.negative_prompt,
+                height=args.height,
+                width=args.width,
+                num_frames=args.num_frames,  # 73 109 145 181 215
+                num_inference_steps=args.num_inference_steps,
+                guidance_scale=args.guidance_scale,
+                generator=torch.Generator(device="cuda").manual_seed(args.seed),
+                # stage 1
+                history_sizes=[16, 2, 1],
+                num_latent_frames_per_chunk=args.num_latent_frames_per_chunk,
+                keep_first_frame=True,
+                is_skip_first_chunk=args.is_skip_first_chunk,
                 # stage 2
-                is_enable_stage2=args.is_enable_stage2,
                 stage2_num_stages=args.stage2_num_stages,
                 stage2_num_inference_steps_list=args.stage2_num_inference_steps_list,
                 # stage 3
                 use_dmd=args.is_enable_stage3,
-                is_skip_first_chunk=args.is_skip_first_chunk,
                 is_amplify_first_chunk=args.is_amplify_first_chunk,
                 # cfg zero
                 use_cfg_zero_star=args.use_cfg_zero_star,
@@ -527,14 +307,14 @@ def main():
                 interpolate_time_list=interpolate_time_list,
             ).frames[0]
 
-        if not args.enable_parallelism or rank == 0:
-            file_count = len(
-                [f for f in os.listdir(args.output_folder) if os.path.isfile(os.path.join(args.output_folder, f))]
-            )
-            output_path = os.path.join(
-                args.output_folder, f"{file_count:04d}_{args.sample_type}_{int(time.time())}.mp4"
-            )
-            export_to_video(output, output_path, fps=24)
+    if not args.enable_parallelism or rank == 0:
+        file_count = len(
+            [f for f in os.listdir(args.output_folder) if os.path.isfile(os.path.join(args.output_folder, f))]
+        )
+        output_path = os.path.join(
+            args.output_folder, f"{file_count:04d}_{args.sample_type}_{int(time.time())}.mp4"
+        )
+        export_to_video(output, output_path, fps=24)
 
     print(f"Max memory: {torch.cuda.max_memory_allocated() / 1024**3:.3f} GB")
 

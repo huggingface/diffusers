@@ -195,7 +195,7 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int,
-        stage_index: int| None = None,
+        stage_index: int | None = None,
         device: str | torch.device = None,
         sigmas: bool | None = None,
         mu: bool | None = None,
@@ -215,10 +215,12 @@ class HeliosScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.stages == 1:
             if sigmas is None:
-                sigmas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)[:-1].astype(np.float32)
+                sigmas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)[:-1].astype(
+                    np.float32
+                )
                 if self.config.shift != 1.0:
                     assert not self.config.use_dynamic_shifting
-                    sigmas = self.time_shift(shift, 1.0, sigmas)
+                    sigmas = self.time_shift(self.config.shift, 1.0, sigmas)
             timesteps = (sigmas * self.config.num_train_timesteps).copy()
             sigmas = torch.from_numpy(sigmas)
         else:

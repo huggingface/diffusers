@@ -24,9 +24,8 @@ This guide will walk you through using Helios for use cases.
 Model weights may be stored in separate subfolders on the Hub or locally, in which case, you should use the [`~DiffusionPipeline.from_pretrained`] method.
 
 ```python
-# !pip install Helios_eva_clip insightface facexlib
 import torch
-from diffusers import HeliosPipeline
+from diffusers import HeliosPipeline, HeliosPyramidPipeline
 from huggingface_hub import snapshot_download
 
 # For Best Quality
@@ -36,12 +35,12 @@ pipe.to("cuda")
 
 # Intermediate Weight
 snapshot_download(repo_id="BestWishYsh/Helios-Mid", local_dir="BestWishYsh/Helios-Mid")
-pipe = HeliosPipeline.from_pretrained("BestWishYsh/Helios-Mid", torch_dtype=torch.bfloat16)
+pipe = HeliosPyramidPipeline.from_pretrained("BestWishYsh/Helios-Mid", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # For Best Efficiency
 snapshot_download(repo_id="BestWishYsh/Helios-Distilled", local_dir="BestWishYsh/Helios-Distilled")
-pipe = HeliosPipeline.from_pretrained("BestWishYsh/Helios-Distilled", torch_dtype=torch.bfloat16)
+pipe = HeliosPyramidPipeline.from_pretrained("BestWishYsh/Helios-Distilled", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 ```
 

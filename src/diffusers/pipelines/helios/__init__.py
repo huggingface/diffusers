@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_helios"] = ["HeliosPipeline"]
+    _import_structure["pipeline_helios_pyramid"] = ["HeliosPyramidPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -32,6 +33,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_helios import HeliosPipeline
+        from .pipeline_helios_pyramid import HeliosPyramidPipeline
 else:
     import sys
 

@@ -13,12 +13,13 @@
 # limitations under the License.
 
 import html
+import math
 from itertools import accumulate
 from typing import Any, Callable
 
-import numpy as np
 import regex as re
 import torch
+import torch.nn.functional as F
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -51,12 +52,12 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import torch
         >>> from diffusers.utils import export_to_video
-        >>> from diffusers import AutoencoderKLWan, HeliosPipeline
+        >>> from diffusers import AutoencoderKLWan, HeliosPyramidPipeline
 
         >>> # Available models: BestWishYsh/Helios-Base, BestWishYsh/Helios-Mid, BestWishYsh/Helios-Distilled
         >>> model_id = "BestWishYsh/Helios-Base"
         >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = HeliosPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+        >>> pipe = HeliosPyramidPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
@@ -116,7 +117,7 @@ def calculate_shift(
     return mu
 
 
-class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
+class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
     r"""
     Pipeline for text-to-video / image-to-video / video-to-video generation using Helios.
 
@@ -531,6 +532,16 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         num_latent_frames_per_chunk: int = 9,
         keep_first_frame: bool = True,
         is_skip_first_chunk: bool = False,
+        # ------------ Stage 2 ------------
+        stage2_num_stages: int = 3,
+        stage2_num_inference_steps_list: list = [10, 10, 10],
+        # ------------ CFG Zero ------------
+        use_cfg_zero_star: bool | None = False,
+        use_zero_init: bool | None = True,
+        zero_steps: int | None = 1,
+        # ------------ DMD ------------
+        use_dmd: bool = False,
+        is_amplify_first_chunk: bool = False,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -911,89 +922,174 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 latents=None,
             )
 
-            patch_size = self.transformer.config.patch_size
-            image_seq_len = (latents.shape[-1] * latents.shape[-2] * latents.shape[-3]) // (
-                patch_size[0] * patch_size[1] * patch_size[2]
+            num_inference_steps = (
+                sum(stage2_num_inference_steps_list) * 2
+                if is_amplify_first_chunk and use_dmd and is_first_chunk
+                else sum(stage2_num_inference_steps_list)
             )
-            sigmas = np.linspace(0.999, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
-            mu = calculate_shift(
-                image_seq_len,
-                self.scheduler.config.get("base_image_seq_len", 256),
-                self.scheduler.config.get("max_image_seq_len", 4096),
-                self.scheduler.config.get("base_shift", 0.5),
-                self.scheduler.config.get("max_shift", 1.15),
-            )
-            self.scheduler.set_timesteps(num_inference_steps, device=device, sigmas=sigmas, mu=mu)
-            timesteps = self.scheduler.timesteps
-            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-            self._num_timesteps = len(timesteps)
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
-                for i, t in enumerate(timesteps):
-                    if self.interrupt:
-                        continue
+                batch_size, num_channel, num_frmaes, pyramid_height, pyramid_width = latents.shape
+                latents = latents.permute(0, 2, 1, 3, 4).reshape(
+                    batch_size * num_frmaes, num_channel, pyramid_height, pyramid_width
+                )
+                for _ in range(stage2_num_stages - 1):
+                    pyramid_height //= 2
+                    pyramid_width //= 2
+                    latents = (
+                        F.interpolate(
+                            latents,
+                            size=(pyramid_height, pyramid_width),
+                            mode="bilinear",
+                        )
+                        * 2
+                    )
+                latents = latents.reshape(batch_size, num_frmaes, num_channel, pyramid_height, pyramid_width).permute(
+                    0, 2, 1, 3, 4
+                )
 
-                    self._current_timestep = t
-                    timestep = t.expand(latents.shape[0])
+                start_point_list = None
+                if use_dmd:
+                    start_point_list = [latents]
 
-                    latent_model_input = latents.to(transformer_dtype)
-                    with self.transformer.cache_context("cond"):
-                        noise_pred = self.transformer(
-                            hidden_states=latent_model_input,
-                            timestep=timestep,
-                            encoder_hidden_states=prompt_embeds,
-                            indices_hidden_states=indices_hidden_states,
-                            indices_latents_history_short=indices_latents_history_short,
-                            indices_latents_history_mid=indices_latents_history_mid,
-                            indices_latents_history_long=indices_latents_history_long,
-                            latents_history_short=latents_history_short.to(transformer_dtype),
-                            latents_history_mid=latents_history_mid.to(transformer_dtype),
-                            latents_history_long=latents_history_long.to(transformer_dtype),
-                            attention_kwargs=attention_kwargs,
-                            return_dict=False,
-                        )[0]
+                for i_s in range(stage2_num_stages):
+                    patch_size = self.transformer.config.patch_size
+                    image_seq_len = (latents.shape[-1] * latents.shape[-2] * latents.shape[-3]) // (
+                        patch_size[0] * patch_size[1] * patch_size[2]
+                    )
+                    mu = calculate_shift(
+                        image_seq_len,
+                        self.scheduler.config.get("base_image_seq_len", 256),
+                        self.scheduler.config.get("max_image_seq_len", 4096),
+                        self.scheduler.config.get("base_shift", 0.5),
+                        self.scheduler.config.get("max_shift", 1.15),
+                    )
+                    self.scheduler.set_timesteps(
+                        stage2_num_inference_steps_list[i_s],
+                        i_s,
+                        device=device,
+                        mu=mu,
+                        is_amplify_first_chunk=is_amplify_first_chunk and is_first_chunk,
+                    )
+                    timesteps = self.scheduler.timesteps
+                    num_warmup_steps = 0
+                    self._num_timesteps = len(timesteps)
 
-                    if self.do_classifier_free_guidance:
-                        with self.transformer.cache_context("uncond"):
-                            noise_uncond = self.transformer(
+                    if i_s > 0:
+                        pyramid_height *= 2
+                        pyramid_width *= 2
+                        num_frames = latents.shape[2]
+                        latents = latents.permute(0, 2, 1, 3, 4).reshape(
+                            batch_size * num_frmaes, num_channel, pyramid_height // 2, pyramid_width // 2
+                        )
+                        latents = F.interpolate(latents, size=(pyramid_height, pyramid_width), mode="nearest")
+                        latents = latents.reshape(
+                            batch_size, num_frmaes, num_channel, pyramid_height, pyramid_width
+                        ).permute(0, 2, 1, 3, 4)
+                        # Fix the stage
+                        ori_sigma = 1 - self.scheduler.ori_start_sigmas[i_s]  # the original coeff of signal
+                        gamma = self.scheduler.config.gamma
+                        alpha = 1 / (math.sqrt(1 + (1 / gamma)) * (1 - ori_sigma) + ori_sigma)
+                        beta = alpha * (1 - ori_sigma) / math.sqrt(gamma)
+
+                        batch_size, channel, num_frames, pyramid_height, pyramid_width = latents.shape
+                        noise = self.sample_block_noise(batch_size, channel, num_frames, pyramid_height, pyramid_width)
+                        noise = noise.to(device=device, dtype=transformer_dtype)
+                        latents = alpha * latents + beta * noise  # To fix the block artifact
+
+                        if use_dmd:
+                            start_point_list.append(latents)
+
+                    for i, t in enumerate(timesteps):
+                        timestep = t.expand(latents.shape[0]).to(torch.int64)
+
+                        latent_model_input = latents.to(transformer_dtype)
+                        latents_history_short = latents_history_short.to(transformer_dtype)
+                        latents_history_mid = latents_history_mid.to(transformer_dtype)
+                        latents_history_long = latents_history_long.to(transformer_dtype)
+                        with self.transformer.cache_context("cond"):
+                            noise_pred = self.transformer(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,
-                                encoder_hidden_states=negative_prompt_embeds,
+                                encoder_hidden_states=prompt_embeds,
                                 indices_hidden_states=indices_hidden_states,
                                 indices_latents_history_short=indices_latents_history_short,
                                 indices_latents_history_mid=indices_latents_history_mid,
                                 indices_latents_history_long=indices_latents_history_long,
-                                latents_history_short=latents_history_short.to(transformer_dtype),
-                                latents_history_mid=latents_history_mid.to(transformer_dtype),
-                                latents_history_long=latents_history_long.to(transformer_dtype),
+                                latents_history_short=latents_history_short,
+                                latents_history_mid=latents_history_mid,
+                                latents_history_long=latents_history_long,
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
                             )[0]
-                        noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                    latents = self.scheduler.step(
-                        noise_pred,
-                        t,
-                        latents,
-                        generator=generator,
-                        return_dict=False,
-                    )[0]
+                        if self.do_classifier_free_guidance:
+                            with self.transformer.cache_context("uncond"):
+                                noise_uncond = self.transformer(
+                                    hidden_states=latent_model_input,
+                                    timestep=timestep,
+                                    encoder_hidden_states=negative_prompt_embeds,
+                                    indices_hidden_states=indices_hidden_states,
+                                    indices_latents_history_short=indices_latents_history_short,
+                                    indices_latents_history_mid=indices_latents_history_mid,
+                                    indices_latents_history_long=indices_latents_history_long,
+                                    latents_history_short=latents_history_short,
+                                    latents_history_mid=latents_history_mid,
+                                    latents_history_long=latents_history_long,
+                                    attention_kwargs=attention_kwargs,
+                                    return_dict=False,
+                                )[0]
 
-                    if callback_on_step_end is not None:
-                        callback_kwargs = {}
-                        for k in callback_on_step_end_tensor_inputs:
-                            callback_kwargs[k] = locals()[k]
-                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                            if use_cfg_zero_star:
+                                noise_pred_text = noise_pred
+                                positive_flat = noise_pred_text.view(batch_size, -1)
+                                negative_flat = noise_uncond.view(batch_size, -1)
 
-                        latents = callback_outputs.pop("latents", latents)
-                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                                alpha = optimized_scale(positive_flat, negative_flat)
+                                alpha = alpha.view(batch_size, *([1] * (len(noise_pred_text.shape) - 1)))
+                                alpha = alpha.to(noise_pred_text.dtype)
 
-                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                        progress_bar.update()
+                                if (i_s == 0 and i <= zero_steps) and use_zero_init:
+                                    noise_pred = noise_pred_text * 0.0
+                                else:
+                                    noise_pred = noise_uncond * alpha + guidance_scale * (
+                                        noise_pred_text - noise_uncond * alpha
+                                    )
+                            else:
+                                noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                    if XLA_AVAILABLE:
-                        xm.mark_step()
+                        latents = self.scheduler.step(
+                            noise_pred,
+                            t,
+                            latents,
+                            generator=generator,
+                            return_dict=False,
+                            cur_sampling_step=i,
+                            dmd_noisy_tensor=start_point_list[i_s] if start_point_list is not None else None,
+                            dmd_sigmas=self.scheduler.sigmas,
+                            dmd_timesteps=self.scheduler.timesteps,
+                            all_timesteps=timesteps,
+                        )[0]
+
+                        if callback_on_step_end is not None:
+                            callback_kwargs = {}
+                            for k in callback_on_step_end_tensor_inputs:
+                                callback_kwargs[k] = locals()[k]
+                            callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                            latents = callback_outputs.pop("latents", latents)
+                            prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                            negative_prompt_embeds = callback_outputs.pop(
+                                "negative_prompt_embeds", negative_prompt_embeds
+                            )
+
+                        if i == len(timesteps) - 1 or (
+                            (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                        ):
+                            progress_bar.update()
+
+                        if XLA_AVAILABLE:
+                            xm.mark_step()
 
                 if keep_first_frame and (
                     (is_first_chunk and image_latents is None) or (is_skip_first_chunk and is_second_chunk)

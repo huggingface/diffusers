@@ -24,9 +24,8 @@ specific language governing permissions and limitations under the License.
 模型权重可以存储在Hub上或本地的单独子文件夹中，在这种情况下，您应该使用 [`~DiffusionPipeline.from_pretrained`] 方法。
 
 ```python
-# !pip install Helios_eva_clip insightface facexlib
 import torch
-from diffusers import HeliosPipeline
+from diffusers import HeliosPipeline, HeliosPyramidPipeline
 from huggingface_hub import snapshot_download
 
 # For Best Quality
@@ -36,12 +35,12 @@ pipe.to("cuda")
 
 # Intermediate Weight
 snapshot_download(repo_id="BestWishYsh/Helios-Mid", local_dir="BestWishYsh/Helios-Mid")
-pipe = HeliosPipeline.from_pretrained("BestWishYsh/Helios-Mid", torch_dtype=torch.bfloat16)
+pipe = HeliosPyramidPipeline.from_pretrained("BestWishYsh/Helios-Mid", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # For Best Efficiency
 snapshot_download(repo_id="BestWishYsh/Helios-Distilled", local_dir="BestWishYsh/Helios-Distilled")
-pipe = HeliosPipeline.from_pretrained("BestWishYsh/Helios-Distilled", torch_dtype=torch.bfloat16)
+pipe = HeliosPyramidPipeline.from_pretrained("BestWishYsh/Helios-Distilled", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 ```
 

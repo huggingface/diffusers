@@ -4323,7 +4323,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
 class HeliosLoraLoaderMixin(LoraBaseMixin):
     r"""
-    Load LoRA layers into [`HeliosTransformer3DModel`]. Specific to [`HeliosPipeline`].
+    Load LoRA layers into [`HeliosTransformer3DModel`]. Specific to [`HeliosPipeline`] and [`HeliosPyramidPipeline`].
     """
 
     _lora_loadable_modules = ["transformer"]

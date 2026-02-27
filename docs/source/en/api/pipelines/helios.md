@@ -248,12 +248,12 @@ The example below demonstrates how to use Helios-Mid to generate video based on 
 
 ```python
 import torch
-from diffusers import AutoModel, HeliosPipeline
+from diffusers import AutoModel, HeliosPyramidPipeline
 from diffusers.utils import export_to_video, load_video, load_image
 
 vae = AutoModel.from_pretrained("BestWishYsh/Helios-Mid", subfolder="vae", torch_dtype=torch.float32)
 
-pipeline = HeliosPipeline.from_pretrained(
+pipeline = HeliosPyramidPipeline.from_pretrained(
     "BestWishYsh/Helios-Mid",
     vae=vae,
     torch_dtype=torch.bfloat16
@@ -354,12 +354,12 @@ The example below demonstrates how to use Helios-Distilled to generate video bas
 
 ```python
 import torch
-from diffusers import AutoModel, HeliosPipeline
+from diffusers import AutoModel, HeliosPyramidPipeline
 from diffusers.utils import export_to_video, load_video, load_image
 
 vae = AutoModel.from_pretrained("BestWishYsh//Helios-Distilled", subfolder="vae", torch_dtype=torch.float32)
 
-pipeline = HeliosPipeline.from_pretrained(
+pipeline = HeliosPyramidPipeline.from_pretrained(
     "BestWishYsh//Helios-Distilled",
     vae=vae,
     torch_dtype=torch.bfloat16
@@ -454,6 +454,13 @@ export_to_video(output, "output_v2v.mp4", fps=24)
 ## HeliosPipeline
 
 [[autodoc]] HeliosPipeline
+
+  - all
+  - __call__
+
+## HeliosPyramidPipeline
+
+[[autodoc]] HeliosPyramidPipeline
 
   - all
   - __call__
