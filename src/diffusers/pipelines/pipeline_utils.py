@@ -341,6 +341,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
             save_method_accept_variant = "variant" in save_method_signature.parameters
             save_method_accept_max_shard_size = "max_shard_size" in save_method_signature.parameters
+            save_method_accept_peft_format = "save_peft_format" in save_method_signature.parameters
 
             save_kwargs = {}
             if save_method_accept_safe:
@@ -350,6 +351,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if save_method_accept_max_shard_size and max_shard_size is not None:
                 # max_shard_size is expected to not be None in ModelMixin
                 save_kwargs["max_shard_size"] = max_shard_size
+            if save_method_accept_peft_format:
+                # Set save_peft_format=False for transformers>=5.0.0 compatibility
+                # In transformers 5.0.0+, the default save_peft_format=True adds "base_model.model" prefix
+                # to adapter keys, but from_pretrained expects keys without this prefix
+                save_kwargs["save_peft_format"] = False
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 

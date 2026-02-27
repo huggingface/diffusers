@@ -92,7 +92,6 @@ jobs:
             runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_example_cpu
-
     name: ${{ matrix.config.name }}
 
     runs-on:
@@ -115,8 +114,7 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
-        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
@@ -218,8 +216,6 @@ jobs:
 
   run_lora_tests:
     needs: [check_code_quality, check_repository_consistency]
-    strategy:
-      fail-fast: false
 
     name: LoRA tests with PEFT main
 
@@ -247,9 +243,8 @@ jobs:
         uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
         uv pip install -U tokenizers
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
-        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
-
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        
     - name: Environment
       run: |
         python utils/print_env.py
@@ -275,6 +270,6 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v6
       with:
-        name: pr_main_test_reports
+        name: pr_lora_test_reports
         path: reports
 
