@@ -48,7 +48,9 @@ This modular pipeline is composed of the following blocks:
 
 ## Model Components
 
-{components_description} {configs_section} {io_specification_section}
+{components_description} {configs_section}
+
+{io_specification_section}
 """
 
 
@@ -814,7 +816,7 @@ def format_params_markdown(params, header="Inputs"):
             return " | ".join(type_strs)
         return type_hint.__name__ if hasattr(type_hint, "__name__") else str(type_hint)
 
-    lines = [f"**{header}:**\n"]
+    lines = [f"**{header}:**\n"] if header else []
     for param in params:
         type_str = get_type_str(param.type_hint) if param.type_hint != Any else ""
         name = f"**{param.kwargs_type}" if param.name is None and param.kwargs_type is not None else param.name
@@ -1108,15 +1110,6 @@ def generate_modular_model_card_content(blocks) -> dict[str, Any]:
             if block_desc:
                 blocks_desc_parts.append(f"   - {block_desc}")
 
-            # add sub-blocks if any
-            if hasattr(block, "sub_blocks") and block.sub_blocks:
-                for sub_name, sub_block in block.sub_blocks.items():
-                    sub_class = sub_block.__class__.__name__
-                    sub_desc = sub_block.description.split("\n")[0] if getattr(sub_block, "description", "") else ""
-                    blocks_desc_parts.append(f"   - *{sub_name}*: `{sub_class}`")
-                    if sub_desc:
-                        blocks_desc_parts.append(f"     - {sub_desc}")
-
     blocks_description = "\n".join(blocks_desc_parts) if blocks_desc_parts else "No blocks defined."
 
     components = getattr(blocks, "expected_components", [])
@@ -1146,7 +1139,6 @@ def generate_modular_model_card_content(blocks) -> dict[str, Any]:
     has_workflows = getattr(blocks, "_workflow_map", None) is not None
 
     if has_workflows:
-        # Per-workflow I/O sections
         workflow_map = blocks._workflow_map
         parts = []
 
@@ -1158,38 +1150,41 @@ def generate_modular_model_card_content(blocks) -> dict[str, Any]:
             blocks_outputs if blocks_intermediate is not None and blocks_outputs != blocks_intermediate else None
         )
 
-        # Summary section using existing format_workflow
-        parts.append("## Supported Workflows\n")
-        parts.append(format_workflow(workflow_map))
-        parts.append("")
+        parts.append("## Workflow Input Specification\n")
 
-        # Per-workflow details
+        # Per-workflow details: show trigger inputs with full param descriptions
         for wf_name, trigger_inputs in workflow_map.items():
             trigger_input_names = set(trigger_inputs.keys())
             try:
                 workflow_blocks = blocks.get_workflow(wf_name)
             except Exception:
                 parts.append(f"<details>\n<summary><strong>{wf_name}</strong></summary>\n")
-                parts.append(f"> **Trigger inputs**: {', '.join(f'`{t}`' for t in trigger_input_names)}\n")
                 parts.append("*Could not resolve workflow blocks.*\n")
                 parts.append("</details>\n")
                 continue
 
             wf_inputs = workflow_blocks.inputs
-            wf_outputs = shared_outputs if shared_outputs is not None else workflow_blocks.outputs
+            # Show only trigger inputs with full parameter descriptions
+            trigger_params = [p for p in wf_inputs if p.name in trigger_input_names]
 
             parts.append(f"<details>\n<summary><strong>{wf_name}</strong></summary>\n")
-            parts.append(f"> **Trigger inputs**: {', '.join(f'`{t}`' for t in trigger_input_names)}\n")
 
-            inputs_str = format_params_markdown(wf_inputs, "Inputs")
-            parts.append(inputs_str if inputs_str else "No specific inputs defined.")
-            parts.append("")
-
-            outputs_str = format_params_markdown(wf_outputs, "Outputs")
-            parts.append(outputs_str if outputs_str else "No specific outputs defined.")
+            inputs_str = format_params_markdown(trigger_params, header=None)
+            parts.append(inputs_str if inputs_str else "No additional inputs required.")
             parts.append("")
 
             parts.append("</details>\n")
+
+        # Common Inputs & Outputs section (like non-workflow pipelines)
+        all_inputs = blocks.inputs
+        all_outputs = shared_outputs if shared_outputs is not None else blocks.outputs
+
+        inputs_str = format_params_markdown(all_inputs, "Inputs")
+        outputs_str = format_params_markdown(all_outputs, "Outputs")
+        inputs_description = inputs_str if inputs_str else "No specific inputs defined."
+        outputs_description = outputs_str if outputs_str else "Standard pipeline outputs."
+
+        parts.append(f"\n## Input/Output Specification\n\n{inputs_description}\n\n{outputs_description}")
 
         io_specification_section = "\n".join(parts)
         # Suppress trigger_inputs_section when workflows are shown (it's redundant)

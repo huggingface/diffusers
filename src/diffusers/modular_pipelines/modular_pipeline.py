@@ -1836,6 +1836,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
             repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            update_model_card = kwargs.pop("update_model_card", False)
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
             # Generate modular pipeline card content
@@ -1848,6 +1849,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 is_pipeline=True,
                 model_description=MODULAR_MODEL_CARD_TEMPLATE.format(**card_content),
                 is_modular=True,
+                update_model_card=update_model_card,
             )
             model_card = populate_model_card(model_card, tags=card_content["tags"])
 
