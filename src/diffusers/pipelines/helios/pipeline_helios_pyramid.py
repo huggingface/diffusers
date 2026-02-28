@@ -612,7 +612,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             raise ValueError("image and video cannot be provided simultaneously")
 
         history_sizes = sorted(history_sizes, reverse=True)  # From big to small
-        use_dmd = True if self.scheduler.scheduler_type == "dmd" else False
+        use_dmd = True if self.scheduler.config.scheduler_type == "dmd" else False
 
         latents_mean = (
             torch.tensor(self.vae.config.latents_mean)
