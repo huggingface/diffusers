@@ -666,7 +666,7 @@ class HeliosTransformer3DModel(
         rotary_emb = self.rope(
             frame_indices=indices_hidden_states,
             height=post_patch_height,
-            width=W,
+            width=post_patch_width
             device=hidden_states.device,
         )
         rotary_emb = rotary_emb.flatten(2).transpose(1, 2)
