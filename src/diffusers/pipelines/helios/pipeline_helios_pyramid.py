@@ -260,7 +260,6 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 dtype=dtype,
             )
 
-        negative_prompt_attention_mask = None
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
@@ -665,17 +664,15 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             interpolate_embeds = None
             interpolate_cumulative_list = list(accumulate(interpolate_time_list))
 
-        all_prompt_embeds, negative_prompt_embeds = (
-            self.encode_prompt(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                do_classifier_free_guidance=self.do_classifier_free_guidance,
-                num_videos_per_prompt=num_videos_per_prompt,
-                prompt_embeds=prompt_embeds,
-                negative_prompt_embeds=negative_prompt_embeds,
-                max_sequence_length=max_sequence_length,
-                device=device,
-            )
+        all_prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
+            num_videos_per_prompt=num_videos_per_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            max_sequence_length=max_sequence_length,
+            device=device,
         )
 
         transformer_dtype = self.transformer.dtype
@@ -860,8 +857,17 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     :, :, -sum(history_sizes) :
                 ].split(history_sizes, dim=2)
                 if image_latents is None and is_first_chunk:
-                    latents_prefix = torch.zeros((batch_size, num_channels_latents, 1, latents_history_1x.shape[-2], latents_history_1x.shape[-1]),
-                                                device=latents_history_1x.device, dtype=latents_history_1x.dtype)
+                    latents_prefix = torch.zeros(
+                        (
+                            batch_size,
+                            num_channels_latents,
+                            1,
+                            latents_history_1x.shape[-2],
+                            latents_history_1x.shape[-1],
+                        ),
+                        device=latents_history_1x.device,
+                        dtype=latents_history_1x.dtype,
+                    )
                 else:
                     latents_prefix = image_latents
                 latents_history_short = torch.cat([latents_prefix, latents_history_1x], dim=2)
@@ -904,9 +910,9 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         )
                         * 2
                     )
-                latents = latents.reshape(batch_size, num_latent_frames_per_chunk, num_channels_latents, pyramid_height, pyramid_width).permute(
-                    0, 2, 1, 3, 4
-                )
+                latents = latents.reshape(
+                    batch_size, num_latent_frames_per_chunk, num_channels_latents, pyramid_height, pyramid_width
+                ).permute(0, 2, 1, 3, 4)
 
                 start_point_list = None
                 if use_dmd:
@@ -940,11 +946,18 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         pyramid_width *= 2
                         num_frames = latents.shape[2]
                         latents = latents.permute(0, 2, 1, 3, 4).reshape(
-                            batch_size * num_latent_frames_per_chunk, num_channels_latents, pyramid_height // 2, pyramid_width // 2
+                            batch_size * num_latent_frames_per_chunk,
+                            num_channels_latents,
+                            pyramid_height // 2,
+                            pyramid_width // 2,
                         )
                         latents = F.interpolate(latents, size=(pyramid_height, pyramid_width), mode="nearest")
                         latents = latents.reshape(
-                            batch_size, num_latent_frames_per_chunk, num_channels_latents, pyramid_height, pyramid_width
+                            batch_size,
+                            num_latent_frames_per_chunk,
+                            num_channels_latents,
+                            pyramid_height,
+                            pyramid_width,
                         ).permute(0, 2, 1, 3, 4)
                         # Fix the stage
                         ori_sigma = 1 - self.scheduler.ori_start_sigmas[i_s]  # the original coeff of signal

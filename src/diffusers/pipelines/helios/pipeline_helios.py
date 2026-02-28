@@ -259,7 +259,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 dtype=dtype,
             )
 
-        negative_prompt_attention_mask = None
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
@@ -654,17 +653,15 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             interpolate_embeds = None
             interpolate_cumulative_list = list(accumulate(interpolate_time_list))
 
-        all_prompt_embeds, negative_prompt_embeds = (
-            self.encode_prompt(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                do_classifier_free_guidance=self.do_classifier_free_guidance,
-                num_videos_per_prompt=num_videos_per_prompt,
-                prompt_embeds=prompt_embeds,
-                negative_prompt_embeds=negative_prompt_embeds,
-                max_sequence_length=max_sequence_length,
-                device=device,
-            )
+        all_prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
+            num_videos_per_prompt=num_videos_per_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            max_sequence_length=max_sequence_length,
+            device=device,
         )
 
         transformer_dtype = self.transformer.dtype
@@ -810,10 +807,13 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             if num_latent_chunk < max(interpolate_cumulative_list):
                 num_latent_chunk = sum(interpolate_cumulative_list)
                 print(f"Update num_latent_chunk to: {num_latent_chunk}")
-        
+
         patch_size = self.transformer.config.patch_size
-        image_seq_len = num_latent_frames_per_chunk * (height // self.vae_scale_factor_spatial) * (width // self.vae_scale_factor_spatial) // (
-            patch_size[0] * patch_size[1] * patch_size[2]
+        image_seq_len = (
+            num_latent_frames_per_chunk
+            * (height // self.vae_scale_factor_spatial)
+            * (width // self.vae_scale_factor_spatial)
+            // (patch_size[0] * patch_size[1] * patch_size[2])
         )
         sigmas = np.linspace(0.999, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
         mu = calculate_shift(
@@ -862,8 +862,17 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     :, :, -sum(history_sizes) :
                 ].split(history_sizes, dim=2)
                 if image_latents is None and is_first_chunk:
-                    latents_prefix = torch.zeros((batch_size, num_channels_latents, 1, latents_history_1x.shape[-2], latents_history_1x.shape[-1]),
-                                                device=latents_history_1x.device, dtype=latents_history_1x.dtype)
+                    latents_prefix = torch.zeros(
+                        (
+                            batch_size,
+                            num_channels_latents,
+                            1,
+                            latents_history_1x.shape[-2],
+                            latents_history_1x.shape[-1],
+                        ),
+                        device=latents_history_1x.device,
+                        dtype=latents_history_1x.dtype,
+                    )
                 else:
                     latents_prefix = image_latents
                 latents_history_short = torch.cat([latents_prefix, latents_history_1x], dim=2)
