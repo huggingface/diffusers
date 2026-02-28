@@ -657,7 +657,7 @@ class HeliosTransformer3DModel(
 
         # 2. Process noisy latents
         hidden_states = self.patch_embedding(hidden_states)
-        B, C, T, H, W = hidden_states.shape
+        _, original_context_length, post_patch_num_frames, post_patch_height, post_patch_width = hidden_states.shape
 
         if indices_hidden_states is None:
             indices_hidden_states = torch.arange(0, T).unsqueeze(0).expand(B, -1)
