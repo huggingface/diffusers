@@ -533,14 +533,13 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         keep_first_frame: bool = True,
         is_skip_first_chunk: bool = False,
         # ------------ Stage 2 ------------
-        stage2_num_stages: int = 3,
-        stage2_num_inference_steps_list: list = [10, 10, 10],
+        pyramid_num_stages: int = 3,
+        pyramid_num_inference_steps_list: list = [10, 10, 10],
         # ------------ CFG Zero ------------
         use_cfg_zero_star: bool | None = False,
         use_zero_init: bool | None = True,
         zero_steps: int | None = 1,
         # ------------ DMD ------------
-        use_dmd: bool = False,
         is_amplify_first_chunk: bool = False,
     ):
         r"""
@@ -613,6 +612,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             raise ValueError("image and video cannot be provided simultaneously")
 
         history_sizes = sorted(history_sizes, reverse=True)  # From big to small
+        use_dmd = True if self.scheduler.scheduler_type == "dmd" else False
 
         latents_mean = (
             torch.tensor(self.vae.config.latents_mean)
@@ -923,9 +923,9 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             )
 
             num_inference_steps = (
-                sum(stage2_num_inference_steps_list) * 2
+                sum(pyramid_num_inference_steps_list) * 2
                 if is_amplify_first_chunk and use_dmd and is_first_chunk
-                else sum(stage2_num_inference_steps_list)
+                else sum(pyramid_num_inference_steps_list)
             )
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -933,7 +933,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 latents = latents.permute(0, 2, 1, 3, 4).reshape(
                     batch_size * num_frmaes, num_channel, pyramid_height, pyramid_width
                 )
-                for _ in range(stage2_num_stages - 1):
+                for _ in range(pyramid_num_stages - 1):
                     pyramid_height //= 2
                     pyramid_width //= 2
                     latents = (
@@ -952,7 +952,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 if use_dmd:
                     start_point_list = [latents]
 
-                for i_s in range(stage2_num_stages):
+                for i_s in range(pyramid_num_stages):
                     patch_size = self.transformer.config.patch_size
                     image_seq_len = (latents.shape[-1] * latents.shape[-2] * latents.shape[-3]) // (
                         patch_size[0] * patch_size[1] * patch_size[2]
@@ -965,7 +965,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         self.scheduler.config.get("max_shift", 1.15),
                     )
                     self.scheduler.set_timesteps(
-                        stage2_num_inference_steps_list[i_s],
+                        pyramid_num_inference_steps_list[i_s],
                         i_s,
                         device=device,
                         mu=mu,

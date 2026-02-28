@@ -7,11 +7,11 @@ CUDA_VISIBLE_DEVICES=0 python infer_helios.py \
     --num_frames 240 \
     --guidance_scale 1.0 \
     --is_enable_stage2 \
-    --stage2_num_inference_steps_list 2 2 2 \
+    --pyramid_num_inference_steps_list 2 2 2 \
     --is_enable_stage3 \
     --is_amplify_first_chunk \
     --output_folder "./output_helios/stage-3"
 
 
-    # --stage2_num_inference_steps_list 1 1 1 \
+    # --pyramid_num_inference_steps_list 1 1 1 \
     # --enable_compile \
