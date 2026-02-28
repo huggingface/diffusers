@@ -173,6 +173,12 @@ def compute_losses(
     return decoded, loss, reconstruction_loss, encoder_loss
 
 
+def _strip_final_layernorm_affine(state_dict, prefix=""):
+    """Remove final layernorm weight/bias so the model keeps its default init (identity)."""
+    keys_to_strip = {f"{prefix}weight", f"{prefix}bias"}
+    return {k: v for k, v in state_dict.items() if k not in keys_to_strip}
+
+
 def _load_pretrained_encoder_weights(model, encoder_type, encoder_name_or_path):
     """Load pretrained HF transformers encoder weights into the model's encoder."""
     if encoder_type == "dinov2":
@@ -180,21 +186,22 @@ def _load_pretrained_encoder_weights(model, encoder_type, encoder_name_or_path):
 
         hf_encoder = Dinov2WithRegistersModel.from_pretrained(encoder_name_or_path)
         state_dict = hf_encoder.state_dict()
+        state_dict = _strip_final_layernorm_affine(state_dict, prefix="layernorm.")
     elif encoder_type == "siglip2":
         from transformers import SiglipModel
 
         hf_encoder = SiglipModel.from_pretrained(encoder_name_or_path).vision_model
-        # Add vision_model. prefix to match SiglipVisionModel wrapper in our encoder
         state_dict = {f"vision_model.{k}": v for k, v in hf_encoder.state_dict().items()}
+        state_dict = _strip_final_layernorm_affine(state_dict, prefix="vision_model.post_layernorm.")
     elif encoder_type == "mae":
         from transformers import ViTMAEForPreTraining
 
         hf_encoder = ViTMAEForPreTraining.from_pretrained(encoder_name_or_path).vit
         state_dict = hf_encoder.state_dict()
+        state_dict = _strip_final_layernorm_affine(state_dict, prefix="layernorm.")
     else:
         raise ValueError(f"Unknown encoder_type: {encoder_type}")
 
-    # Load into encoder.model (strict=False because we removed layernorm weight/bias)
     model.encoder.model.load_state_dict(state_dict, strict=False)
 
 
