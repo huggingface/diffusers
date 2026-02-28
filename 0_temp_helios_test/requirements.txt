@@ -15,6 +15,7 @@ huggingface-hub==1.4.1
 zstandard==0.25.0
 wandb==0.23.0
 video-reader-rs==0.4.1
+numpy<2.0.0
 opencv-python
 gradio
 spaces
