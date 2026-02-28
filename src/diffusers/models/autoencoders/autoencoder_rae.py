@@ -14,7 +14,6 @@
 
 from dataclasses import dataclass
 from math import sqrt
-from types import SimpleNamespace
 from typing import Any, Dict, Optional, Tuple, Type, Union
 
 import torch
@@ -265,42 +264,62 @@ class RAEDecoder(nn.Module):
     - trainable_cls_token
     """
 
-    def __init__(self, config, num_patches: int):
+    def __init__(
+        self,
+        hidden_size: int = 768,
+        decoder_hidden_size: int = 512,
+        decoder_num_hidden_layers: int = 8,
+        decoder_num_attention_heads: int = 16,
+        decoder_intermediate_size: int = 2048,
+        num_patches: int = 256,
+        patch_size: int = 16,
+        num_channels: int = 3,
+        image_size: int = 256,
+        qkv_bias: bool = True,
+        layer_norm_eps: float = 1e-12,
+        hidden_dropout_prob: float = 0.0,
+        attention_probs_dropout_prob: float = 0.0,
+        hidden_act: str = "gelu",
+    ):
         super().__init__()
-        self.decoder_embed = nn.Linear(config.hidden_size, config.decoder_hidden_size, bias=True)
+        self.decoder_hidden_size = decoder_hidden_size
+        self.patch_size = patch_size
+        self.num_channels = num_channels
+        self.image_size = image_size
+        self.num_patches = num_patches
+
+        self.decoder_embed = nn.Linear(hidden_size, decoder_hidden_size, bias=True)
         self.decoder_pos_embed = nn.Parameter(
-            torch.zeros(1, num_patches + 1, config.decoder_hidden_size), requires_grad=False
+            torch.zeros(1, num_patches + 1, decoder_hidden_size), requires_grad=False
         )
 
         self.decoder_layers = nn.ModuleList(
             [
                 ViTMAELayer(
-                    hidden_size=config.decoder_hidden_size,
-                    num_attention_heads=config.decoder_num_attention_heads,
-                    intermediate_size=config.decoder_intermediate_size,
-                    qkv_bias=config.qkv_bias,
-                    layer_norm_eps=config.layer_norm_eps,
-                    hidden_dropout_prob=config.hidden_dropout_prob,
-                    attention_probs_dropout_prob=config.attention_probs_dropout_prob,
-                    hidden_act=config.hidden_act,
+                    hidden_size=decoder_hidden_size,
+                    num_attention_heads=decoder_num_attention_heads,
+                    intermediate_size=decoder_intermediate_size,
+                    qkv_bias=qkv_bias,
+                    layer_norm_eps=layer_norm_eps,
+                    hidden_dropout_prob=hidden_dropout_prob,
+                    attention_probs_dropout_prob=attention_probs_dropout_prob,
+                    hidden_act=hidden_act,
                 )
-                for _ in range(config.decoder_num_hidden_layers)
+                for _ in range(decoder_num_hidden_layers)
             ]
         )
 
-        self.decoder_norm = nn.LayerNorm(config.decoder_hidden_size, eps=config.layer_norm_eps)
+        self.decoder_norm = nn.LayerNorm(decoder_hidden_size, eps=layer_norm_eps)
         self.decoder_pred = nn.Linear(
-            config.decoder_hidden_size, config.patch_size**2 * config.num_channels, bias=True
+            decoder_hidden_size, patch_size**2 * num_channels, bias=True
         )
         self.gradient_checkpointing = False
-        self.config = config
-        self.num_patches = num_patches
 
         self._initialize_weights(num_patches)
         self.set_trainable_cls_token()
 
     def set_trainable_cls_token(self, tensor: Optional[torch.Tensor] = None):
-        tensor = torch.zeros(1, 1, self.config.decoder_hidden_size) if tensor is None else tensor
+        tensor = torch.zeros(1, 1, self.decoder_hidden_size) if tensor is None else tensor
         self.trainable_cls_token = nn.Parameter(tensor)
 
     def _initialize_weights(self, num_patches: int):
@@ -351,11 +370,11 @@ class RAEDecoder(nn.Module):
         return x
 
     def unpatchify(self, patchified_pixel_values: torch.Tensor, original_image_size: Optional[Tuple[int, int]] = None):
-        patch_size, num_channels = self.config.patch_size, self.config.num_channels
+        patch_size, num_channels = self.patch_size, self.num_channels
         original_image_size = (
             original_image_size
             if original_image_size is not None
-            else (self.config.image_size, self.config.image_size)
+            else (self.image_size, self.image_size)
         )
         original_height, original_width = original_image_size
         num_patches_h = original_height // patch_size
@@ -588,22 +607,17 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         self.register_buffer("_latents_std", latents_std_tensor, persistent=True)
 
         # ViT-MAE style decoder
-        decoder_config = SimpleNamespace(
+        self.decoder = RAEDecoder(
             hidden_size=int(encoder_hidden_size),
             decoder_hidden_size=int(decoder_hidden_size),
             decoder_num_hidden_layers=int(decoder_num_hidden_layers),
             decoder_num_attention_heads=int(decoder_num_attention_heads),
             decoder_intermediate_size=int(decoder_intermediate_size),
+            num_patches=int(num_patches),
             patch_size=int(decoder_patch_size),
-            image_size=int(image_size),
             num_channels=int(num_channels),
-            qkv_bias=True,
-            hidden_dropout_prob=0.0,
-            attention_probs_dropout_prob=0.0,
-            layer_norm_eps=1e-12,
-            hidden_act="gelu",
+            image_size=int(image_size),
         )
-        self.decoder = RAEDecoder(decoder_config, num_patches=int(num_patches))
         self.num_patches = int(num_patches)
         self.decoder_patch_size = int(decoder_patch_size)
         self.decoder_image_size = int(image_size)
