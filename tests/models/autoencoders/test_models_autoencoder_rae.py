@@ -180,7 +180,7 @@ class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
         assert y.ndim == 3
         assert y.shape[0] == 1
         assert y.shape[1] == 256
-        assert y.shape[2] == encoder.hidden_size
+        assert y.shape[2] == encoder.model.config.hidden_size
 
     def test_siglip2_encoder_forward_shape(self):
         encoder = Siglip2Encoder().to(torch_device)
@@ -190,7 +190,7 @@ class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
         assert y.ndim == 3
         assert y.shape[0] == 1
         assert y.shape[1] == 196
-        assert y.shape[2] == encoder.hidden_size
+        assert y.shape[2] == encoder.model.config.hidden_size
 
     def test_mae_encoder_forward_shape(self):
         encoder = MAEEncoder().to(torch_device)
@@ -200,7 +200,7 @@ class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
         assert y.ndim == 3
         assert y.shape[0] == 1
         assert y.shape[1] == 196
-        assert y.shape[2] == encoder.hidden_size
+        assert y.shape[2] == encoder.model.config.hidden_size
 
 
 @slow
