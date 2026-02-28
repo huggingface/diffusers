@@ -42,14 +42,15 @@ model = AutoencoderRAE.from_pretrained(
 ```python
 import torch
 from diffusers import AutoencoderRAE
-from PIL import Image
+from diffusers.utils import load_image
 from torchvision.transforms.functional import to_tensor, to_pil_image
 
 model = AutoencoderRAE.from_pretrained(
     "nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08"
 ).to("cuda").eval()
 
-image = Image.open("cat.png").convert("RGB").resize((224, 224))
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
+image = image.convert("RGB").resize((224, 224))
 x = to_tensor(image).unsqueeze(0).to("cuda")  # (1, 3, 224, 224), values in [0, 1]
 
 with torch.no_grad():
