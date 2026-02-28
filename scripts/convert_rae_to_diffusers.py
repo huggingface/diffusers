@@ -317,8 +317,8 @@ def convert(args: argparse.Namespace) -> None:
     model.load_state_dict(full_state_dict, strict=False, assign=True)
 
     # Verify no critical keys are missing
-    model_keys = set(name for name, _ in model.named_parameters())
-    model_keys |= set(name for name, _ in model.named_buffers())
+    model_keys = {name for name, _ in model.named_parameters()}
+    model_keys |= {name for name, _ in model.named_buffers()}
     loaded_keys = set(full_state_dict.keys())
     missing = model_keys - loaded_keys
     # trainable_cls_token and decoder_pos_embed are initialized, not loaded from original checkpoint

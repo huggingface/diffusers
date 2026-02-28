@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import sqrt
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Any, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
@@ -24,6 +24,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.import_utils import is_transformers_available
+
 
 if is_transformers_available():
     from transformers import (
@@ -69,7 +70,6 @@ class Dinov2Encoder(nn.Module):
         self.model.layernorm.elementwise_affine = False
         self.model.layernorm.weight = None
         self.model.layernorm.bias = None
-
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
@@ -310,9 +310,7 @@ class RAEDecoder(nn.Module):
         )
 
         self.decoder_norm = nn.LayerNorm(decoder_hidden_size, eps=layer_norm_eps)
-        self.decoder_pred = nn.Linear(
-            decoder_hidden_size, patch_size**2 * num_channels, bias=True
-        )
+        self.decoder_pred = nn.Linear(decoder_hidden_size, patch_size**2 * num_channels, bias=True)
         self.gradient_checkpointing = False
 
         self._initialize_weights(num_patches)
@@ -372,9 +370,7 @@ class RAEDecoder(nn.Module):
     def unpatchify(self, patchified_pixel_values: torch.Tensor, original_image_size: Optional[Tuple[int, int]] = None):
         patch_size, num_channels = self.patch_size, self.num_channels
         original_image_size = (
-            original_image_size
-            if original_image_size is not None
-            else (self.image_size, self.image_size)
+            original_image_size if original_image_size is not None else (self.image_size, self.image_size)
         )
         original_height, original_width = original_image_size
         num_patches_h = original_height // patch_size

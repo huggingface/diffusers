@@ -222,6 +222,7 @@ class AutoencoderRAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Tes
 
 
 @slow
+@unittest.skip("Not enough model usage to justify slow tests yet.")
 class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
@@ -260,6 +261,7 @@ class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
 
 
 @slow
+@unittest.skip("Not enough model usage to justify slow tests yet.")
 class AutoencoderRAEIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()

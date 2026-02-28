@@ -164,8 +164,9 @@ def compute_losses(
         target_encoder_input = base_model._maybe_resize_and_normalize(pixel_values)
         reconstructed_encoder_input = base_model._maybe_resize_and_normalize(decoded)
 
-        target_tokens = base_model.encoder(target_encoder_input, requires_grad=False).detach()
-        reconstructed_tokens = base_model.encoder(reconstructed_encoder_input, requires_grad=True)
+        with torch.no_grad():
+            target_tokens = base_model.encoder(target_encoder_input)
+        reconstructed_tokens = base_model.encoder(reconstructed_encoder_input)
         encoder_loss = F.mse_loss(reconstructed_tokens.float(), target_tokens.float())
 
     loss = reconstruction_loss + float(encoder_loss_weight) * encoder_loss
