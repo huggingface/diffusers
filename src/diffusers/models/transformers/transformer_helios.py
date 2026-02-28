@@ -657,20 +657,20 @@ class HeliosTransformer3DModel(
 
         # 2. Process noisy latents
         hidden_states = self.patch_embedding(hidden_states)
-        _, original_context_length, post_patch_num_frames, post_patch_height, post_patch_width = hidden_states.shape
+        _, _, post_patch_num_frames, post_patch_height, post_patch_width = hidden_states.shape
 
         if indices_hidden_states is None:
-            indices_hidden_states = torch.arange(0, T).unsqueeze(0).expand(B, -1)
+            indices_hidden_states = torch.arange(0, post_patch_num_frames).unsqueeze(0).expand(batch_size, -1)
 
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
         rotary_emb = self.rope(
             frame_indices=indices_hidden_states,
             height=post_patch_height,
-            width=post_patch_width
+            width=post_patch_width,
             device=hidden_states.device,
         )
         rotary_emb = rotary_emb.flatten(2).transpose(1, 2)
-
+        original_context_length = hidden_states.shape[1]
 
         # 3. Process short history latents
         if latents_history_short is not None and indices_latents_history_short is not None:
