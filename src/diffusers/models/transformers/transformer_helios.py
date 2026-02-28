@@ -671,10 +671,6 @@ class HeliosTransformer3DModel(
         )
         rotary_emb = rotary_emb.flatten(2).transpose(1, 2)
 
-        post_patch_height = H
-        post_patch_width = W
-        post_patch_num_frames = T
-        original_context_length = hidden_states.shape[1]
 
         # 3. Process short history latents
         if latents_history_short is not None and indices_latents_history_short is not None:
