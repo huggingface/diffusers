@@ -728,3 +728,27 @@ class TestLoadComponentsSkipBehavior:
 
         # Verify test_component was not loaded
         assert not hasattr(pipe, "test_component") or pipe.test_component is None
+
+
+class TestModularPipelineInitFallback:
+    """Test that ModularPipeline.__init__ falls back to default_blocks_name when
+    _blocks_class_name is a base class (e.g. SequentialPipelineBlocks saved by from_blocks_dict)."""
+
+    def test_init_fallback_when_blocks_class_name_is_base_class(self, tmp_path):
+        # 1. Load pipeline and get a workflow (returns a base SequentialPipelineBlocks)
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        t2i_blocks = pipe.blocks.get_workflow("text2image")
+        assert t2i_blocks.__class__.__name__ == "SequentialPipelineBlocks"
+
+        # 2. Use init_pipeline to create a new pipeline from the workflow blocks
+        t2i_pipe = t2i_blocks.init_pipeline("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+
+        # 3. Save and reload — the saved config will have _blocks_class_name="SequentialPipelineBlocks"
+        save_dir = str(tmp_path / "pipeline")
+        t2i_pipe.save_pretrained(save_dir)
+        loaded_pipe = ModularPipeline.from_pretrained(save_dir)
+
+        # 4. Verify it fell back to default_blocks_name and has correct blocks
+        assert loaded_pipe.__class__.__name__ == pipe.__class__.__name__
+        assert loaded_pipe._blocks.__class__.__name__ == pipe._blocks.__class__.__name__
+        assert len(loaded_pipe._blocks.sub_blocks) == len(pipe._blocks.sub_blocks)
