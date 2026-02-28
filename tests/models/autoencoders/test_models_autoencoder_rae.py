@@ -27,7 +27,15 @@ from diffusers.models.autoencoders.autoencoder_rae import (
     Siglip2Encoder,
 )
 
-from ...testing_utils import backend_empty_cache, enable_full_determinism, slow, torch_device
+from ...testing_utils import (
+    backend_empty_cache,
+    enable_full_determinism,
+    floats_tensor,
+    slow,
+    torch_device,
+)
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -44,7 +52,7 @@ class TinyTestEncoder(torch.nn.Module):
         self.patch_size = patch_size
         self.hidden_size = hidden_size
 
-    def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
         pooled = F.avg_pool2d(images.mean(dim=1, keepdim=True), kernel_size=self.patch_size, stride=self.patch_size)
         tokens = pooled.flatten(2).transpose(1, 2).contiguous()
         return tokens.repeat(1, 1, self.hidden_size)
@@ -53,14 +61,26 @@ class TinyTestEncoder(torch.nn.Module):
 _ENCODER_TYPES["tiny_test"] = TinyTestEncoder
 
 
-class AutoencoderRAETests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
+class AutoencoderRAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
+    model_class = AutoencoderRAE
+    main_input_name = "sample"
+    base_precision = 1e-2
 
-    def _make_model(self, **overrides) -> AutoencoderRAE:
-        config = {
+    @property
+    def dummy_input(self):
+        image = floats_tensor((2, 3, 32, 32)).to(torch_device)
+        return {"sample": image}
+
+    @property
+    def input_shape(self):
+        return (3, 32, 32)
+
+    @property
+    def output_shape(self):
+        return (3, 16, 16)
+
+    def get_autoencoder_rae_config(self):
+        return {
             "encoder_type": "tiny_test",
             "encoder_hidden_size": 16,
             "encoder_patch_size": 8,
@@ -78,8 +98,44 @@ class AutoencoderRAETests(unittest.TestCase):
             "reshape_to_2d": True,
             "scaling_factor": 1.0,
         }
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = self.get_autoencoder_rae_config()
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def _make_model(self, **overrides) -> AutoencoderRAE:
+        config = self.get_autoencoder_rae_config()
         config.update(overrides)
         return AutoencoderRAE(**config).to(torch_device)
+
+    def test_forward_signature(self):
+        pass
+
+    def test_gradient_checkpointing_is_applied(self):
+        pass
+
+    def test_output(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device).eval()
+        with torch.no_grad():
+            output = model(**inputs_dict)
+        self.assertEqual(output.sample.shape, (2, 3, 16, 16))
+
+    def test_cpu_offload(self):
+        pass
+
+    def test_disk_offload_with_safetensors(self):
+        pass
+
+    def test_disk_offload_without_safetensors(self):
+        pass
+
+    def test_set_attn_processor_for_determinism(self):
+        pass
+
+    def test_from_save_pretrained_dynamo(self):
+        pass
 
     def test_fast_encode_decode_and_forward_shapes(self):
         model = self._make_model().eval()
