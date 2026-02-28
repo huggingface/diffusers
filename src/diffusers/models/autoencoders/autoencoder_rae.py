@@ -72,15 +72,11 @@ class Dinov2Encoder(nn.Module):
         self.model.layernorm.bias = None
 
 
-    def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
         images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and
         """
-        if requires_grad:
-            outputs = self.model(images, output_hidden_states=True)
-        else:
-            with torch.no_grad():
-                outputs = self.model(images, output_hidden_states=True)
+        outputs = self.model(images, output_hidden_states=True)
         unused_token_num = 5  # 1 CLS + 4 register tokens
         image_features = outputs.last_hidden_state[:, unused_token_num:]
         return image_features
@@ -111,15 +107,11 @@ class Siglip2Encoder(nn.Module):
         self.model.vision_model.post_layernorm.weight = None
         self.model.vision_model.post_layernorm.bias = None
 
-    def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
         images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and
         """
-        if requires_grad:
-            outputs = self.model(images, output_hidden_states=True, interpolate_pos_encoding=True)
-        else:
-            with torch.no_grad():
-                outputs = self.model(images, output_hidden_states=True, interpolate_pos_encoding=True)
+        outputs = self.model(images, output_hidden_states=True, interpolate_pos_encoding=True)
         image_features = outputs.last_hidden_state
         return image_features
 
@@ -152,7 +144,7 @@ class MAEEncoder(nn.Module):
         self.model.layernorm.bias = None
         self.patch_size = patch_size
 
-    def forward(self, images: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
         images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and width of
         the image
@@ -162,11 +154,7 @@ class MAEEncoder(nn.Module):
         if patch_num * self.patch_size**2 != h * w:
             raise ValueError("Image size should be divisible by patch size.")
         noise = torch.arange(patch_num).unsqueeze(0).expand(images.shape[0], -1).to(images.device).to(images.dtype)
-        if requires_grad:
-            outputs = self.model(images, noise, interpolate_pos_encoding=True)
-        else:
-            with torch.no_grad():
-                outputs = self.model(images, noise, interpolate_pos_encoding=True)
+        outputs = self.model(images, noise, interpolate_pos_encoding=True)
         image_features = outputs.last_hidden_state[:, 1:]  # remove cls token
         return image_features
 
@@ -656,8 +644,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         x = self._maybe_resize_and_normalize(x)
 
-        # Encoder is frozen by default for latent extraction.
-        tokens = self.encoder(x, requires_grad=False)  # (B, N, C)
+        tokens = self.encoder(x)  # (B, N, C)
 
         if self.training and self.noise_tau > 0:
             tokens = self._noising(tokens)
