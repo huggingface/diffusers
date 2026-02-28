@@ -252,7 +252,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds, prompt_attention_mask = self._get_t5_prompt_embeds(
+            prompt_embeds, _ = self._get_t5_prompt_embeds(
                 prompt=prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
@@ -277,7 +277,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     " the batch size of `prompt`."
                 )
 
-            negative_prompt_embeds, negative_prompt_attention_mask = self._get_t5_prompt_embeds(
+            negative_prompt_embeds, _ = self._get_t5_prompt_embeds(
                 prompt=negative_prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
@@ -285,7 +285,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 dtype=dtype,
             )
 
-        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
+        return prompt_embeds, negative_prompt_embeds
 
     def check_inputs(
         self,
@@ -665,7 +665,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             interpolate_embeds = None
             interpolate_cumulative_list = list(accumulate(interpolate_time_list))
 
-        all_prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask = (
+        all_prompt_embeds, negative_prompt_embeds = (
             self.encode_prompt(
                 prompt=prompt,
                 negative_prompt=negative_prompt,
