@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=0 python infer_helios.py \
+CUDA_VISIBLE_DEVICES=1 python infer_helios.py \
     --base_model_path "BestWishYsh/Helios-Distilled" \
     --transformer_path "BestWishYsh/Helios-Distilled" \
     --sample_type "v2v" \
