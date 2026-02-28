@@ -66,10 +66,9 @@ class Dinov2Encoder(nn.Module):
             num_hidden_layers=num_hidden_layers,
         )
         self.model = Dinov2WithRegistersModel(config)
-        self.model.requires_grad_(False)
-        self.model.layernorm.elementwise_affine = False
         self.model.layernorm.weight = None
         self.model.layernorm.bias = None
+        self.model.requires_grad_(False)
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
@@ -100,11 +99,9 @@ class Siglip2Encoder(nn.Module):
             num_hidden_layers=num_hidden_layers,
         )
         self.model = SiglipVisionModel(config)
-        self.model.requires_grad_(False)
-        # remove the affine of final layernorm
-        self.model.vision_model.post_layernorm.elementwise_affine = False
         self.model.vision_model.post_layernorm.weight = None
         self.model.vision_model.post_layernorm.bias = None
+        self.model.requires_grad_(False)
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
@@ -135,12 +132,9 @@ class MAEEncoder(nn.Module):
             mask_ratio=0.0,
         )
         self.model = ViTMAEModel(config)
-        self.model.requires_grad_(False)
-        # remove the affine of final layernorm
-        self.model.layernorm.elementwise_affine = False
-        # remove the param
         self.model.layernorm.weight = None
         self.model.layernorm.bias = None
+        self.model.requires_grad_(False)
         self.patch_size = patch_size
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:

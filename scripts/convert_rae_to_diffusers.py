@@ -192,13 +192,25 @@ def extract_latent_stats(stats_obj: Any) -> tuple[Any | None, Any | None]:
     return mean, latents_std
 
 
+def _strip_final_layernorm_affine(state_dict: dict[str, Any], prefix: str = "") -> dict[str, Any]:
+    """Remove final layernorm weight/bias from encoder state dict.
+
+    RAE uses non-affine layernorm (weight=1, bias=0 is the default identity).
+    Stripping these keys means the model keeps its default init values, which
+    is functionally equivalent to setting elementwise_affine=False.
+    """
+    keys_to_strip = {f"{prefix}weight", f"{prefix}bias"}
+    return {k: v for k, v in state_dict.items() if k not in keys_to_strip}
+
+
 def _load_hf_encoder_state_dict(encoder_type: str, encoder_name_or_path: str) -> dict[str, Any]:
     """Download the HF encoder and extract the state dict for the inner model."""
     if encoder_type == "dinov2":
         from transformers import Dinov2WithRegistersModel
 
         hf_model = Dinov2WithRegistersModel.from_pretrained(encoder_name_or_path)
-        return hf_model.state_dict()
+        sd = hf_model.state_dict()
+        return _strip_final_layernorm_affine(sd, prefix="layernorm.")
     elif encoder_type == "siglip2":
         from transformers import SiglipModel
 
@@ -206,12 +218,14 @@ def _load_hf_encoder_state_dict(encoder_type: str, encoder_name_or_path: str) ->
         # Our Siglip2Encoder wraps it inside SiglipVisionModel which nests it
         # under .vision_model, so we add the prefix to match the diffusers key layout.
         hf_model = SiglipModel.from_pretrained(encoder_name_or_path).vision_model
-        return {f"vision_model.{k}": v for k, v in hf_model.state_dict().items()}
+        sd = {f"vision_model.{k}": v for k, v in hf_model.state_dict().items()}
+        return _strip_final_layernorm_affine(sd, prefix="vision_model.post_layernorm.")
     elif encoder_type == "mae":
         from transformers import ViTMAEForPreTraining
 
         hf_model = ViTMAEForPreTraining.from_pretrained(encoder_name_or_path).vit
-        return hf_model.state_dict()
+        sd = hf_model.state_dict()
+        return _strip_final_layernorm_affine(sd, prefix="layernorm.")
     else:
         raise ValueError(f"Unknown encoder_type: {encoder_type}")
 
