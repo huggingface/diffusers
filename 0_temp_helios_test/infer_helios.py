@@ -72,7 +72,6 @@ def parse_args():
     parser.add_argument("--num_latent_frames_per_chunk", type=int, default=9)
     # stage 2
     parser.add_argument("--is_enable_stage2", action="store_true")
-    parser.add_argument("--pyramid_num_stages", type=int, default=3)
     parser.add_argument("--stage2_timestep_shift", type=float, default=1.0)
     parser.add_argument("--stage2_scheduler_gamma", type=float, default=1 / 3)
     parser.add_argument("--stage2_stage_range", type=int, nargs="+", default=[0, 1 / 3, 2 / 3, 1])
@@ -288,7 +287,6 @@ def main():
                 keep_first_frame=True,
                 is_skip_first_chunk=args.is_skip_first_chunk,
                 # stage 2
-                pyramid_num_stages=args.pyramid_num_stages,
                 pyramid_num_inference_steps_list=args.pyramid_num_inference_steps_list,
                 # stage 3
                 is_amplify_first_chunk=args.is_amplify_first_chunk,

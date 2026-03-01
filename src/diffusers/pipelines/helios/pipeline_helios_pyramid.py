@@ -544,7 +544,6 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         keep_first_frame: bool = True,
         is_skip_first_chunk: bool = False,
         # ------------ Stage 2 ------------
-        pyramid_num_stages: int = 3,
         pyramid_num_inference_steps_list: list = [10, 10, 10],
         # ------------ CFG Zero ------------
         use_cfg_zero_star: bool | None = False,
@@ -621,6 +620,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         history_sizes = sorted(history_sizes, reverse=True)  # From big to small
         use_dmd = True if self.scheduler.config.scheduler_type == "dmd" else False
+        pyramid_num_stages = len(pyramid_num_inference_steps_list)
 
         latents_mean = (
             torch.tensor(self.vae.config.latents_mean)
