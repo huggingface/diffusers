@@ -75,16 +75,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def optimized_scale(positive_flat, negative_flat):
-    # Calculate dot production
-    dot_product = torch.sum(positive_flat * negative_flat, dim=1, keepdim=True)
-    # Squared norm of uncondition
-    squared_norm = torch.sum(negative_flat**2, dim=1, keepdim=True) + 1e-8
-    # st_star = v_cond^T * v_uncond / ||v_uncond||^2
-    st_star = dot_product / squared_norm
-    return st_star
-
-
 def basic_clean(text):
     text = ftfy.fix_text(text)
     text = html.unescape(html.unescape(text))
@@ -970,7 +960,10 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 total_generated_latent_frames += latents.shape[2]
                 history_latents = torch.cat([history_latents, latents], dim=2)
                 real_history_latents = history_latents[:, :, -total_generated_latent_frames:]
-                current_latents = real_history_latents[:, :, -num_latent_frames_per_chunk:].to(vae_dtype) / latents_std + latents_mean
+                current_latents = (
+                    real_history_latents[:, :, -num_latent_frames_per_chunk:].to(vae_dtype) / latents_std
+                    + latents_mean
+                )
                 current_video = self.vae.decode(current_latents, return_dict=False)[0]
 
                 if history_video is None:
