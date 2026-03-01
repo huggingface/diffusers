@@ -754,7 +754,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             dtype=torch.float32,
         )
         if fake_image_latents is not None:
-            history_latents = torch.cat([history_latents, fake_image_latents], dim=2)
+            history_latents = torch.cat([history_latents[:, :, :-1, :, :], fake_image_latents], dim=2)
             total_generated_latent_frames += 1
         if video_latents is not None:
             history_frames = history_latents.shape[2]
