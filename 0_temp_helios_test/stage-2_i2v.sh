@@ -7,7 +7,6 @@ CUDA_VISIBLE_DEVICES=0 python infer_helios.py \
     --guidance_scale 5.0 \
     --is_enable_stage2 \
     --pyramid_num_inference_steps_list 20 20 20 \
-    --use_cfg_zero_star \
     --use_zero_init \
     --zero_steps 1 \
     --output_folder "./output_helios/stage-2"

@@ -150,6 +150,8 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         vae: AutoencoderKLWan,
         scheduler: HeliosScheduler,
         transformer: HeliosTransformer3DModel,
+        is_cfg_zero_star: bool = False,
+        is_distilled: bool = False,
     ):
         super().__init__()
 
@@ -160,6 +162,8 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             transformer=transformer,
             scheduler=scheduler,
         )
+        self.register_to_config(is_cfg_zero_star=is_cfg_zero_star)
+        self.register_to_config(is_distilled=is_distilled)
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
@@ -302,6 +306,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         num_videos_per_prompt=None,
         interpolate_time_list=None,
         interpolation_steps=None,
+        guidance_scale=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -346,6 +351,9 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             assert min(interpolate_time_list) > interpolation_steps, (
                 f"Minimum value {min(interpolate_time_list)} must be greater than {interpolation_steps}"
             )
+
+        if guidance_scale > 1.0 and self.config.is_distilled:
+            logger.warning(f"Guidance scale {guidance_scale} is ignored for step-wise distilled models.")
 
     def prepare_latents(
         self,
@@ -546,7 +554,6 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         # ------------ Stage 2 ------------
         pyramid_num_inference_steps_list: list = [10, 10, 10],
         # ------------ CFG Zero ------------
-        use_cfg_zero_star: bool | None = False,
         use_zero_init: bool | None = True,
         zero_steps: int | None = 1,
         # ------------ DMD ------------
@@ -567,9 +574,6 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 The width in pixels of the generated image.
             num_frames (`int`, defaults to `132`):
                 The number of frames in the generated video.
-            num_inference_steps (`int`, defaults to `50`):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference.
             guidance_scale (`float`, defaults to `5.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
@@ -619,7 +623,6 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         """
 
         history_sizes = sorted(history_sizes, reverse=True)  # From big to small
-        use_dmd = True if self.scheduler.config.scheduler_type == "dmd" else False
         pyramid_num_stages = len(pyramid_num_inference_steps_list)
 
         latents_mean = (
@@ -649,6 +652,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             num_videos_per_prompt,
             interpolate_time_list,
             interpolation_steps,
+            guidance_scale,
         )
 
         num_frames = max(num_frames, 1)
@@ -903,7 +907,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
             num_inference_steps = (
                 sum(pyramid_num_inference_steps_list) * 2
-                if is_amplify_first_chunk and use_dmd and is_first_chunk
+                if is_amplify_first_chunk and self.config.is_distilled and is_first_chunk
                 else sum(pyramid_num_inference_steps_list)
             )
 
@@ -928,7 +932,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 ).permute(0, 2, 1, 3, 4)
 
                 start_point_list = None
-                if use_dmd:
+                if self.config.is_distilled:
                     start_point_list = [latents]
 
                 for stage_idx in range(pyramid_num_stages):
@@ -985,7 +989,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         noise = noise.to(device=device, dtype=transformer_dtype)
                         latents = alpha * latents + beta * noise  # To fix the block artifact
 
-                        if use_dmd:
+                        if self.config.is_distilled:
                             start_point_list.append(latents)
 
                     for i, t in enumerate(timesteps):
@@ -1028,7 +1032,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                                     return_dict=False,
                                 )[0]
 
-                            if use_cfg_zero_star:
+                            if self.config.is_cfg_zero_star:
                                 noise_pred_text = noise_pred
                                 positive_flat = noise_pred_text.view(batch_size, -1)
                                 negative_flat = noise_uncond.view(batch_size, -1)

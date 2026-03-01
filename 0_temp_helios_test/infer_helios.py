@@ -65,7 +65,6 @@ def parse_args():
     parser.add_argument("--num_inference_steps", type=int, default=50)
     parser.add_argument("--guidance_scale", type=float, default=5.0)
     # cfg zero
-    parser.add_argument("--use_cfg_zero_star", action="store_true")
     parser.add_argument("--use_zero_init", action="store_true")
     parser.add_argument("--zero_steps", type=int, default=1)
     # stage 1
@@ -278,7 +277,6 @@ def main():
                 height=args.height,
                 width=args.width,
                 num_frames=args.num_frames,  # 73 109 145 181 215
-                num_inference_steps=args.num_inference_steps,
                 guidance_scale=args.guidance_scale,
                 generator=torch.Generator(device="cuda").manual_seed(args.seed),
                 # stage 1
@@ -291,7 +289,6 @@ def main():
                 # stage 3
                 is_amplify_first_chunk=args.is_amplify_first_chunk,
                 # cfg zero
-                use_cfg_zero_star=args.use_cfg_zero_star,
                 use_zero_init=args.use_zero_init,
                 zero_steps=args.zero_steps,
                 # i2v
