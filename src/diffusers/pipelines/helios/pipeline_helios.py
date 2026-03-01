@@ -433,13 +433,13 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             first_frame_latent = (first_frame_latent - latents_mean) * latents_std
 
             latents_chunks = []
-            for i in range(num_chunks - 1, -1, -1):
+            for i in range(num_chunks):
                 chunk_start = start_frame + i * min_frames
                 chunk_end = chunk_start + min_frames
                 video_chunk = video[:, :, chunk_start:chunk_end, :, :]
                 chunk_latents = self.vae.encode(video_chunk).latent_dist.sample(generator=generator)
                 chunk_latents = (chunk_latents - latents_mean) * latents_std
-                latents_chunks.insert(0, chunk_latents)
+                latents_chunks.append(chunk_latents)
             latents = torch.cat(latents_chunks, dim=2)
         return first_frame_latent.to(device=device, dtype=dtype), latents.to(device=device, dtype=dtype)
 
