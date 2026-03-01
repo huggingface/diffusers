@@ -648,6 +648,28 @@ class ConfigMixin:
             )
         return config_file
 
+    @classmethod
+    def _get_dataclass_from_config(cls, config_dict: dict[str, Any]):
+        sig = inspect.signature(cls.__init__)
+        fields = []
+        for name, param in sig.parameters.items():
+            if name == "self" or name == "kwargs" or name in cls.ignore_for_config:
+                continue
+            annotation = param.annotation if param.annotation is not inspect.Parameter.empty else Any
+            if param.default is not inspect.Parameter.empty:
+                fields.append((name, annotation, dataclasses.field(default=param.default)))
+            else:
+                fields.append((name, annotation))
+
+        dc_cls = dataclasses.make_dataclass(
+            f"{cls.__name__}Config",
+            fields,
+            frozen=True,
+        )
+        valid_fields = {f.name for f in dataclasses.fields(dc_cls)}
+        init_kwargs = {k: v for k, v in config_dict.items() if k in valid_fields}
+        return dc_cls(**init_kwargs)
+
 
 def register_to_config(init):
     r"""
