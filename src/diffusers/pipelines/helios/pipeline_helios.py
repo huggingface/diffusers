@@ -748,6 +748,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         num_channels_latents = self.transformer.config.in_channels
         window_num_frames = (num_latent_frames_per_chunk - 1) * self.vae_scale_factor_temporal + 1
         num_latent_chunk = max(1, (num_frames + window_num_frames - 1) // window_num_frames)
+        num_history_latent_frames = sum(history_sizes)
         history_video = None
         total_generated_latent_frames = 0
 
@@ -756,7 +757,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         history_latents = torch.zeros(
             batch_size,
             num_channels_latents,
-            sum(history_sizes),
+            num_history_latent_frames,
             height // self.vae_scale_factor_spatial,
             width // self.vae_scale_factor_spatial,
             device=device,
@@ -855,7 +856,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             is_second_chunk = k == 1
             if keep_first_frame:
                 latents_history_long, latents_history_mid, latents_history_1x = history_latents[
-                    :, :, -sum(history_sizes) :
+                    :, :, -num_history_latent_frames:
                 ].split(history_sizes, dim=2)
                 if image_latents is None and is_first_chunk:
                     latents_prefix = torch.zeros(
@@ -874,7 +875,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 latents_history_short = torch.cat([latents_prefix, latents_history_1x], dim=2)
             else:
                 latents_history_long, latents_history_mid, latents_history_short = history_latents[
-                    :, :, -sum(history_sizes) :
+                    :, :, -num_history_latent_frames:
                 ].split(history_sizes, dim=2)
 
             latents = self.prepare_latents(
