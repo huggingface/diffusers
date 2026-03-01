@@ -1,12 +1,12 @@
 import argparse
-import importlib
+import json
 import logging
 import math
 import os
-import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
+from typing import Any, Optional
 
 import datasets
 import numpy as np
@@ -17,30 +17,22 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset
-from huggingface_hub import create_repo, upload_folder
-from packaging import version
 from peft import LoraConfig
-from peft.utils import get_peft_model_state_dict, set_peft_model_state_dict
-from torchvision import transforms
+from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
-
 
 import diffusers
 from diffusers import Cosmos2_5_PredictBasePipeline
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import cast_training_params, compute_snr
+from diffusers.training_utils import cast_training_params
 from diffusers.utils import (
-    check_min_version,
-    convert_state_dict_to_diffusers,
     is_wandb_available,
-    export_to_video, 
-    load_image, 
     load_video,
 )
-from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
-from diffusers.utils.torch_utils import is_compiled_module
+from diffusers.video_processor import VideoProcessor
 
+H, W = 704, 1280
+NUM_FRAMES = 93
 
 if is_wandb_available():
     import wandb
@@ -49,49 +41,8 @@ if is_wandb_available():
 logger = get_logger(__name__, log_level="INFO")
 
 
-H, W = 704, 1280
 
 
-def log_validation(
-    pipeline,
-    args,
-    accelerator,
-    epoch,
-    is_final_validation=False,
-):
-    logger.info(
-        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-        f" {args.validation_prompt}."
-    )
-    pipeline = pipeline.to(accelerator.device)
-    pipeline.set_progress_bar_config(disable=True)
-    generator = torch.Generator(device=accelerator.device)
-    if args.seed is not None:
-        generator = generator.manual_seed(args.seed)
-    images = []
-    if torch.backends.mps.is_available():
-        autocast_ctx = nullcontext()
-    else:
-        autocast_ctx = torch.autocast(accelerator.device.type)
-
-    with autocast_ctx:
-        for _ in range(args.num_validation_images):
-            images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
-
-    for tracker in accelerator.trackers:
-        phase_name = "test" if is_final_validation else "validation"
-        if tracker.name == "tensorboard":
-            np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images(phase_name, np_images, epoch, dataformats="NHWC")
-        if tracker.name == "wandb":
-            tracker.log(
-                {
-                    phase_name: [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
-                    ]
-                }
-            )
-    return images
 
 
 def parse_args():
@@ -117,6 +68,13 @@ def parse_args():
         help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
+        "--text_encoder_attn_implementation",
+        type=str,
+        default="flash_attention_2",
+        choices=["eager", "sdpa", "flash_attention_2"],
+        help="The attention implementation to use for the text encoder (Qwen2.5 VL).",
+    )
+    parser.add_argument(
         "--dataset_name",
         type=str,
         default=None,
@@ -136,9 +94,7 @@ def parse_args():
         "--train_data_dir",
         type=str,
         default="datasets/cosmos_nemo_assets",
-        help=(
-            "A folder containing the training data."
-        ),
+        help=("A folder containing the training data."),
     )
     parser.add_argument(
         "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
@@ -226,7 +182,10 @@ def parse_args():
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
     )
     parser.add_argument(
-        "--conditional_frame_timestep", type=float, default=0.1,
+        "--conditional_frame_timestep",
+        type=float,
+        default=0.1,
+        help="0.1 for post-trained model. Set to < 0 to disable.",
     )
     parser.add_argument(
         "--snr_gamma",
@@ -342,13 +301,6 @@ def parse_args():
 
     return args
 
-from torchvision import transforms as T
-from torch.utils.data import DataLoader, Dataset, DistributedSampler
-from decord import VideoReader, cpu
-import json
-from typing import Any, Callable, Optional
-from cosmos_predict2._src.predict2.datasets.local_datasets.dataset_utils import ResizePreprocess, ToTensorVideo
-
 
 class VideoDataset(Dataset):
     def __init__(
@@ -378,7 +330,7 @@ class VideoDataset(Dataset):
 
         super().__init__()
         self.dataset_dir = dataset_dir
-        self.sequence_length = num_frames
+        self.num_frames = num_frames
         self.prompt_type = prompt_type
         self.caption_format = caption_format
 
@@ -394,8 +346,9 @@ class VideoDataset(Dataset):
             self.video_paths = video_paths
         print(f"{len(self.video_paths)} videos in total")
 
+        self.video_size = video_size
+        self.video_processor = VideoProcessor(vae_scale_factor=8, resample='bilinear')
         self.num_failed_loads = 0
-        self.preprocess = T.Compose([ToTensorVideo(), ResizePreprocess((video_size[0], video_size[1]))])
 
     def __str__(self) -> str:
         return f"{len(self.video_paths)} samples from {self.dataset_dir}"
@@ -403,30 +356,18 @@ class VideoDataset(Dataset):
     def __len__(self) -> int:
         return len(self.video_paths)
 
-    def _load_video(self, video_path: str) -> tuple[np.ndarray, float]:
-        vr = VideoReader(video_path, ctx=cpu(0), num_threads=2)
-        total_frames = len(vr)
-        if total_frames < self.sequence_length:
+    def _load_video(self, video_path: str) -> list:
+        frames = load_video(video_path)
+        total_frames = len(frames)
+        if total_frames < self.num_frames:
             raise ValueError(
-                f"Video {video_path} has only {total_frames} frames, "
-                f"at least {self.sequence_length} frames are required."
+                f"Video {video_path} has only {total_frames} frames, at least {self.num_frames} frames are required."
             )
 
-        # randomly sample a sequence of frames
-        max_start_idx = total_frames - self.sequence_length
+        # randomly sample a consecutive window of frames
+        max_start_idx = total_frames - self.num_frames
         start_frame = np.random.randint(0, max_start_idx)
-        end_frame = start_frame + self.sequence_length
-        frame_ids = np.arange(start_frame, end_frame).tolist()
-
-        frame_data = vr.get_batch(frame_ids).asnumpy()
-        vr.seek(0)  # set video reader point back to 0 to clean up cache
-
-        try:
-            fps = vr.get_avg_fps()
-        except Exception:  # failed to read FPS, assume it is 16
-            fps = 16
-        del vr  # delete the reader to avoid memory leak
-        return frame_data, fps
+        return frames[start_frame : start_frame + self.num_frames]
 
     def _setup_caption_format(self) -> None:
         """Determine the caption format and set up the caption directory."""
@@ -498,19 +439,16 @@ class VideoDataset(Dataset):
             print(f"Failed to read JSON caption file {json_path}: {e}")
             return ""
 
-    def _get_frames(self, video_path: str) -> tuple[torch.Tensor, float]:
-        frames, fps = self._load_video(video_path)
-        frames = frames.astype(np.uint8)
-        frames = torch.from_numpy(frames).permute(0, 3, 1, 2)  # [T, C, H, W]
-        frames = self.preprocess(frames)
-        frames = torch.clamp(frames * 255.0, 0, 255).to(torch.uint8)
-        return frames, fps
+    def _get_frames(self, video_path: str) -> torch.Tensor:
+        frames = self._load_video(video_path)  # list of PIL images
+        video = self.video_processor.preprocess_video(frames, height=self.video_size[0], width=self.video_size[1])
+        # video: [1, C, T, H, W] in [-1, 1]
+        return video.squeeze(0)  # [C, T, H, W]
 
     def __getitem__(self, index: int) -> dict | Any:
         try:
             data = dict()
-            video, fps = self._get_frames(self.video_paths[index])
-            video = video.permute(1, 0, 2, 3)  # Rearrange from [T, C, H, W] to [C, T, H, W]
+            video = self._get_frames(self.video_paths[index])  # [C, T, H, W]
 
             # Load caption based on format
             video_path = self.video_paths[index]
@@ -526,39 +464,30 @@ class VideoDataset(Dataset):
             data["video"] = video
             data["caption"] = caption
 
-            _, _, h, w = video.shape
-
-            data["fps"] = fps
-            data["image_size"] = torch.tensor([h, w, h, w])
-            data["num_frames"] = self.sequence_length
-            data["padding_mask"] = torch.zeros(1, h, w)
-
             return data
         except Exception as e:
             self.num_failed_loads += 1
-            print(
-                f"Failed to load video {self.video_paths[index]} (total failures: {self.num_failed_loads}): {e}\n"
-            )
+            print(f"Failed to load video {self.video_paths[index]} (total failures: {self.num_failed_loads}): {e}\n")
             # Randomly sample another video
             return self[np.random.randint(len(self.video_paths))]
 
 
 def build_dataloader(args):
     dataset = VideoDataset(
-            video_paths=None,
-            num_frames=93,
-            video_size=[H, W],
-            dataset_dir=args.train_data_dir,
-        )
-    
+        video_paths=None,
+        num_frames=NUM_FRAMES,
+        video_size=[H, W],
+        dataset_dir=args.train_data_dir,
+    )
+
     dataloader = DataLoader(
-            dataset=dataset,
-            sampler=None,
-            batch_size=args.train_batch_size,
-            drop_last=True,
-            num_workers=4,
-            pin_memory=True,
-        )
+        dataset=dataset,
+        sampler=None,
+        batch_size=args.train_batch_size,
+        drop_last=True,
+        num_workers=4,
+        pin_memory=True,
+    )
     return dataloader
 
 
@@ -589,8 +518,8 @@ def sample_train_sigma_t(batch_size, distribution, device, dtype=torch.float32, 
     else:
         raise NotImplementedError(f"Time distribution {distribution} is not implemented.")
     sigma_t = shift * t / (1 + (shift - 1) * t)
-    return sigma_t#.unsqueeze(1)
-
+    assert 0.0 <= sigma_t <= 1.0
+    return sigma_t.unsqueeze(1)
 
 
 def main():
@@ -640,14 +569,15 @@ def main():
     if accelerator.is_main_process:
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
-    
+
     # Initialize models
     pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         revision=f"diffusers/base/{args.revision}",
         torch_dtype=torch.bfloat16,
+        text_encoder_attn_implementation=args.text_encoder_attn_implementation,
     )
-    
+
     dit = pipe.transformer
     vae = pipe.vae
     text_encoder = pipe.text_encoder
@@ -664,7 +594,6 @@ def main():
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-    
     target_modules_list = ['to_q', 'to_k', 'to_v', 'to_out.0', 'ff.net.0.proj', 'ff.net.2']
     dit_lora_config = LoraConfig(
         r=args.lora_rank,
@@ -673,17 +602,19 @@ def main():
         target_modules=target_modules_list,
         use_dora=args.use_dora,
     )
-    logger.info(f"Add LoRA: rank={args.lora_rank}, alpha={args.lora_alpha}, targets={target_modules_list}, use_dora={args.use_dora}")
+    logger.info(
+        f"Add LoRA: rank={args.lora_rank}, alpha={args.lora_alpha}, targets={target_modules_list}, use_dora={args.use_dora}"
+    )
 
     # Move dit, vae and text_encoder to device and cast to weight_dtype
-    device=accelerator.device
+    device = accelerator.device
     dit.to(device, dtype=weight_dtype)
     vae.to(device, dtype=weight_dtype)
     text_encoder.to(device, dtype=weight_dtype)
 
     # Add adapter and make sure the trainable params are in float32.
     dit.add_adapter(dit_lora_config)
-    
+
     if args.mixed_precision in ["fp16", "bf16"]:
         # only upcast trainable parameters (LoRA) into fp32
         cast_training_params(dit, dtype=torch.float32)
@@ -741,8 +672,8 @@ def main():
     )
 
     # Register the hooks for efficient saving and loading of LoRA weights
-    #accelerator.register_save_state_pre_hook(save_model_hook)
-    #accelerator.register_load_state_pre_hook(load_model_hook)
+    # accelerator.register_save_state_pre_hook(save_model_hook)
+    # accelerator.register_load_state_pre_hook(load_model_hook)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -767,7 +698,7 @@ def main():
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataloader.dataset)}")
-    logger.info(f"Total Trainable Parameters: {trainable_params/10**9:.2f}B")
+    logger.info(f"Total Trainable Parameters: {trainable_params / 10**9:.2f}B")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
@@ -790,11 +721,11 @@ def main():
     noise_scheduler.set_timesteps(num_training_steps_for_scheduler, device=device)
     padding_mask = torch.zeros(1, 1, H, W, dtype=transformer_dtype, device=device)
     cond_indicator = None
-    
-    latents_mean = torch.tensor(vae.config.latents_mean).view(1, vae.config.z_dim, 1, 1, 1).to(device)
-    latents_std = torch.tensor(vae.config.latents_std).view(1, vae.config.z_dim, 1, 1, 1).to(device)
 
-    torch.set_grad_enabled(True) # disabled by Cosmos2_5_PredictBasePipeline
+    latents_mean = pipe.latents_mean.float().to(device)
+    latents_std = pipe.latents_std.float().to(device) # 1/σ
+
+    torch.set_grad_enabled(True)  # disabled by Cosmos2_5_PredictBasePipeline
     for epoch in range(first_epoch, args.num_train_epochs):
         dit.train()
         train_loss = 0.0
@@ -803,29 +734,31 @@ def main():
                 # Encode ground-truth video to latents
                 # https://github.com/nvidia-cosmos/cosmos-predict2.5/blob/main/cosmos_predict2/_src/predict2/tokenizers/wan2pt1.py#L532
                 raw_state = batch["video"].to(device=device, dtype=vae.dtype)
-                mu = vae.encode(raw_state).latent_dist.mean # deterministic
-                clean_latent = ((mu - latents_mean) / latents_std).contiguous().float()
+                mu = vae.encode(raw_state).latent_dist.mean  # deterministic
+                clean_latent = ((mu - latents_mean) * latents_std).contiguous().float()
                 assert clean_latent.requires_grad == False
                 torch.cuda.empty_cache()
 
                 # Encode text to text embeddings
-                prompt_embeds, _ = pipe.encode_prompt(
+                prompt_embeds = pipe._get_prompt_embeds(
                     prompt=batch["caption"],
-                    do_classifier_free_guidance=False,
                     device=device,
                 )
                 assert prompt_embeds.requires_grad == False
+                # TODO: cfg
 
                 # Create indicator and mask to make the first few frames of x_t be the ground truth frames
                 bsz = clean_latent.shape[0]
                 if cond_indicator is None:
-                    cond_indicator, cond_mask = \
-                        create_condition_mask(clean_latent.shape, device=device, dtype=transformer_dtype)
-                
+                    cond_indicator, cond_mask = create_condition_mask(
+                        clean_latent.shape, device=device, dtype=transformer_dtype
+                    )
+
                 # Sample a random timestep
                 sigma_t = sample_train_sigma_t(bsz, distribution='logitnormal', device=device)
-                in_timestep = cond_indicator * args.conditional_frame_timestep + (1 - cond_indicator) * sigma_t
-                
+                if args.conditional_frame_timestep >= 0:
+                    sigma_t = cond_indicator * args.conditional_frame_timestep + (1 - cond_indicator) * sigma_t
+
                 # 1. Sample noise 2. Get the target velocity 3. Get xt by interpolation between noise and clean
                 xt_B_C_T_H_W, target_velocity = get_flow_xt_and_target_v(clean_latent, sigma_t, cond_mask)
 
@@ -833,14 +766,15 @@ def main():
                 pred_velocity = dit(
                     hidden_states=xt_B_C_T_H_W,
                     condition_mask=cond_mask,
-                    timestep=in_timestep,
+                    timestep=sigma_t,
                     encoder_hidden_states=prompt_embeds,
                     padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
-                
+
+                pred_velocity = target_velocity * cond_mask + pred_velocity * (1 - cond_mask)
                 loss = F.mse_loss(pred_velocity.float(), target_velocity.float(), reduction="mean")
-                
+
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
