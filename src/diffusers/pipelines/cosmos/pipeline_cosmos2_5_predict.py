@@ -811,14 +811,8 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                     continue
 
                 self._current_timestep = t.cpu().item()
-
-                # NOTE: assumes sigma(t) \in [0, 1]
-                sigma_t = (
-                    torch.tensor(self.scheduler.sigmas[i].item())
-                    .unsqueeze(0)
-                    .to(device=device, dtype=transformer_dtype)
-                )
-
+                # Scale timestep t to [0, 1]
+                sigma_t = (t.float() / self.scheduler.config.num_train_timesteps).expand(latents.shape[0]).to(device)
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                 in_latents = in_latents.to(transformer_dtype)
                 in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t

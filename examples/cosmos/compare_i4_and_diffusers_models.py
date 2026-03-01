@@ -103,7 +103,7 @@ def make_dit_inputs(pipe, i4_model, device: str, dtype: torch.dtype, seed: int):
 
     fps = torch.full((batch_size,), 24.0, device=device, dtype=dtype)
     timestep_scale = getattr(i4_net, "timestep_scale", 1.0)
-    timesteps_raw = torch.rand(batch_size, num_frames, device=device, dtype=dtype)
+    timesteps_raw = torch.randint(0, 1000, size=(batch_size, num_frames), device=device)
     
     inputs = {
         "latents": latents,
@@ -113,7 +113,7 @@ def make_dit_inputs(pipe, i4_model, device: str, dtype: torch.dtype, seed: int):
         "img_context": img_context,
         "fps": fps,
         "i4_timesteps": timesteps_raw,
-        "diff_timesteps": (timesteps_raw * timestep_scale).view(batch_size, 1, num_frames, 1, 1),
+        "diff_timesteps": (timesteps_raw.float() * timestep_scale).view(batch_size, 1, num_frames, 1, 1),
     }
 
     print("Input shapes:")
