@@ -462,7 +462,9 @@ class HeliosTransformerBlock(nn.Module):
         if self.guidance_cross_attn:
             history_seq_len = hidden_states.shape[1] - original_context_length
 
-            history_hidden_states, hidden_states = torch.split(hidden_states, [history_seq_len, original_context_length], dim=1)
+            history_hidden_states, hidden_states = torch.split(
+                hidden_states, [history_seq_len, original_context_length], dim=1
+            )
             norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
             attn_output = self.attn2(
                 norm_hidden_states,
@@ -594,9 +596,19 @@ class HeliosTransformer3DModel(
         self.zero_history_timestep = zero_history_timestep
         self.inner_dim = inner_dim
         if has_multi_term_memory_patch:
-            self.patch_short = nn.Conv3d(in_channels, self.inner_dim, kernel_size=(1, 2, 2), stride=(1, 2, 2))
-            self.patch_mid = nn.Conv3d(in_channels, self.inner_dim, kernel_size=(2, 4, 4), stride=(2, 4, 4))
-            self.patch_long = nn.Conv3d(in_channels, self.inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
+            self.patch_short = nn.Conv3d(in_channels, self.inner_dim, kernel_size=patch_size, stride=patch_size)
+            self.patch_mid = nn.Conv3d(
+                in_channels,
+                self.inner_dim,
+                kernel_size=tuple(2 * p for p in patch_size),
+                stride=tuple(2 * p for p in patch_size),
+            )
+            self.patch_long = nn.Conv3d(
+                in_channels,
+                self.inner_dim,
+                kernel_size=tuple(4 * p for p in patch_size),
+                stride=tuple(4 * p for p in patch_size),
+            )
 
         # 3. Condition embeddings
         self.condition_embedder = HeliosTimeTextEmbedding(
