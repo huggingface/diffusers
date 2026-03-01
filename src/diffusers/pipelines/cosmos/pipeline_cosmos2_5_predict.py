@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from typing import Callable
 
 import numpy as np
@@ -247,10 +248,32 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             else None
         )
         self.latents_mean = latents_mean
-        self.latents_std = latents_std
+        self.latents_std = 1.0 / latents_std
 
         if self.latents_mean is None or self.latents_std is None:
             raise ValueError("VAE configuration must define both `latents_mean` and `latents_std`.")
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        text_encoder_attn_implementation = kwargs.pop("text_encoder_attn_implementation", None)
+        if text_encoder_attn_implementation is not None and "text_encoder" not in kwargs:
+            load_kwargs = {"attn_implementation": text_encoder_attn_implementation}
+            if "torch_dtype" in kwargs:
+                load_kwargs["torch_dtype"] = kwargs["torch_dtype"]
+            if "revision" in kwargs:
+                load_kwargs["revision"] = kwargs["revision"]
+
+            if os.path.isdir(pretrained_model_name_or_path):
+                text_encoder_path = os.path.join(pretrained_model_name_or_path, "text_encoder")
+            else:
+                text_encoder_path = pretrained_model_name_or_path
+                load_kwargs["subfolder"] = "text_encoder"
+
+            kwargs["text_encoder"] = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                text_encoder_path, **load_kwargs
+            )
+
+        return super().from_pretrained(pretrained_model_name_or_path, **kwargs)
 
     def _get_prompt_embeds(
         self,
@@ -456,20 +479,21 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             needs_preprocessing = not (isinstance(video, torch.Tensor) and video.ndim == 5 and video.shape[1] == 3)
             if needs_preprocessing:
                 video = self.video_processor.preprocess_video(video, height, width)
+
             video = video.to(device=device, dtype=self.vae.dtype)
             if isinstance(generator, list):
                 cond_latents = [
-                    retrieve_latents(self.vae.encode(video[i].unsqueeze(0)), generator=generator[i])
+                    retrieve_latents(self.vae.encode(video[i].unsqueeze(0)), generator=generator[i], sample_mode="argmax")
                     for i in range(batch_size)
                 ]
             else:
-                cond_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator) for vid in video]
+                cond_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator, sample_mode="argmax") for vid in video]
 
             cond_latents = torch.cat(cond_latents, dim=0).to(dtype)
 
             latents_mean = self.latents_mean.to(device=device, dtype=dtype)
             latents_std = self.latents_std.to(device=device, dtype=dtype)
-            cond_latents = (cond_latents - latents_mean) / latents_std
+            cond_latents = (cond_latents - latents_mean) * latents_std
 
             if latents is None:
                 latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -798,6 +822,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                 in_latents = in_latents.to(transformer_dtype)
                 in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
+
                 noise_pred = self.transformer(
                     hidden_states=in_latents,
                     condition_mask=cond_mask,
@@ -846,7 +871,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         if not output_type == "latent":
             latents_mean = self.latents_mean.to(latents.device, latents.dtype)
             latents_std = self.latents_std.to(latents.device, latents.dtype)
-            latents = latents * latents_std + latents_mean
+            latents = latents / latents_std + latents_mean
             video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
             video = self._match_num_frames(video, num_frames)
 
