@@ -18,7 +18,6 @@ https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339d
 
 import inspect
 from inspect import signature
-from typing import Union
 
 from ...utils import is_accelerate_available, is_bitsandbytes_available, is_torch_available, logging
 from ..quantization_config import QuantizationMethod
@@ -128,10 +127,10 @@ def replace_with_bnb_linear(model, modules_to_not_convert=None, current_key_name
     Parameters:
         model (`torch.nn.Module`):
             Input model or `torch.nn.Module` as the function is run recursively.
-        modules_to_not_convert (`List[`str`]`, *optional*, defaults to `[]`):
+        modules_to_not_convert (`list[`str`]`, *optional*, defaults to `[]`):
             Names of the modules to not convert in `Linear8bitLt`. In practice we keep the `modules_to_not_convert` in
             full precision for numerical stability reasons.
-        current_key_name (`List[`str`]`, *optional*):
+        current_key_name (`list[`str`]`, *optional*):
             An array to track the current key of the recursion. This is used to check whether the current key (part of
             it) is not in the list of modules to not convert (for instances modules that are offloaded to `cpu` or
             `disk`).
@@ -305,7 +304,7 @@ def dequantize_and_replace(
     return model
 
 
-def _check_bnb_status(module) -> Union[bool, bool]:
+def _check_bnb_status(module) -> bool | bool:
     is_loaded_in_4bit_bnb = (
         hasattr(module, "is_loaded_in_4bit")
         and module.is_loaded_in_4bit

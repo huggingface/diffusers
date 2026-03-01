@@ -16,7 +16,6 @@
 
 import math
 from functools import partial
-from typing import Tuple
 
 import flax
 import flax.linen as nn
@@ -514,10 +513,10 @@ class FlaxEncoder(nn.Module):
             Input channels
         out_channels (:obj:`int`, *optional*, defaults to 3):
             Output channels
-        down_block_types (:obj:`Tuple[str]`, *optional*, defaults to `(DownEncoderBlock2D)`):
+        down_block_types (:obj:`tuple[str]`, *optional*, defaults to `(DownEncoderBlock2D)`):
             DownEncoder block type
-        block_out_channels (:obj:`Tuple[str]`, *optional*, defaults to `(64,)`):
-            Tuple containing the number of output channels for each block
+        block_out_channels (:obj:`tuple[str]`, *optional*, defaults to `(64,)`):
+            tuple[ containing the number of output channels for each block
         layers_per_block (:obj:`int`, *optional*, defaults to `2`):
             Number of Resnet layer for each block
         norm_num_groups (:obj:`int`, *optional*, defaults to `32`):
@@ -532,8 +531,8 @@ class FlaxEncoder(nn.Module):
 
     in_channels: int = 3
     out_channels: int = 3
-    down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",)
-    block_out_channels: Tuple[int, ...] = (64,)
+    down_block_types: tuple[str, ...] = ("DownEncoderBlock2D",)
+    block_out_channels: tuple[int, ...] = (64,)
     layers_per_block: int = 2
     norm_num_groups: int = 32
     act_fn: str = "silu"
@@ -632,10 +631,10 @@ class FlaxDecoder(nn.Module):
             Input channels
         out_channels (:obj:`int`, *optional*, defaults to 3):
             Output channels
-        up_block_types (:obj:`Tuple[str]`, *optional*, defaults to `(UpDecoderBlock2D)`):
+        up_block_types (:obj:`tuple[str]`, *optional*, defaults to `(UpDecoderBlock2D)`):
             UpDecoder block type
-        block_out_channels (:obj:`Tuple[str]`, *optional*, defaults to `(64,)`):
-            Tuple containing the number of output channels for each block
+        block_out_channels (:obj:`tuple[str]`, *optional*, defaults to `(64,)`):
+            tuple[ containing the number of output channels for each block
         layers_per_block (:obj:`int`, *optional*, defaults to `2`):
             Number of Resnet layer for each block
         norm_num_groups (:obj:`int`, *optional*, defaults to `32`):
@@ -650,8 +649,8 @@ class FlaxDecoder(nn.Module):
 
     in_channels: int = 3
     out_channels: int = 3
-    up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",)
-    block_out_channels: Tuple[int, ...] = (64,)
+    up_block_types: tuple[str, ...] = ("UpDecoderBlock2D",)
+    block_out_channels: tuple[int, ...] = (64,)
     layers_per_block: int = 2
     norm_num_groups: int = 32
     act_fn: str = "silu"
@@ -794,12 +793,12 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
             Number of channels in the input image.
         out_channels (`int`, *optional*, defaults to 3):
             Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `(DownEncoderBlock2D)`):
-            Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `(UpDecoderBlock2D)`):
-            Tuple of upsample block types.
-        block_out_channels (`Tuple[str]`, *optional*, defaults to `(64,)`):
-            Tuple of block output channels.
+        down_block_types (`tuple[str]`, *optional*, defaults to `(DownEncoderBlock2D)`):
+            tuple[ of downsample block types.
+        up_block_types (`tuple[str]`, *optional*, defaults to `(UpDecoderBlock2D)`):
+            tuple[ of upsample block types.
+        block_out_channels (`tuple[str]`, *optional*, defaults to `(64,)`):
+            tuple[ of block output channels.
         layers_per_block (`int`, *optional*, defaults to `2`):
             Number of ResNet layer for each block.
         act_fn (`str`, *optional*, defaults to `silu`):
@@ -823,9 +822,9 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
 
     in_channels: int = 3
     out_channels: int = 3
-    down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",)
-    up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",)
-    block_out_channels: Tuple[int, ...] = (64,)
+    down_block_types: tuple[str, ...] = ("DownEncoderBlock2D",)
+    up_block_types: tuple[str, ...] = ("UpDecoderBlock2D",)
+    block_out_channels: tuple[int, ...] = (64,)
     layers_per_block: int = 1
     act_fn: str = "silu"
     latent_channels: int = 4

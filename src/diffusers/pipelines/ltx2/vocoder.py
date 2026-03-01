@@ -1,5 +1,4 @@
 import math
-from typing import List, Tuple
 
 import torch
 import torch.nn as nn
@@ -15,7 +14,7 @@ class ResBlock(nn.Module):
         channels: int,
         kernel_size: int = 3,
         stride: int = 1,
-        dilations: Tuple[int, ...] = (1, 3, 5),
+        dilations: tuple[int, ...] = (1, 3, 5),
         leaky_relu_negative_slope: float = 0.1,
         padding_mode: str = "same",
     ):
@@ -58,10 +57,10 @@ class LTX2Vocoder(ModelMixin, ConfigMixin):
         in_channels: int = 128,
         hidden_channels: int = 1024,
         out_channels: int = 2,
-        upsample_kernel_sizes: List[int] = [16, 15, 8, 4, 4],
-        upsample_factors: List[int] = [6, 5, 2, 2, 2],
-        resnet_kernel_sizes: List[int] = [3, 7, 11],
-        resnet_dilations: List[List[int]] = [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+        upsample_kernel_sizes: list[int] = [16, 15, 8, 4, 4],
+        upsample_factors: list[int] = [6, 5, 2, 2, 2],
+        resnet_kernel_sizes: list[int] = [3, 7, 11],
+        resnet_dilations: list[list[int]] = [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
         leaky_relu_negative_slope: float = 0.1,
         output_sampling_rate: int = 24000,
     ):

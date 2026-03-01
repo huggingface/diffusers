@@ -2,7 +2,7 @@ import tempfile
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import DDPMScheduler, UNet2DConditionModel
 from diffusers.models.attention_processor import AttnAddedKVProcessor
@@ -18,7 +18,8 @@ from ..test_pipelines_common import to_np
 class IFPipelineTesterMixin:
     def _get_dummy_components(self):
         torch.manual_seed(0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
 
         torch.manual_seed(0)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
@@ -75,7 +76,8 @@ class IFPipelineTesterMixin:
 
     def _get_superresolution_dummy_components(self):
         torch.manual_seed(0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel(config)
 
         torch.manual_seed(0)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
@@ -250,6 +252,9 @@ class IFPipelineTesterMixin:
     # This should be handled in the base test and then this method can be removed.
     def _test_save_load_local(self):
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

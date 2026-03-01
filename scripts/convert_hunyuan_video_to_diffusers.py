@@ -203,11 +203,11 @@ TRANSFORMER_CONFIGS = {
 }
 
 
-def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
+def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> dict[str, Any]:
     state_dict[new_key] = state_dict.pop(old_key)
 
 
-def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
+def get_state_dict(saved_dict: Dict[str, Any]) -> dict[str, Any]:
     state_dict = saved_dict
     if "model" in saved_dict.keys():
         state_dict = state_dict["model"]

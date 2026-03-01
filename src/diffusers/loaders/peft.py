@@ -17,7 +17,7 @@ import json
 import os
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Union
+from typing import Literal
 
 import safetensors
 import torch
@@ -88,7 +88,7 @@ class PeftAdapterMixin:
 
     _hf_peft_config_loaded = False
     # kwargs for prepare_model_for_compiled_hotswap, if required
-    _prepare_lora_hotswap_kwargs: Optional[dict] = None
+    _prepare_lora_hotswap_kwargs: dict | None = None
 
     @classmethod
     # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
@@ -114,13 +114,13 @@ class PeftAdapterMixin:
 
             prefix (`str`, *optional*): Prefix to filter the state dict.
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
@@ -134,7 +134,7 @@ class PeftAdapterMixin:
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            network_alphas (`Dict[str, float]`):
+            network_alphas (`dict[str, float]`):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
@@ -405,7 +405,7 @@ class PeftAdapterMixin:
         adapter_name: str = "default",
         upcast_before_saving: bool = False,
         safe_serialization: bool = True,
-        weight_name: Optional[str] = None,
+        weight_name: str | None = None,
     ):
         """
         Save the LoRA parameters corresponding to the underlying model.
@@ -469,14 +469,14 @@ class PeftAdapterMixin:
 
     def set_adapters(
         self,
-        adapter_names: Union[List[str], str],
-        weights: Optional[Union[float, Dict, List[float], List[Dict], List[None]]] = None,
+        adapter_names: list[str] | str,
+        weights: float | dict | list[float] | list[dict] | list[None] | None = None,
     ):
         """
         Set the currently active adapters for use in the diffusion network (e.g. unet, transformer, etc.).
 
         Args:
-            adapter_names (`List[str]` or `str`):
+            adapter_names (`list[str]` or `str`):
                 The names of the adapters to use.
             weights (`Union[List[float], float]`, *optional*):
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
@@ -561,7 +561,7 @@ class PeftAdapterMixin:
         inject_adapter_in_model(adapter_config, self, adapter_name)
         self.set_adapter(adapter_name)
 
-    def set_adapter(self, adapter_name: Union[str, List[str]]) -> None:
+    def set_adapter(self, adapter_name: str | list[str]) -> None:
         """
         Sets a specific adapter by forcing the model to only use that adapter and disables the other adapters.
 
@@ -569,7 +569,7 @@ class PeftAdapterMixin:
         [documentation](https://huggingface.co/docs/peft).
 
         Args:
-            adapter_name (Union[str, List[str]])):
+            adapter_name (str | list[str])):
                 The list of adapters to set or the adapter name in the case of a single adapter.
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
@@ -655,7 +655,7 @@ class PeftAdapterMixin:
                     # support for older PEFT versions
                     module.disable_adapters = False
 
-    def active_adapters(self) -> List[str]:
+    def active_adapters(self) -> list[str]:
         """
         Gets the current list of active adapters of the model.
 
@@ -778,12 +778,12 @@ class PeftAdapterMixin:
             raise ValueError("PEFT backend is required for this method.")
         set_adapter_layers(self, enabled=True)
 
-    def delete_adapters(self, adapter_names: Union[List[str], str]):
+    def delete_adapters(self, adapter_names: list[str] | str):
         """
         Delete an adapter's LoRA layers from the underlying model.
 
         Args:
-            adapter_names (`Union[List[str], str]`):
+            adapter_names (`list[str, str]`):
                 The names (single string or list of strings) of the adapter to delete.
 
         Example:
