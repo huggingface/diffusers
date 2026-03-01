@@ -9,7 +9,7 @@ CUDA_VISIBLE_DEVICES=0 python infer_helios.py \
     --pyramid_num_inference_steps_list 20 20 20 \
     --use_zero_init \
     --zero_steps 1 \
-    --output_folder "./output_helios/stage-2"
+    --output_folder "./output_helios/helios-mid"
 
 
     # --pyramid_num_inference_steps_list 17 17 17 \

@@ -10,7 +10,7 @@ CUDA_VISIBLE_DEVICES=1 python infer_helios.py \
     --pyramid_num_inference_steps_list 2 2 2 \
     --is_enable_stage3 \
     --is_amplify_first_chunk \
-    --output_folder "./output_helios/stage-3"
+    --output_folder "./output_helios/helios-distilled"
 
 
     # --pyramid_num_inference_steps_list 1 1 1 \
