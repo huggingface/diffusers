@@ -378,6 +378,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         image: torch.Tensor,
         latents_mean: torch.Tensor,
         latents_std: torch.Tensor,
+        num_latent_frames_per_chunk: int,
         dtype: torch.dtype | None = None,
         device: torch.device | None = None,
         generator: torch.Generator | list[torch.Generator] | None = None,
@@ -390,7 +391,8 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             latents = self.vae.encode(image).latent_dist.sample(generator=generator)
             latents = (latents - latents_mean) * latents_std
         if fake_latents is None:
-            fake_video = image.repeat(1, 1, 33, 1, 1).to(device=device, dtype=self.vae.dtype)
+            min_frames = (num_latent_frames_per_chunk - 1) * self.vae_scale_factor_temporal + 1
+            fake_video = image.repeat(1, 1, min_frames, 1, 1).to(device=device, dtype=self.vae.dtype)
             fake_latents_full = self.vae.encode(fake_video).latent_dist.sample(generator=generator)
             fake_latents_full = (fake_latents_full - latents_mean) * latents_std
             fake_latents = fake_latents_full[:, :, -1:, :, :]
@@ -411,13 +413,13 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         video = video.to(device=device, dtype=self.vae.dtype)
         if latents is None:
             num_frames = video.shape[2]
-            min_frames = (num_latent_frames_per_chunk - 1) * 4 + 1
+            min_frames = (num_latent_frames_per_chunk - 1) * self.vae_scale_factor_temporal + 1
             num_chunks = num_frames // min_frames
             if num_chunks == 0:
                 raise ValueError(
                     f"Video must have at least {min_frames} frames "
                     f"(got {num_frames} frames). "
-                    f"Required: (num_latent_frames_per_chunk - 1) * 4 + 1 = ({num_latent_frames_per_chunk} - 1) * 4 + 1 = {min_frames}"
+                    f"Required: (num_latent_frames_per_chunk - 1) * {self.vae_scale_factor_temporal} + 1 = ({num_latent_frames_per_chunk} - 1) * {self.vae_scale_factor_temporal} + 1 = {min_frames}"
                 )
             total_valid_frames = num_chunks * min_frames
             start_frame = num_frames - total_valid_frames
@@ -689,6 +691,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 image,
                 latents_mean=latents_mean,
                 latents_std=latents_std,
+                num_latent_frames_per_chunk=num_latent_frames_per_chunk,
                 dtype=torch.float32,
                 device=device,
                 generator=generator,
