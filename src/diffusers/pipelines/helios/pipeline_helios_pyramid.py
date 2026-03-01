@@ -508,7 +508,6 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         height: int = 384,
         width: int = 640,
         num_frames: int = 132,
-        num_inference_steps: int = 50,
         sigmas: list[float] = None,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: int | None = 1,
