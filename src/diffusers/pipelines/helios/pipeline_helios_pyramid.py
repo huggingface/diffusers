@@ -932,7 +932,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 if use_dmd:
                     start_point_list = [latents]
 
-                for i_s in range(pyramid_num_stages):
+                for stage_idx in range(pyramid_num_stages):
                     patch_size = self.transformer.config.patch_size
                     image_seq_len = (latents.shape[-1] * latents.shape[-2] * latents.shape[-3]) // (
                         patch_size[0] * patch_size[1] * patch_size[2]
@@ -945,8 +945,8 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         self.scheduler.config.get("max_shift", 1.15),
                     )
                     self.scheduler.set_timesteps(
-                        pyramid_num_inference_steps_list[i_s],
-                        i_s,
+                        pyramid_num_inference_steps_list[stage_idx],
+                        stage_idx,
                         device=device,
                         mu=mu,
                         is_amplify_first_chunk=is_amplify_first_chunk and is_first_chunk,
@@ -955,7 +955,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     num_warmup_steps = 0
                     self._num_timesteps = len(timesteps)
 
-                    if i_s > 0:
+                    if stage_idx > 0:
                         pyramid_height *= 2
                         pyramid_width *= 2
                         num_frames = latents.shape[2]
@@ -974,7 +974,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                             pyramid_width,
                         ).permute(0, 2, 1, 3, 4)
                         # Fix the stage
-                        ori_sigma = 1 - self.scheduler.ori_start_sigmas[i_s]  # the original coeff of signal
+                        ori_sigma = 1 - self.scheduler.ori_start_sigmas[stage_idx]  # the original coeff of signal
                         gamma = self.scheduler.config.gamma
                         alpha = 1 / (math.sqrt(1 + (1 / gamma)) * (1 - ori_sigma) + ori_sigma)
                         beta = alpha * (1 - ori_sigma) / math.sqrt(gamma)
@@ -1038,7 +1038,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                                 alpha = alpha.view(batch_size, *([1] * (len(noise_pred_text.shape) - 1)))
                                 alpha = alpha.to(noise_pred_text.dtype)
 
-                                if (i_s == 0 and i <= zero_steps) and use_zero_init:
+                                if (stage_idx == 0 and i <= zero_steps) and use_zero_init:
                                     noise_pred = noise_pred_text * 0.0
                                 else:
                                     noise_pred = noise_uncond * alpha + guidance_scale * (
@@ -1054,7 +1054,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                             generator=generator,
                             return_dict=False,
                             cur_sampling_step=i,
-                            dmd_noisy_tensor=start_point_list[i_s] if start_point_list is not None else None,
+                            dmd_noisy_tensor=start_point_list[stage_idx] if start_point_list is not None else None,
                             dmd_sigmas=self.scheduler.sigmas,
                             dmd_timesteps=self.scheduler.timesteps,
                             all_timesteps=timesteps,
