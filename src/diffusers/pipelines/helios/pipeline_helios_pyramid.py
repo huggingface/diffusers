@@ -458,14 +458,19 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         interpolated_prompt_embeds = list(x.chunk(interpolation_steps, dim=0))
         return interpolated_prompt_embeds
 
-    def sample_block_noise(self, batch_size, channel, num_frames, height, width):
+    def sample_block_noise(self, batch_size, channel, num_frames, height, width, patch_size=(1, 2, 2)):
         gamma = self.scheduler.config.gamma
-        cov = torch.eye(4) * (1 + gamma) - torch.ones(4, 4) * gamma
-        dist = torch.distributions.MultivariateNormal(torch.zeros(4, device=cov.device), covariance_matrix=cov)
-        block_number = batch_size * channel * num_frames * (height // 2) * (width // 2)
+        _, ph, pw = patch_size
+        block_size = ph * pw
 
-        noise = dist.sample((block_number,))  # [block number, 4]
-        noise = noise.view(batch_size, channel, num_frames, height // 2, width // 2, 2, 2)
+        cov = torch.eye(block_size) * (1 + gamma) - torch.ones(block_size, block_size) * gamma
+        dist = torch.distributions.MultivariateNormal(
+            torch.zeros(block_size, device=cov.device), covariance_matrix=cov
+        )
+        block_number = batch_size * channel * num_frames * (height // ph) * (width // pw)
+
+        noise = dist.sample((block_number,))  # [block number, block_size]
+        noise = noise.view(batch_size, channel, num_frames, height // ph, width // pw, ph, pw)
         noise = noise.permute(0, 1, 2, 3, 5, 4, 6).reshape(batch_size, channel, num_frames, height, width)
         return noise
 
@@ -973,7 +978,9 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         beta = alpha * (1 - ori_sigma) / math.sqrt(gamma)
 
                         batch_size, channel, num_frames, pyramid_height, pyramid_width = latents.shape
-                        noise = self.sample_block_noise(batch_size, channel, num_frames, pyramid_height, pyramid_width)
+                        noise = self.sample_block_noise(
+                            batch_size, channel, num_frames, pyramid_height, pyramid_width, patch_size
+                        )
                         noise = noise.to(device=device, dtype=transformer_dtype)
                         latents = alpha * latents + beta * noise  # To fix the block artifact
 
