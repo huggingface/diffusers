@@ -70,11 +70,12 @@ pipeline.enable_group_offload(
 )
 
 prompt = """
-A dynamic time-lapse video showing the rapidly moving scenery from the window of a speeding train. The camera captures various 
-elements such as lush green fields, towering trees, quaint countryside houses, and distant mountain ranges passing by quickly. 
-The train window frames the view, adding a sense of speed and motion as the landscape rushes past. The camera remains static but 
-emphasizes the fast-paced movement outside. The overall atmosphere is serene yet exhilarating, capturing the essence of travel and 
-exploration. Medium shot focusing on the train window and the rushing scenery beyond.
+A vibrant tropical fish swimming gracefully among colorful coral reefs in a clear, turquoise ocean. The fish has bright blue 
+and yellow scales with a small, distinctive orange spot on its side, its fins moving fluidly. The coral reefs are alive with 
+a variety of marine life, including small schools of colorful fish and sea turtles gliding by. The water is crystal clear, 
+allowing for a view of the sandy ocean floor below. The reef itself is adorned with a mix of hard and soft corals in shades 
+of red, orange, and green. The photo captures the fish from a slightly elevated angle, emphasizing its lively movements and 
+the vivid colors of its surroundings. A close-up shot with dynamic movement.
 """
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
@@ -122,11 +123,12 @@ pipeline.vae.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
 pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
 
 prompt = """
-A dynamic time-lapse video showing the rapidly moving scenery from the window of a speeding train. The camera captures various 
-elements such as lush green fields, towering trees, quaint countryside houses, and distant mountain ranges passing by quickly. 
-The train window frames the view, adding a sense of speed and motion as the landscape rushes past. The camera remains static but 
-emphasizes the fast-paced movement outside. The overall atmosphere is serene yet exhilarating, capturing the essence of travel and 
-exploration. Medium shot focusing on the train window and the rushing scenery beyond.
+A vibrant tropical fish swimming gracefully among colorful coral reefs in a clear, turquoise ocean. The fish has bright blue 
+and yellow scales with a small, distinctive orange spot on its side, its fins moving fluidly. The coral reefs are alive with 
+a variety of marine life, including small schools of colorful fish and sea turtles gliding by. The water is crystal clear, 
+allowing for a view of the sandy ocean floor below. The reef itself is adorned with a mix of hard and soft corals in shades 
+of red, orange, and green. The photo captures the fish from a slightly elevated angle, emphasizing its lively movements and 
+the vivid colors of its surroundings. A close-up shot with dynamic movement.
 """
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
@@ -177,11 +179,12 @@ misshapen limbs, fused fingers, still picture, messy background, three legs, man
 
 # For Text-to-Video
 prompt = """
-A dynamic time-lapse video showing the rapidly moving scenery from the window of a speeding train. The camera captures various 
-elements such as lush green fields, towering trees, quaint countryside houses, and distant mountain ranges passing by quickly. 
-The train window frames the view, adding a sense of speed and motion as the landscape rushes past. The camera remains static but 
-emphasizes the fast-paced movement outside. The overall atmosphere is serene yet exhilarating, capturing the essence of travel and 
-exploration. Medium shot focusing on the train window and the rushing scenery beyond.
+A vibrant tropical fish swimming gracefully among colorful coral reefs in a clear, turquoise ocean. The fish has bright blue 
+and yellow scales with a small, distinctive orange spot on its side, its fins moving fluidly. The coral reefs are alive with 
+a variety of marine life, including small schools of colorful fish and sea turtles gliding by. The water is crystal clear, 
+allowing for a view of the sandy ocean floor below. The reef itself is adorned with a mix of hard and soft corals in shades 
+of red, orange, and green. The photo captures the fish from a slightly elevated angle, emphasizing its lively movements and 
+the vivid colors of its surroundings. A close-up shot with dynamic movement.
 """
 
 output = pipeline(
@@ -268,22 +271,19 @@ misshapen limbs, fused fingers, still picture, messy background, three legs, man
 
 # For Text-to-Video
 prompt = """
-A dynamic time-lapse video showing the rapidly moving scenery from the window of a speeding train. The camera captures various 
-elements such as lush green fields, towering trees, quaint countryside houses, and distant mountain ranges passing by quickly. 
-The train window frames the view, adding a sense of speed and motion as the landscape rushes past. The camera remains static but 
-emphasizes the fast-paced movement outside. The overall atmosphere is serene yet exhilarating, capturing the essence of travel and 
-exploration. Medium shot focusing on the train window and the rushing scenery beyond.
+A vibrant tropical fish swimming gracefully among colorful coral reefs in a clear, turquoise ocean. The fish has bright blue 
+and yellow scales with a small, distinctive orange spot on its side, its fins moving fluidly. The coral reefs are alive with 
+a variety of marine life, including small schools of colorful fish and sea turtles gliding by. The water is crystal clear, 
+allowing for a view of the sandy ocean floor below. The reef itself is adorned with a mix of hard and soft corals in shades 
+of red, orange, and green. The photo captures the fish from a slightly elevated angle, emphasizing its lively movements and 
+the vivid colors of its surroundings. A close-up shot with dynamic movement.
 """
 
 output = pipeline(
     prompt=prompt,
     negative_prompt=negative_prompt,
     num_frames=99,
-    use_dynamic_shifting=True,
-    is_enable_stage2=True,
-    pyramid_num_stages=3,
     pyramid_num_inference_steps_list=[20, 20, 20],
-    use_cfg_zero_star=True,
     use_zero_init=True,
     zero_steps=1,
 ).frames[0]
@@ -305,11 +305,7 @@ output = pipeline(
     negative_prompt=negative_prompt,
     image=load_image(image_path).resize((640, 384)),
     num_frames=99,
-    use_dynamic_shifting=True,
-    is_enable_stage2=True,
-    pyramid_num_stages=3,
     pyramid_num_inference_steps_list=[20, 20, 20],
-    use_cfg_zero_star=True,
     use_zero_init=True,
     zero_steps=1,
 ).frames[0]
@@ -330,11 +326,7 @@ output = pipeline(
     negative_prompt=negative_prompt,
     video=load_video(video_path),
     num_frames=99,
-    use_dynamic_shifting=True,
-    is_enable_stage2=True,
-    pyramid_num_stages=3,
     pyramid_num_inference_steps_list=[20, 20, 20],
-    use_cfg_zero_star=True,
     use_zero_init=True,
     zero_steps=1,
 ).frames[0]
@@ -385,11 +377,7 @@ output = pipeline(
     prompt=prompt,
     negative_prompt=negative_prompt,
     num_frames=99,
-    use_dynamic_shifting=True,
-    is_enable_stage2=True,
-    pyramid_num_stages=3,
     pyramid_num_inference_steps_list=[2, 2, 2],
-    use_dmd=True,
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
 ).frames[0]
@@ -411,11 +399,7 @@ output = pipeline(
     negative_prompt=negative_prompt,
     image=load_image(image_path).resize((640, 384)),
     num_frames=99,
-    use_dynamic_shifting=True,
-    is_enable_stage2=True,
-    pyramid_num_stages=3,
     pyramid_num_inference_steps_list=[2, 2, 2],
-    use_dmd=True,
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
 ).frames[0]
@@ -436,11 +420,7 @@ output = pipeline(
     negative_prompt=negative_prompt,
     video=load_video(video_path),
     num_frames=99,
-    use_dynamic_shifting=True,
-    is_enable_stage2=True,
-    pyramid_num_stages=3,
     pyramid_num_inference_steps_list=[2, 2, 2],
-    use_dmd=True,
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
 ).frames[0]
