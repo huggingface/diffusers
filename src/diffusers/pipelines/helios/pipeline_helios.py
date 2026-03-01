@@ -294,6 +294,8 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
+        image=None,
+        video=None,
         use_interpolate_prompt=False,
         num_videos_per_prompt=None,
         interpolate_time_list=None,
@@ -329,6 +331,9 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
+
+        if image is not None and video is not None:
+            raise ValueError("image and video cannot be provided simultaneously")
 
         if use_interpolate_prompt:
             assert num_videos_per_prompt == 1, f"num_videos_per_prompt must be 1, got {num_videos_per_prompt}"
@@ -599,9 +604,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
 
-        if image is not None and video is not None:
-            raise ValueError("image and video cannot be provided simultaneously")
-
         history_sizes = sorted(history_sizes, reverse=True)  # From big to small
 
         latents_mean = (
@@ -625,6 +627,8 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             prompt_embeds,
             negative_prompt_embeds,
             callback_on_step_end_tensor_inputs,
+            image,
+            video,
             use_interpolate_prompt,
             num_videos_per_prompt,
             interpolate_time_list,
