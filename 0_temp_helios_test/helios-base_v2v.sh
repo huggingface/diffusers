@@ -8,7 +8,6 @@ CUDA_VISIBLE_DEVICES=0 python infer_helios.py \
     --output_folder "./output_helios/stage-1"
 
 
-    # --use_default_loader \
     # --enable_compile \
     # --use_cfg_zero_star \
     # --use_zero_init \

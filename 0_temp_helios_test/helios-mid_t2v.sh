@@ -12,5 +12,4 @@ CUDA_VISIBLE_DEVICES=0 python infer_helios.py \
 
 
     # --pyramid_num_inference_steps_list 17 17 17 \
-    # --use_default_loader \
     # --enable_compile \
