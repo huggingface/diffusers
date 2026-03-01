@@ -462,10 +462,7 @@ class HeliosTransformerBlock(nn.Module):
         if self.guidance_cross_attn:
             history_seq_len = hidden_states.shape[1] - original_context_length
 
-            history_hidden_states, hidden_states = (
-                hidden_states[:, :history_seq_len],
-                hidden_states[:, history_seq_len:],
-            )
+            history_hidden_states, hidden_states = torch.split(hidden_states, [history_seq_len, original_context_length], dim=1)
             norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
             attn_output = self.attn2(
                 norm_hidden_states,
