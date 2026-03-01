@@ -1091,13 +1091,10 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                 total_generated_latent_frames += latents.shape[2]
                 history_latents = torch.cat([history_latents, latents], dim=2)
                 real_history_latents = history_latents[:, :, -total_generated_latent_frames:]
-                index_slice = (
-                    slice(None),
-                    slice(None),
-                    slice(-num_latent_frames_per_chunk, None),
+                current_latents = (
+                    real_history_latents[:, :, -num_latent_frames_per_chunk:].to(vae_dtype) / latents_std
+                    + latents_mean
                 )
-
-                current_latents = real_history_latents[index_slice].to(vae_dtype) / latents_std + latents_mean
                 current_video = self.vae.decode(current_latents, return_dict=False)[0]
 
                 if history_video is None:
