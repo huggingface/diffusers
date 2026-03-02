@@ -53,7 +53,6 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
         disable_corrector: list[int] = [],
         solver_p: SchedulerMixin = None,
         use_flow_sigmas: bool = True,
-        scheduler_type: str = "dmd",
         use_dynamic_shifting: bool = False,
         time_shift_type: Literal["exponential", "linear"] = "linear",
     ):
