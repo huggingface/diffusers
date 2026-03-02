@@ -1,6 +1,10 @@
+import json
+import os
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+import torch
 from transformers import CLIPTextModel, LongformerModel
 
 from diffusers.models import AutoModel, UNet2DConditionModel
@@ -34,6 +38,45 @@ class TestAutoModel(unittest.TestCase):
             "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="text_encoder", use_safetensors=False
         )
         assert isinstance(model, CLIPTextModel)
+
+    def test_load_dynamic_module_from_local_path_with_subfolder(self):
+        CUSTOM_MODEL_CODE = (
+            "import torch\n"
+            "from diffusers import ModelMixin, ConfigMixin\n"
+            "from diffusers.configuration_utils import register_to_config\n"
+            "\n"
+            "class CustomModel(ModelMixin, ConfigMixin):\n"
+            "    @register_to_config\n"
+            "    def __init__(self, hidden_size=8):\n"
+            "        super().__init__()\n"
+            "        self.linear = torch.nn.Linear(hidden_size, hidden_size)\n"
+            "\n"
+            "    def forward(self, x):\n"
+            "        return self.linear(x)\n"
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            subfolder = "custom_model"
+            model_dir = os.path.join(tmpdir, subfolder)
+            os.makedirs(model_dir)
+
+            with open(os.path.join(model_dir, "modeling.py"), "w") as f:
+                f.write(CUSTOM_MODEL_CODE)
+
+            config = {
+                "_class_name": "CustomModel",
+                "_diffusers_version": "0.0.0",
+                "auto_map": {"AutoModel": "modeling.CustomModel"},
+                "hidden_size": 8,
+            }
+            with open(os.path.join(model_dir, "config.json"), "w") as f:
+                json.dump(config, f)
+
+            torch.save({}, os.path.join(model_dir, "diffusion_pytorch_model.bin"))
+
+            model = AutoModel.from_pretrained(tmpdir, subfolder=subfolder, trust_remote_code=True)
+            assert model.__class__.__name__ == "CustomModel"
+            assert model.config["hidden_size"] == 8
 
 
 class TestAutoModelFromConfig(unittest.TestCase):
