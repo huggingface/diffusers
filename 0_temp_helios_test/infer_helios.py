@@ -196,7 +196,10 @@ def main():
         torch_dtype=args.weight_dtype,
         use_default_loader=args.use_default_loader,
     )
-    transformer.set_attention_backend("_flash_3_hub")
+    try:
+        transformer.set_attention_backend("_flash_3_hub")
+    except:
+        transformer.set_attention_backend("flash_hub")
 
     vae = AutoencoderKLWan.from_pretrained(
         args.base_model_path,

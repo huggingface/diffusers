@@ -750,6 +750,8 @@
       title: FlowMatchEulerDiscreteScheduler
     - local: api/schedulers/flow_match_heun_discrete
       title: FlowMatchHeunDiscreteScheduler
+    - local: api/schedulers/helios_dmd
+      title: HeliosDMDScheduler
     - local: api/schedulers/helios
       title: HeliosScheduler
     - local: api/schedulers/heun

@@ -26,7 +26,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import HeliosLoraLoaderMixin
 from ...models import AutoencoderKLWan, HeliosTransformer3DModel
-from ...schedulers import HeliosScheduler
+from ...schedulers import HeliosDMDScheduler, HeliosScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -133,7 +133,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
         transformer ([`HeliosTransformer3DModel`]):
             Conditional Transformer to denoise the input latents.
-        scheduler ([`HeliosScheduler`]):
+        scheduler ([`HeliosScheduler`, `HeliosDMDScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
@@ -148,7 +148,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
-        scheduler: HeliosScheduler,
+        scheduler: HeliosScheduler | HeliosDMDScheduler,
         transformer: HeliosTransformer3DModel,
         is_cfg_zero_star: bool = False,
         is_distilled: bool = False,
@@ -1050,17 +1050,27 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                             else:
                                 noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
+                        extra_kwargs = (
+                            {
+                                "cur_sampling_step": i,
+                                "dmd_noisy_tensor": start_point_list[stage_idx]
+                                if start_point_list is not None
+                                else None,
+                                "dmd_sigmas": self.scheduler.sigmas,
+                                "dmd_timesteps": self.scheduler.timesteps,
+                                "all_timesteps": timesteps,
+                            }
+                            if self.config.is_distilled
+                            else {}
+                        )
+
                         latents = self.scheduler.step(
                             noise_pred,
                             t,
                             latents,
                             generator=generator,
                             return_dict=False,
-                            cur_sampling_step=i,
-                            dmd_noisy_tensor=start_point_list[stage_idx] if start_point_list is not None else None,
-                            dmd_sigmas=self.scheduler.sigmas,
-                            dmd_timesteps=self.scheduler.timesteps,
-                            all_timesteps=timesteps,
+                            **extra_kwargs,
                         )[0]
 
                         if callback_on_step_end is not None:
