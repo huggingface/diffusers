@@ -108,10 +108,14 @@ class SanaCombinedTimestepGuidanceEmbeddings(nn.Module):
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
 
-    def forward(self, timestep: torch.Tensor, guidance: torch.Tensor = None, hidden_dtype: torch.dtype = None):
+    def forward(
+        self, timestep: torch.Tensor, guidance: torch.Tensor = None, hidden_dtype: torch.dtype = None, **kwargs
+    ):
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
+        if guidance is None:
+            guidance = torch.ones_like(timestep)
         guidance_proj = self.guidance_condition_proj(guidance)
         guidance_emb = self.guidance_embedder(guidance_proj.to(dtype=hidden_dtype))
         conditioning = timesteps_emb + guidance_emb
