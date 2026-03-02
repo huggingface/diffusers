@@ -16,6 +16,7 @@
 import gc
 import unittest
 
+import pytest
 import torch
 import torch.nn.functional as F
 
@@ -30,20 +31,14 @@ from diffusers.models.autoencoders.autoencoder_rae import (
 from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
-    floats_tensor,
     slow,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin
+from ..testing_utils import BaseModelTesterConfig, ModelTesterMixin
 from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
-
-
-DINO_MODEL_ID = "facebook/dinov2-with-registers-base"
-SIGLIP2_MODEL_ID = "google/siglip2-base-patch16-256"
-MAE_MODEL_ID = "facebook/vit-mae-base"
 
 
 class TinyTestEncoder(torch.nn.Module):
@@ -61,25 +56,16 @@ class TinyTestEncoder(torch.nn.Module):
 _ENCODER_TYPES["tiny_test"] = TinyTestEncoder
 
 
-class AutoencoderRAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderRAE
-    main_input_name = "sample"
-    base_precision = 1e-2
-
+class AutoencoderRAETesterConfig(BaseModelTesterConfig):
     @property
-    def dummy_input(self):
-        image = floats_tensor((2, 3, 32, 32)).to(torch_device)
-        return {"sample": image}
-
-    @property
-    def input_shape(self):
-        return (3, 32, 32)
+    def model_class(self):
+        return AutoencoderRAE
 
     @property
     def output_shape(self):
         return (3, 16, 16)
 
-    def get_autoencoder_rae_config(self):
+    def get_init_dict(self):
         return {
             "encoder_type": "tiny_test",
             "encoder_hidden_size": 16,
@@ -99,43 +85,28 @@ class AutoencoderRAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Tes
             "scaling_factor": 1.0,
         }
 
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_dummy_inputs(self):
+        return {"sample": torch.randn(2, 3, 32, 32, generator=self.generator, device="cpu").to(torch_device)}
+
+    # Bridge for AutoencoderTesterMixin which still uses the old interface
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_rae_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+        return self.get_init_dict(), self.get_dummy_inputs()
 
     def _make_model(self, **overrides) -> AutoencoderRAE:
-        config = self.get_autoencoder_rae_config()
+        config = self.get_init_dict()
         config.update(overrides)
         return AutoencoderRAE(**config).to(torch_device)
 
-    def test_forward_signature(self):
-        pass
 
-    def test_gradient_checkpointing_is_applied(self):
-        pass
+class TestAutoEncoderRAE(AutoencoderRAETesterConfig, ModelTesterMixin):
+    """Core model tests for AutoencoderRAE."""
 
-    def test_output(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict).to(torch_device).eval()
-        with torch.no_grad():
-            output = model(**inputs_dict)
-        self.assertEqual(output.sample.shape, (2, 3, 16, 16))
-
-    def test_cpu_offload(self):
-        pass
-
-    def test_disk_offload_with_safetensors(self):
-        pass
-
-    def test_disk_offload_without_safetensors(self):
-        pass
-
-    def test_set_attn_processor_for_determinism(self):
-        pass
-
-    def test_from_save_pretrained_dynamo(self):
-        pass
+    @pytest.mark.skip(reason="AutoencoderRAE does not support gradient checkpointing yet")
+    def test_from_save_pretrained_dynamo(self): ...
 
     def test_fast_encode_decode_and_forward_shapes(self):
         model = self._make_model().eval()
@@ -146,10 +117,10 @@ class AutoencoderRAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Tes
             decoded = model.decode(z).sample
             recon = model(x).sample
 
-        self.assertEqual(z.shape, (2, 16, 4, 4))
-        self.assertEqual(decoded.shape, (2, 3, 16, 16))
-        self.assertEqual(recon.shape, (2, 3, 16, 16))
-        self.assertTrue(torch.isfinite(recon).all().item())
+        assert z.shape == (2, 16, 4, 4)
+        assert decoded.shape == (2, 3, 16, 16)
+        assert recon.shape == (2, 3, 16, 16)
+        assert torch.isfinite(recon).all().item()
 
     def test_fast_scaling_factor_encode_and_decode_consistency(self):
         torch.manual_seed(0)
@@ -164,8 +135,8 @@ class AutoencoderRAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Tes
             recon_base = model_base.decode(z_base).sample
             recon_scaled = model_scaled.decode(z_scaled).sample
 
-        self.assertTrue(torch.allclose(z_scaled, z_base * 2.0, atol=1e-5, rtol=1e-4))
-        self.assertTrue(torch.allclose(recon_scaled, recon_base, atol=1e-5, rtol=1e-4))
+        assert torch.allclose(z_scaled, z_base * 2.0, atol=1e-5, rtol=1e-4)
+        assert torch.allclose(recon_scaled, recon_base, atol=1e-5, rtol=1e-4)
 
     def test_fast_latents_normalization_matches_formula(self):
         latents_mean = torch.full((1, 16, 1, 1), 0.25, dtype=torch.float32)
@@ -182,7 +153,7 @@ class AutoencoderRAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Tes
         expected = (z_raw - latents_mean.to(z_raw.device, z_raw.dtype)) / (
             latents_std.to(z_raw.device, z_raw.dtype) + 1e-5
         )
-        self.assertTrue(torch.allclose(z_norm, expected, atol=1e-5, rtol=1e-4))
+        assert torch.allclose(z_norm, expected, atol=1e-5, rtol=1e-4)
 
     def test_fast_slicing_matches_non_slicing(self):
         model = self._make_model().eval()
@@ -197,8 +168,8 @@ class AutoencoderRAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Tes
             z_slice = model.encode(x).latent
             out_slice = model.decode(z_slice).sample
 
-        self.assertTrue(torch.allclose(z_slice, z_no_slice, atol=1e-6, rtol=1e-5))
-        self.assertTrue(torch.allclose(out_slice, out_no_slice, atol=1e-6, rtol=1e-5))
+        assert torch.allclose(z_slice, z_no_slice, atol=1e-6, rtol=1e-5)
+        assert torch.allclose(out_slice, out_no_slice, atol=1e-6, rtol=1e-5)
 
     def test_fast_noise_tau_applies_only_in_train(self):
         model = self._make_model(noise_tau=0.5).to(torch_device)
@@ -216,13 +187,17 @@ class AutoencoderRAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Tes
         torch.manual_seed(1)
         z_eval_2 = model.encode(x).latent
 
-        self.assertEqual(z_train_1.shape, z_eval_1.shape)
-        self.assertFalse(torch.allclose(z_train_1, z_train_2))
-        self.assertTrue(torch.allclose(z_eval_1, z_eval_2, atol=1e-6, rtol=1e-5))
+        assert z_train_1.shape == z_eval_1.shape
+        assert not torch.allclose(z_train_1, z_train_2)
+        assert torch.allclose(z_eval_1, z_eval_2, atol=1e-6, rtol=1e-5)
+
+
+class TestAutoEncoderRAESlicingTiling(AutoencoderRAETesterConfig, AutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderRAE."""
 
 
 @slow
-@unittest.skip("Not enough model usage to justify slow tests yet.")
+@pytest.mark.skip(reason="Not enough model usage to justify slow tests yet.")
 class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
@@ -261,7 +236,7 @@ class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
 
 
 @slow
-@unittest.skip("Not enough model usage to justify slow tests yet.")
+@pytest.mark.skip(reason="Not enough model usage to justify slow tests yet.")
 class AutoencoderRAEIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
