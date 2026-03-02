@@ -1,0 +1,73 @@
+{
+  "_blocks_class_name": "SequentialPipelineBlocks",
+  "_class_name": "Flux2ModularPipeline",
+  "_diffusers_version": "0.36.0.dev0",
+  "scheduler": [
+    null,
+    null,
+    {
+      "pretrained_model_name_or_path": "black-forest-labs/FLUX.2-dev",
+      "revision": null,
+      "subfolder": "scheduler",
+      "type_hint": [
+        "diffusers",
+        "FlowMatchEulerDiscreteScheduler"
+      ],
+      "variant": null
+    }
+  ],
+  "text_encoder": [
+    null,
+    null,
+    {
+      "revision": null,
+      "subfolder": "text_encoder",
+      "type_hint": [
+        "transformers",
+        "Mistral3ForConditionalGeneration"
+      ],
+      "variant": null
+    }
+  ],
+  "tokenizer": [
+    null,
+    null,
+    {
+      "revision": null,
+      "subfolder": "tokenizer",
+      "type_hint": [
+        "transformers",
+        "AutoProcessor"
+      ],
+      "variant": null
+    }
+  ],
+  "transformer": [
+    null,
+    null,
+    {
+      "pretrained_model_name_or_path": "diffusers/FLUX.2-dev-bnb-4bit",
+      "revision": null,
+      "subfolder": "transformer",
+      "type_hint": [
+        "diffusers",
+        "Flux2Transformer2DModel"
+      ],
+      "variant": null
+    }
+  ],
+  "vae": [
+    null,
+    null,
+    {
+      "pretrained_model_name_or_path": "black-forest-labs/FLUX.2-dev",
+      "revision": null,
+      "subfolder": "vae",
+      "type_hint": [
+        "diffusers",
+        "AutoencoderKLFlux2"
+      ],
+      "variant": null
+    }
+  ]
+}

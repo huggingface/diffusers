@@ -1,4 +1,5 @@
 import gc
+import json
 import os
 import tempfile
 from typing import Callable
@@ -349,6 +350,33 @@ class ModularPipelineTesterMixin:
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+    def test_modular_index_consistency(self):
+        pipe = self.get_pipeline()
+        components_spec = pipe._component_specs
+        components = sorted(components_spec.keys())
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            index_file = os.path.join(tmpdir, "modular_model_index.json")
+            assert os.path.exists(index_file)
+
+            with open(index_file) as f:
+                index_contents = json.load(f)
+
+            compulsory_keys = {"_blocks_class_name", "_class_name", "_diffusers_version"}
+            for k in compulsory_keys:
+                assert k in index_contents
+
+            to_check_attrs = {"pretrained_model_name_or_path", "revision", "subfolder"}
+            for component in components:
+                spec = components_spec[component]
+                for attr in to_check_attrs:
+                    if getattr(spec, "pretrained_model_name_or_path", None) is not None:
+                        for attr in to_check_attrs:
+                            assert component in index_contents, f"{component} should be present in index but isn't."
+                            attr_value_from_index = index_contents[component][2][attr]
+                            assert getattr(spec, attr) == attr_value_from_index
 
     def test_workflow_map(self):
         blocks = self.pipeline_blocks_class()
@@ -776,3 +804,25 @@ class TestCustomModelSavePretrained:
 
         assert loaded_pipe.unet is not None
         assert loaded_pipe.vae is not None
+class TestModularPipelineInitFallback:
+    """Test that ModularPipeline.__init__ falls back to default_blocks_name when
+    _blocks_class_name is a base class (e.g. SequentialPipelineBlocks saved by from_blocks_dict)."""
+
+    def test_init_fallback_when_blocks_class_name_is_base_class(self, tmp_path):
+        # 1. Load pipeline and get a workflow (returns a base SequentialPipelineBlocks)
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        t2i_blocks = pipe.blocks.get_workflow("text2image")
+        assert t2i_blocks.__class__.__name__ == "SequentialPipelineBlocks"
+
+        # 2. Use init_pipeline to create a new pipeline from the workflow blocks
+        t2i_pipe = t2i_blocks.init_pipeline("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+
+        # 3. Save and reload — the saved config will have _blocks_class_name="SequentialPipelineBlocks"
+        save_dir = str(tmp_path / "pipeline")
+        t2i_pipe.save_pretrained(save_dir)
+        loaded_pipe = ModularPipeline.from_pretrained(save_dir)
+
+        # 4. Verify it fell back to default_blocks_name and has correct blocks
+        assert loaded_pipe.__class__.__name__ == pipe.__class__.__name__
+        assert loaded_pipe._blocks.__class__.__name__ == pipe._blocks.__class__.__name__
+        assert len(loaded_pipe._blocks.sub_blocks) == len(pipe._blocks.sub_blocks)
