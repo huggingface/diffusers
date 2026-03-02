@@ -473,6 +473,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         block_size = ph * pw
 
         cov = torch.eye(block_size) * (1 + gamma) - torch.ones(block_size, block_size) * gamma
+        cov += torch.eye(block_size) * 1e-6
         dist = torch.distributions.MultivariateNormal(
             torch.zeros(block_size, device=cov.device), covariance_matrix=cov
         )
