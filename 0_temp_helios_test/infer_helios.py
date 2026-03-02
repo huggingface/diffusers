@@ -268,10 +268,6 @@ def main():
                 image=load_image(image_path).resize((args.width, args.height)) if image_path is not None else None,
                 # t2v
                 video=load_video(video_path) if video_path is not None else None,
-                # interpolate_prompt
-                use_interpolate_prompt=args.use_interpolate_prompt,
-                interpolation_steps=args.interpolation_steps,
-                interpolate_time_list=interpolate_time_list,
             ).frames[0]
         else:
             output = pipe(
@@ -298,10 +294,6 @@ def main():
                 image=load_image(image_path).resize((args.width, args.height)) if image_path is not None else None,
                 # t2v
                 video=load_video(video_path) if video_path is not None else None,
-                # interpolate_prompt
-                use_interpolate_prompt=args.use_interpolate_prompt,
-                interpolation_steps=args.interpolation_steps,
-                interpolate_time_list=interpolate_time_list,
             ).frames[0]
 
     if not args.enable_parallelism or rank == 0:

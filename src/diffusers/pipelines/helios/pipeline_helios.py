@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import html
-from itertools import accumulate
 from typing import Any, Callable
 
 import numpy as np
@@ -286,10 +285,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         callback_on_step_end_tensor_inputs=None,
         image=None,
         video=None,
-        use_interpolate_prompt=False,
-        num_videos_per_prompt=None,
-        interpolate_time_list=None,
-        interpolation_steps=None,
     ):
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -324,16 +319,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         if image is not None and video is not None:
             raise ValueError("image and video cannot be provided simultaneously")
-
-        if use_interpolate_prompt:
-            assert num_videos_per_prompt == 1, f"num_videos_per_prompt must be 1, got {num_videos_per_prompt}"
-            assert isinstance(prompt, list), "prompt must be a list"
-            assert len(prompt) == len(interpolate_time_list), (
-                f"Length mismatch: {len(prompt)} vs {len(interpolate_time_list)}"
-            )
-            assert min(interpolate_time_list) > interpolation_steps, (
-                f"Minimum value {min(interpolate_time_list)} must be greater than {interpolation_steps}"
-            )
 
     def prepare_latents(
         self,
@@ -433,20 +418,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             latents = torch.cat(latents_chunks, dim=2)
         return first_frame_latent.to(device=device, dtype=dtype), latents.to(device=device, dtype=dtype)
 
-    def interpolate_prompt_embeds(
-        self,
-        prompt_embeds_1: torch.Tensor,
-        prompt_embeds_2: torch.Tensor,
-        interpolation_steps: int = 3,
-    ):
-        x = torch.lerp(
-            prompt_embeds_1,
-            prompt_embeds_2,
-            torch.linspace(0, 1, steps=interpolation_steps).unsqueeze(1).unsqueeze(2).to(prompt_embeds_1),
-        )
-        interpolated_prompt_embeds = list(x.chunk(interpolation_steps, dim=0))
-        return interpolated_prompt_embeds
-
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -507,10 +478,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         add_noise_to_video_latents: bool = True,
         video_noise_sigma_min: float = 0.111,
         video_noise_sigma_max: float = 0.135,
-        # ------------ Interactive ------------
-        use_interpolate_prompt: bool = False,
-        interpolate_time_list: list = [7, 7, 7],
-        interpolation_steps: int = 3,
         # ------------ Stage 1 ------------
         history_sizes: list = [16, 2, 1],
         num_latent_frames_per_chunk: int = 9,
@@ -608,10 +575,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             callback_on_step_end_tensor_inputs,
             image,
             video,
-            use_interpolate_prompt,
-            num_videos_per_prompt,
-            interpolate_time_list,
-            interpolation_steps,
         )
 
         num_frames = max(num_frames, 1)
@@ -625,7 +588,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         vae_dtype = self.vae.dtype
 
         # 2. Define call parameters
-        if use_interpolate_prompt or (prompt is not None and isinstance(prompt, str)):
+        if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
@@ -633,12 +596,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         # 3. Encode input prompt
-        if use_interpolate_prompt:
-            interpolate_interval_idx = None
-            interpolate_embeds = None
-            interpolate_cumulative_list = list(accumulate(interpolate_time_list))
-
-        all_prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
@@ -650,10 +608,8 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         )
 
         transformer_dtype = self.transformer.dtype
-        all_prompt_embeds = all_prompt_embeds.to(transformer_dtype)
+        prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
-            if use_interpolate_prompt:
-                negative_prompt_embeds = negative_prompt_embeds[0].unsqueeze(0)
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # 4. Prepare image or video
@@ -790,11 +746,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         indices_latents_history_long = indices_latents_history_long.unsqueeze(0)
 
         # 6. Denoising loop
-        if use_interpolate_prompt:
-            if num_latent_chunk < max(interpolate_cumulative_list):
-                num_latent_chunk = sum(interpolate_cumulative_list)
-                print(f"Update num_latent_chunk to: {num_latent_chunk}")
-
         patch_size = self.transformer.config.patch_size
         image_seq_len = (
             num_latent_frames_per_chunk
@@ -812,36 +763,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         )
 
         for k in range(num_latent_chunk):
-            if use_interpolate_prompt:
-                assert num_latent_chunk >= max(interpolate_cumulative_list)
-
-                current_interval_idx = 0
-                for idx, cumulative_val in enumerate(interpolate_cumulative_list):
-                    if k < cumulative_val:
-                        current_interval_idx = idx
-                        break
-
-                if current_interval_idx == 0:
-                    prompt_embeds = all_prompt_embeds[0].unsqueeze(0)
-                else:
-                    interval_start = interpolate_cumulative_list[current_interval_idx - 1]
-                    position_in_interval = k - interval_start
-
-                    if position_in_interval < interpolation_steps:
-                        if interpolate_embeds is None or interpolate_interval_idx != current_interval_idx:
-                            interpolate_embeds = self.interpolate_prompt_embeds(
-                                prompt_embeds_1=all_prompt_embeds[current_interval_idx - 1].unsqueeze(0),
-                                prompt_embeds_2=all_prompt_embeds[current_interval_idx].unsqueeze(0),
-                                interpolation_steps=interpolation_steps,
-                            )
-                            interpolate_interval_idx = current_interval_idx
-
-                        prompt_embeds = interpolate_embeds[position_in_interval]
-                    else:
-                        prompt_embeds = all_prompt_embeds[current_interval_idx].unsqueeze(0)
-            else:
-                prompt_embeds = all_prompt_embeds
-
             is_first_chunk = k == 0
             is_second_chunk = k == 1
             if keep_first_frame:
