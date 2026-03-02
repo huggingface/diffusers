@@ -22,7 +22,6 @@ from array import array
 from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 from zipfile import is_zipfile
 
 import safetensors
@@ -47,6 +46,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
+from ..utils.distributed_utils import is_torch_dist_rank_zero
 
 
 logger = logging.get_logger(__name__)
@@ -135,7 +135,7 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
-def _determine_param_device(param_name: str, device_map: Optional[Dict[str, Union[int, str, torch.device]]]):
+def _determine_param_device(param_name: str, device_map: dict[str, int | str | torch.device] | None):
     """
     Find the device of param_name from the device_map.
     """
@@ -153,10 +153,10 @@ def _determine_param_device(param_name: str, device_map: Optional[Dict[str, Unio
 
 
 def load_state_dict(
-    checkpoint_file: Union[str, os.PathLike],
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    checkpoint_file: str | os.PathLike,
+    dduf_entries: dict[str, DDUFEntry] | None = None,
     disable_mmap: bool = False,
-    map_location: Union[str, torch.device] = "cpu",
+    map_location: str | torch.device = "cpu",
 ):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
@@ -213,17 +213,17 @@ def load_state_dict(
 def load_model_dict_into_meta(
     model,
     state_dict: OrderedDict,
-    dtype: Optional[Union[str, torch.dtype]] = None,
-    model_name_or_path: Optional[str] = None,
-    hf_quantizer: Optional[DiffusersQuantizer] = None,
-    keep_in_fp32_modules: Optional[List] = None,
-    device_map: Optional[Dict[str, Union[int, str, torch.device]]] = None,
-    unexpected_keys: Optional[List[str]] = None,
-    offload_folder: Optional[Union[str, os.PathLike]] = None,
-    offload_index: Optional[Dict] = None,
-    state_dict_index: Optional[Dict] = None,
-    state_dict_folder: Optional[Union[str, os.PathLike]] = None,
-) -> List[str]:
+    dtype: str | torch.dtype | None = None,
+    model_name_or_path: str | None = None,
+    hf_quantizer: DiffusersQuantizer | None = None,
+    keep_in_fp32_modules: list | None = None,
+    device_map: dict[str, int | str | torch.device] | None = None,
+    unexpected_keys: list[str] | None = None,
+    offload_folder: str | os.PathLike | None = None,
+    offload_index: dict | None = None,
+    state_dict_index: dict | None = None,
+    state_dict_folder: str | os.PathLike | None = None,
+) -> list[str]:
     """
     This is somewhat similar to `_load_state_dict_into_model`, but deals with a model that has some or all of its
     params on a `meta` device. It replaces the model params with the data from the `state_dict`
@@ -354,8 +354,9 @@ def _load_shard_file(
     state_dict_folder=None,
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
+    disable_mmap=False,
 ):
-    state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
+    state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries, disable_mmap=disable_mmap)
     mismatched_keys = _find_mismatched_keys(
         state_dict,
         model_state_dict,
@@ -401,6 +402,7 @@ def _load_shard_files_with_threadpool(
     state_dict_folder=None,
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
+    disable_mmap=False,
 ):
     # Do not spawn anymore workers than you need
     num_workers = min(len(shard_files), DEFAULT_HF_PARALLEL_LOADING_WORKERS)
@@ -427,10 +429,15 @@ def _load_shard_files_with_threadpool(
         state_dict_folder=state_dict_folder,
         ignore_mismatched_sizes=ignore_mismatched_sizes,
         low_cpu_mem_usage=low_cpu_mem_usage,
+        disable_mmap=disable_mmap,
     )
 
+    tqdm_kwargs = {"total": len(shard_files), "desc": "Loading checkpoint shards"}
+    if not is_torch_dist_rank_zero():
+        tqdm_kwargs["disable"] = True
+
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        with logging.tqdm(total=len(shard_files), desc="Loading checkpoint shards") as pbar:
+        with logging.tqdm(**tqdm_kwargs) as pbar:
             futures = [executor.submit(load_one, shard_file) for shard_file in shard_files]
             for future in as_completed(futures):
                 result = future.result()
@@ -466,7 +473,7 @@ def _find_mismatched_keys(
 
 def _load_state_dict_into_model(
     model_to_load, state_dict: OrderedDict, assign_to_params_buffers: bool = False
-) -> List[str]:
+) -> list[str]:
     # Convert old format to new format if needed from a PyTorch state_dict
     # copy state_dict so _load_from_state_dict can modify it
     state_dict = state_dict.copy()
@@ -505,7 +512,7 @@ def _fetch_index_file(
     revision,
     user_agent,
     commit_hash,
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     if is_local:
         index_file = Path(
@@ -555,7 +562,7 @@ def _fetch_index_file_legacy(
     revision,
     user_agent,
     commit_hash,
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    dduf_entries: dict[str, DDUFEntry] | None = None,
 ):
     if is_local:
         index_file = Path(
@@ -714,7 +721,7 @@ def _expand_device_map(device_map, param_names):
 
 # Adapted from: https://github.com/huggingface/transformers/blob/0687d481e2c71544501ef9cb3eef795a6e79b1de/src/transformers/modeling_utils.py#L5859
 def _caching_allocator_warmup(
-    model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype, hf_quantizer: Optional[DiffusersQuantizer]
+    model, expanded_device_map: dict[str, torch.device], dtype: torch.dtype, hf_quantizer: DiffusersQuantizer | None
 ) -> None:
     """
     This function warm-ups the caching allocator based on the size of the model tensors that will reside on each

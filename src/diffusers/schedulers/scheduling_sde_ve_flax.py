@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import flax
 import jax
@@ -23,15 +22,23 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
+from ..utils import logging
+from .scheduling_utils_flax import (
+    FlaxSchedulerMixin,
+    FlaxSchedulerOutput,
+    broadcast_to_shape_from_left,
+)
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
 class ScoreSdeVeSchedulerState:
     # setable values
-    timesteps: Optional[jnp.ndarray] = None
-    discrete_sigmas: Optional[jnp.ndarray] = None
-    sigmas: Optional[jnp.ndarray] = None
+    timesteps: jnp.ndarray | None = None
+    discrete_sigmas: jnp.ndarray | None = None
+    sigmas: jnp.ndarray | None = None
 
     @classmethod
     def create(cls):
@@ -54,7 +61,7 @@ class FlaxSdeVeOutput(FlaxSchedulerOutput):
 
     state: ScoreSdeVeSchedulerState
     prev_sample: jnp.ndarray
-    prev_sample_mean: Optional[jnp.ndarray] = None
+    prev_sample_mean: jnp.ndarray | None = None
 
 
 class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
@@ -95,7 +102,10 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sampling_eps: float = 1e-5,
         correct_steps: int = 1,
     ):
-        pass
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
 
     def create_state(self):
         state = ScoreSdeVeSchedulerState.create()
@@ -108,7 +118,11 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
 
     def set_timesteps(
-        self, state: ScoreSdeVeSchedulerState, num_inference_steps: int, shape: Tuple = (), sampling_eps: float = None
+        self,
+        state: ScoreSdeVeSchedulerState,
+        num_inference_steps: int,
+        shape: tuple = (),
+        sampling_eps: float = None,
     ) -> ScoreSdeVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -172,7 +186,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         key: jax.Array,
         return_dict: bool = True,
-    ) -> Union[FlaxSdeVeOutput, Tuple]:
+    ) -> FlaxSdeVeOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -231,7 +245,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         key: jax.Array,
         return_dict: bool = True,
-    ) -> Union[FlaxSdeVeOutput, Tuple]:
+    ) -> FlaxSdeVeOutput | tuple:
         """
         Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
         after making the prediction for the previous timestep.

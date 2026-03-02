@@ -313,14 +313,14 @@ unet_spec
 ComponentSpec(
     name='unet',
     type_hint=<class 'diffusers.models.unets.unet_2d_condition.UNet2DConditionModel'>,
-    repo='RunDiffusion/Juggernaut-XL-v9',
+    pretrained_model_name_or_path='RunDiffusion/Juggernaut-XL-v9',
     subfolder='unet',
     variant='fp16',
     default_creation_method='from_pretrained'
 )
 
 # 修改以从不同的仓库加载
-unet_spec.repo = "stabilityai/stable-diffusion-xl-base-1.0"
+unet_spec.pretrained_model_name_or_path = "stabilityai/stable-diffusion-xl-base-1.0"
 
 # 使用修改后的规范加载组件
 unet = unet_spec.load(torch_dtype=torch.float16)

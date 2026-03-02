@@ -99,7 +99,7 @@ def calculate_shift(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -112,7 +112,7 @@ def retrieve_latents(
 
 
 def retrieve_latents_fill(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -855,7 +855,7 @@ class FluxControlNetFillInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, 
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
@@ -1168,12 +1168,12 @@ class FluxControlNetFillInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, 
             generator,
         )
 
-        mask_imagee = self.mask_processor.preprocess(mask_image, height=height, width=width)
-        masked_imagee = init_image * (1 - mask_imagee)
-        masked_imagee = masked_imagee.to(dtype=self.vae.dtype, device=device)
-        maskkk, masked_image_latentsss = self.prepare_mask_latents_fill(
-            mask_imagee,
-            masked_imagee,
+        mask_image_fill = self.mask_processor.preprocess(mask_image, height=height, width=width)
+        masked_image_fill = init_image * (1 - mask_image_fill)
+        masked_image_fill = masked_image_fill.to(dtype=self.vae.dtype, device=device)
+        mask_fill, masked_latents_fill = self.prepare_mask_latents_fill(
+            mask_image_fill,
+            masked_image_fill,
             batch_size,
             num_channels_latents,
             num_images_per_prompt,
@@ -1243,7 +1243,7 @@ class FluxControlNetFillInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, 
                 else:
                     guidance = None
 
-                masked_image_latents_fill = torch.cat((masked_image_latentsss, maskkk), dim=-1)
+                masked_image_latents_fill = torch.cat((masked_latents_fill, mask_fill), dim=-1)
                 latent_model_input = torch.cat([latents, masked_image_latents_fill], dim=2)
 
                 noise_pred = self.transformer(

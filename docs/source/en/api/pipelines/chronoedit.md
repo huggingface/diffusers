@@ -30,6 +30,10 @@
 
 The ChronoEdit pipeline is developed by the ChronoEdit Team. The original code is available on [GitHub](https://github.com/nv-tlabs/ChronoEdit), and pretrained models can be found in the [nvidia/ChronoEdit](https://huggingface.co/collections/nvidia/chronoedit) collection on Hugging Face.
 
+Available Models/LoRAs:
+- [nvidia/ChronoEdit-14B-Diffusers](https://huggingface.co/nvidia/ChronoEdit-14B-Diffusers)
+- [nvidia/ChronoEdit-14B-Diffusers-Upscaler-Lora](https://huggingface.co/nvidia/ChronoEdit-14B-Diffusers-Upscaler-Lora)
+- [nvidia/ChronoEdit-14B-Diffusers-Paint-Brush-Lora](https://huggingface.co/nvidia/ChronoEdit-14B-Diffusers-Paint-Brush-Lora)
 
 ### Image Editing
 
@@ -100,6 +104,7 @@ Image.fromarray((output[-1] * 255).clip(0, 255).astype("uint8")).save("output.pn
 import torch
 import numpy as np
 from diffusers import AutoencoderKLWan, ChronoEditTransformer3DModel, ChronoEditPipeline
+from diffusers.schedulers import UniPCMultistepScheduler
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
 from PIL import Image
@@ -109,9 +114,8 @@ image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encod
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 transformer = ChronoEditTransformer3DModel.from_pretrained(model_id, subfolder="transformer", torch_dtype=torch.bfloat16)
 pipe = ChronoEditPipeline.from_pretrained(model_id, image_encoder=image_encoder, transformer=transformer, vae=vae, torch_dtype=torch.bfloat16)
-lora_path = hf_hub_download(repo_id=model_id, filename="lora/chronoedit_distill_lora.safetensors")
-pipe.load_lora_weights(lora_path)
-pipe.fuse_lora(lora_scale=1.0)
+pipe.load_lora_weights("nvidia/ChronoEdit-14B-Diffusers", weight_name="lora/chronoedit_distill_lora.safetensors", adapter_name="distill")
+pipe.fuse_lora(adapter_names=["distill"], lora_scale=1.0)
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=2.0)
 pipe.to("cuda")
 
@@ -143,6 +147,57 @@ output = pipe(
 ).frames[0]
 export_to_video(output, "output.mp4", fps=16)
 Image.fromarray((output[-1] * 255).clip(0, 255).astype("uint8")).save("output.png")
+```
+
+### Inference with Multiple LoRAs
+
+```py
+import torch
+import numpy as np
+from diffusers import AutoencoderKLWan, ChronoEditTransformer3DModel, ChronoEditPipeline
+from diffusers.schedulers import UniPCMultistepScheduler
+from diffusers.utils import export_to_video, load_image
+from transformers import CLIPVisionModel
+from PIL import Image
+
+model_id = "nvidia/ChronoEdit-14B-Diffusers"
+image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+transformer = ChronoEditTransformer3DModel.from_pretrained(model_id, subfolder="transformer", torch_dtype=torch.bfloat16)
+pipe = ChronoEditPipeline.from_pretrained(model_id, image_encoder=image_encoder, transformer=transformer, vae=vae, torch_dtype=torch.bfloat16)
+pipe.load_lora_weights("nvidia/ChronoEdit-14B-Diffusers-Paint-Brush-Lora", weight_name="paintbrush_lora_diffusers.safetensors", adapter_name="paintbrush")
+pipe.load_lora_weights("nvidia/ChronoEdit-14B-Diffusers", weight_name="lora/chronoedit_distill_lora.safetensors", adapter_name="distill")
+pipe.fuse_lora(adapter_names=["paintbrush", "distill"], lora_scale=1.0)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=2.0)
+pipe.to("cuda")
+
+image = load_image(
+    "https://raw.githubusercontent.com/nv-tlabs/ChronoEdit/refs/heads/main/assets/images/input_paintbrush.png"
+)
+max_area = 720 * 1280
+aspect_ratio = image.height / image.width
+mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+print("width", width, "height", height)
+image = image.resize((width, height))
+prompt = (
+    "Turn the pencil sketch in the image into an actual object that is consistent with the image’s content. The user wants to change the sketch to a crown and a hat."
+)
+
+output = pipe(
+    image=image,
+    prompt=prompt,
+    height=height,
+    width=width,
+    num_frames=5,
+    num_inference_steps=8,
+    guidance_scale=1.0,
+    enable_temporal_reasoning=False,
+    num_temporal_reasoning_steps=0,
+).frames[0]
+export_to_video(output, "output.mp4", fps=16)
+Image.fromarray((output[-1] * 255).clip(0, 255).astype("uint8")).save("output_1.png")
 ```
 
 ## ChronoEditPipeline

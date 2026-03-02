@@ -18,7 +18,7 @@ cc.initialize_cache("/tmp/sdxl_cache")
 NUM_DEVICES = jax.device_count()
 
 # 1. Let's start by downloading the model and loading it into our pipeline class
-# Adhering to JAX's functional approach, the model's parameters are returned seperatetely and
+# Adhering to JAX's functional approach, the model's parameters are returned separately and
 # will have to be passed to the pipeline during inference
 pipeline, params = FlaxStableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", revision="refs/pr/95", split_head_dim=True

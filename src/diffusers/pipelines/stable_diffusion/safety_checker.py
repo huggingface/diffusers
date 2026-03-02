@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 from transformers import CLIPConfig, CLIPVisionModel, PreTrainedModel
 
-from ...utils import logging
+from ...utils import is_transformers_version, logging
 
 
 logger = logging.get_logger(__name__)
@@ -46,6 +46,9 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         self.concept_embeds_weights = nn.Parameter(torch.ones(17), requires_grad=False)
         self.special_care_embeds_weights = nn.Parameter(torch.ones(3), requires_grad=False)
+        # Model requires post_init after transformers v4.57.3
+        if is_transformers_version(">", "4.57.3"):
+            self.post_init()
 
     @torch.no_grad()
     def forward(self, clip_input, images):

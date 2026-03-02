@@ -23,5 +23,7 @@ if is_torch_available():
     from .hooks import HookRegistry, ModelHook
     from .layer_skip import LayerSkipConfig, apply_layer_skip
     from .layerwise_casting import apply_layerwise_casting, apply_layerwise_casting_hook
+    from .mag_cache import MagCacheConfig, apply_mag_cache
     from .pyramid_attention_broadcast import PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
     from .smoothed_energy_guidance_utils import SmoothedEnergyGuidanceConfig
+    from .taylorseer_cache import TaylorSeerCacheConfig, apply_taylorseer_cache

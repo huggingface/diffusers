@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -23,10 +22,10 @@ from ...schedulers import ConsistencyDecoderScheduler
 from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.torch_utils import randn_tensor
+from ..attention import AttentionMixin
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
-    AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
@@ -49,7 +48,7 @@ class ConsistencyDecoderVAEOutput(BaseOutput):
     latent_dist: "DiagonalGaussianDistribution"
 
 
-class ConsistencyDecoderVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
+class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
     r"""
     The consistency decoder used with DALL-E 3.
 
@@ -77,9 +76,9 @@ class ConsistencyDecoderVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
         latent_channels: int = 4,
         sample_size: int = 32,
         encoder_act_fn: str = "silu",
-        encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        encoder_block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
         encoder_double_z: bool = True,
-        encoder_down_block_types: Tuple[str, ...] = (
+        encoder_down_block_types: tuple[str, ...] = (
             "DownEncoderBlock2D",
             "DownEncoderBlock2D",
             "DownEncoderBlock2D",
@@ -90,8 +89,8 @@ class ConsistencyDecoderVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
         encoder_norm_num_groups: int = 32,
         encoder_out_channels: int = 4,
         decoder_add_attention: bool = False,
-        decoder_block_out_channels: Tuple[int, ...] = (320, 640, 1024, 1024),
-        decoder_down_block_types: Tuple[str, ...] = (
+        decoder_block_out_channels: tuple[int, ...] = (320, 640, 1024, 1024),
+        decoder_down_block_types: tuple[str, ...] = (
             "ResnetDownsampleBlock2D",
             "ResnetDownsampleBlock2D",
             "ResnetDownsampleBlock2D",
@@ -106,7 +105,7 @@ class ConsistencyDecoderVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
         decoder_out_channels: int = 6,
         decoder_resnet_time_scale_shift: str = "scale_shift",
         decoder_time_embedding_type: str = "learned",
-        decoder_up_block_types: Tuple[str, ...] = (
+        decoder_up_block_types: tuple[str, ...] = (
             "ResnetUpsampleBlock2D",
             "ResnetUpsampleBlock2D",
             "ResnetUpsampleBlock2D",
@@ -167,66 +166,6 @@ class ConsistencyDecoderVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
         self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
         self.tile_overlap_factor = 0.25
 
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
-
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
@@ -246,7 +185,7 @@ class ConsistencyDecoderVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[ConsistencyDecoderVAEOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> ConsistencyDecoderVAEOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -282,21 +221,21 @@ class ConsistencyDecoderVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
     def decode(
         self,
         z: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
         num_inference_steps: int = 2,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         """
         Decodes the input latent vector `z` using the consistency decoder VAE model.
 
         Args:
             z (torch.Tensor): The input latent vector.
-            generator (Optional[torch.Generator]): The random number generator. Default is None.
+            generator (torch.Generator | None): The random number generator. Default is None.
             return_dict (bool): Whether to return the output as a dictionary. Default is True.
             num_inference_steps (int): The number of inference steps. Default is 2.
 
         Returns:
-            Union[DecoderOutput, Tuple[torch.Tensor]]: The decoded output.
+            DecoderOutput | tuple[torch.Tensor]: The decoded output.
 
         """
         z = (z * self.config.scaling_factor - self.means) / self.stds
@@ -339,7 +278,7 @@ class ConsistencyDecoderVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
-    def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[ConsistencyDecoderVAEOutput, Tuple]:
+    def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> ConsistencyDecoderVAEOutput | tuple:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
@@ -399,8 +338,8 @@ class ConsistencyDecoderVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+        generator: torch.Generator | None = None,
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

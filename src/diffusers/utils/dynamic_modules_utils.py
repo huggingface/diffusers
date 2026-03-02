@@ -24,7 +24,6 @@ import sys
 import threading
 from pathlib import Path
 from types import ModuleType
-from typing import Dict, Optional, Union
 from urllib import request
 
 from huggingface_hub import hf_hub_download, model_info
@@ -65,7 +64,7 @@ def init_hf_modules():
         init_path.touch()
 
 
-def create_dynamic_module(name: Union[str, os.PathLike]):
+def create_dynamic_module(name: str | os.PathLike):
     """
     Creates a dynamic module in the cache directory for modules.
     """
@@ -197,7 +196,7 @@ def get_class_in_module(class_name, module_path, force_reload=False):
         if force_reload:
             sys.modules.pop(name, None)
             importlib.invalidate_caches()
-        cached_module: Optional[ModuleType] = sys.modules.get(name)
+        cached_module: ModuleType | None = sys.modules.get(name)
         module_spec = importlib.util.spec_from_file_location(name, location=module_file)
 
         module: ModuleType
@@ -245,16 +244,16 @@ def find_pipeline_class(loaded_module):
 
 @validate_hf_hub_args
 def get_cached_module_file(
-    pretrained_model_name_or_path: Union[str, os.PathLike],
+    pretrained_model_name_or_path: str | os.PathLike,
     module_file: str,
-    subfolder: Optional[str] = None,
-    cache_dir: Optional[Union[str, os.PathLike]] = None,
+    subfolder: str | None = None,
+    cache_dir: str | os.PathLike | None = None,
     force_download: bool = False,
-    proxies: Optional[Dict[str, str]] = None,
-    token: Optional[Union[bool, str]] = None,
-    revision: Optional[str] = None,
+    proxies: dict[str, str] | None = None,
+    token: bool | str | None = None,
+    revision: str | None = None,
     local_files_only: bool = False,
-    local_dir: Optional[str] = None,
+    local_dir: str | None = None,
 ):
     """
     Prepares Downloads a module from a local folder or a distant repo and returns its path inside the cached
@@ -278,7 +277,7 @@ def get_cached_module_file(
         force_download (`bool`, *optional*, defaults to `False`):
             Whether or not to force to (re-)download the configuration files and override the cached versions if they
             exist.
-        proxies (`Dict[str, str]`, *optional*):
+        proxies (`dict[str, str]`, *optional*):
             A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
             'http://hostname': 'foo.bar:4012'}.` The proxies are used on each request.
         token (`str` or *bool*, *optional*):
@@ -426,17 +425,17 @@ def get_cached_module_file(
 
 @validate_hf_hub_args
 def get_class_from_dynamic_module(
-    pretrained_model_name_or_path: Union[str, os.PathLike],
+    pretrained_model_name_or_path: str | os.PathLike,
     module_file: str,
-    subfolder: Optional[str] = None,
-    class_name: Optional[str] = None,
-    cache_dir: Optional[Union[str, os.PathLike]] = None,
+    subfolder: str | None = None,
+    class_name: str | None = None,
+    cache_dir: str | os.PathLike | None = None,
     force_download: bool = False,
-    proxies: Optional[Dict[str, str]] = None,
-    token: Optional[Union[bool, str]] = None,
-    revision: Optional[str] = None,
+    proxies: dict[str, str] | None = None,
+    token: bool | str | None = None,
+    revision: str | None = None,
     local_files_only: bool = False,
-    local_dir: Optional[str] = None,
+    local_dir: str | None = None,
 ):
     """
     Extracts a class from a module file, present in the local folder or repository of a model.
@@ -464,7 +463,7 @@ def get_class_from_dynamic_module(
         force_download (`bool`, *optional*, defaults to `False`):
             Whether or not to force to (re-)download the configuration files and override the cached versions if they
             exist.
-        proxies (`Dict[str, str]`, *optional*):
+        proxies (`dict[str, str]`, *optional*):
             A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
             'http://hostname': 'foo.bar:4012'}.` The proxies are used on each request.
         token (`str` or `bool`, *optional*):

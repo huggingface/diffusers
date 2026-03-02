@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Tuple, Union
+from typing import Any
 
 import numpy as np
 import PIL
@@ -21,8 +21,7 @@ import torch
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
-from ...models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
-from ...utils import logging
+from ...utils import deprecate, logging
 from ..modular_pipeline import (
     ModularPipelineBlocks,
     PipelineState,
@@ -37,7 +36,7 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
@@ -53,7 +52,7 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
         return "Step that decodes the denoised latents into images"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("output_type", default="pil"),
             InputParam(
@@ -65,11 +64,11 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "images",
-                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
+                type_hint=list[PIL.Image.Image] | list[torch.Tensor] | list[np.array],
                 description="The generated images, can be a PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]
@@ -77,21 +76,12 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
     @staticmethod
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae with self->components
     def upcast_vae(components):
-        dtype = components.vae.dtype
-        components.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            components.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-            ),
+        deprecate(
+            "upcast_vae",
+            "1.0.0",
+            "`upcast_vae` is deprecated. Please use `pipe.vae.to(torch.float32)`. For more details, please refer to: https://github.com/huggingface/diffusers/pull/12619#issue-3606633695.",
         )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            components.vae.post_quant_conv.to(dtype)
-            components.vae.decoder.conv_in.to(dtype)
-            components.vae.decoder.mid_block.to(dtype)
+        components.vae.to(dtype=torch.float32)
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
@@ -163,7 +153,7 @@ class StableDiffusionXLInpaintOverlayMaskStep(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "image_processor",
@@ -174,19 +164,19 @@ class StableDiffusionXLInpaintOverlayMaskStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("image"),
             InputParam("mask_image"),
             InputParam("padding_mask_crop"),
             InputParam(
                 "images",
-                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
+                type_hint=list[PIL.Image.Image] | list[torch.Tensor] | list[np.array],
                 description="The generated images from the decode step",
             ),
             InputParam(
                 "crops_coords",
-                type_hint=Tuple[int, int],
+                type_hint=tuple[int, int],
                 description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step.",
             ),
         ]

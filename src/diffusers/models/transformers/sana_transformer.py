@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -20,10 +20,10 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, logging
+from ..attention import AttentionMixin
 from ..attention_processor import (
     Attention,
-    AttentionProcessor,
     SanaLinearAttnProcessor2_0,
 )
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
@@ -41,7 +41,7 @@ class GLUMBConv(nn.Module):
         in_channels: int,
         out_channels: int,
         expand_ratio: float = 4,
-        norm_type: Optional[str] = None,
+        norm_type: str | None = None,
         residual_connection: bool = True,
     ) -> None:
         super().__init__()
@@ -132,8 +132,8 @@ class SanaAttnProcessor2_0:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
@@ -196,15 +196,15 @@ class SanaTransformerBlock(nn.Module):
         num_attention_heads: int = 70,
         attention_head_dim: int = 32,
         dropout: float = 0.0,
-        num_cross_attention_heads: Optional[int] = 20,
-        cross_attention_head_dim: Optional[int] = 112,
-        cross_attention_dim: Optional[int] = 2240,
+        num_cross_attention_heads: int | None = 20,
+        cross_attention_head_dim: int | None = 112,
+        cross_attention_dim: int | None = 2240,
         attention_bias: bool = True,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
         attention_out_bias: bool = True,
         mlp_ratio: float = 2.5,
-        qk_norm: Optional[str] = None,
+        qk_norm: str | None = None,
     ) -> None:
         super().__init__()
 
@@ -246,10 +246,10 @@ class SanaTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        timestep: torch.LongTensor | None = None,
         height: int = None,
         width: int = None,
     ) -> torch.Tensor:
@@ -289,7 +289,7 @@ class SanaTransformerBlock(nn.Module):
         return hidden_states
 
 
-class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class SanaTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     A 2D Transformer model introduced in [Sana](https://huggingface.co/papers/2410.10629) family of models.
 
@@ -340,13 +340,13 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
     def __init__(
         self,
         in_channels: int = 32,
-        out_channels: Optional[int] = 32,
+        out_channels: int | None = 32,
         num_attention_heads: int = 70,
         attention_head_dim: int = 32,
         num_layers: int = 20,
-        num_cross_attention_heads: Optional[int] = 20,
-        cross_attention_head_dim: Optional[int] = 112,
-        cross_attention_dim: Optional[int] = 2240,
+        num_cross_attention_heads: int | None = 20,
+        cross_attention_head_dim: int | None = 112,
+        cross_attention_dim: int | None = 2240,
         caption_channels: int = 2304,
         mlp_ratio: float = 2.5,
         dropout: float = 0.0,
@@ -355,10 +355,10 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         patch_size: int = 1,
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
-        interpolation_scale: Optional[int] = None,
+        interpolation_scale: int | None = None,
         guidance_embeds: bool = False,
         guidance_embeds_scale: float = 0.1,
-        qk_norm: Optional[str] = None,
+        qk_norm: str | None = None,
         timestep_scale: float = 1.0,
     ) -> None:
         super().__init__()
@@ -414,93 +414,19 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
         self.gradient_checkpointing = False
 
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
-
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         timestep: torch.Tensor,
-        guidance: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_block_samples: Optional[Tuple[torch.Tensor]] = None,
+        guidance: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
+        controlnet_block_samples: tuple[torch.Tensor] | None = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
+    ) -> tuple[torch.Tensor, ...] | Transformer2DModelOutput:
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
@@ -586,10 +512,6 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         )
         hidden_states = hidden_states.permute(0, 5, 1, 3, 2, 4)
         output = hidden_states.reshape(batch_size, -1, post_patch_height * p, post_patch_width * p)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

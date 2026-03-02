@@ -86,28 +86,13 @@ t2i_pipeline.guider
 
 ## 更改引导器参数
 
-引导器参数可以通过 [`~ComponentSpec.create`] 方法或 [`~ModularPipeline.update_components`] 方法进行调整。下面的示例更改了 `guidance_scale` 值。
-
-<hfoptions id="switch">
-<hfoption id="create">
+引导器参数可以通过 [`~ComponentSpec.create`] 方法以及 [`~ModularPipeline.update_components`] 方法进行调整。下面的示例更改了 `guidance_scale` 值。
 
 ```py
 guider_spec = t2i_pipeline.get_component_spec("guider")
 guider = guider_spec.create(guidance_scale=10)
 t2i_pipeline.update_components(guider=guider)
 ```
-
-</hfoption>
-<hfoption id="update_components">
-
-```py
-guider_spec = t2i_pipeline.get_component_spec("guider")
-guider_spec.config["guidance_scale"] = 10
-t2i_pipeline.update_components(guider=guider_spec)
-```
-
-</hfoption>
-</hfoptions>
 
 ## 上传自定义引导器
 
@@ -157,7 +142,7 @@ guider.push_to_hub("YiYiXu/modular-loader-t2i-guider", subfolder="pag_guider")
 ```py
 guider_spec = t2i_pipeline.get_component_spec("guider")
 guider_spec.default_creation_method="from_pretrained"
-guider_spec.repo="YiYiXu/modular-loader-t2i-guider"
+guider_spec.pretrained_model_name_or_path="YiYiXu/modular-loader-t2i-guider"
 guider_spec.subfolder="pag_guider"
 pag_guider = guider_spec.load()
 t2i_pipeline.update_components(guider=pag_guider)

@@ -16,9 +16,10 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Literal
 
 import torch
+import torch.distributed as dist
 
 from ..utils import get_logger
 
@@ -62,11 +63,14 @@ class ContextParallelConfig:
 
     """
 
-    ring_degree: Optional[int] = None
-    ulysses_degree: Optional[int] = None
+    ring_degree: int | None = None
+    ulysses_degree: int | None = None
     convert_to_fp32: bool = True
     # TODO: support alltoall
     rotate_method: Literal["allgather", "alltoall"] = "allgather"
+    # Whether to enable ulysses anything attention to support
+    # any sequence lengths and any head numbers.
+    ulysses_anything: bool = False
 
     _rank: int = None
     _world_size: int = None
@@ -90,21 +94,22 @@ class ContextParallelConfig:
             )
         if self.ring_degree < 1 or self.ulysses_degree < 1:
             raise ValueError("`ring_degree` and `ulysses_degree` must be greater than or equal to 1.")
-        if self.ring_degree > 1 and self.ulysses_degree > 1:
-            raise ValueError(
-                "Unified Ulysses-Ring attention is not yet supported. Please set either `ring_degree` or `ulysses_degree` to 1."
-            )
         if self.rotate_method != "allgather":
             raise NotImplementedError(
                 f"Only rotate_method='allgather' is supported for now, but got {self.rotate_method}."
             )
+        if self.ulysses_anything:
+            if self.ulysses_degree == 1:
+                raise ValueError("ulysses_degree must be greater than 1 for ulysses_anything to be enabled.")
+            if self.ring_degree > 1:
+                raise ValueError("ulysses_anything cannot be enabled when ring_degree > 1.")
 
     @property
-    def mesh_shape(self) -> Tuple[int, int]:
+    def mesh_shape(self) -> tuple[int, int]:
         return (self.ring_degree, self.ulysses_degree)
 
     @property
-    def mesh_dim_names(self) -> Tuple[str, str]:
+    def mesh_dim_names(self) -> tuple[str, str]:
         """Dimension names for the device mesh."""
         return ("ring", "ulysses")
 
@@ -136,7 +141,7 @@ class ParallelConfig:
             Configuration for context parallelism.
     """
 
-    context_parallel_config: Optional[ContextParallelConfig] = None
+    context_parallel_config: ContextParallelConfig | None = None
 
     _rank: int = None
     _world_size: int = None
@@ -149,7 +154,7 @@ class ParallelConfig:
         world_size: int,
         device: torch.device,
         *,
-        mesh: Optional[torch.distributed.device_mesh.DeviceMesh] = None,
+        mesh: torch.distributed.device_mesh.DeviceMesh | None = None,
     ):
         self._rank = rank
         self._world_size = world_size
@@ -177,7 +182,7 @@ class ContextParallelInput:
     """
 
     split_dim: int
-    expected_dims: Optional[int] = None
+    expected_dims: int | None = None
     split_output: bool = False
 
     def __repr__(self):
@@ -198,7 +203,7 @@ class ContextParallelOutput:
     """
 
     gather_dim: int
-    expected_dims: Optional[int] = None
+    expected_dims: int | None = None
 
     def __repr__(self):
         return f"ContextParallelOutput(gather_dim={self.gather_dim}, expected_dims={self.expected_dims})"
@@ -209,19 +214,17 @@ class ContextParallelOutput:
 # If the key is a string, it denotes the name of the parameter in the forward function.
 # If the key is an integer, split_output must be set to True, and it denotes the index of the output
 # to be split across context parallel region.
-ContextParallelInputType = Dict[
-    Union[str, int], Union[ContextParallelInput, List[ContextParallelInput], Tuple[ContextParallelInput, ...]]
+ContextParallelInputType = dict[
+    str | int, ContextParallelInput | list[ContextParallelInput] | tuple[ContextParallelInput, ...]
 ]
 
 # A dictionary where keys denote the output to be gathered across context parallel region, and the
 # value denotes the gathering configuration.
-ContextParallelOutputType = Union[
-    ContextParallelOutput, List[ContextParallelOutput], Tuple[ContextParallelOutput, ...]
-]
+ContextParallelOutputType = ContextParallelOutput | list[ContextParallelOutput] | tuple[ContextParallelOutput, ...]
 
 # A dictionary where keys denote the module id, and the value denotes how the inputs/outputs of
 # the module should be split/gathered across context parallel region.
-ContextParallelModelPlan = Dict[str, Union[ContextParallelInputType, ContextParallelOutputType]]
+ContextParallelModelPlan = dict[str, ContextParallelInputType | ContextParallelOutputType]
 
 
 # Example of a ContextParallelModelPlan (QwenImageTransformer2DModel):
@@ -261,3 +264,39 @@ ContextParallelModelPlan = Dict[str, Union[ContextParallelInputType, ContextPara
 #
 # ContextParallelOutput:
 #     specifies how to gather the input tensor in the post-forward hook in the layer it is attached to
+
+
+# Below are utility functions for distributed communication in context parallelism.
+def gather_size_by_comm(size: int, group: dist.ProcessGroup) -> list[int]:
+    r"""Gather the local size from all ranks.
+    size: int, local size return: list[int], list of size from all ranks
+    """
+    # NOTE(Serving/CP Safety):
+    # Do NOT cache this collective result.
+    #
+    # In "Ulysses Anything" mode, `size` (e.g. per-rank local seq_len / S_LOCAL)
+    # may legitimately differ across ranks. If we cache based on the *local* `size`,
+    # different ranks can have different cache hit/miss patterns across time.
+    #
+    # That can lead to a catastrophic distributed hang:
+    # - some ranks hit cache and *skip* dist.all_gather()
+    # - other ranks miss cache and *enter* dist.all_gather()
+    # This mismatched collective participation will stall the process group and
+    # eventually trigger NCCL watchdog timeouts (often surfacing later as ALLTOALL
+    # timeouts in Ulysses attention).
+    world_size = dist.get_world_size(group=group)
+    # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
+    comm_backends = str(dist.get_backend(group=group))
+    # NOTE: e.g., dist.init_process_group(backend="cpu:gloo,cuda:nccl")
+    gather_device = "cpu" if "cpu" in comm_backends else torch.accelerator.current_accelerator()
+    gathered_sizes = [torch.empty((1,), device=gather_device, dtype=torch.int64) for _ in range(world_size)]
+    dist.all_gather(
+        gathered_sizes,
+        torch.tensor([size], device=gather_device, dtype=torch.int64),
+        group=group,
+    )
+
+    gathered_sizes = [s[0].item() for s in gathered_sizes]
+    # NOTE: DON'T use tolist here due to graph break - Explanation:
+    # Backend compiler `inductor` failed with aten._local_scalar_dense.default
+    return gathered_sizes

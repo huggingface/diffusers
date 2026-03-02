@@ -23,7 +23,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 2
 
@@ -41,7 +41,7 @@ jobs:
       shell: arch -arch arm64 bash {0}
       run: |
         ${CONDA_RUN} python -m pip install --upgrade pip uv
-        ${CONDA_RUN} python -m uv pip install -e ".[quality,test]"
+        ${CONDA_RUN} python -m uv pip install -e ".[quality]"
         ${CONDA_RUN} python -m uv pip install torch torchvision torchaudio
         ${CONDA_RUN} python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
         ${CONDA_RUN} python -m uv pip install transformers --upgrade
@@ -65,7 +65,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: pr_torch_mps_test_reports
         path: reports

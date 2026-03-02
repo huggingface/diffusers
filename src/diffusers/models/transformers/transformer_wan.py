@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, deprecate, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -42,7 +42,7 @@ def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, enco
         encoder_hidden_states = hidden_states
 
     if attn.fused_projections:
-        if attn.cross_attention_dim_head is None:
+        if not attn.is_cross_attention:
             # In self-attention layers, we can fuse the entire QKV projection into a single linear
             query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
         else:
@@ -79,9 +79,9 @@ class WanAttnProcessor:
         self,
         attn: "WanAttention",
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -134,7 +134,8 @@ class WanAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
-                parallel_config=self._parallel_config,
+                # Reference: https://github.com/huggingface/diffusers/pull/12909
+                parallel_config=None,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -147,7 +148,8 @@ class WanAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            parallel_config=self._parallel_config,
+            # Reference: https://github.com/huggingface/diffusers/pull/12909
+            parallel_config=(self._parallel_config if encoder_hidden_states is None else None),
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -181,8 +183,8 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         dim_head: int = 64,
         eps: float = 1e-5,
         dropout: float = 0.0,
-        added_kv_proj_dim: Optional[int] = None,
-        cross_attention_dim_head: Optional[int] = None,
+        added_kv_proj_dim: int | None = None,
+        cross_attention_dim_head: int | None = None,
         processor=None,
         is_cross_attention=None,
     ):
@@ -212,7 +214,10 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
             self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
             self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
 
-        self.is_cross_attention = cross_attention_dim_head is not None
+        if is_cross_attention is not None:
+            self.is_cross_attention = is_cross_attention
+        else:
+            self.is_cross_attention = cross_attention_dim_head is not None
 
         self.set_processor(processor)
 
@@ -220,7 +225,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         if getattr(self, "fused_projections", False):
             return
 
-        if self.cross_attention_dim_head is None:
+        if not self.is_cross_attention:
             concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
             concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
             out_features, in_features = concatenated_weights.shape
@@ -268,9 +273,9 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         **kwargs,
     ) -> torch.Tensor:
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
@@ -307,8 +312,8 @@ class WanTimeTextImageEmbedding(nn.Module):
         time_freq_dim: int,
         time_proj_dim: int,
         text_embed_dim: int,
-        image_embed_dim: Optional[int] = None,
-        pos_embed_seq_len: Optional[int] = None,
+        image_embed_dim: int | None = None,
+        pos_embed_seq_len: int | None = None,
     ):
         super().__init__()
 
@@ -326,8 +331,8 @@ class WanTimeTextImageEmbedding(nn.Module):
         self,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        timestep_seq_len: Optional[int] = None,
+        encoder_hidden_states_image: torch.Tensor | None = None,
+        timestep_seq_len: int | None = None,
     ):
         timestep = self.timesteps_proj(timestep)
         if timestep_seq_len is not None:
@@ -350,7 +355,7 @@ class WanRotaryPosEmbed(nn.Module):
     def __init__(
         self,
         attention_head_dim: int,
-        patch_size: Tuple[int, int, int],
+        patch_size: tuple[int, int, int],
         max_seq_len: int,
         theta: float = 10000.0,
     ):
@@ -421,7 +426,7 @@ class WanTransformerBlock(nn.Module):
         qk_norm: str = "rms_norm_across_heads",
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
-        added_kv_proj_dim: Optional[int] = None,
+        added_kv_proj_dim: int | None = None,
     ):
         super().__init__()
 
@@ -506,7 +511,7 @@ class WanTransformer3DModel(
     A Transformer model for video-like data used in the Wan model.
 
     Args:
-        patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
+        patch_size (`tuple[int]`, defaults to `(1, 2, 2)`):
             3D patch dimensions for video embedding (t_patch, h_patch, w_patch).
         num_attention_heads (`int`, defaults to `40`):
             Fixed length for text embeddings.
@@ -524,7 +529,7 @@ class WanTransformer3DModel(
             Intermediate dimension in feed-forward network.
         num_layers (`int`, defaults to `40`):
             The number of layers of transformer blocks to use.
-        window_size (`Tuple[int]`, defaults to `(-1, -1)`):
+        window_size (`tuple[int]`, defaults to `(-1, -1)`):
             Window size for local attention (-1 indicates global attention).
         cross_attn_norm (`bool`, defaults to `True`):
             Enable cross-attention normalization.
@@ -552,9 +557,11 @@ class WanTransformer3DModel(
         "blocks.0": {
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
-        "blocks.*": {
-            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-        },
+        # Reference: https://github.com/huggingface/diffusers/pull/12909
+        # We need to disable the splitting of encoder_hidden_states because the image_encoder
+        # (Wan 2.1 I2V) consistently generates 257 tokens for image_embed. This causes the shape
+        # of encoder_hidden_states—whose token count is always 769 (512 + 257) after concatenation
+        # —to be indivisible by the number of devices in the CP.
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         "": {
             "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
@@ -564,7 +571,7 @@ class WanTransformer3DModel(
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int, ...] = (1, 2, 2),
+        patch_size: tuple[int, ...] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
         in_channels: int = 16,
@@ -574,12 +581,12 @@ class WanTransformer3DModel(
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
-        qk_norm: Optional[str] = "rms_norm_across_heads",
+        qk_norm: str | None = "rms_norm_across_heads",
         eps: float = 1e-6,
-        image_dim: Optional[int] = None,
-        added_kv_proj_dim: Optional[int] = None,
+        image_dim: int | None = None,
+        added_kv_proj_dim: int | None = None,
         rope_max_seq_len: int = 1024,
-        pos_embed_seq_len: Optional[int] = None,
+        pos_embed_seq_len: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -618,30 +625,16 @@ class WanTransformer3DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        encoder_hidden_states_image: torch.Tensor | None = None,
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
+        attention_kwargs: dict[str, Any] | None = None,
+    ) -> torch.Tensor | dict[str, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.config.patch_size
         post_patch_num_frames = num_frames // p_t
@@ -708,10 +701,6 @@ class WanTransformer3DModel(
         )
         hidden_states = hidden_states.permute(0, 7, 1, 4, 2, 5, 3, 6)
         output = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

@@ -31,11 +31,11 @@ jobs:
   check_code_quality:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.8"
+          python-version: "3.10"
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -51,11 +51,11 @@ jobs:
     needs: check_code_quality
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.8"
+          python-version: "3.10"
       - name: Install dependencies
         run: |
           pip install --upgrade pip
@@ -92,7 +92,6 @@ jobs:
             runner: aws-general-8-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_example_cpu
-
     name: ${{ matrix.config.name }}
 
     runs-on:
@@ -108,15 +107,14 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 2
 
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
-        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
@@ -153,7 +151,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
         path: reports
@@ -185,7 +183,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 2
 
@@ -211,15 +209,13 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: pr_${{ matrix.config.report }}_test_reports
         path: reports
 
   run_lora_tests:
     needs: [check_code_quality, check_repository_consistency]
-    strategy:
-      fail-fast: false
 
     name: LoRA tests with PEFT main
 
@@ -236,7 +232,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 2
 
@@ -247,9 +243,8 @@ jobs:
         uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
         uv pip install -U tokenizers
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
-        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
-
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        
     - name: Environment
       run: |
         python utils/print_env.py
@@ -273,8 +268,8 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
-        name: pr_main_test_reports
+        name: pr_lora_test_reports
         path: reports
 

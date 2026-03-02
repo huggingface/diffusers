@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: typos-action
-        uses: crate-ci/typos@v1.12.4
+        uses: crate-ci/typos@v1.42.1
