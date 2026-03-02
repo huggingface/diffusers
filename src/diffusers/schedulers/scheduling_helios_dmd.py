@@ -282,7 +282,7 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
         x0_pred = xt - sigma_t * flow_pred
         return x0_pred.to(original_dtype)
 
-    def step_dmd(
+    def step(
         self,
         model_output: torch.FloatTensor,
         timestep: float | torch.FloatTensor = None,
@@ -294,7 +294,7 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
         dmd_sigmas: torch.FloatTensor | None = None,
         dmd_timesteps: torch.FloatTensor | None = None,
         all_timesteps: torch.FloatTensor | None = None,
-    ):
+    ) -> HeliosDMDSchedulerOutput | tuple:
         pred_image_or_video = self.convert_flow_pred_to_x0(
             flow_pred=model_output,
             xt=sample,
@@ -322,33 +322,6 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
             return (prev_sample,)
 
         return HeliosDMDSchedulerOutput(prev_sample=prev_sample)
-
-    # ---------------------------------- Merge ----------------------------------
-    def step(
-        self,
-        model_output: torch.FloatTensor,
-        timestep: float | torch.FloatTensor = None,
-        sample: torch.FloatTensor = None,
-        generator: torch.Generator | None = None,
-        return_dict: bool = True,
-        cur_sampling_step: int = 0,
-        dmd_noisy_tensor: torch.FloatTensor | None = None,
-        dmd_sigmas: torch.FloatTensor | None = None,
-        dmd_timesteps: torch.FloatTensor | None = None,
-        all_timesteps: torch.FloatTensor | None = None,
-    ) -> HeliosDMDSchedulerOutput | tuple:
-        return self.step_dmd(
-            model_output=model_output,
-            timestep=timestep,
-            sample=sample,
-            generator=generator,
-            return_dict=return_dict,
-            cur_sampling_step=cur_sampling_step,
-            dmd_noisy_tensor=dmd_noisy_tensor,
-            dmd_sigmas=dmd_sigmas,
-            dmd_timesteps=dmd_timesteps,
-            all_timesteps=all_timesteps,
-        )
 
     def reset_scheduler_history(self):
         self._step_index = None
