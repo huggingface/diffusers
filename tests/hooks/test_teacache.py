@@ -123,7 +123,7 @@ class TeaCacheStateTests(unittest.TestCase):
         state = TeaCacheState()
         self.assertEqual(state.cnt, 0)
         self.assertEqual(state.num_steps, 0)
-        self.assertEqual(state.accumulated_rel_l1_distance, 0.0)
+        self.assertIsNone(state.accumulated_rel_l1_distance)
         self.assertIsNone(state.previous_modulated_input)
         self.assertIsNone(state.previous_residual)
 
@@ -132,7 +132,7 @@ class TeaCacheStateTests(unittest.TestCase):
         state = TeaCacheState()
         state.cnt = 5
         state.num_steps = 10
-        state.accumulated_rel_l1_distance = 0.5
+        state.accumulated_rel_l1_distance = torch.tensor(0.5)
         state.previous_modulated_input = torch.randn(1, 10)
         state.previous_residual = torch.randn(1, 10)
 
@@ -140,7 +140,7 @@ class TeaCacheStateTests(unittest.TestCase):
 
         self.assertEqual(state.cnt, 0)
         self.assertEqual(state.num_steps, 0)
-        self.assertEqual(state.accumulated_rel_l1_distance, 0.0)
+        self.assertIsNone(state.accumulated_rel_l1_distance)
         self.assertIsNone(state.previous_modulated_input)
         self.assertIsNone(state.previous_residual)
 
@@ -213,10 +213,10 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         """Test that model coefficients are properly registered."""
         model_config = _get_model_config()
 
-        self.assertIn("Flux", model_config)
-        self.assertIn("Mochi", model_config)
-        self.assertIn("Lumina2", model_config)
-        self.assertIn("CogVideoX", model_config)
+        self.assertIn("FluxTransformer2DModel", model_config)
+        self.assertIn("MochiTransformer3DModel", model_config)
+        self.assertIn("Lumina2Transformer2DModel", model_config)
+        self.assertIn("CogVideoXTransformer3DModel", model_config)
 
         for model_name, config in model_config.items():
             coeffs = config["coefficients"]
@@ -286,7 +286,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         registry = HookRegistry.check_if_exists_or_initialize(model)
         hook = registry.get_hook("teacache")
         self.assertIsNotNone(hook)
-        self.assertEqual(hook.coefficients, model_config["Mochi"]["coefficients"])
+        self.assertEqual(hook.coefficients, model_config["MochiTransformer3DModel"]["coefficients"])
 
         model.disable_cache()
 
@@ -301,7 +301,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         registry = HookRegistry.check_if_exists_or_initialize(model)
         hook = registry.get_hook("teacache")
         self.assertIsNotNone(hook)
-        self.assertEqual(hook.coefficients, model_config["Lumina2"]["coefficients"])
+        self.assertEqual(hook.coefficients, model_config["Lumina2Transformer2DModel"]["coefficients"])
 
         registry.remove_hook("teacache")
 
@@ -316,7 +316,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         registry = HookRegistry.check_if_exists_or_initialize(model)
         hook = registry.get_hook("teacache")
         self.assertIsNotNone(hook)
-        self.assertEqual(hook.coefficients, model_config["CogVideoX"]["coefficients"])
+        self.assertEqual(hook.coefficients, model_config["CogVideoXTransformer3DModel"]["coefficients"])
 
         model.disable_cache()
 
@@ -337,15 +337,15 @@ class TeaCacheMultiModelTests(unittest.TestCase):
 
         mochi_hook = TeaCacheHook(config)
         mochi_hook.initialize_hook(_create_mochi_model())
-        self.assertEqual(mochi_hook.model_type, "Mochi")
+        self.assertEqual(mochi_hook.model_type, "MochiTransformer3DModel")
 
         lumina_hook = TeaCacheHook(config)
         lumina_hook.initialize_hook(_create_lumina2_model())
-        self.assertEqual(lumina_hook.model_type, "Lumina2")
+        self.assertEqual(lumina_hook.model_type, "Lumina2Transformer2DModel")
 
         cogvideox_hook = TeaCacheHook(config)
         cogvideox_hook.initialize_hook(_create_cogvideox_model())
-        self.assertEqual(cogvideox_hook.model_type, "CogVideoX")
+        self.assertEqual(cogvideox_hook.model_type, "CogVideoXTransformer3DModel")
 
 
 class StateManagerContextTests(unittest.TestCase):

@@ -17,7 +17,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from ..loaders.peft import PeftAdapterMixin
 from ..models.modeling_outputs import Transformer2DModelOutput
 from ..utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from .hooks import BaseState, HookRegistry, ModelHook, StateManager
@@ -35,6 +34,12 @@ def _handle_accelerate_hook(module: torch.nn.Module, *args, **kwargs) -> Tuple[t
     return args, kwargs
 
 
+def _is_peft_adapter(module: torch.nn.Module) -> bool:
+    """Check if module inherits from PeftAdapterMixin (lazy import to avoid circular imports)."""
+
+    return _is_peft_adapter(module)
+
+
 def _extract_lora_scale(attention_kwargs: Optional[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], float]:
     """Extract LoRA scale from attention kwargs."""
     if attention_kwargs is None:
@@ -47,20 +52,21 @@ def _get_model_config() -> Dict[str, Dict[str, Any]]:
     """
     Model configuration mapping for TeaCache.
 
-    Keys are actual model class names from diffusers.models.transformers.
-    Variant-specific coefficients are detected via config._name_or_path.
+    Keys are actual model class names from diffusers.models.transformers. Variant-specific coefficients are detected
+    via config._name_or_path.
 
-    Polynomial coefficients rescale L1 distances for caching decisions.
-    The 4th-degree polynomial: c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]
+    Polynomial coefficients rescale L1 distances for caching decisions. The 4th-degree polynomial: c[0]*x^4 + c[1]*x^3
+    + c[2]*x^2 + c[3]*x + c[4]
 
-    Coefficient derivation:
-    - Coefficients are calibrated empirically by fitting polynomial curves to
-      L1 distance measurements during inference
-    - For models with similar architectures, coefficients can be transferred
-      (e.g., FLUX -> TangoFlux, CogVideoX-5B -> CogVideoX-1.5)
-    - Users can provide custom coefficients via TeaCacheConfig
+    Coefficient provenance:
+    - All coefficients are taken from the official TeaCache reference implementations
+      (https://github.com/ali-vilab/TeaCache). They are 4th-degree polynomial fits calibrated by the paper authors to
+      map raw L1 distances to rescaled distances optimized for each model architecture.
+    - Variant-specific coefficients (e.g., CogVideoX-2b vs 5b) are calibrated for those specific checkpoint sizes and
+      architectures.
+    - Users can provide custom coefficients via TeaCacheConfig for unsupported models.
 
-    Sources:
+    Reference implementation sources:
     - FLUX: https://github.com/ali-vilab/TeaCache/blob/main/TeaCache4FLUX/teacache_flux.py
     - Mochi: https://github.com/ali-vilab/TeaCache/blob/main/TeaCache4Mochi/
     - Lumina2: https://github.com/ali-vilab/TeaCache/blob/main/TeaCache4Lumina2/
@@ -122,24 +128,10 @@ def _auto_detect_model_type(module: torch.nn.Module) -> Tuple[str, Callable, Lis
     return class_name, forward_func, coefficients
 
 
-def _rescale_distance(coefficients: List[float], x: float) -> float:
-    """Polynomial rescaling: c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]"""
-    c = coefficients
-    return c[0] * x**4 + c[1] * x**3 + c[2] * x**2 + c[3] * x + c[4]
-
-
 def _rescale_distance_tensor(coefficients: List[float], x: torch.Tensor) -> torch.Tensor:
     """Polynomial rescaling using tensor operations (torch.compile friendly)."""
     c = coefficients
     return c[0] * x**4 + c[1] * x**3 + c[2] * x**2 + c[3] * x + c[4]
-
-
-def _compute_rel_l1_distance(current: torch.Tensor, previous: torch.Tensor) -> float:
-    """Compute relative L1 distance between tensors."""
-    prev_mean = previous.abs().mean()
-    if prev_mean.item() > 1e-9:
-        return ((current - previous).abs().mean() / prev_mean).item()
-    return 0.0 if current.abs().mean().item() < 1e-9 else float("inf")
 
 
 def _compute_rel_l1_distance_tensor(current: torch.Tensor, previous: torch.Tensor) -> torch.Tensor:
@@ -163,8 +155,8 @@ def _compute_rel_l1_distance_tensor(current: torch.Tensor, previous: torch.Tenso
 def _should_compute(state, modulated_inp, coefficients, rel_l1_thresh):
     """Determine if full computation is needed (single residual models).
 
-    Uses tensor-only operations for torch.compile compatibility. One .item() call
-    remains for the final branching decision since Python control flow requires a boolean.
+    Uses tensor-only operations for torch.compile compatibility. One .item() call remains for the final branching
+    decision since Python control flow requires a boolean.
     """
     is_first_step = state.cnt == 0
     is_last_step = state.num_steps > 0 and state.cnt == state.num_steps - 1
@@ -405,23 +397,12 @@ class TeaCacheHook(ModelHook):
         self.model_type: Optional[str] = None
         self._forward_func: Optional[Callable] = None
 
-    def _maybe_reset_state_for_new_inference(
-        self, state: TeaCacheState, module: torch.nn.Module, reset_encoder_residual: bool = False
-    ) -> None:
+    def _maybe_reset_state_for_new_inference(self, state: TeaCacheState, module: torch.nn.Module) -> None:
         """Reset state if inference run completed. Initialize num_steps on first timestep if not set."""
         # Reset if we've completed all steps (new inference run)
         if state.cnt == state.num_steps and state.num_steps > 0:
             logger.debug("TeaCache: Inference run completed, resetting state")
-            state.cnt = 0
-            state.accumulated_rel_l1_distance = None
-            state.previous_modulated_input = None
-            state.previous_residual = None
-            if reset_encoder_residual:
-                state.previous_residual_encoder = None
-            # Lumina2-specific: clear per-sequence-length cache
-            state.cache_dict.clear()
-            state.uncond_seq_len = None
-            state.cond_seq_len = None
+            state.reset()
 
         # Set num_steps on first timestep (priority: config > callback > module attribute)
         if state.cnt == 0 and state.num_steps == 0:
@@ -497,14 +478,11 @@ def _flux_teacache_forward(
     """
     TeaCache-enabled forward pass for FLUX transformer models.
 
-    This function is adapted from FluxTransformer2DModel.forward() with TeaCache
-    caching logic inserted. When the original forward is updated, this function
-    should be reviewed for compatibility.
+    This function is adapted from FluxTransformer2DModel.forward() with TeaCache caching logic inserted. When the
+    original forward is updated, this function should be reviewed for compatibility.
 
     Reference:
-        Source: src/diffusers/models/transformers/transformer_flux.py
-        Class: FluxTransformer2DModel
-        Method: forward()
+        Source: src/diffusers/models/transformers/transformer_flux.py Class: FluxTransformer2DModel Method: forward()
 
     Key sections that must stay in sync:
         - Embedding computation (x_embedder, time_text_embed)
@@ -627,14 +605,11 @@ def _mochi_teacache_forward(
     """
     TeaCache-enabled forward pass for Mochi transformer models.
 
-    This function is adapted from MochiTransformer3DModel.forward() with TeaCache
-    caching logic inserted. When the original forward is updated, this function
-    should be reviewed for compatibility.
+    This function is adapted from MochiTransformer3DModel.forward() with TeaCache caching logic inserted. When the
+    original forward is updated, this function should be reviewed for compatibility.
 
     Reference:
-        Source: src/diffusers/models/transformers/transformer_mochi.py
-        Class: MochiTransformer3DModel
-        Method: forward()
+        Source: src/diffusers/models/transformers/transformer_mochi.py Class: MochiTransformer3DModel Method: forward()
 
     Key sections that must stay in sync:
         - Time embedding (time_embed)
@@ -663,7 +638,7 @@ def _mochi_teacache_forward(
     return_dict = kwargs.get("return_dict", return_dict)
 
     attention_kwargs, lora_scale = _extract_lora_scale(attention_kwargs)
-    if USE_PEFT_BACKEND and isinstance(module, PeftAdapterMixin):
+    if USE_PEFT_BACKEND and _is_peft_adapter(module):
         scale_lora_layers(module, lora_scale)
 
     state = hook.state_manager.get_state()
@@ -727,7 +702,7 @@ def _mochi_teacache_forward(
     hidden_states = hidden_states.permute(0, 6, 1, 2, 4, 3, 5)
     output = hidden_states.reshape(batch_size, -1, num_frames, height, width)
 
-    if USE_PEFT_BACKEND and isinstance(module, PeftAdapterMixin):
+    if USE_PEFT_BACKEND and _is_peft_adapter(module):
         unscale_lora_layers(module, lora_scale)
 
     if not return_dict:
@@ -748,14 +723,12 @@ def _lumina2_teacache_forward(
     """
     TeaCache-enabled forward pass for Lumina2 transformer models.
 
-    This function is adapted from Lumina2Transformer2DModel.forward() with TeaCache
-    caching logic inserted. When the original forward is updated, this function
-    should be reviewed for compatibility.
+    This function is adapted from Lumina2Transformer2DModel.forward() with TeaCache caching logic inserted. When the
+    original forward is updated, this function should be reviewed for compatibility.
 
     Reference:
-        Source: src/diffusers/models/transformers/transformer_lumina2.py
-        Class: Lumina2Transformer2DModel
-        Method: forward()
+        Source: src/diffusers/models/transformers/transformer_lumina2.py Class: Lumina2Transformer2DModel Method:
+        forward()
 
     Key sections that must stay in sync:
         - Time/caption embedding (time_caption_embed)
@@ -785,7 +758,7 @@ def _lumina2_teacache_forward(
     return_dict = kwargs.get("return_dict", return_dict)
 
     attention_kwargs, lora_scale = _extract_lora_scale(attention_kwargs)
-    if USE_PEFT_BACKEND and isinstance(module, PeftAdapterMixin):
+    if USE_PEFT_BACKEND and _is_peft_adapter(module):
         scale_lora_layers(module, lora_scale)
 
     state = hook.state_manager.get_state()
@@ -833,7 +806,7 @@ def _lumina2_teacache_forward(
         state.cache_dict[cache_key] = {
             "previous_modulated_input": None,
             "previous_residual": None,
-            "accumulated_rel_l1_distance": 0.0,
+            "accumulated_rel_l1_distance": None,
         }
     cache = state.cache_dict[cache_key]
 
@@ -847,16 +820,25 @@ def _lumina2_teacache_forward(
         state.uncond_seq_len = min(state.uncond_seq_len, cache_key)
         state.cond_seq_len = max(state.cond_seq_len, cache_key)
 
-    # Determine if we've seen both sequence lengths (CFG is active)
+    # === Lumina2 CFG Step Counting ===
+    # Assumptions (verified against pipeline_lumina2.py):
+    # 1. Lumina2 pipeline runs COND pass first, then UNCOND pass (cond-first ordering)
+    # 2. Conditional pass always has longer sequence length (more tokens from prompt)
+    # 3. Unconditional pass always has shorter sequence length (empty/negative prompt)
+    #
+    # When CFG is active (has_both_lengths=True):
+    #   - Counter increments at the START of each step pair (on the cond pass)
+    #   - Both cond and uncond passes within the same step see the same cnt value
+    #   - Step 0: forwards 1-2, cnt=0 (no increment — has_both=False on forward 1)
+    #   - Step 1: forward 3 increments cnt 0→1, forwards 3-4 see cnt=1
+    #   - Step N-1: forward 2N-1 increments cnt to N-1
+    #
+    # When CFG is disabled (has_both_lengths=False):
+    #   - Counter never increments via this path (all passes have same seq length)
+    #   - Caching decisions still work: boundary detection and _should_compute logic
+    #     handle counting internally via the per-cache-key state
     has_both_lengths = state.cond_seq_len != state.uncond_seq_len
     is_cond_pass = cache_key == state.cond_seq_len
-
-    # Increment counter BEFORE boundary check
-    # For cond-first pipelines (Lumina2), increment at the START of each step (on cond pass)
-    # This ensures both passes of the same step see the same cnt value
-    # - Step 0: forwards 1-2, cnt=0 for both (no increment yet, has_both=False on forward 1)
-    # - Step 1: forward 3 increments cnt 0→1, forwards 3-4 see cnt=1
-    # - Step N-1: forward 2N-1 increments cnt to N-1, forwards 2N-1 and 2N see cnt=N-1
     if has_both_lengths and is_cond_pass:
         state.cnt += 1
         if state.cnt >= state.num_steps and state.num_steps > 0:
@@ -871,13 +853,21 @@ def _lumina2_teacache_forward(
 
     if is_boundary_step or not has_previous:
         should_calc = True
-        cache["accumulated_rel_l1_distance"] = 0.0
+        cache["accumulated_rel_l1_distance"] = torch.zeros(1, device=modulated_inp.device, dtype=modulated_inp.dtype)
     else:
-        rel_distance = _compute_rel_l1_distance(modulated_inp, cache["previous_modulated_input"])
-        cache["accumulated_rel_l1_distance"] += _rescale_distance(hook.coefficients, rel_distance)
-        if cache["accumulated_rel_l1_distance"] >= hook.config.rel_l1_thresh:
+        rel_distance = _compute_rel_l1_distance_tensor(modulated_inp, cache["previous_modulated_input"])
+        rescaled = _rescale_distance_tensor(hook.coefficients, rel_distance)
+        if cache["accumulated_rel_l1_distance"] is None:
+            cache["accumulated_rel_l1_distance"] = torch.zeros(
+                1, device=modulated_inp.device, dtype=modulated_inp.dtype
+            )
+        cache["accumulated_rel_l1_distance"] = cache["accumulated_rel_l1_distance"] + rescaled
+        # Single .item() for Python branching — unavoidable for control flow
+        if (cache["accumulated_rel_l1_distance"] >= hook.config.rel_l1_thresh).item():
             should_calc = True
-            cache["accumulated_rel_l1_distance"] = 0.0
+            cache["accumulated_rel_l1_distance"] = torch.zeros(
+                1, device=modulated_inp.device, dtype=modulated_inp.dtype
+            )
         else:
             should_calc = False
 
@@ -906,7 +896,7 @@ def _lumina2_teacache_forward(
         final_output_list.append(reconstructed_image)
     final_output_tensor = torch.stack(final_output_list, dim=0)
 
-    if USE_PEFT_BACKEND and isinstance(module, PeftAdapterMixin):
+    if USE_PEFT_BACKEND and _is_peft_adapter(module):
         unscale_lora_layers(module, lora_scale)
 
     if not return_dict:
@@ -929,13 +919,11 @@ def _cogvideox_teacache_forward(
     """
     TeaCache-enabled forward pass for CogVideoX transformer models.
 
-    This function is adapted from CogVideoXTransformer3DModel.forward() with TeaCache
-    caching logic inserted. When the original forward is updated, this function
-    should be reviewed for compatibility.
+    This function is adapted from CogVideoXTransformer3DModel.forward() with TeaCache caching logic inserted. When the
+    original forward is updated, this function should be reviewed for compatibility.
 
     Reference:
-        Source: src/diffusers/models/transformers/cogvideox_transformer_3d.py
-        Class: CogVideoXTransformer3DModel
+        Source: src/diffusers/models/transformers/cogvideox_transformer_3d.py Class: CogVideoXTransformer3DModel
         Method: forward()
 
     Key sections that must stay in sync:
@@ -970,11 +958,11 @@ def _cogvideox_teacache_forward(
     return_dict = kwargs.get("return_dict", return_dict)
 
     attention_kwargs, lora_scale = _extract_lora_scale(attention_kwargs)
-    if USE_PEFT_BACKEND and isinstance(module, PeftAdapterMixin):
+    if USE_PEFT_BACKEND and _is_peft_adapter(module):
         scale_lora_layers(module, lora_scale)
 
     state = hook.state_manager.get_state()
-    hook._maybe_reset_state_for_new_inference(state, module, reset_encoder_residual=True)
+    hook._maybe_reset_state_for_new_inference(state, module)
 
     batch_size, num_frames, _, height, width = hidden_states.shape
 
@@ -1041,7 +1029,7 @@ def _cogvideox_teacache_forward(
         output = hs.reshape(batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p)
         output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
 
-    if USE_PEFT_BACKEND and isinstance(module, PeftAdapterMixin):
+    if USE_PEFT_BACKEND and _is_peft_adapter(module):
         unscale_lora_layers(module, lora_scale)
 
     if not return_dict:
