@@ -369,12 +369,6 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
             raise NotImplementedError
 
     def reset_scheduler_history(self):
-        self.model_outputs = [None] * self.config.solver_order
-        self.timestep_list = [None] * self.config.solver_order
-        self.lower_order_nums = 0
-        self.disable_corrector = self.config.disable_corrector
-        self.solver_p = self.config.solver_p
-        self.last_sample = None
         self._step_index = None
         self._begin_index = None
 
