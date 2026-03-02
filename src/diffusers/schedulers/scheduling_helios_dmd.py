@@ -234,9 +234,8 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self.reset_scheduler_history()
 
-        if self.config.scheduler_type == "dmd":
-            self.timesteps = self.timesteps[:-1]
-            self.sigmas = torch.cat([self.sigmas[:-2], self.sigmas[-1:]])
+        self.timesteps = self.timesteps[:-1]
+        self.sigmas = torch.cat([self.sigmas[:-2], self.sigmas[-1:]])
 
         if self.config.use_dynamic_shifting:
             assert self.config.shift == 1.0
