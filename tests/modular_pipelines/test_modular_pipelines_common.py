@@ -804,6 +804,8 @@ class TestCustomModelSavePretrained:
 
         assert loaded_pipe.unet is not None
         assert loaded_pipe.vae is not None
+
+
 class TestModularPipelineInitFallback:
     """Test that ModularPipeline.__init__ falls back to default_blocks_name when
     _blocks_class_name is a base class (e.g. SequentialPipelineBlocks saved by from_blocks_dict)."""
