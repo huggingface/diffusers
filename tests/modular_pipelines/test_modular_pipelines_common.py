@@ -730,6 +730,82 @@ class TestLoadComponentsSkipBehavior:
         assert not hasattr(pipe, "test_component") or pipe.test_component is None
 
 
+class TestCustomModelSavePretrained:
+    def test_save_pretrained_updates_index_for_local_model(self, tmp_path):
+        """When a component without _diffusers_load_id (custom/local model) is saved,
+        modular_model_index.json should point to the save directory."""
+        import json
+
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        pipe.load_components(torch_dtype=torch.float32)
+
+        pipe.unet._diffusers_load_id = "null"
+
+        save_dir = str(tmp_path / "my-pipeline")
+        pipe.save_pretrained(save_dir)
+
+        with open(os.path.join(save_dir, "modular_model_index.json")) as f:
+            index = json.load(f)
+
+        _library, _cls, unet_spec = index["unet"]
+        assert unet_spec["pretrained_model_name_or_path"] == save_dir
+        assert unet_spec["subfolder"] == "unet"
+
+        _library, _cls, vae_spec = index["vae"]
+        assert vae_spec["pretrained_model_name_or_path"] == "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+
+    def test_save_pretrained_roundtrip_with_local_model(self, tmp_path):
+        """A pipeline with a custom/local model should be saveable and re-loadable with identical outputs."""
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        pipe.load_components(torch_dtype=torch.float32)
+
+        pipe.unet._diffusers_load_id = "null"
+
+        original_state_dict = pipe.unet.state_dict()
+
+        save_dir = str(tmp_path / "my-pipeline")
+        pipe.save_pretrained(save_dir)
+
+        loaded_pipe = ModularPipeline.from_pretrained(save_dir)
+        loaded_pipe.load_components(torch_dtype=torch.float32)
+
+        assert loaded_pipe.unet is not None
+        assert loaded_pipe.unet.__class__.__name__ == pipe.unet.__class__.__name__
+
+        loaded_state_dict = loaded_pipe.unet.state_dict()
+        assert set(original_state_dict.keys()) == set(loaded_state_dict.keys())
+        for key in original_state_dict:
+            assert torch.equal(original_state_dict[key], loaded_state_dict[key]), f"Mismatch in {key}"
+
+    def test_save_pretrained_overwrite_modular_index(self, tmp_path):
+        """With overwrite_modular_index=True, all component references should point to the save directory."""
+        import json
+
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        pipe.load_components(torch_dtype=torch.float32)
+
+        save_dir = str(tmp_path / "my-pipeline")
+        pipe.save_pretrained(save_dir, overwrite_modular_index=True)
+
+        with open(os.path.join(save_dir, "modular_model_index.json")) as f:
+            index = json.load(f)
+
+        for component_name in ["unet", "vae", "text_encoder", "text_encoder_2"]:
+            if component_name not in index:
+                continue
+            _library, _cls, spec = index[component_name]
+            assert spec["pretrained_model_name_or_path"] == save_dir, (
+                f"{component_name} should point to save dir but got {spec['pretrained_model_name_or_path']}"
+            )
+            assert spec["subfolder"] == component_name
+
+        loaded_pipe = ModularPipeline.from_pretrained(save_dir)
+        loaded_pipe.load_components(torch_dtype=torch.float32)
+
+        assert loaded_pipe.unet is not None
+        assert loaded_pipe.vae is not None
+
+
 class TestModularPipelineInitFallback:
     """Test that ModularPipeline.__init__ falls back to default_blocks_name when
     _blocks_class_name is a base class (e.g. SequentialPipelineBlocks saved by from_blocks_dict)."""

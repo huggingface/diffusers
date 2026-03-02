@@ -1,0 +1,75 @@
+{
+    "_blocks_class_name": "SequentialPipelineBlocks",
+    "_class_name": "Flux2ModularPipeline",
+    "_diffusers_version": "0.36.0.dev0",
+    "scheduler": [
+        "diffusers",
+        "FlowMatchEulerDiscreteScheduler",
+        {
+            "repo": "hf-internal-testing/tiny-flux2",
+            "revision": null,
+            "subfolder": "scheduler",
+            "type_hint": [
+                "diffusers",
+                "FlowMatchEulerDiscreteScheduler"
+            ],
+            "variant": null
+        }
+    ],
+    "text_encoder": [
+        "transformers",
+        "Mistral3ForConditionalGeneration",
+        {
+            "repo": "hf-internal-testing/tiny-flux2",
+            "revision": null,
+            "subfolder": "text_encoder",
+            "type_hint": [
+                "transformers",
+                "Mistral3ForConditionalGeneration"
+            ],
+            "variant": null
+        }
+    ],
+    "tokenizer": [
+        "transformers",
+        "AutoProcessor",
+        {
+            "repo": "hf-internal-testing/Mistral-Small-3.1-24B-Instruct-2503-only-processor",
+            "revision": null,
+            "subfolder": "",
+            "type_hint": [
+                "transformers",
+                "AutoProcessor"
+            ],
+            "variant": null
+        }
+    ],
+    "transformer": [
+        "diffusers",
+        "Flux2Transformer2DModel",
+        {
+            "repo": "hf-internal-testing/tiny-flux2",
+            "revision": null,
+            "subfolder": "transformer",
+            "type_hint": [
+                "diffusers",
+                "Flux2Transformer2DModel"
+            ],
+            "variant": null
+        }
+    ],
+    "vae": [
+        "diffusers",
+        "AutoencoderKLFlux2",
+        {
+            "repo": "hf-internal-testing/tiny-flux2",
+            "revision": null,
+            "subfolder": "vae",
+            "type_hint": [
+                "diffusers",
+                "AutoencoderKLFlux2"
+            ],
+            "variant": null
+        }
+    ]
+}

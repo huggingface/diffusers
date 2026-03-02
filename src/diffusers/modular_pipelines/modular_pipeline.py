@@ -14,6 +14,7 @@
 import importlib
 import inspect
 import os
+import sys
 import traceback
 import warnings
 from collections import OrderedDict
@@ -28,10 +29,16 @@ from tqdm.auto import tqdm
 from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin, FrozenDict
-from ..pipelines.pipeline_loading_utils import _fetch_class_library_tuple, simple_get_class_obj
+from ..pipelines.pipeline_loading_utils import (
+    LOADABLE_CLASSES,
+    _fetch_class_library_tuple,
+    _unwrap_model,
+    simple_get_class_obj,
+)
 from ..utils import PushToHubMixin, is_accelerate_available, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.torch_utils import is_compiled_module
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
     MODULAR_MODEL_CARD_TEMPLATE,
@@ -1826,29 +1833,124 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         )
         return pipeline
 
-    def save_pretrained(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
+    def save_pretrained(
+        self,
+        save_directory: str | os.PathLike,
+        safe_serialization: bool = True,
+        variant: str | None = None,
+        max_shard_size: int | str | None = None,
+        push_to_hub: bool = False,
+        **kwargs,
+    ):
         """
-        Save the pipeline to a directory. It does not save components, you need to save them separately.
+        Save the pipeline and all its components to a directory, so that it can be re-loaded using the
+        [`~ModularPipeline.from_pretrained`] class method.
 
         Args:
             save_directory (`str` or `os.PathLike`):
-                Path to the directory where the pipeline will be saved.
-            push_to_hub (`bool`, optional):
-                Whether to push the pipeline to the huggingface hub.
-            **kwargs: Additional arguments passed to `save_config()` method
+                Directory to save the pipeline to. Will be created if it doesn't exist.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            variant (`str`, *optional*):
+                If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
+            max_shard_size (`int` or `str`, defaults to `None`):
+                The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size
+                lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5GB"`).
+                If expressed as an integer, the unit is bytes.
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether to push the pipeline to the Hugging Face model hub after saving it.
+            **kwargs: Additional keyword arguments:
+                - `overwrite_modular_index` (`bool`, *optional*, defaults to `False`):
+                    When saving a Modular Pipeline, its components in `modular_model_index.json` may reference repos
+                    different from the destination repo. Setting this to `True` updates all component references in
+                    `modular_model_index.json` so they point to the repo specified by `repo_id`.
+                - `repo_id` (`str`, *optional*):
+                    The repository ID to push the pipeline to. Defaults to the last component of `save_directory`.
+                - `commit_message` (`str`, *optional*):
+                    Commit message for the push to hub operation.
+                - `private` (`bool`, *optional*):
+                    Whether the repository should be private.
+                - `create_pr` (`bool`, *optional*, defaults to `False`):
+                    Whether to create a pull request instead of pushing directly.
+                - `token` (`str`, *optional*):
+                    The Hugging Face token to use for authentication.
         """
+        overwrite_modular_index = kwargs.pop("overwrite_modular_index", False)
+        repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
             private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
-            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
-            # Generate modular pipeline card content
-            card_content = generate_modular_model_card_content(self.blocks)
+        for component_name, component_spec in self._component_specs.items():
+            if component_spec.default_creation_method != "from_pretrained":
+                continue
 
-            # Create a new empty model card and eventually tag it
+            component = getattr(self, component_name, None)
+            if component is None:
+                continue
+
+            model_cls = component.__class__
+            if is_compiled_module(component):
+                component = _unwrap_model(component)
+                model_cls = component.__class__
+
+            save_method_name = None
+            for library_name, library_classes in LOADABLE_CLASSES.items():
+                if library_name in sys.modules:
+                    library = importlib.import_module(library_name)
+                else:
+                    logger.info(
+                        f"{library_name} is not installed. Cannot save {component_name} as {library_classes} from {library_name}"
+                    )
+                    continue
+
+                for base_class, save_load_methods in library_classes.items():
+                    class_candidate = getattr(library, base_class, None)
+                    if class_candidate is not None and issubclass(model_cls, class_candidate):
+                        save_method_name = save_load_methods[0]
+                        break
+                if save_method_name is not None:
+                    break
+
+            if save_method_name is None:
+                logger.warning(f"self.{component_name}={component} of type {type(component)} cannot be saved.")
+                continue
+
+            save_method = getattr(component, save_method_name)
+            save_method_signature = inspect.signature(save_method)
+            save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
+            save_method_accept_variant = "variant" in save_method_signature.parameters
+            save_method_accept_max_shard_size = "max_shard_size" in save_method_signature.parameters
+
+            save_kwargs = {}
+            if save_method_accept_safe:
+                save_kwargs["safe_serialization"] = safe_serialization
+            if save_method_accept_variant:
+                save_kwargs["variant"] = variant
+            if save_method_accept_max_shard_size and max_shard_size is not None:
+                save_kwargs["max_shard_size"] = max_shard_size
+
+            component_save_path = os.path.join(save_directory, component_name)
+            save_method(component_save_path, **save_kwargs)
+
+            if component_name not in self.config:
+                continue
+
+            has_no_load_id = not hasattr(component, "_diffusers_load_id") or component._diffusers_load_id == "null"
+            if overwrite_modular_index or has_no_load_id:
+                library, class_name, component_spec_dict = self.config[component_name]
+                component_spec_dict["pretrained_model_name_or_path"] = repo_id if push_to_hub else save_directory
+                component_spec_dict["subfolder"] = component_name
+                self.register_to_config(**{component_name: (library, class_name, component_spec_dict)})
+
+        self.save_config(save_directory=save_directory)
+
+        if push_to_hub:
+            card_content = generate_modular_model_card_content(self.blocks)
             model_card = load_or_create_model_card(
                 repo_id,
                 token=token,
@@ -1857,13 +1959,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 is_modular=True,
             )
             model_card = populate_model_card(model_card, tags=card_content["tags"])
-
             model_card.save(os.path.join(save_directory, "README.md"))
 
-        # YiYi TODO: maybe order the json file to make it more readable: configs first, then components
-        self.save_config(save_directory=save_directory)
-
-        if push_to_hub:
             self._upload_folder(
                 save_directory,
                 repo_id,
@@ -2131,8 +2228,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             ```
 
         Notes:
-            - Components with trained weights should be loaded with `AutoModel.from_pretrained()` or
-            `ComponentSpec.load()` so that loading specs are preserved for serialization.
+            - Components loaded with `AutoModel.from_pretrained()` or `ComponentSpec.load()` will have
+            loading specs preserved for serialization. Custom or locally loaded components without Hub references will
+            have their `modular_model_index.json` entries updated automatically during `save_pretrained()`.
             - ConfigMixin objects without weights (e.g., schedulers, guiders) can be passed directly.
         """
 
@@ -2154,14 +2252,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 new_component_spec = current_component_spec
                 if hasattr(self, name) and getattr(self, name) is not None:
                     logger.warning(f"ModularPipeline.update_components: setting {name} to None (spec unchanged)")
-            elif current_component_spec.default_creation_method == "from_pretrained" and not (
-                hasattr(component, "_diffusers_load_id") and component._diffusers_load_id is not None
-            ):
-                logger.warning(
-                    f"ModularPipeline.update_components: {name} has no valid _diffusers_load_id. "
-                    f"This will result in empty loading spec, use ComponentSpec.load() for proper specs"
-                )
-                new_component_spec = ComponentSpec(name=name, type_hint=type(component))
             else:
                 new_component_spec = ComponentSpec.from_component(name, component)
 
