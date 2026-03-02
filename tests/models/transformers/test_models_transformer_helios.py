@@ -90,7 +90,7 @@ class HeliosTransformer3DTesterConfig(BaseModelTesterConfig):
         hidden_states = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
         timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, text_encoder_embedding_dim)).to(torch_device)
-        indices_hidden_states = torch.ones((2,)).to(torch_device)
+        indices_hidden_states = torch.ones((batch_size, num_frames)).to(torch_device)
         indices_latents_history_short = torch.ones((num_frames - 1,)).to(torch_device)
         indices_latents_history_mid = torch.ones((num_frames - 1,)).to(torch_device)
         indices_latents_history_long = torch.ones(((num_frames - 1) * 4,)).to(torch_device)
