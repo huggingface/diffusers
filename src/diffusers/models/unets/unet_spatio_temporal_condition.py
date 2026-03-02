@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -39,29 +38,29 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
     for all models (such as downloading or saving).
 
     Parameters:
-        sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
+        sample_size (`int` or `tuple[int, int]`, *optional*, defaults to `None`):
             Height and width of input/output sample.
         in_channels (`int`, *optional*, defaults to 8): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlockSpatioTemporal", "CrossAttnDownBlockSpatioTemporal", "CrossAttnDownBlockSpatioTemporal", "DownBlockSpatioTemporal")`):
+        down_block_types (`tuple[str]`, *optional*, defaults to `("CrossAttnDownBlockSpatioTemporal", "CrossAttnDownBlockSpatioTemporal", "CrossAttnDownBlockSpatioTemporal", "DownBlockSpatioTemporal")`):
             The tuple of downsample blocks to use.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal")`):
+        up_block_types (`tuple[str]`, *optional*, defaults to `("UpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal")`):
             The tuple of upsample blocks to use.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         addition_time_embed_dim: (`int`, defaults to 256):
             Dimension to to encode the additional time ids.
         projection_class_embeddings_input_dim (`int`, defaults to 768):
             The dimension of the projection of encoded `added_time_ids`.
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
-        cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
+        cross_attention_dim (`int` or `tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
-        transformer_layers_per_block (`int`, `Tuple[int]`, or `Tuple[Tuple]` , *optional*, defaults to 1):
+        transformer_layers_per_block (`int`, `tuple[int]`, or `tuple[tuple]` , *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unets.unet_3d_blocks.CrossAttnDownBlockSpatioTemporal`],
             [`~models.unets.unet_3d_blocks.CrossAttnUpBlockSpatioTemporal`],
             [`~models.unets.unet_3d_blocks.UNetMidBlockSpatioTemporal`].
-        num_attention_heads (`int`, `Tuple[int]`, defaults to `(5, 10, 10, 20)`):
+        num_attention_heads (`int`, `tuple[int]`, defaults to `(5, 10, 10, 20)`):
             The number of attention heads.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
     """
@@ -71,28 +70,28 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[int] = None,
+        sample_size: int | None = None,
         in_channels: int = 8,
         out_channels: int = 4,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "CrossAttnDownBlockSpatioTemporal",
             "CrossAttnDownBlockSpatioTemporal",
             "CrossAttnDownBlockSpatioTemporal",
             "DownBlockSpatioTemporal",
         ),
-        up_block_types: Tuple[str, ...] = (
+        up_block_types: tuple[str, ...] = (
             "UpBlockSpatioTemporal",
             "CrossAttnUpBlockSpatioTemporal",
             "CrossAttnUpBlockSpatioTemporal",
             "CrossAttnUpBlockSpatioTemporal",
         ),
-        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
+        block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         addition_time_embed_dim: int = 256,
         projection_class_embeddings_input_dim: int = 768,
-        layers_per_block: Union[int, Tuple[int]] = 2,
-        cross_attention_dim: Union[int, Tuple[int]] = 1024,
-        transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
-        num_attention_heads: Union[int, Tuple[int, ...]] = (5, 10, 20, 20),
+        layers_per_block: int | tuple[int] = 2,
+        cross_attention_dim: int | tuple[int] = 1024,
+        transformer_layers_per_block: int | tuple[int, tuple[tuple]] = 1,
+        num_attention_heads: int | tuple[int, ...] = (5, 10, 20, 20),
         num_frames: int = 25,
     ):
         super().__init__()
@@ -260,7 +259,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
         self.set_attn_processor(processor)
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(self, chunk_size: int | None = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -292,11 +291,11 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
         added_time_ids: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[UNetSpatioTemporalConditionOutput, Tuple]:
+    ) -> UNetSpatioTemporalConditionOutput | tuple:
         r"""
         The [`UNetSpatioTemporalConditionModel`] forward method.
 

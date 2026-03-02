@@ -508,7 +508,7 @@ class FabricPipeline(DiffusionPipeline):
         num_images: int = 4,
         guidance_scale: float = 7.0,
         num_inference_steps: int = 20,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         feedback_start_ratio: float = 0.33,
         feedback_end_ratio: float = 0.66,
         min_weight: float = 0.05,

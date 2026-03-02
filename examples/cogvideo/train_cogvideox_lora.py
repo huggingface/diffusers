@@ -52,7 +52,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.36.0.dev0")
+check_min_version("0.37.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -140,7 +140,7 @@ def get_args():
         "--validation_prompt",
         type=str,
         default=None,
-        help="One or more prompt(s) that is used during validation to verify that the model is learning. Multiple validation prompts should be separated by the '--validation_prompt_seperator' string.",
+        help="One or more prompt(s) that is used during validation to verify that the model is learning. Multiple validation prompts should be separated by the '--validation_prompt_separator' string.",
     )
     parser.add_argument(
         "--validation_prompt_separator",
@@ -416,9 +416,9 @@ def get_args():
 class VideoDataset(Dataset):
     def __init__(
         self,
-        instance_data_root: Optional[str] = None,
-        dataset_name: Optional[str] = None,
-        dataset_config_name: Optional[str] = None,
+        instance_data_root: str | None = None,
+        dataset_name: str | None = None,
+        dataset_config_name: str | None = None,
         caption_column: str = "text",
         video_column: str = "video",
         height: int = 480,
@@ -428,8 +428,8 @@ class VideoDataset(Dataset):
         max_num_frames: int = 49,
         skip_frames_start: int = 0,
         skip_frames_end: int = 0,
-        cache_dir: Optional[str] = None,
-        id_token: Optional[str] = None,
+        cache_dir: str | None = None,
+        id_token: str | None = None,
     ) -> None:
         super().__init__()
 

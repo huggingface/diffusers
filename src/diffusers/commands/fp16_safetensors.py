@@ -35,8 +35,8 @@ from . import BaseDiffusersCLICommand
 def conversion_command_factory(args: Namespace):
     if args.use_auth_token:
         warnings.warn(
-            "The `--use_auth_token` flag is deprecated and will be removed in a future version. Authentication is now"
-            " handled automatically if user is logged in."
+            "The `--use_auth_token` flag is deprecated and will be removed in a future version."
+            "Authentication is now handled automatically if the user is logged in."
         )
     return FP16SafetensorsCommand(args.ckpt_id, args.fp16, args.use_safetensors)
 
@@ -92,8 +92,8 @@ class FP16SafetensorsCommand(BaseDiffusersCLICommand):
         pipeline_class = getattr(import_module("diffusers"), pipeline_class_name)
         self.logger.info(f"Pipeline class imported: {pipeline_class_name}.")
 
-        # Load the appropriate pipeline. We could have use `DiffusionPipeline`
-        # here, but just to avoid any rough edge cases.
+        # Load the appropriate pipeline. We could have used `DiffusionPipeline`
+        # here, but just to avoid potential edge cases.
         pipeline = pipeline_class.from_pretrained(
             self.ckpt_id, torch_dtype=torch.float16 if self.fp16 else torch.float32
         )

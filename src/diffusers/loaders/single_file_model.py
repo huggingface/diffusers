@@ -15,7 +15,6 @@ import importlib
 import inspect
 import re
 from contextlib import nullcontext
-from typing import Optional
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -40,6 +39,9 @@ from .single_file_utils import (
     convert_hunyuan_video_transformer_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
+    convert_ltx2_audio_vae_to_diffusers,
+    convert_ltx2_transformer_to_diffusers,
+    convert_ltx2_vae_to_diffusers,
     convert_ltx_transformer_checkpoint_to_diffusers,
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
@@ -49,6 +51,7 @@ from .single_file_utils import (
     convert_stable_cascade_unet_single_file_to_diffusers,
     convert_wan_transformer_to_diffusers,
     convert_wan_vae_to_diffusers,
+    convert_z_image_controlnet_checkpoint_to_diffusers,
     convert_z_image_transformer_checkpoint_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
@@ -148,6 +151,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "WanAnimateTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
     "AutoencoderKLWan": {
         "checkpoint_mapping_fn": convert_wan_vae_to_diffusers,
         "default_subfolder": "vae",
@@ -161,7 +168,7 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "default_subfolder": "transformer",
     },
     "QwenImageTransformer2DModel": {
-        "checkpoint_mapping_fn": lambda x: x,
+        "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
         "default_subfolder": "transformer",
     },
     "Flux2Transformer2DModel": {
@@ -172,11 +179,30 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_z_image_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "ZImageControlNetModel": {
+        "checkpoint_mapping_fn": convert_z_image_controlnet_checkpoint_to_diffusers,
+    },
+    "LTX2VideoTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_ltx2_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "AutoencoderKLLTX2Video": {
+        "checkpoint_mapping_fn": convert_ltx2_vae_to_diffusers,
+        "default_subfolder": "vae",
+    },
+    "AutoencoderKLLTX2Audio": {
+        "checkpoint_mapping_fn": convert_ltx2_audio_vae_to_diffusers,
+        "default_subfolder": "audio_vae",
+    },
 }
 
 
 def _should_convert_state_dict_to_diffusers(model_state_dict, checkpoint_state_dict):
-    return not set(model_state_dict.keys()).issubset(set(checkpoint_state_dict.keys()))
+    model_state_dict_keys = set(model_state_dict.keys())
+    checkpoint_state_dict_keys = set(checkpoint_state_dict.keys())
+    is_subset = model_state_dict_keys.issubset(checkpoint_state_dict_keys)
+    is_match = model_state_dict_keys == checkpoint_state_dict_keys
+    return not (is_subset and is_match)
 
 
 def _get_single_file_loadable_mapping_class(cls):
@@ -208,7 +234,7 @@ class FromOriginalModelMixin:
 
     @classmethod
     @validate_hf_hub_args
-    def from_single_file(cls, pretrained_model_link_or_path_or_dict: Optional[str] = None, **kwargs) -> Self:
+    def from_single_file(cls, pretrained_model_link_or_path_or_dict: str | None = None, **kwargs) -> Self:
         r"""
         Instantiate a model from pretrained weights saved in the original `.ckpt` or `.safetensors` format. The model
         is set in evaluation mode (`model.eval()`) by default.
@@ -235,11 +261,11 @@ class FromOriginalModelMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):

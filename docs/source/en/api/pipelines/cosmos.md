@@ -46,6 +46,20 @@ output = pipe(
 output.save("output.png")
 ```
 
+## Cosmos2_5_TransferPipeline
+
+[[autodoc]] Cosmos2_5_TransferPipeline
+  - all
+  - __call__
+
+
+## Cosmos2_5_PredictBasePipeline
+
+[[autodoc]] Cosmos2_5_PredictBasePipeline
+  - all
+  - __call__
+
+
 ## CosmosTextToWorldPipeline
 
 [[autodoc]] CosmosTextToWorldPipeline

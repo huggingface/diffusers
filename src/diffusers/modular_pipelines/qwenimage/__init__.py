@@ -21,26 +21,14 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["encoders"] = ["QwenImageTextEncoderStep"]
-    _import_structure["modular_blocks"] = [
-        "ALL_BLOCKS",
-        "AUTO_BLOCKS",
-        "CONTROLNET_BLOCKS",
-        "EDIT_AUTO_BLOCKS",
-        "EDIT_BLOCKS",
-        "EDIT_INPAINT_BLOCKS",
-        "EDIT_PLUS_AUTO_BLOCKS",
-        "EDIT_PLUS_BLOCKS",
-        "IMAGE2IMAGE_BLOCKS",
-        "INPAINT_BLOCKS",
-        "TEXT2IMAGE_BLOCKS",
-        "QwenImageAutoBlocks",
-        "QwenImageEditAutoBlocks",
-        "QwenImageEditPlusAutoBlocks",
-    ]
+    _import_structure["modular_blocks_qwenimage"] = ["QwenImageAutoBlocks"]
+    _import_structure["modular_blocks_qwenimage_edit"] = ["QwenImageEditAutoBlocks"]
+    _import_structure["modular_blocks_qwenimage_edit_plus"] = ["QwenImageEditPlusAutoBlocks"]
+    _import_structure["modular_blocks_qwenimage_layered"] = ["QwenImageLayeredAutoBlocks"]
     _import_structure["modular_pipeline"] = [
         "QwenImageEditModularPipeline",
         "QwenImageEditPlusModularPipeline",
+        "QwenImageLayeredModularPipeline",
         "QwenImageModularPipeline",
     ]
 
@@ -51,28 +39,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .encoders import (
-            QwenImageTextEncoderStep,
-        )
-        from .modular_blocks import (
-            ALL_BLOCKS,
-            AUTO_BLOCKS,
-            CONTROLNET_BLOCKS,
-            EDIT_AUTO_BLOCKS,
-            EDIT_BLOCKS,
-            EDIT_INPAINT_BLOCKS,
-            EDIT_PLUS_AUTO_BLOCKS,
-            EDIT_PLUS_BLOCKS,
-            IMAGE2IMAGE_BLOCKS,
-            INPAINT_BLOCKS,
-            TEXT2IMAGE_BLOCKS,
-            QwenImageAutoBlocks,
-            QwenImageEditAutoBlocks,
-            QwenImageEditPlusAutoBlocks,
-        )
+        from .modular_blocks_qwenimage import QwenImageAutoBlocks
+        from .modular_blocks_qwenimage_edit import QwenImageEditAutoBlocks
+        from .modular_blocks_qwenimage_edit_plus import QwenImageEditPlusAutoBlocks
+        from .modular_blocks_qwenimage_layered import QwenImageLayeredAutoBlocks
         from .modular_pipeline import (
             QwenImageEditModularPipeline,
             QwenImageEditPlusModularPipeline,
+            QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
         )
 else:

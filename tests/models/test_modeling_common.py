@@ -26,7 +26,7 @@ import unittest
 import unittest.mock as mock
 import uuid
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pytest
@@ -168,8 +168,8 @@ def named_persistent_module_tensors(
 
 def compute_module_persistent_sizes(
     model: nn.Module,
-    dtype: Optional[Union[str, torch.device]] = None,
-    special_dtypes: Optional[Dict[str, Union[str, torch.device]]] = None,
+    dtype: str | torch.device | None = None,
+    special_dtypes: dict[str, str | torch.device] | None = None,
 ):
     """
     Compute the size of each submodule of a given model (parameters + persistent buffers).

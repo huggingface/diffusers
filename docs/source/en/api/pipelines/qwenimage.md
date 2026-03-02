@@ -29,7 +29,7 @@ Qwen-Image comes in the following variants:
 | Qwen-Image-Edit Plus | [Qwen/Qwen-Image-Edit-2509](https://huggingface.co/Qwen/Qwen-Image-Edit-2509) |
 
 > [!TIP]
-> [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
+> See the [Caching](../../optimization/cache) guide to speed up inference by storing and reusing intermediate outputs.
 
 ## LoRA for faster inference
 
@@ -95,7 +95,7 @@ image.save("qwen_fewsteps.png")
 
 With [`QwenImageEditPlusPipeline`], one can provide multiple images as input reference.
 
-```
+```py
 import torch
 from PIL import Image
 from diffusers import QwenImageEditPlusPipeline
@@ -108,11 +108,45 @@ pipe = QwenImageEditPlusPipeline.from_pretrained(
 image_1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/grumpy.jpg")
 image_2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peng.png")
 image = pipe(
-    image=[image_1, image_2], 
-    prompt='''put the penguin and the cat at a game show called "Qwen Edit Plus Games"''', 
+    image=[image_1, image_2],
+    prompt='''put the penguin and the cat at a game show called "Qwen Edit Plus Games"''',
     num_inference_steps=50
 ).images[0]
 ```
+
+## Performance
+
+### torch.compile
+
+Using `torch.compile` on the transformer provides ~2.4x speedup (A100 80GB: 4.70s → 1.93s):
+
+```python
+import torch
+from diffusers import QwenImagePipeline
+
+pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16).to("cuda")
+pipe.transformer = torch.compile(pipe.transformer)
+
+# First call triggers compilation (~7s overhead)
+# Subsequent calls run at ~2.4x faster
+image = pipe("a cat", num_inference_steps=50).images[0]
+```
+
+### Batched Inference with Variable-Length Prompts
+
+When using classifier-free guidance (CFG) with prompts of different lengths, the pipeline properly handles padding through attention masking. This ensures padding tokens do not influence the generated output.
+
+```python
+# CFG with different prompt lengths works correctly
+image = pipe(
+    prompt="A cat",
+    negative_prompt="blurry, low quality, distorted",
+    true_cfg_scale=3.5,
+    num_inference_steps=50,
+).images[0]
+```
+
+For detailed benchmark scripts and results, see [this gist](https://gist.github.com/cdutr/bea337e4680268168550292d7819dc2f).
 
 ## QwenImagePipeline
 
@@ -153,6 +187,12 @@ image = pipe(
 ## QwenImageEditPlusPipeline
 
 [[autodoc]] QwenImageEditPlusPipeline
+  - all
+  - __call__
+
+## QwenImageLayeredPipeline
+
+[[autodoc]] QwenImageLayeredPipeline
   - all
   - __call__
 

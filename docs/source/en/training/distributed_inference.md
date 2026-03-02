@@ -111,7 +111,7 @@ if __name__ == "__main__":
 Call `torchrun` to run the inference script and use the `--nproc_per_node` argument to set the number of GPUs to use.
 
 ```bash
-torchrun run_distributed.py --nproc_per_node=2
+torchrun --nproc_per_node=2 run_distributed.py
 ```
 
 ## device_map
@@ -237,6 +237,8 @@ By selectively loading and unloading the models you need at a given stage and sh
 
 Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized attention backend. Refer to this [table](../optimization/attention_backends#available-backends) for a complete list of available backends.
 
+Most attention backends are compatible with context parallelism. Open an [issue](https://github.com/huggingface/diffusers/issues/new) if a backend is not compatible.
+
 ### Ring Attention
 
 Key (K) and value (V) representations communicate between devices using [Ring Attention](https://huggingface.co/papers/2310.01889). This ensures each split sees every other token's K/V. Each GPU computes attention for its local K/V and passes it to the next GPU in the ring. No single GPU holds the full sequence, which reduces communication latency.
@@ -245,38 +247,58 @@ Pass a [`ContextParallelConfig`] to the `parallel_config` argument of the transf
 
 ```py
 import torch
-from diffusers import AutoModel, QwenImagePipeline, ContextParallelConfig
+from torch import distributed as dist
+from diffusers import DiffusionPipeline, ContextParallelConfig
 
-try:
-    torch.distributed.init_process_group("nccl")
-    rank = torch.distributed.get_rank()
-    device = torch.device("cuda", rank % torch.cuda.device_count())
+def setup_distributed():
+    if not dist.is_initialized():
+        dist.init_process_group(backend="nccl")
+    rank = dist.get_rank()
+    device = torch.device(f"cuda:{rank}")
     torch.cuda.set_device(device)
-    
-    transformer = AutoModel.from_pretrained("Qwen/Qwen-Image", subfolder="transformer", torch_dtype=torch.bfloat16, parallel_config=ContextParallelConfig(ring_degree=2))
-    pipeline = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", transformer=transformer, torch_dtype=torch.bfloat16, device_map="cuda")
-    pipeline.transformer.set_attention_backend("flash")
+    return device
+
+def main():
+    device = setup_distributed()
+    world_size = dist.get_world_size()
+
+    pipeline = DiffusionPipeline.from_pretrained(
+        "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+    ).to(device)
+    pipeline.transformer.set_attention_backend("_native_cudnn")
+
+    cp_config = ContextParallelConfig(ring_degree=world_size)
+    pipeline.transformer.enable_parallelism(config=cp_config)
 
     prompt = """
     cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
     highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
     """
-    
+
     # Must specify generator so all ranks start with same latents (or pass your own)
     generator = torch.Generator().manual_seed(42)
-    image = pipeline(prompt, num_inference_steps=50, generator=generator).images[0]
-    
-    if rank == 0:
-        image.save("output.png")
+    image = pipeline(
+        prompt,
+        guidance_scale=3.5,
+        num_inference_steps=50,
+        generator=generator,
+    ).images[0]
 
-except Exception as e:
-    print(f"An error occurred: {e}")
-    torch.distributed.breakpoint()
-    raise
+    if dist.get_rank() == 0:
+        image.save(f"output.png")
 
-finally:
-    if torch.distributed.is_initialized():
-        torch.distributed.destroy_process_group()
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+The script above needs to be run with a distributed launcher, such as [torchrun](https://docs.pytorch.org/docs/stable/elastic/run.html), that is compatible with PyTorch. `--nproc-per-node` is set to the number of GPUs available.
+
+```shell
+torchrun --nproc-per-node 2 above_script.py
 ```
 
 ### Ulysses Attention
@@ -288,5 +310,83 @@ finally:
 Pass the [`ContextParallelConfig`] to [`~ModelMixin.enable_parallelism`].
 
 ```py
+# Depending on the number of GPUs available.
 pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2))
+```
+
+### Unified Attention
+
+[Unified Sequence Parallelism](https://huggingface.co/papers/2405.07719) combines Ring Attention and Ulysses Attention into a single approach for efficient long-sequence processing. It applies Ulysses's *all-to-all* communication first to redistribute heads and sequence tokens, then uses Ring Attention to process the redistributed data, and finally reverses the *all-to-all* to restore the original layout.
+
+This hybrid approach leverages the strengths of both methods:
+- **Ulysses Attention** efficiently parallelizes across attention heads
+- **Ring Attention** handles very long sequences with minimal memory overhead
+- Together, they enable 2D parallelization across both heads and sequence dimensions
+
+[`ContextParallelConfig`] supports Unified Attention by specifying both `ulysses_degree` and `ring_degree`. The total number of devices used is `ulysses_degree * ring_degree`, arranged in a 2D grid where Ulysses and Ring groups are orthogonal (non-overlapping).
+Pass the [`ContextParallelConfig`] with both `ulysses_degree` and `ring_degree` set to bigger than 1 to [`~ModelMixin.enable_parallelism`].
+
+```py
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ring_degree=2))
+```
+
+> [!TIP]
+> Unified Attention is to be used when there are enough devices to arrange in a 2D grid (at least 4 devices).
+
+We ran a benchmark with Ulysess, Ring, and Unified Attention with [this script](https://github.com/huggingface/diffusers/pull/12693#issuecomment-3694727532) on a node of 4 H100 GPUs. The results are summarized as follows:
+
+| CP Backend         | Time / Iter (ms) | Steps / Sec | Peak Memory (GB) |
+|--------------------|------------------|-------------|------------------|
+| ulysses            | 6670.789         | 7.50        | 33.85            |
+| ring               | 13076.492        | 3.82        | 56.02            |
+| unified_balanced   | 11068.705        | 4.52        | 33.85            |
+
+From the above table, it's clear that Ulysses provides better throughput, but the number of devices it can use remains limited to the number of attention heads, a limitation that is solved by unified attention.
+
+
+### Ulysses Anything Attention
+
+The default Ulysses Attention mechanism requires that the sequence length of hidden states must be divisible by the number of devices. This imposes significant limitations on the practical application of Ulysses Attention. [Ulysses Anything Attention](https://github.com/huggingface/diffusers/pull/12996) is a variant of Ulysses Attention that supports arbitrary sequence lengths and arbitrary numbers of attention heads, thereby enhancing the versatility of Ulysses Attention in practical use.
+
+[`ContextParallelConfig`] supports Ulysses Anything Attention by specifying both `ulysses_degree` and `ulysses_anything`. Please note that Ulysses Anything Attention is not currently supported by Unified Attention. Pass the [`ContextParallelConfig`] with both `ulysses_degree` set to bigger than 1 and `ulysses_anything=True` to [`~ModelMixin.enable_parallelism`].
+
+```py
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ulysses_anything=True))
+```
+
+> [!TIP] To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in `init_process_group`. This will significantly reduce communication latency.
+
+We ran a benchmark for FLUX.1-dev with Ulysses, Ring, Unified Attention and Ulysses Anything Attention with [this script](https://github.com/huggingface/diffusers/pull/12996#issuecomment-3797695999) on a node of 4 L20 GPUs. The results are summarized as follows:
+
+| CP Backend         | Time / Iter (ms) | Steps / Sec | Peak Memory (GB) | Shape (HxW)|
+|--------------------|------------------|-------------|------------------|------------|
+| ulysses            |   281.07         |    3.56     |     37.11        | 1024x1024  |
+| ring               |   351.34         |    2.85     |     37.01        | 1024x1024  |
+| unified_balanced   |   324.37         |    3.08     |     37.16        | 1024x1024  |
+| ulysses_anything   |   280.94         |    3.56     |     37.11        | 1024x1024  |
+| ulysses            |   failed         |    failed   |     failed       | 1008x1008  |
+| ring               |   failed         |    failed   |     failed       | 1008x1008  |
+| unified_balanced   |   failed         |    failed   |     failed       | 1008x1008  |
+| ulysses_anything   |   278.40         |    3.59     |     36.99        | 1008x1008  |
+
+From the above table, it is clear that Ulysses Anything Attention offers better compatibility with arbitrary sequence lengths while maintaining the same performance as the standard Ulysses Attention.
+
+### parallel_config
+
+Pass `parallel_config` during model initialization to enable context parallelism.
+
+```py
+CKPT_ID = "black-forest-labs/FLUX.1-dev"
+
+cp_config = ContextParallelConfig(ring_degree=2)
+transformer = AutoModel.from_pretrained(
+    CKPT_ID, 
+    subfolder="transformer", 
+    torch_dtype=torch.bfloat16, 
+    parallel_config=cp_config
+)
+
+pipeline = DiffusionPipeline.from_pretrained(
+    CKPT_ID, transformer=transformer, torch_dtype=torch.bfloat16,
+).to(device)
 ```

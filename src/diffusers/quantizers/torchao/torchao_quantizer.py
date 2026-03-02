@@ -21,7 +21,7 @@ import importlib
 import re
 import types
 from fnmatch import fnmatch
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from packaging import version
 
@@ -34,6 +34,9 @@ from ...utils import (
     logging,
 )
 from ..base import DiffusersQuantizer
+
+
+logger = logging.get_logger(__name__)
 
 
 if TYPE_CHECKING:
@@ -83,11 +86,19 @@ def _update_torch_safe_globals():
     ]
     try:
         from torchao.dtypes import NF4Tensor
-        from torchao.dtypes.floatx.float8_layout import Float8AQTTensorImpl
-        from torchao.dtypes.uintx.uint4_layout import UInt4Tensor
         from torchao.dtypes.uintx.uintx_layout import UintxAQTTensorImpl, UintxTensor
 
-        safe_globals.extend([UintxTensor, UInt4Tensor, UintxAQTTensorImpl, Float8AQTTensorImpl, NF4Tensor])
+        safe_globals.extend([UintxTensor, UintxAQTTensorImpl, NF4Tensor])
+
+        # note: is_torchao_version(">=", "0.16.0") does not work correctly
+        # with torchao nightly, so using a ">" check which does work correctly
+        if is_torchao_version(">", "0.15.0"):
+            pass
+        else:
+            from torchao.dtypes.floatx.float8_layout import Float8AQTTensorImpl
+            from torchao.dtypes.uintx.uint4_layout import UInt4Tensor
+
+            safe_globals.extend([UInt4Tensor, Float8AQTTensorImpl])
 
     except (ImportError, ModuleNotFoundError) as e:
         logger.warning(
@@ -108,7 +119,7 @@ if (
     _update_torch_safe_globals()
 
 
-def fuzzy_match_size(config_name: str) -> Optional[str]:
+def fuzzy_match_size(config_name: str) -> str | None:
     """
     Extract the size digit from strings like "4weight", "8weight". Returns the digit as an integer if found, otherwise
     None.
@@ -121,9 +132,6 @@ def fuzzy_match_size(config_name: str) -> Optional[str]:
         return str_match.group(1)
 
     return None
-
-
-logger = logging.get_logger(__name__)
 
 
 def _quantization_type(weight):
@@ -263,7 +271,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             f"dtype you are using should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
         )
 
-    def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         max_memory = {key: val * 0.9 for key, val in max_memory.items()}
         return max_memory
 
@@ -272,7 +280,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         model: "ModelMixin",
         param_value: "torch.Tensor",
         param_name: str,
-        state_dict: Dict[str, Any],
+        state_dict: dict[str, Any],
         **kwargs,
     ) -> bool:
         param_device = kwargs.pop("param_device", None)
@@ -293,8 +301,8 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         param_value: "torch.Tensor",
         param_name: str,
         target_device: "torch.device",
-        state_dict: Dict[str, Any],
-        unexpected_keys: List[str],
+        state_dict: dict[str, Any],
+        unexpected_keys: list[str],
         **kwargs,
     ):
         r"""
@@ -336,7 +344,6 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             from torchao.core.config import AOBaseConfig
 
             quant_type = self.quantization_config.quant_type
-            # For autoquant case, it will be treated in the string implementation below in map_to_target_dtype
             if isinstance(quant_type, AOBaseConfig):
                 # Extract size digit using fuzzy match on the class name
                 config_name = quant_type.__class__.__name__
@@ -358,7 +365,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         self,
         model: "ModelMixin",
         device_map,
-        keep_in_fp32_modules: List[str] = [],
+        keep_in_fp32_modules: list[str] = [],
         **kwargs,
     ):
         self.modules_to_not_convert = self.quantization_config.modules_to_not_convert

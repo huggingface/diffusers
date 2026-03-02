@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -26,7 +25,7 @@ from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DiagonalGaussianDistribution
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -37,10 +36,10 @@ class HunyuanVideo15CausalConv3d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]] = 3,
-        stride: Union[int, Tuple[int, int, int]] = 1,
-        padding: Union[int, Tuple[int, int, int]] = 0,
-        dilation: Union[int, Tuple[int, int, int]] = 1,
+        kernel_size: int | tuple[int, int, int] = 3,
+        stride: int | tuple[int, int, int] = 1,
+        padding: int | tuple[int, int, int] = 0,
+        dilation: int | tuple[int, int, int] = 1,
         bias: bool = True,
         pad_mode: str = "replicate",
     ) -> None:
@@ -268,7 +267,7 @@ class HunyuanVideo15ResnetBlock(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         non_linearity: str = "swish",
     ) -> None:
         super().__init__()
@@ -357,7 +356,7 @@ class HunyuanVideo15DownBlock3D(nn.Module):
         in_channels: int,
         out_channels: int,
         num_layers: int = 1,
-        downsample_out_channels: Optional[int] = None,
+        downsample_out_channels: int | None = None,
         add_temporal_downsample: int = True,
     ) -> None:
         super().__init__()
@@ -406,7 +405,7 @@ class HunyuanVideo15UpBlock3D(nn.Module):
         in_channels: int,
         out_channels: int,
         num_layers: int = 1,
-        upsample_out_channels: Optional[int] = None,
+        upsample_out_channels: int | None = None,
         add_temporal_upsample: bool = True,
     ) -> None:
         super().__init__()
@@ -464,7 +463,7 @@ class HunyuanVideo15Encoder3D(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 64,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 1024, 1024),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 1024, 1024),
         layers_per_block: int = 2,
         temporal_compression_ratio: int = 4,
         spatial_compression_ratio: int = 16,
@@ -550,7 +549,7 @@ class HunyuanVideo15Decoder3D(nn.Module):
         self,
         in_channels: int = 32,
         out_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (1024, 1024, 512, 256, 128),
+        block_out_channels: tuple[int, ...] = (1024, 1024, 512, 256, 128),
         layers_per_block: int = 2,
         spatial_compression_ratio: int = 16,
         temporal_compression_ratio: int = 4,
@@ -625,7 +624,7 @@ class HunyuanVideo15Decoder3D(nn.Module):
         return hidden_states
 
 
-class AutoencoderKLHunyuanVideo15(ModelMixin, ConfigMixin):
+class AutoencoderKLHunyuanVideo15(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Used for
     HunyuanVideo-1.5.
@@ -642,7 +641,7 @@ class AutoencoderKLHunyuanVideo15(ModelMixin, ConfigMixin):
         in_channels: int = 3,
         out_channels: int = 3,
         latent_channels: int = 32,
-        block_out_channels: Tuple[int] = (128, 256, 512, 1024, 1024),
+        block_out_channels: tuple[int] = (128, 256, 512, 1024, 1024),
         layers_per_block: int = 2,
         spatial_compression_ratio: int = 16,
         temporal_compression_ratio: int = 4,
@@ -695,11 +694,11 @@ class AutoencoderKLHunyuanVideo15(ModelMixin, ConfigMixin):
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_latent_min_height: Optional[int] = None,
-        tile_latent_min_width: Optional[int] = None,
-        tile_overlap_factor: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_latent_min_height: int | None = None,
+        tile_latent_min_width: int | None = None,
+        tile_overlap_factor: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -723,27 +722,6 @@ class AutoencoderKLHunyuanVideo15(ModelMixin, ConfigMixin):
         self.tile_latent_min_width = tile_latent_min_width or self.tile_latent_min_width
         self.tile_overlap_factor = tile_overlap_factor or self.tile_overlap_factor
 
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_tiling = False
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
-
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         _, _, _, height, width = x.shape
 
@@ -756,7 +734,7 @@ class AutoencoderKLHunyuanVideo15(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         r"""
         Encode a batch of images into latents.
 
@@ -792,7 +770,7 @@ class AutoencoderKLHunyuanVideo15(ModelMixin, ConfigMixin):
         return dec
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images.
 
@@ -947,8 +925,8 @@ class AutoencoderKLHunyuanVideo15(ModelMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+        generator: torch.Generator | None = None,
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

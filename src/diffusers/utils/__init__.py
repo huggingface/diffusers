@@ -23,6 +23,7 @@ from .constants import (
     DEFAULT_HF_PARALLEL_LOADING_WORKERS,
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
+    DIFFUSERS_LOAD_ID_FIELDS,
     FLAX_WEIGHTS_NAME,
     GGUF_FILE_EXTENSION,
     HF_ENABLE_PARALLEL_LOADING,
@@ -66,6 +67,7 @@ from .import_utils import (
     is_accelerate_version,
     is_aiter_available,
     is_aiter_version,
+    is_av_available,
     is_better_profanity_available,
     is_bitsandbytes_available,
     is_bitsandbytes_version,
@@ -83,8 +85,6 @@ from .import_utils import (
     is_hpu_available,
     is_inflect_available,
     is_invisible_watermark_available,
-    is_k_diffusion_available,
-    is_k_diffusion_version,
     is_kernels_available,
     is_kornia_available,
     is_librosa_available,
@@ -129,6 +129,7 @@ from .loading_utils import get_module_from_name, get_submodule_by_name, load_ima
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (
+    apply_lora_scale,
     check_peft_version,
     delete_adapter_layers,
     get_adapter_name,
@@ -143,6 +144,7 @@ from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_p
 from .remote_utils import remote_decode
 from .state_dict_utils import (
     convert_all_state_dict_to_peft,
+    convert_sai_sd_control_lora_state_dict_to_peft,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_kohya,
     convert_state_dict_to_peft,

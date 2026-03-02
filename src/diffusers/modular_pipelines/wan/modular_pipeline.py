@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Any, Dict, Optional
-
 from ...loaders import WanLoraLoaderMixin
 from ...pipelines.pipeline_utils import StableDiffusionMixin
 from ...utils import logging
@@ -30,19 +28,12 @@ class WanModularPipeline(
     WanLoraLoaderMixin,
 ):
     """
-    A ModularPipeline for Wan.
+    A ModularPipeline for Wan2.1 text2video.
 
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
-    default_blocks_name = "WanAutoBlocks"
-
-    # override the default_blocks_name in base class, which is just return self.default_blocks_name
-    def get_default_blocks_name(self, config_dict: Optional[Dict[str, Any]]) -> Optional[str]:
-        if config_dict is not None and "boundary_ratio" in config_dict and config_dict["boundary_ratio"] is not None:
-            return "Wan22AutoBlocks"
-        else:
-            return "WanAutoBlocks"
+    default_blocks_name = "WanBlocks"
 
     @property
     def default_height(self):
@@ -118,3 +109,33 @@ class WanModularPipeline(
         if hasattr(self, "scheduler") and self.scheduler is not None:
             num_train_timesteps = self.scheduler.config.num_train_timesteps
         return num_train_timesteps
+
+
+class WanImage2VideoModularPipeline(WanModularPipeline):
+    """
+    A ModularPipeline for Wan2.1 image2video (both I2V and FLF2V).
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "WanImage2VideoAutoBlocks"
+
+
+class Wan22ModularPipeline(WanModularPipeline):
+    """
+    A ModularPipeline for Wan2.2 text2video.
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "Wan22Blocks"
+
+
+class Wan22Image2VideoModularPipeline(Wan22ModularPipeline):
+    """
+    A ModularPipeline for Wan2.2 image2video.
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "Wan22Image2VideoBlocks"
