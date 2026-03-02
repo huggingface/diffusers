@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import functools
-from typing import Any
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
@@ -42,8 +42,11 @@ class StateManager:
     def get_state(self):
         context = self._current_context
         if context is None:
-            # Fallback to default context for backward compatibility with
-            # pipelines that don't call cache_context()
+            # Fallback to default context for backward compatibility.
+            # Required because some pipelines (e.g., Lumina2) don't wrap
+            # their denoising loop calls in cache_context(). Without this
+            # fallback, stateful hooks like TeaCache would raise an error
+            # on those pipelines.
             context = "_default"
         if context not in self._state_cache:
             self._state_cache[context] = self._state_cls(*self._init_args, **self._init_kwargs)
@@ -89,19 +92,19 @@ class ModelHook:
         """
         return module
 
-    def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> tuple[tuple[Any], dict[str, Any]]:
+    def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
         r"""
         Hook that is executed just before the forward method of the model.
 
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass will be executed just after this event.
-            args (`tuple[Any]`):
+            args (`Tuple[Any]`):
                 The positional arguments passed to the module.
-            kwargs (`dict[Str, Any]`):
+            kwargs (`Dict[Str, Any]`):
                 The keyword arguments passed to the module.
         Returns:
-            `tuple[tuple[Any], dict[Str, Any]]`:
+            `Tuple[Tuple[Any], Dict[Str, Any]]`:
                 A tuple with the treated `args` and `kwargs`.
         """
         return args, kwargs
@@ -171,7 +174,7 @@ class HookRegistry:
     def __init__(self, module_ref: torch.nn.Module) -> None:
         super().__init__()
 
-        self.hooks: dict[str, ModelHook] = {}
+        self.hooks: Dict[str, ModelHook] = {}
 
         self._module_ref = module_ref
         self._hook_order = []
@@ -217,7 +220,7 @@ class HookRegistry:
         self._hook_order.append(name)
         self._fn_refs.append(fn_ref)
 
-    def get_hook(self, name: str) -> ModelHook | None:
+    def get_hook(self, name: str) -> Optional[ModelHook]:
         return self.hooks.get(name, None)
 
     def remove_hook(self, name: str, recurse: bool = True) -> None:
@@ -268,7 +271,7 @@ class HookRegistry:
             module._diffusers_hook = cls(module)
         return module._diffusers_hook
 
-    def _set_context(self, name: str | None = None) -> None:
+    def _set_context(self, name: Optional[str] = None) -> None:
         for hook_name in reversed(self._hook_order):
             hook = self.hooks[hook_name]
             if hook._is_stateful:
