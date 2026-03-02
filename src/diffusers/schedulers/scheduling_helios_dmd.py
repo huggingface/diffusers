@@ -44,10 +44,7 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
         stages: int = 3,
         stage_range: list = [0, 1 / 3, 2 / 3, 1],
         gamma: float = 1 / 3,
-        thresholding: bool = False,
         prediction_type: str = "flow_prediction",
-        solver_order: int = 2,
-        predict_x0: bool = True,
         use_flow_sigmas: bool = True,
         use_dynamic_shifting: bool = False,
         time_shift_type: Literal["exponential", "linear"] = "linear",
@@ -65,18 +62,6 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
         self.sigma_max = self.sigmas[0].item()
         self.gamma = gamma
 
-        if solver_type not in ["bh1", "bh2"]:
-            if solver_type in ["midpoint", "heun", "logrho"]:
-                self.register_to_config(solver_type="bh2")
-            else:
-                raise NotImplementedError(f"{solver_type} is not implemented for {self.__class__}")
-
-        self.predict_x0 = predict_x0
-        self.model_outputs = [None] * solver_order
-        self.timestep_list = [None] * solver_order
-        self.lower_order_nums = 0
-        self.disable_corrector = disable_corrector
-        self.solver_p = solver_p
         self.last_sample = None
         self._step_index = None
         self._begin_index = None
@@ -352,21 +337,18 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
         dmd_timesteps: torch.FloatTensor | None = None,
         all_timesteps: torch.FloatTensor | None = None,
     ) -> HeliosDMDSchedulerOutput | tuple:
-        if self.config.scheduler_type == "dmd":
-            return self.step_dmd(
-                model_output=model_output,
-                timestep=timestep,
-                sample=sample,
-                generator=generator,
-                return_dict=return_dict,
-                cur_sampling_step=cur_sampling_step,
-                dmd_noisy_tensor=dmd_noisy_tensor,
-                dmd_sigmas=dmd_sigmas,
-                dmd_timesteps=dmd_timesteps,
-                all_timesteps=all_timesteps,
-            )
-        else:
-            raise NotImplementedError
+        return self.step_dmd(
+            model_output=model_output,
+            timestep=timestep,
+            sample=sample,
+            generator=generator,
+            return_dict=return_dict,
+            cur_sampling_step=cur_sampling_step,
+            dmd_noisy_tensor=dmd_noisy_tensor,
+            dmd_sigmas=dmd_sigmas,
+            dmd_timesteps=dmd_timesteps,
+            all_timesteps=all_timesteps,
+        )
 
     def reset_scheduler_history(self):
         self._step_index = None
