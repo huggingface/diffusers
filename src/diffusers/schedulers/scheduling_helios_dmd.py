@@ -198,11 +198,10 @@ class HeliosDMDScheduler(SchedulerMixin, ConfigMixin):
         """
         Setting the timesteps and sigmas for each stage
         """
-        if self.config.scheduler_type == "dmd":
-            if is_amplify_first_chunk:
-                num_inference_steps = num_inference_steps * 2 + 1
-            else:
-                num_inference_steps = num_inference_steps + 1
+        if is_amplify_first_chunk:
+            num_inference_steps = num_inference_steps * 2 + 1
+        else:
+            num_inference_steps = num_inference_steps + 1
 
         self.num_inference_steps = num_inference_steps
         self.init_sigmas()
