@@ -1707,6 +1707,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             _blocks_class_name=self._blocks.__class__.__name__ if self._blocks is not None else None
         )
 
+        self._pretrained_model_name_or_path = pretrained_model_name_or_path
+
     @property
     def default_call_parameters(self) -> dict[str, Any]:
         """
@@ -2323,6 +2325,16 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     elif "default" in value:
                         # check if the default is specified
                         component_load_kwargs[key] = value["default"]
+            # Only pass trust_remote_code to components from the same repo as the pipeline.
+            # When a user passes trust_remote_code=True, they intend to trust code from the
+            # pipeline's repo, not from external repos referenced in modular_model_index.json.
+            if (
+                "trust_remote_code" in component_load_kwargs
+                and self._pretrained_model_name_or_path is not None
+                and spec.pretrained_model_name_or_path != self._pretrained_model_name_or_path
+            ):
+                component_load_kwargs.pop("trust_remote_code")
+
             try:
                 components_to_register[name] = spec.load(**component_load_kwargs)
             except Exception:
