@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 import os
 from typing import Callable
 
@@ -278,6 +279,13 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         H = height // self.vae_scale_factor_spatial
         W = width // self.vae_scale_factor_spatial
         return (C, T, H, W)
+    
+    def create_condition_mask(self, latent_shape, device, dtype, num_cond_latent_frames):
+        bsz, C, T, H, W = latent_shape
+        cond_indicator = torch.zeros(bsz, 1, T, 1, 1, dtype=dtype, device=device)
+        cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0
+        cond_mask = cond_indicator.expand(-1, -1, -1, H, W)
+        return cond_indicator, cond_mask
 
     def _get_prompt_embeds(
         self,
@@ -502,14 +510,8 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             else:
                 latents = latents.to(device=device, dtype=dtype)
 
-            padding_shape = (B, 1, T, H, W)
-            ones_padding = latents.new_ones(padding_shape)
-            zeros_padding = latents.new_zeros(padding_shape)
-
             num_cond_latent_frames = (num_frames_in - 1) // self.vae_scale_factor_temporal + 1
-            cond_indicator = latents.new_zeros(1, 1, latents.size(2), 1, 1)
-            cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0
-            cond_mask = cond_indicator * ones_padding + (1 - cond_indicator) * zeros_padding
+            cond_indicator, cond_mask = self.create_condition_mask(shape, device, dtype, num_cond_latent_frames)
 
             return (
                 latents,
@@ -725,22 +727,22 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
         )
 
+        is_video = video is not None
+        is_image = image is not None
+        assert is_image or is_video, "Either `image` or `video` must be provided as input"
+        assert is_image != is_video, "Only one of `image` or `video` can be provided as input"
+
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
 
-        num_frames_in = None
-        if image is not None:
-            if batch_size != 1:
-                raise ValueError(f"batch_size must be 1 for image input (given {batch_size})")
-
+        if is_image:
             image = torchvision.transforms.functional.to_tensor(image).unsqueeze(0)
             video = torch.cat([image, torch.zeros_like(image).repeat(num_frames - 1, 1, 1, 1)], dim=0)
             video = video.unsqueeze(0)
+            video = self.video_processor.preprocess_video(video, height, width)
             num_frames_in = 1
-        elif video is None:
-            video = torch.zeros(batch_size, num_frames, 3, height, width, dtype=torch.uint8)
-            num_frames_in = 0
-        else:
+
+        elif is_video:
             if batch_size != 1:
                 raise ValueError(f"batch_size must be 1 for video input (given {batch_size})")
 
@@ -750,7 +752,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 )
 
             frames_to_extract = 4 * (num_latent_conditional_frames - 1) + 1
-
             total_input_frames = len(video)
 
             if total_input_frames < frames_to_extract:
@@ -759,24 +760,15 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                     f"{frames_to_extract} frames for conditioning."
                 )
 
+            video = self.video_processor.preprocess_video(video, height, width)
+            # For Video2World: extract last frames_to_extract frames from input, then pad
+            video = video[:, :, -frames_to_extract:, :, :]
+            if video.shape[2] < num_frames:
+                n_pad_frames = num_frames - video.shape[2]
+                last_frame = video[:, :, -1:, :, :]  # [B, C, T==1, H, W]
+                pad_frames = last_frame.repeat(1, 1, n_pad_frames, 1, 1)  # [B, C, T, H, W]
+                video = torch.cat((video, pad_frames), dim=2)
             num_frames_in = frames_to_extract
-
-        assert video is not None
-        video = self.video_processor.preprocess_video(video, height, width)
-
-        # For Video2World: extract last frames_to_extract frames from input, then pad
-        if image is None and num_frames_in > 0 and num_frames_in < video.shape[2]:
-            video = video[:, :, -num_frames_in:, :, :]
-
-        num_frames_out = num_frames
-
-        if video.shape[2] < num_frames_out:
-            n_pad_frames = num_frames_out - video.shape[2]
-            last_frame = video[:, :, -1:, :, :]  # [B, C, T==1, H, W]
-            pad_frames = last_frame.repeat(1, 1, n_pad_frames, 1, 1)  # [B, C, T, H, W]
-            video = torch.cat((video, pad_frames), dim=2)
-
-        assert num_frames_in <= num_frames_out, f"expected ({num_frames_in=}) <= ({num_frames_out=})"
 
         video = video.to(device=device, dtype=vae_dtype)
 
@@ -795,9 +787,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             generator=generator,
             latents=latents,
         )
-        cond_timestep = torch.ones_like(cond_indicator) * conditional_frame_timestep
-        cond_mask = cond_mask.to(transformer_dtype)
-
         padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
 
         # Denoising loop
@@ -806,7 +795,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         self._num_timesteps = len(timesteps)
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
+        cond_timestep = torch.ones_like(cond_indicator) * conditional_frame_timestep
+        cond_mask = cond_mask.to(transformer_dtype)
         gt_velocity = (latents - cond_latent) * cond_mask
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -827,7 +819,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                     padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
-                # NOTE: replace velocity (noise_pred) with gt_velocity for conditioning inputs only
+                # NOTE: replace velocity with gt_velocity for conditioning inputs only
                 noise_pred = gt_velocity + noise_pred * (1 - cond_mask)
 
                 if self.do_classifier_free_guidance:
@@ -839,7 +831,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                         padding_mask=padding_mask,
                         return_dict=False,
                     )[0]
-                    # NOTE: replace velocity (noise_pred_neg) with gt_velocity for conditioning inputs only
+                    # NOTE: replace velocity with gt_velocity for conditioning inputs only
                     noise_pred_neg = gt_velocity + noise_pred_neg * (1 - cond_mask)
                     noise_pred = noise_pred + self.guidance_scale * (noise_pred - noise_pred_neg)
 
