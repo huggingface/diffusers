@@ -17,6 +17,7 @@ import pytest
 import torch
 
 from diffusers import HeliosTransformer3DModel
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
@@ -86,7 +87,11 @@ class HeliosTransformer3DTesterConfig(BaseModelTesterConfig):
         text_encoder_embedding_dim = 16
         sequence_length = 12
 
-        hidden_states = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
+        hidden_states = randn_tensor(
+            (batch_size, num_channels, num_frames, height, width),
+            generator=self.generator,
+            device=torch_device,
+        )
         timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, text_encoder_embedding_dim)).to(torch_device)
         indices_hidden_states = torch.ones((batch_size, num_frames)).to(torch_device)
