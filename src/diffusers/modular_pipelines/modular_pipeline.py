@@ -1707,6 +1707,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             _blocks_class_name=self._blocks.__class__.__name__ if self._blocks is not None else None
         )
 
+        self._pretrained_model_name_or_path = pretrained_model_name_or_path
+
     @property
     def default_call_parameters(self) -> dict[str, Any]:
         """
@@ -2254,6 +2256,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 new_component_spec = current_component_spec
                 if hasattr(self, name) and getattr(self, name) is not None:
                     logger.warning(f"ModularPipeline.update_components: setting {name} to None (spec unchanged)")
+            elif (
+                current_component_spec.default_creation_method == "from_pretrained"
+                and getattr(component, "_diffusers_load_id", None) is None
+            ):
+                new_component_spec = ComponentSpec(name=name, type_hint=type(component))
             else:
                 new_component_spec = ComponentSpec.from_component(name, component)
 
@@ -2325,17 +2332,49 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     elif "default" in value:
                         # check if the default is specified
                         component_load_kwargs[key] = value["default"]
+            # Only pass trust_remote_code to components from the same repo as the pipeline.
+            # When a user passes trust_remote_code=True, they intend to trust code from the
+            # pipeline's repo, not from external repos referenced in modular_model_index.json.
+            trust_remote_code_stripped = False
+            if (
+                "trust_remote_code" in component_load_kwargs
+                and self._pretrained_model_name_or_path is not None
+                and spec.pretrained_model_name_or_path != self._pretrained_model_name_or_path
+            ):
+                component_load_kwargs.pop("trust_remote_code")
+                trust_remote_code_stripped = True
+
+            if not spec.pretrained_model_name_or_path:
+                logger.info(f"Skipping component `{name}`: no pretrained model path specified.")
+                continue
+
             try:
                 components_to_register[name] = spec.load(**component_load_kwargs)
             except Exception:
-                logger.warning(
-                    f"\nFailed to create component {name}:\n"
-                    f"- Component spec: {spec}\n"
-                    f"- load() called with kwargs: {component_load_kwargs}\n"
-                    "If this component is not required for your workflow you can safely ignore this message.\n\n"
-                    "Traceback:\n"
-                    f"{traceback.format_exc()}"
-                )
+                tb = traceback.format_exc()
+                if trust_remote_code_stripped and "trust_remote_code" in tb:
+                    warning_msg = (
+                        f"Failed to load component `{name}` from external repository "
+                        f"`{spec.pretrained_model_name_or_path}`.\n\n"
+                        f"`trust_remote_code=True` was not forwarded to `{name}` because it comes from "
+                        f"a different repository than the pipeline (`{self._pretrained_model_name_or_path}`). "
+                        f"For safety, `trust_remote_code` is only forwarded to components from the same "
+                        f"repository as the pipeline.\n\n"
+                        f"You need to load this component manually with `trust_remote_code=True` and pass it "
+                        f"to the pipeline via `pipe.update_components()`. For example, if it is a custom model:\n\n"
+                        f'  {name} = AutoModel.from_pretrained("{spec.pretrained_model_name_or_path}", trust_remote_code=True)\n'
+                        f"  pipe.update_components({name}={name})\n"
+                    )
+                else:
+                    warning_msg = (
+                        f"Failed to create component {name}:\n"
+                        f"- Component spec: {spec}\n"
+                        f"- load() called with kwargs: {component_load_kwargs}\n"
+                        "If this component is not required for your workflow you can safely ignore this message.\n\n"
+                        "Traceback:\n"
+                        f"{tb}"
+                    )
+                logger.warning(warning_msg)
 
         # Register all components at once
         self.register_components(**components_to_register)
