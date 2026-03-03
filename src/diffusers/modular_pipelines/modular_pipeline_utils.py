@@ -50,11 +50,7 @@ This modular pipeline is composed of the following blocks:
 
 {components_description} {configs_section}
 
-## Input/Output Specification
-
-### Inputs {inputs_description}
-
-### Outputs {outputs_description}
+{io_specification_section}
 """
 
 
@@ -811,6 +807,46 @@ def format_output_params(output_params, indent_level=4, max_line_length=115):
     return format_params(output_params, "Outputs", indent_level, max_line_length)
 
 
+def format_params_markdown(params, header="Inputs"):
+    """Format a list of InputParam or OutputParam objects as a markdown bullet-point list.
+
+    Suitable for model cards rendered on Hugging Face Hub.
+
+    Args:
+        params: list of InputParam or OutputParam objects to format
+        header: Header text (e.g. "Inputs" or "Outputs")
+
+    Returns:
+        A formatted markdown string, or empty string if params is empty.
+    """
+    if not params:
+        return ""
+
+    def get_type_str(type_hint):
+        if isinstance(type_hint, UnionType) or get_origin(type_hint) is Union:
+            type_strs = [t.__name__ if hasattr(t, "__name__") else str(t) for t in get_args(type_hint)]
+            return " | ".join(type_strs)
+        return type_hint.__name__ if hasattr(type_hint, "__name__") else str(type_hint)
+
+    lines = [f"**{header}:**\n"] if header else []
+    for param in params:
+        type_str = get_type_str(param.type_hint) if param.type_hint != Any else ""
+        name = f"**{param.kwargs_type}" if param.name is None and param.kwargs_type is not None else param.name
+        param_str = f"- `{name}` (`{type_str}`"
+
+        if hasattr(param, "required") and not param.required:
+            param_str += ", *optional*"
+            if param.default is not None:
+                param_str += f", defaults to `{param.default}`"
+        param_str += ")"
+
+        desc = param.description if param.description else "No description provided"
+        param_str += f": {desc}"
+        lines.append(param_str)
+
+    return "\n".join(lines)
+
+
 def format_components(components, indent_level=4, max_line_length=115, add_empty_lines=True):
     """Format a list of ComponentSpec objects into a readable string representation.
 
@@ -1067,8 +1103,7 @@ def generate_modular_model_card_content(blocks) -> dict[str, Any]:
             - blocks_description: Detailed architecture of blocks
             - components_description: List of required components
             - configs_section: Configuration parameters section
-            - inputs_description: Input parameters specification
-            - outputs_description: Output parameters specification
+            - io_specification_section: Input/Output specification (per-workflow or unified)
             - trigger_inputs_section: Conditional execution information
             - tags: List of relevant tags for the model card
     """
@@ -1086,15 +1121,6 @@ def generate_modular_model_card_content(blocks) -> dict[str, Any]:
             blocks_desc_parts.append(f"{i + 1}. **{name}** (`{block_class}`)")
             if block_desc:
                 blocks_desc_parts.append(f"   - {block_desc}")
-
-            # add sub-blocks if any
-            if hasattr(block, "sub_blocks") and block.sub_blocks:
-                for sub_name, sub_block in block.sub_blocks.items():
-                    sub_class = sub_block.__class__.__name__
-                    sub_desc = sub_block.description.split("\n")[0] if getattr(sub_block, "description", "") else ""
-                    blocks_desc_parts.append(f"   - *{sub_name}*: `{sub_class}`")
-                    if sub_desc:
-                        blocks_desc_parts.append(f"     - {sub_desc}")
 
     blocks_description = "\n".join(blocks_desc_parts) if blocks_desc_parts else "No blocks defined."
 
@@ -1121,63 +1147,76 @@ def generate_modular_model_card_content(blocks) -> dict[str, Any]:
         if configs_description:
             configs_section = f"\n\n## Configuration Parameters\n\n{configs_description}"
 
-    inputs = blocks.inputs
-    outputs = blocks.outputs
+    # Branch on whether workflows are defined
+    has_workflows = getattr(blocks, "_workflow_map", None) is not None
 
-    # format inputs as markdown list
-    inputs_parts = []
-    required_inputs = [inp for inp in inputs if inp.required]
-    optional_inputs = [inp for inp in inputs if not inp.required]
+    if has_workflows:
+        workflow_map = blocks._workflow_map
+        parts = []
 
-    if required_inputs:
-        inputs_parts.append("**Required:**\n")
-        for inp in required_inputs:
-            if hasattr(inp.type_hint, "__name__"):
-                type_str = inp.type_hint.__name__
-            elif inp.type_hint is not None:
-                type_str = str(inp.type_hint).replace("typing.", "")
-            else:
-                type_str = "Any"
-            desc = inp.description or "No description provided"
-            inputs_parts.append(f"- `{inp.name}` (`{type_str}`): {desc}")
+        # If blocks overrides outputs (e.g. to return just "images" instead of all intermediates),
+        # use that as the shared output for all workflows
+        blocks_outputs = blocks.outputs
+        blocks_intermediate = getattr(blocks, "intermediate_outputs", None)
+        shared_outputs = (
+            blocks_outputs if blocks_intermediate is not None and blocks_outputs != blocks_intermediate else None
+        )
 
-    if optional_inputs:
-        if required_inputs:
-            inputs_parts.append("")
-        inputs_parts.append("**Optional:**\n")
-        for inp in optional_inputs:
-            if hasattr(inp.type_hint, "__name__"):
-                type_str = inp.type_hint.__name__
-            elif inp.type_hint is not None:
-                type_str = str(inp.type_hint).replace("typing.", "")
-            else:
-                type_str = "Any"
-            desc = inp.description or "No description provided"
-            default_str = f", default: `{inp.default}`" if inp.default is not None else ""
-            inputs_parts.append(f"- `{inp.name}` (`{type_str}`){default_str}: {desc}")
+        parts.append("## Workflow Input Specification\n")
 
-    inputs_description = "\n".join(inputs_parts) if inputs_parts else "No specific inputs defined."
+        # Per-workflow details: show trigger inputs with full param descriptions
+        for wf_name, trigger_inputs in workflow_map.items():
+            trigger_input_names = set(trigger_inputs.keys())
+            try:
+                workflow_blocks = blocks.get_workflow(wf_name)
+            except Exception:
+                parts.append(f"<details>\n<summary><strong>{wf_name}</strong></summary>\n")
+                parts.append("*Could not resolve workflow blocks.*\n")
+                parts.append("</details>\n")
+                continue
 
-    # format outputs as markdown list
-    outputs_parts = []
-    for out in outputs:
-        if hasattr(out.type_hint, "__name__"):
-            type_str = out.type_hint.__name__
-        elif out.type_hint is not None:
-            type_str = str(out.type_hint).replace("typing.", "")
-        else:
-            type_str = "Any"
-        desc = out.description or "No description provided"
-        outputs_parts.append(f"- `{out.name}` (`{type_str}`): {desc}")
+            wf_inputs = workflow_blocks.inputs
+            # Show only trigger inputs with full parameter descriptions
+            trigger_params = [p for p in wf_inputs if p.name in trigger_input_names]
 
-    outputs_description = "\n".join(outputs_parts) if outputs_parts else "Standard pipeline outputs."
+            parts.append(f"<details>\n<summary><strong>{wf_name}</strong></summary>\n")
 
-    trigger_inputs_section = ""
-    if hasattr(blocks, "trigger_inputs") and blocks.trigger_inputs:
-        trigger_inputs_list = sorted([t for t in blocks.trigger_inputs if t is not None])
-        if trigger_inputs_list:
-            trigger_inputs_str = ", ".join(f"`{t}`" for t in trigger_inputs_list)
-            trigger_inputs_section = f"""
+            inputs_str = format_params_markdown(trigger_params, header=None)
+            parts.append(inputs_str if inputs_str else "No additional inputs required.")
+            parts.append("")
+
+            parts.append("</details>\n")
+
+        # Common Inputs & Outputs section (like non-workflow pipelines)
+        all_inputs = blocks.inputs
+        all_outputs = shared_outputs if shared_outputs is not None else blocks.outputs
+
+        inputs_str = format_params_markdown(all_inputs, "Inputs")
+        outputs_str = format_params_markdown(all_outputs, "Outputs")
+        inputs_description = inputs_str if inputs_str else "No specific inputs defined."
+        outputs_description = outputs_str if outputs_str else "Standard pipeline outputs."
+
+        parts.append(f"\n## Input/Output Specification\n\n{inputs_description}\n\n{outputs_description}")
+
+        io_specification_section = "\n".join(parts)
+        # Suppress trigger_inputs_section when workflows are shown (it's redundant)
+        trigger_inputs_section = ""
+    else:
+        # Unified I/O section (original behavior)
+        inputs = blocks.inputs
+        outputs = blocks.outputs
+        inputs_str = format_params_markdown(inputs, "Inputs")
+        outputs_str = format_params_markdown(outputs, "Outputs")
+        inputs_description = inputs_str if inputs_str else "No specific inputs defined."
+        outputs_description = outputs_str if outputs_str else "Standard pipeline outputs."
+        io_specification_section = f"## Input/Output Specification\n\n{inputs_description}\n\n{outputs_description}"
+
+        trigger_inputs_section = ""
+        if hasattr(blocks, "trigger_inputs") and blocks.trigger_inputs:
+            trigger_inputs_list = sorted([t for t in blocks.trigger_inputs if t is not None])
+            if trigger_inputs_list:
+                trigger_inputs_str = ", ".join(f"`{t}`" for t in trigger_inputs_list)
+                trigger_inputs_section = f"""
 ### Conditional Execution
 
 This pipeline contains blocks that are selected at runtime based on inputs:
@@ -1190,7 +1229,18 @@ This pipeline contains blocks that are selected at runtime based on inputs:
     if hasattr(blocks, "model_name") and blocks.model_name:
         tags.append(blocks.model_name)
 
-    if hasattr(blocks, "trigger_inputs") and blocks.trigger_inputs:
+    if has_workflows:
+        # Derive tags from workflow names
+        workflow_names = set(blocks._workflow_map.keys())
+        if any("inpainting" in wf for wf in workflow_names):
+            tags.append("inpainting")
+        if any("image2image" in wf for wf in workflow_names):
+            tags.append("image-to-image")
+        if any("controlnet" in wf for wf in workflow_names):
+            tags.append("controlnet")
+        if any("text2image" in wf for wf in workflow_names):
+            tags.append("text-to-image")
+    elif hasattr(blocks, "trigger_inputs") and blocks.trigger_inputs:
         triggers = blocks.trigger_inputs
         if any(t in triggers for t in ["mask", "mask_image"]):
             tags.append("inpainting")
@@ -1218,8 +1268,7 @@ This pipeline uses a {block_count}-block architecture that can be customized and
         "blocks_description": blocks_description,
         "components_description": components_description,
         "configs_section": configs_section,
-        "inputs_description": inputs_description,
-        "outputs_description": outputs_description,
+        "io_specification_section": io_specification_section,
         "trigger_inputs_section": trigger_inputs_section,
         "tags": tags,
     }

@@ -1883,6 +1883,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
+            update_model_card = kwargs.pop("update_model_card", False)
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
         for component_name, component_spec in self._component_specs.items():
@@ -1957,6 +1958,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 is_pipeline=True,
                 model_description=MODULAR_MODEL_CARD_TEMPLATE.format(**card_content),
                 is_modular=True,
+                update_model_card=update_model_card,
             )
             model_card = populate_model_card(model_card, tags=card_content["tags"])
             model_card.save(os.path.join(save_directory, "README.md"))
