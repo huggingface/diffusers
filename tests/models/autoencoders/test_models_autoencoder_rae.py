@@ -20,12 +20,11 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+import diffusers.models.autoencoders.autoencoder_rae as _rae_module
 from diffusers.models.autoencoders.autoencoder_rae import (
-    _ENCODER_TYPES,
+    _ENCODER_FORWARD_FNS,
     AutoencoderRAE,
-    Dinov2Encoder,
-    MAEEncoder,
-    Siglip2Encoder,
+    _build_encoder,
 )
 
 from ...testing_utils import (
@@ -41,7 +40,14 @@ from .testing_utils import AutoencoderTesterMixin
 enable_full_determinism()
 
 
-class TinyTestEncoder(torch.nn.Module):
+# ---------------------------------------------------------------------------
+# Tiny test encoder for fast unit tests (no transformers dependency)
+# ---------------------------------------------------------------------------
+
+
+class _TinyTestEncoderModule(torch.nn.Module):
+    """Minimal encoder that mimics the patch-token interface without any HF model."""
+
     def __init__(self, hidden_size: int = 16, patch_size: int = 8, **kwargs):
         super().__init__()
         self.patch_size = patch_size
@@ -53,7 +59,31 @@ class TinyTestEncoder(torch.nn.Module):
         return tokens.repeat(1, 1, self.hidden_size)
 
 
-_ENCODER_TYPES["tiny_test"] = TinyTestEncoder
+def _tiny_test_encoder_forward(model, images):
+    return model(images)
+
+
+def _build_tiny_test_encoder(encoder_type, hidden_size, patch_size, num_hidden_layers):
+    return _TinyTestEncoderModule(hidden_size=hidden_size, patch_size=patch_size)
+
+
+# Monkey-patch the dispatch tables so "tiny_test" is recognised by AutoencoderRAE
+_ENCODER_FORWARD_FNS["tiny_test"] = _tiny_test_encoder_forward
+_original_build_encoder = _build_encoder
+
+
+def _patched_build_encoder(encoder_type, hidden_size, patch_size, num_hidden_layers):
+    if encoder_type == "tiny_test":
+        return _build_tiny_test_encoder(encoder_type, hidden_size, patch_size, num_hidden_layers)
+    return _original_build_encoder(encoder_type, hidden_size, patch_size, num_hidden_layers)
+
+
+_rae_module._build_encoder = _patched_build_encoder
+
+
+# ---------------------------------------------------------------------------
+# Test config
+# ---------------------------------------------------------------------------
 
 
 class AutoencoderRAETesterConfig(BaseModelTesterConfig):
@@ -105,7 +135,7 @@ class AutoencoderRAETesterConfig(BaseModelTesterConfig):
 class TestAutoEncoderRAE(AutoencoderRAETesterConfig, ModelTesterMixin):
     """Core model tests for AutoencoderRAE."""
 
-    @pytest.mark.skip(reason="AutoencoderRAE does not support gradient checkpointing yet")
+    @pytest.mark.skip(reason="AutoencoderRAE does not support torch dynamo yet")
     def test_from_save_pretrained_dynamo(self): ...
 
     def test_fast_encode_decode_and_forward_shapes(self):
@@ -205,34 +235,34 @@ class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
         backend_empty_cache(torch_device)
 
     def test_dinov2_encoder_forward_shape(self):
-        encoder = Dinov2Encoder().to(torch_device)
+        encoder = _build_encoder("dinov2", hidden_size=768, patch_size=14, num_hidden_layers=12).to(torch_device)
         x = torch.rand(1, 3, 224, 224, device=torch_device)
-        y = encoder(x)
+        y = _ENCODER_FORWARD_FNS["dinov2"](encoder, x)
 
         assert y.ndim == 3
         assert y.shape[0] == 1
-        assert y.shape[1] == 256
-        assert y.shape[2] == encoder.model.config.hidden_size
+        assert y.shape[1] == 256  # (224/14)^2 - 5 (CLS + 4 register) = 251?  Actually dinov2 has 256 patches
+        assert y.shape[2] == 768
 
     def test_siglip2_encoder_forward_shape(self):
-        encoder = Siglip2Encoder().to(torch_device)
+        encoder = _build_encoder("siglip2", hidden_size=768, patch_size=16, num_hidden_layers=12).to(torch_device)
         x = torch.rand(1, 3, 224, 224, device=torch_device)
-        y = encoder(x)
+        y = _ENCODER_FORWARD_FNS["siglip2"](encoder, x)
 
         assert y.ndim == 3
         assert y.shape[0] == 1
-        assert y.shape[1] == 196
-        assert y.shape[2] == encoder.model.config.hidden_size
+        assert y.shape[1] == 196  # (224/16)^2
+        assert y.shape[2] == 768
 
     def test_mae_encoder_forward_shape(self):
-        encoder = MAEEncoder().to(torch_device)
+        encoder = _build_encoder("mae", hidden_size=768, patch_size=16, num_hidden_layers=12).to(torch_device)
         x = torch.rand(1, 3, 224, 224, device=torch_device)
-        y = encoder(x)
+        y = _ENCODER_FORWARD_FNS["mae"](encoder, x, patch_size=16)
 
         assert y.ndim == 3
         assert y.shape[0] == 1
-        assert y.shape[1] == 196
-        assert y.shape[2] == encoder.model.config.hidden_size
+        assert y.shape[1] == 196  # (224/16)^2
+        assert y.shape[2] == 768
 
 
 @slow

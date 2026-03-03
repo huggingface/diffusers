@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import sqrt
-from typing import Any, Optional, Tuple, Type, Union
+from typing import Any, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -47,115 +47,88 @@ from .vae import AutoencoderMixin, DecoderOutput, EncoderOutput
 logger = logging.get_logger(__name__)
 
 
-class Dinov2Encoder(nn.Module):
-    def __init__(
-        self,
-        hidden_size: int = 768,
-        patch_size: int = 14,
-        image_size: int = 518,
-        num_hidden_layers: int = 12,
-        **kwargs,
-    ):
-        super().__init__()
-        num_attention_heads = hidden_size // 64  # all dinov2 variants use head_dim=64
+# ---------------------------------------------------------------------------
+# Per-encoder forward functions
+# ---------------------------------------------------------------------------
+# Each function takes the raw transformers model + images and returns patch
+# tokens of shape (B, N, C), stripping CLS / register tokens as needed.
+
+
+def _dinov2_encoder_forward(model: nn.Module, images: torch.Tensor) -> torch.Tensor:
+    outputs = model(images, output_hidden_states=True)
+    unused_token_num = 5  # 1 CLS + 4 register tokens
+    return outputs.last_hidden_state[:, unused_token_num:]
+
+
+def _siglip2_encoder_forward(model: nn.Module, images: torch.Tensor) -> torch.Tensor:
+    outputs = model(images, output_hidden_states=True, interpolate_pos_encoding=True)
+    return outputs.last_hidden_state
+
+
+def _mae_encoder_forward(model: nn.Module, images: torch.Tensor, patch_size: int) -> torch.Tensor:
+    h, w = images.shape[2], images.shape[3]
+    patch_num = int(h * w // patch_size**2)
+    if patch_num * patch_size**2 != h * w:
+        raise ValueError("Image size should be divisible by patch size.")
+    noise = torch.arange(patch_num).unsqueeze(0).expand(images.shape[0], -1).to(images.device).to(images.dtype)
+    outputs = model(images, noise, interpolate_pos_encoding=True)
+    return outputs.last_hidden_state[:, 1:]  # remove cls token
+
+
+# ---------------------------------------------------------------------------
+# Encoder construction helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_encoder(encoder_type: str, hidden_size: int, patch_size: int, num_hidden_layers: int) -> nn.Module:
+    """Build a frozen encoder from config (no pretrained download)."""
+    num_attention_heads = hidden_size // 64  # all supported encoders use head_dim=64
+
+    if encoder_type == "dinov2":
         config = Dinov2WithRegistersConfig(
             hidden_size=hidden_size,
             patch_size=patch_size,
-            image_size=image_size,
+            image_size=518,
             num_attention_heads=num_attention_heads,
             num_hidden_layers=num_hidden_layers,
         )
-        self.model = Dinov2WithRegistersModel(config)
-        self.model.layernorm.weight = None
-        self.model.layernorm.bias = None
-        self.model.requires_grad_(False)
-
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """
-        images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and
-        """
-        outputs = self.model(images, output_hidden_states=True)
-        unused_token_num = 5  # 1 CLS + 4 register tokens
-        image_features = outputs.last_hidden_state[:, unused_token_num:]
-        return image_features
-
-
-class Siglip2Encoder(nn.Module):
-    def __init__(
-        self,
-        hidden_size: int = 768,
-        patch_size: int = 16,
-        image_size: int = 256,
-        **kwargs,
-    ):
-        super().__init__()
-        num_attention_heads = hidden_size // 64  # all siglip2 variants use head_dim=64
-        num_hidden_layers = kwargs.get("num_hidden_layers", 12)
+        model = Dinov2WithRegistersModel(config)
+        model.layernorm.weight = None
+        model.layernorm.bias = None
+    elif encoder_type == "siglip2":
         config = SiglipVisionConfig(
             hidden_size=hidden_size,
             patch_size=patch_size,
-            image_size=image_size,
+            image_size=256,
             num_attention_heads=num_attention_heads,
             num_hidden_layers=num_hidden_layers,
         )
-        self.model = SiglipVisionModel(config)
-        self.model.vision_model.post_layernorm.weight = None
-        self.model.vision_model.post_layernorm.bias = None
-        self.model.requires_grad_(False)
-
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """
-        images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and
-        """
-        outputs = self.model(images, output_hidden_states=True, interpolate_pos_encoding=True)
-        image_features = outputs.last_hidden_state
-        return image_features
-
-
-class MAEEncoder(nn.Module):
-    def __init__(
-        self,
-        hidden_size: int = 768,
-        patch_size: int = 16,
-        image_size: int = 224,
-        **kwargs,
-    ):
-        super().__init__()
-        num_attention_heads = hidden_size // 64  # all MAE variants use head_dim=64
-        num_hidden_layers = kwargs.get("num_hidden_layers", 12)
+        model = SiglipVisionModel(config)
+        model.vision_model.post_layernorm.weight = None
+        model.vision_model.post_layernorm.bias = None
+    elif encoder_type == "mae":
         config = ViTMAEConfig(
             hidden_size=hidden_size,
             patch_size=patch_size,
-            image_size=image_size,
+            image_size=224,
             num_attention_heads=num_attention_heads,
             num_hidden_layers=num_hidden_layers,
             mask_ratio=0.0,
         )
-        self.model = ViTMAEModel(config)
-        self.model.layernorm.weight = None
-        self.model.layernorm.bias = None
-        self.model.requires_grad_(False)
-        self.patch_size = patch_size
+        model = ViTMAEModel(config)
+        model.layernorm.weight = None
+        model.layernorm.bias = None
+    else:
+        raise ValueError(f"Unknown encoder_type='{encoder_type}'. Available: dinov2, siglip2, mae")
 
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """
-        images is of shape (B, C, H, W) where B is batch size, C is number of channels, H and W are height and width of
-        the image
-        """
-        h, w = images.shape[2], images.shape[3]
-        patch_num = int(h * w // self.patch_size**2)
-        if patch_num * self.patch_size**2 != h * w:
-            raise ValueError("Image size should be divisible by patch size.")
-        noise = torch.arange(patch_num).unsqueeze(0).expand(images.shape[0], -1).to(images.device).to(images.dtype)
-        outputs = self.model(images, noise, interpolate_pos_encoding=True)
-        image_features = outputs.last_hidden_state[:, 1:]  # remove cls token
-        return image_features
+    model.requires_grad_(False)
+    return model
 
 
-_ENCODER_TYPES: dict[str, Type] = {
-    "dinov2": Dinov2Encoder,
-    "siglip2": Siglip2Encoder,
-    "mae": MAEEncoder,
+_ENCODER_FORWARD_FNS = {
+    "dinov2": _dinov2_encoder_forward,
+    "siglip2": _siglip2_encoder_forward,
+    "mae": _mae_encoder_forward,
 }
 
 
@@ -508,8 +481,10 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
     ):
         super().__init__()
 
-        if encoder_type not in _ENCODER_TYPES:
-            raise ValueError(f"Unknown encoder_type='{encoder_type}'. Available: {sorted(_ENCODER_TYPES.keys())}")
+        if encoder_type not in _ENCODER_FORWARD_FNS:
+            raise ValueError(
+                f"Unknown encoder_type='{encoder_type}'. Available: {sorted(_ENCODER_FORWARD_FNS.keys())}"
+            )
 
         def _to_config_compatible(value: Any) -> Any:
             if isinstance(value, torch.Tensor):
@@ -542,11 +517,13 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
 
         # Frozen representation encoder (built from config, no downloads)
         encoder_patch_size = int(encoder_patch_size)
-        self.encoder: nn.Module = _ENCODER_TYPES[encoder_type](
+        self.encoder: nn.Module = _build_encoder(
+            encoder_type=encoder_type,
             hidden_size=encoder_hidden_size,
             patch_size=encoder_patch_size,
             num_hidden_layers=encoder_num_hidden_layers,
         )
+        self._encoder_forward_fn = _ENCODER_FORWARD_FNS[encoder_type]
 
         # RAE-main: base_patches = (encoder_input_size // encoder_patch_size) ** 2
         if self.encoder_input_size % encoder_patch_size != 0:
@@ -648,7 +625,10 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         x = self._maybe_resize_and_normalize(x)
 
-        tokens = self.encoder(x)  # (B, N, C)
+        if self.config.encoder_type == "mae":
+            tokens = self._encoder_forward_fn(self.encoder, x, self.config.encoder_patch_size)
+        else:
+            tokens = self._encoder_forward_fn(self.encoder, x)  # (B, N, C)
 
         if self.training and self.noise_tau > 0:
             tokens = self._noising(tokens)

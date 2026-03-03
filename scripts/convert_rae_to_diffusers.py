@@ -306,9 +306,9 @@ def convert(args: argparse.Namespace) -> None:
     # Assemble full state dict and load with assign=True
     full_state_dict = {}
 
-    # Encoder weights (prefixed with "encoder.model.")
+    # Encoder weights (prefixed with "encoder.")
     for k, v in encoder_state_dict.items():
-        full_state_dict[f"encoder.model.{k}"] = v
+        full_state_dict[f"encoder.{k}"] = v
 
     # Decoder weights (prefixed with "decoder.")
     for k, v in decoder_state_dict.items():
