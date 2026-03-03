@@ -164,9 +164,14 @@ def compute_losses(
         target_encoder_input = base_model._maybe_resize_and_normalize(pixel_values)
         reconstructed_encoder_input = base_model._maybe_resize_and_normalize(decoded)
 
+        encoder_forward_kwargs = {"model": base_model.encoder}
+        if base_model.config.encoder_type == "mae":
+            encoder_forward_kwargs["patch_size"] = base_model.config.encoder_patch_size
         with torch.no_grad():
-            target_tokens = base_model.encoder(target_encoder_input)
-        reconstructed_tokens = base_model.encoder(reconstructed_encoder_input)
+            target_tokens = base_model._encoder_forward_fn(images=target_encoder_input, **encoder_forward_kwargs)
+        reconstructed_tokens = base_model._encoder_forward_fn(
+            images=reconstructed_encoder_input, **encoder_forward_kwargs
+        )
         encoder_loss = F.mse_loss(reconstructed_tokens.float(), target_tokens.float())
 
     loss = reconstruction_loss + float(encoder_loss_weight) * encoder_loss
@@ -202,7 +207,7 @@ def _load_pretrained_encoder_weights(model, encoder_type, encoder_name_or_path):
     else:
         raise ValueError(f"Unknown encoder_type: {encoder_type}")
 
-    model.encoder.model.load_state_dict(state_dict, strict=False)
+    model.encoder.load_state_dict(state_dict, strict=False)
 
 
 def main():
