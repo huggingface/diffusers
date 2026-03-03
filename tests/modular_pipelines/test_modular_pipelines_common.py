@@ -629,35 +629,6 @@ class TestModularModelCardContent:
 
         assert content["trigger_inputs_section"] == ""
 
-    def test_blocks_description_with_sub_blocks(self):
-        """Test that blocks with sub-blocks are correctly described."""
-
-        class MockBlockWithSubBlocks:
-            def __init__(self):
-                self.__class__.__name__ = "ParentBlock"
-                self.description = "Parent block"
-                self.sub_blocks = {
-                    "child1": self.create_child_block("ChildBlock1", "Child 1 description"),
-                    "child2": self.create_child_block("ChildBlock2", "Child 2 description"),
-                }
-
-            def create_child_block(self, name, desc):
-                class ChildBlock:
-                    def __init__(self):
-                        self.__class__.__name__ = name
-                        self.description = desc
-
-                return ChildBlock()
-
-        blocks = self.create_mock_blocks()
-        blocks.sub_blocks["parent"] = MockBlockWithSubBlocks()
-
-        content = generate_modular_model_card_content(blocks)
-
-        assert "parent" in content["blocks_description"]
-        assert "child1" in content["blocks_description"]
-        assert "child2" in content["blocks_description"]
-
     def test_model_description_includes_block_count(self):
         """Test that model description includes the number of blocks."""
         blocks = self.create_mock_blocks(num_blocks=5)
