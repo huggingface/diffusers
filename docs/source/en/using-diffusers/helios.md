@@ -13,8 +13,8 @@ specific language governing permissions and limitations under the License.
 
 [Helios](https://github.com/PKU-YuanGroup/Helios) is the first 14B video generation model that runs at 19.5 FPS on a single NVIDIA H100 GPU and supports minute-scale generation while matching the quality of a strong baseline, natively integrating T2V, I2V, and V2V tasks within a unified architecture. The main features of Helios are:
 
-- Without commonly used anti-drifting strategies (\eg, self-forcing, error-banks, keyframe sampling, or inverted sampling), \ours generates minute-scale videos with high quality and strong coherence.
-- Without standard acceleration techniques (\eg, KV-cache, causal masking, sparse/linear attention, TinyVAE, progressive noise schedules, hidden-state caching, or quantization), \ours achieves 19.5 FPS in end-to-end inference for a 14B video generation model on a single H100 GPU.
+- Without commonly used anti-drifting strategies (eg, self-forcing, error-banks, keyframe sampling, or inverted sampling), Helios generates minute-scale videos with high quality and strong coherence.
+- Without standard acceleration techniques (eg, KV-cache, causal masking, sparse/linear attention, TinyVAE, progressive noise schedules, hidden-state caching, or quantization), Helios achieves 19.5 FPS in end-to-end inference for a 14B video generation model on a single H100 GPU.
 - Introducing optimizations that improve both training and inference throughput while reducing memory consumption. These changes enable training a 14B video generation model without parallelism or sharding infrastructure, with batch sizes comparable to image models.
 
 This guide will walk you through using Helios for use cases.
