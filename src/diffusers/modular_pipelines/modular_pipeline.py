@@ -2347,23 +2347,27 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 components_to_register[name] = spec.load(**component_load_kwargs)
             except Exception:
                 tb = traceback.format_exc()
-                warning_msg = (
-                    f"\nFailed to create component {name}:\n"
-                    f"- Component spec: {spec}\n"
-                    f"- load() called with kwargs: {component_load_kwargs}\n"
-                    "If this component is not required for your workflow you can safely ignore this message.\n\n"
-                    "Traceback:\n"
-                    f"{tb}"
-                )
                 if trust_remote_code_stripped and "trust_remote_code" in tb:
-                    warning_msg += (
-                        f"\nNote: `trust_remote_code=True` was not passed to `{name}` because it comes from "
-                        f"an external repository (`{spec.pretrained_model_name_or_path}`). For safety, `trust_remote_code` is only forwarded to "
-                        f"components from the same repository as the pipeline.\n\n"
-                        f"To load this component manually:\n"
-                        f"  from diffusers import AutoModel\n"
+                    warning_msg = (
+                        f"Failed to load component `{name}` from external repository "
+                        f"`{spec.pretrained_model_name_or_path}`.\n\n"
+                        f"`trust_remote_code=True` was not forwarded to `{name}` because it comes from "
+                        f"a different repository than the pipeline (`{self._pretrained_model_name_or_path}`). "
+                        f"For safety, `trust_remote_code` is only forwarded to components from the same "
+                        f"repository as the pipeline.\n\n"
+                        f"You need to load this component manually with `trust_remote_code=True` and pass it "
+                        f"to the pipeline via `pipe.update_components()`. For example, if it is a custom model:\n\n"
                         f'  {name} = AutoModel.from_pretrained("{spec.pretrained_model_name_or_path}", trust_remote_code=True)\n'
-                        f"  pipe.update_components({name} = {name})\n"
+                        f"  pipe.update_components({name}={name})\n"
+                    )
+                else:
+                    warning_msg = (
+                        f"Failed to create component {name}:\n"
+                        f"- Component spec: {spec}\n"
+                        f"- load() called with kwargs: {component_load_kwargs}\n"
+                        "If this component is not required for your workflow you can safely ignore this message.\n\n"
+                        "Traceback:\n"
+                        f"{tb}"
                     )
                 logger.warning(warning_msg)
 
