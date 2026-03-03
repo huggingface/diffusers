@@ -257,18 +257,15 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
         text_encoder_attn_implementation = kwargs.pop("text_encoder_attn_implementation", None)
         if text_encoder_attn_implementation is not None and "text_encoder" not in kwargs:
-            load_kwargs = {"attn_implementation": text_encoder_attn_implementation}
-            if "torch_dtype" in kwargs:
-                load_kwargs["torch_dtype"] = kwargs["torch_dtype"]
-            if "revision" in kwargs:
-                load_kwargs["revision"] = kwargs["revision"]
-
+            load_kwargs = kwargs.copy()
+            load_kwargs['attn_implementation'] = text_encoder_attn_implementation
+            load_kwargs.pop('safety_checker', None)
+            
             if os.path.isdir(pretrained_model_name_or_path):
                 text_encoder_path = os.path.join(pretrained_model_name_or_path, "text_encoder")
             else:
                 text_encoder_path = pretrained_model_name_or_path
                 load_kwargs["subfolder"] = "text_encoder"
-
             kwargs["text_encoder"] = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 text_encoder_path, **load_kwargs
             )
