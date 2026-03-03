@@ -2328,24 +2328,42 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             # Only pass trust_remote_code to components from the same repo as the pipeline.
             # When a user passes trust_remote_code=True, they intend to trust code from the
             # pipeline's repo, not from external repos referenced in modular_model_index.json.
+            trust_remote_code_stripped = False
             if (
                 "trust_remote_code" in component_load_kwargs
                 and self._pretrained_model_name_or_path is not None
                 and spec.pretrained_model_name_or_path != self._pretrained_model_name_or_path
             ):
                 component_load_kwargs.pop("trust_remote_code")
+                trust_remote_code_stripped = True
+
+            if not spec.pretrained_model_name_or_path:
+                logger.info(f"Skipping component `{name}`: no pretrained model path specified.")
+                continue
 
             try:
                 components_to_register[name] = spec.load(**component_load_kwargs)
             except Exception:
-                logger.warning(
+                tb = traceback.format_exc()
+                warning_msg = (
                     f"\nFailed to create component {name}:\n"
                     f"- Component spec: {spec}\n"
                     f"- load() called with kwargs: {component_load_kwargs}\n"
                     "If this component is not required for your workflow you can safely ignore this message.\n\n"
                     "Traceback:\n"
-                    f"{traceback.format_exc()}"
+                    f"{tb}"
                 )
+                if trust_remote_code_stripped and "trust_remote_code" in tb:
+                    warning_msg += (
+                        f"\nNote: `trust_remote_code=True` was not passed to `{name}` because it comes from "
+                        f"an external repository (`{spec.pretrained_model_name_or_path}`). For safety, `trust_remote_code` is only forwarded to "
+                        f"components from the same repository as the pipeline.\n\n"
+                        f"To load this component manually:\n"
+                        f"  from diffusers import AutoModel\n"
+                        f'  {name} = AutoModel.from_pretrained("{spec.pretrained_model_name_or_path}", trust_remote_code=True)\n'
+                        f"  pipe.update_components({name} = {name})\n"
+                    )
+                logger.warning(warning_msg)
 
         # Register all components at once
         self.register_components(**components_to_register)
