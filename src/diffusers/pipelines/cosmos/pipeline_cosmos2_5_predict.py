@@ -271,6 +271,13 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             )
 
         return super().from_pretrained(pretrained_model_name_or_path, **kwargs)
+    
+    def get_latent_shape_cthw(self, height: int, width: int, num_frames: int):
+        C = self.vae.config.z_dim
+        T = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        H = height // self.vae_scale_factor_spatial
+        W = width // self.vae_scale_factor_spatial
+        return (C, T, H, W)
 
     def _get_prompt_embeds(
         self,
@@ -449,11 +456,9 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             )
 
         B = batch_size
-        C = num_channels_latents
-        T = (num_frames_out - 1) // self.vae_scale_factor_temporal + 1
-        H = height // self.vae_scale_factor_spatial
-        W = width // self.vae_scale_factor_spatial
+        C, T, H, W = self.get_latent_shape_cthw(height, width, num_frames_out)
         shape = (B, C, T, H, W)
+        assert C == num_channels_latents, f"Expected number of channels to be {num_channels_latents}, but got {C}."
 
         if num_frames_in == 0:
             if latents is None:
