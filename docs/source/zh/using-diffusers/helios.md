@@ -130,5 +130,5 @@ pipe.to("cuda")
 
 通过以下资源了解有关 Helios 的更多信息：
 
-- 一段 [视频](https://www.youtube.com/watch?v=) 演示了 Helios 的主要功能;
+- [视频1](https://www.youtube.com/watch?v=vd_AgHtOUFQ)和[视频2](https://www.youtube.com/watch?v=1GeIU2Dn7UY)演示了 Helios 的主要功能;
 - 有关更多详细信息，请参阅研究论文 [Helios: 14B Real-Time Long Video Generation Model can be Cheaper, Faster but Keep Stronger than 1.3B ones](https://huggingface.co/papers/)。

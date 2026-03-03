@@ -129,5 +129,5 @@ pipe.to("cuda")
 ## Resources
 
 Learn more about Helios with the following resources.
-- A [video](https://www.youtube.com/watch?v=) demonstrating Helios's main features.
+- Watch [video1](https://www.youtube.com/watch?v=vd_AgHtOUFQ) and [video2](https://www.youtube.com/watch?v=1GeIU2Dn7UY) for a demonstration of Helios's key features.
 - The research paper, [Helios: 14B Real-Time Long Video Generation Model can be Cheaper, Faster but Keep Stronger than 1.3B ones](https://huggingface.co/papers/) for more details.
