@@ -552,15 +552,6 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         history_sizes = sorted(history_sizes, reverse=True)  # From big to small
 
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean)
-            .view(1, self.vae.config.z_dim, 1, 1, 1)
-            .to(self.vae.device, self.vae.dtype)
-        )
-        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-            self.vae.device, self.vae.dtype
-        )
-
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
@@ -586,6 +577,15 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         device = self._execution_device
         vae_dtype = self.vae.dtype
+
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, self.vae.config.z_dim, 1, 1, 1)
+            .to(device, self.vae.dtype)
+        )
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            device, self.vae.dtype
+        )
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -778,7 +778,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                             latents_history_1x.shape[-2],
                             latents_history_1x.shape[-1],
                         ),
-                        device=latents_history_1x.device,
+                        device=device,
                         dtype=latents_history_1x.dtype,
                     )
                 else:

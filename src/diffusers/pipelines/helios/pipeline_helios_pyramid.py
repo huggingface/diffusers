@@ -438,16 +438,26 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
             latents = torch.cat(latents_chunks, dim=2)
         return first_frame_latent.to(device=device, dtype=dtype), latents.to(device=device, dtype=dtype)
 
-    def sample_block_noise(self, batch_size, channel, num_frames, height, width, patch_size=(1, 2, 2)):
+    def sample_block_noise(
+        self,
+        batch_size,
+        channel,
+        num_frames,
+        height,
+        width,
+        patch_size: tuple[int, ...] = (1, 2, 2),
+        device: torch.device | None = None,
+    ):
         gamma = self.scheduler.config.gamma
         _, ph, pw = patch_size
         block_size = ph * pw
 
-        cov = torch.eye(block_size) * (1 + gamma) - torch.ones(block_size, block_size) * gamma
-        cov += torch.eye(block_size) * 1e-6
-        dist = torch.distributions.MultivariateNormal(
-            torch.zeros(block_size, device=cov.device), covariance_matrix=cov
+        cov = (
+            torch.eye(block_size, device=device) * (1 + gamma)
+            - torch.ones(block_size, block_size, device=device) * gamma
         )
+        cov += torch.eye(block_size, device=device) * 1e-6
+        dist = torch.distributions.MultivariateNormal(torch.zeros(block_size, device=device), covariance_matrix=cov)
         block_number = batch_size * channel * num_frames * (height // ph) * (width // pw)
 
         noise = dist.sample((block_number,))  # [block number, block_size]
@@ -593,15 +603,6 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         history_sizes = sorted(history_sizes, reverse=True)  # From big to small
         pyramid_num_stages = len(pyramid_num_inference_steps_list)
 
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean)
-            .view(1, self.vae.config.z_dim, 1, 1, 1)
-            .to(self.vae.device, self.vae.dtype)
-        )
-        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-            self.vae.device, self.vae.dtype
-        )
-
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
@@ -628,6 +629,15 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         device = self._execution_device
         vae_dtype = self.vae.dtype
+
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, self.vae.config.z_dim, 1, 1, 1)
+            .to(device, self.vae.dtype)
+        )
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            device, self.vae.dtype
+        )
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -804,7 +814,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                             latents_history_1x.shape[-2],
                             latents_history_1x.shape[-1],
                         ),
-                        device=latents_history_1x.device,
+                        device=device,
                         dtype=latents_history_1x.dtype,
                     )
                 else:
@@ -906,7 +916,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
                         batch_size, channel, num_frames, pyramid_height, pyramid_width = latents.shape
                         noise = self.sample_block_noise(
-                            batch_size, channel, num_frames, pyramid_height, pyramid_width, patch_size
+                            batch_size, channel, num_frames, pyramid_height, pyramid_width, patch_size, device
                         )
                         noise = noise.to(device=device, dtype=transformer_dtype)
                         latents = alpha * latents + beta * noise  # To fix the block artifact
