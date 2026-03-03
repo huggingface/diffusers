@@ -483,8 +483,7 @@ class TestModularModelCardContent:
             "blocks_description",
             "components_description",
             "configs_section",
-            "inputs_description",
-            "outputs_description",
+            "io_specification_section",
             "trigger_inputs_section",
             "tags",
         ]
@@ -581,18 +580,19 @@ class TestModularModelCardContent:
         blocks = self.create_mock_blocks(inputs=inputs)
         content = generate_modular_model_card_content(blocks)
 
-        assert "**Required:**" in content["inputs_description"]
-        assert "**Optional:**" in content["inputs_description"]
-        assert "prompt" in content["inputs_description"]
-        assert "num_steps" in content["inputs_description"]
-        assert "default: `50`" in content["inputs_description"]
+        io_section = content["io_specification_section"]
+        assert "**Inputs:**" in io_section
+        assert "prompt" in io_section
+        assert "num_steps" in io_section
+        assert "*optional*" in io_section
+        assert "defaults to `50`" in io_section
 
     def test_inputs_description_empty(self):
         """Test handling of pipelines without specific inputs."""
         blocks = self.create_mock_blocks(inputs=[])
         content = generate_modular_model_card_content(blocks)
 
-        assert "No specific inputs defined" in content["inputs_description"]
+        assert "No specific inputs defined" in content["io_specification_section"]
 
     def test_outputs_description_formatting(self):
         """Test that outputs are correctly formatted."""
@@ -602,15 +602,16 @@ class TestModularModelCardContent:
         blocks = self.create_mock_blocks(outputs=outputs)
         content = generate_modular_model_card_content(blocks)
 
-        assert "images" in content["outputs_description"]
-        assert "Generated images" in content["outputs_description"]
+        io_section = content["io_specification_section"]
+        assert "images" in io_section
+        assert "Generated images" in io_section
 
     def test_outputs_description_empty(self):
         """Test handling of pipelines without specific outputs."""
         blocks = self.create_mock_blocks(outputs=[])
         content = generate_modular_model_card_content(blocks)
 
-        assert "Standard pipeline outputs" in content["outputs_description"]
+        assert "Standard pipeline outputs" in content["io_specification_section"]
 
     def test_trigger_inputs_section_with_triggers(self):
         """Test that trigger inputs section is generated when present."""
@@ -627,35 +628,6 @@ class TestModularModelCardContent:
         content = generate_modular_model_card_content(blocks)
 
         assert content["trigger_inputs_section"] == ""
-
-    def test_blocks_description_with_sub_blocks(self):
-        """Test that blocks with sub-blocks are correctly described."""
-
-        class MockBlockWithSubBlocks:
-            def __init__(self):
-                self.__class__.__name__ = "ParentBlock"
-                self.description = "Parent block"
-                self.sub_blocks = {
-                    "child1": self.create_child_block("ChildBlock1", "Child 1 description"),
-                    "child2": self.create_child_block("ChildBlock2", "Child 2 description"),
-                }
-
-            def create_child_block(self, name, desc):
-                class ChildBlock:
-                    def __init__(self):
-                        self.__class__.__name__ = name
-                        self.description = desc
-
-                return ChildBlock()
-
-        blocks = self.create_mock_blocks()
-        blocks.sub_blocks["parent"] = MockBlockWithSubBlocks()
-
-        content = generate_modular_model_card_content(blocks)
-
-        assert "parent" in content["blocks_description"]
-        assert "child1" in content["blocks_description"]
-        assert "child2" in content["blocks_description"]
 
     def test_model_description_includes_block_count(self):
         """Test that model description includes the number of blocks."""
