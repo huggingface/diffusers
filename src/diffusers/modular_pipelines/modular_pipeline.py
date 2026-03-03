@@ -2256,9 +2256,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 new_component_spec = current_component_spec
                 if hasattr(self, name) and getattr(self, name) is not None:
                     logger.warning(f"ModularPipeline.update_components: setting {name} to None (spec unchanged)")
-            elif current_component_spec.default_creation_method == "from_pretrained" and not (
-                hasattr(component, "_diffusers_load_id") and component._diffusers_load_id is not None
-            ):
+            elif current_component_spec.default_creation_method == "from_pretrained" and getattr(component, "_diffusers_load_id", None) is None
                 new_component_spec = ComponentSpec(name=name, type_hint=type(component))
             else:
                 new_component_spec = ComponentSpec.from_component(name, component)
