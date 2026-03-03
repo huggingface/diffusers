@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 
 import pytest
 import torch
@@ -22,6 +21,7 @@ from diffusers import HeliosTransformer3DModel
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
+    BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -32,13 +32,52 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-class HeliosTransformer3DTesterConfig(ModelTesterMixin, unittest.TestCase):
-    model_class = HeliosTransformer3DModel
-    main_input_name = "hidden_states"
-    uses_custom_attn_processor = True
+class HeliosTransformer3DTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return HeliosTransformer3DModel
 
     @property
-    def dummy_input(self):
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-helios-base-transformer"
+
+    @property
+    def output_shape(self) -> tuple[int, ...]:
+        return (4, 2, 16, 16)
+
+    @property
+    def input_shape(self) -> tuple[int, ...]:
+        return (4, 2, 16, 16)
+
+    @property
+    def main_input_name(self) -> str:
+        return "hidden_states"
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict[str, int | list[int] | tuple | str | bool]:
+        return {
+            "patch_size": (1, 2, 2),
+            "num_attention_heads": 2,
+            "attention_head_dim": 12,
+            "in_channels": 4,
+            "out_channels": 4,
+            "text_dim": 16,
+            "freq_dim": 256,
+            "ffn_dim": 32,
+            "num_layers": 2,
+            "cross_attn_norm": True,
+            "qk_norm": "rms_norm_across_heads",
+            "rope_dim": (4, 4, 4),
+            "has_multi_term_memory_patch": True,
+            "guidance_cross_attn": True,
+            "zero_history_timestep": True,
+            "is_amplify_history": False,
+        }
+
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         batch_size = 1
         num_channels = 4
         num_frames = 2
@@ -72,40 +111,6 @@ class HeliosTransformer3DTesterConfig(ModelTesterMixin, unittest.TestCase):
             "latents_history_mid": latents_history_mid,
             "latents_history_long": latents_history_long,
         }
-
-    @property
-    def input_shape(self) -> tuple[int, ...]:
-        return (4, 2, 16, 16)
-
-    @property
-    def output_shape(self) -> tuple[int, ...]:
-        return (4, 2, 16, 16)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "patch_size": (1, 2, 2),
-            "num_attention_heads": 2,
-            "attention_head_dim": 12,
-            "in_channels": 4,
-            "out_channels": 4,
-            "text_dim": 16,
-            "freq_dim": 256,
-            "ffn_dim": 32,
-            "num_layers": 2,
-            "cross_attn_norm": True,
-            "qk_norm": "rms_norm_across_heads",
-            "rope_dim": (4, 4, 4),
-            "has_multi_term_memory_patch": True,
-            "guidance_cross_attn": True,
-            "zero_history_timestep": True,
-            "is_amplify_history": False,
-        }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
-
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"HeliosTransformer3DModel"}
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class TestHeliosTransformer3D(HeliosTransformer3DTesterConfig, ModelTesterMixin):
