@@ -601,18 +601,17 @@ class HeliosTransformer3DModel(
 
         # 2. Initial Multi Term Memory Patch
         self.zero_history_timestep = zero_history_timestep
-        self.inner_dim = inner_dim
         if has_multi_term_memory_patch:
-            self.patch_short = nn.Conv3d(in_channels, self.inner_dim, kernel_size=patch_size, stride=patch_size)
+            self.patch_short = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
             self.patch_mid = nn.Conv3d(
                 in_channels,
-                self.inner_dim,
+                inner_dim,
                 kernel_size=tuple(2 * p for p in patch_size),
                 stride=tuple(2 * p for p in patch_size),
             )
             self.patch_long = nn.Conv3d(
                 in_channels,
-                self.inner_dim,
+                inner_dim,
                 kernel_size=tuple(4 * p for p in patch_size),
                 stride=tuple(4 * p for p in patch_size),
             )

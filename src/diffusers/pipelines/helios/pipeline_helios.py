@@ -815,6 +815,9 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     timestep = t.expand(latents.shape[0])
 
                     latent_model_input = latents.to(transformer_dtype)
+                    latents_history_short = latents_history_short.to(transformer_dtype)
+                    latents_history_mid = latents_history_mid.to(transformer_dtype)
+                    latents_history_long = latents_history_long.to(transformer_dtype)
                     with self.transformer.cache_context("cond"):
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
@@ -824,9 +827,9 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                             indices_latents_history_short=indices_latents_history_short,
                             indices_latents_history_mid=indices_latents_history_mid,
                             indices_latents_history_long=indices_latents_history_long,
-                            latents_history_short=latents_history_short.to(transformer_dtype),
-                            latents_history_mid=latents_history_mid.to(transformer_dtype),
-                            latents_history_long=latents_history_long.to(transformer_dtype),
+                            latents_history_short=latents_history_short,
+                            latents_history_mid=latents_history_mid,
+                            latents_history_long=latents_history_long,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
@@ -841,9 +844,9 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                                 indices_latents_history_short=indices_latents_history_short,
                                 indices_latents_history_mid=indices_latents_history_mid,
                                 indices_latents_history_long=indices_latents_history_long,
-                                latents_history_short=latents_history_short.to(transformer_dtype),
-                                latents_history_mid=latents_history_mid.to(transformer_dtype),
-                                latents_history_long=latents_history_long.to(transformer_dtype),
+                                latents_history_short=latents_history_short,
+                                latents_history_mid=latents_history_mid,
+                                latents_history_long=latents_history_long,
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
                             )[0]
