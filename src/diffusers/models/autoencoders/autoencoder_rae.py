@@ -334,7 +334,7 @@ class RAEDecoder(nn.Module):
         x = x.permute(0, 2, 3, 1).contiguous().view(b, self.num_patches, c)
         return x
 
-    def unpatchify(self, patchified_pixel_values: torch.Tensor, original_image_size: Optional[Tuple[int, int]] = None):
+    def unpatchify(self, patchified_pixel_values: torch.Tensor, original_image_size: tuple[int, int] | None = None):
         patch_size, num_channels = self.patch_size, self.num_channels
         original_image_size = (
             original_image_size if original_image_size is not None else (self.image_size, self.image_size)
