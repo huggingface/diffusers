@@ -80,9 +80,11 @@ def _mae_encoder_forward(model: nn.Module, images: torch.Tensor, patch_size: int
 # ---------------------------------------------------------------------------
 
 
-def _build_encoder(encoder_type: str, hidden_size: int, patch_size: int, num_hidden_layers: int) -> nn.Module:
+def _build_encoder(
+    encoder_type: str, hidden_size: int, patch_size: int, num_hidden_layers: int, head_dim: int = 64
+) -> nn.Module:
     """Build a frozen encoder from config (no pretrained download)."""
-    num_attention_heads = hidden_size // 64  # all supported encoders use head_dim=64
+    num_attention_heads = hidden_size // head_dim  # all supported encoders use head_dim=64
 
     if encoder_type == "dinov2":
         config = Dinov2WithRegistersConfig(
