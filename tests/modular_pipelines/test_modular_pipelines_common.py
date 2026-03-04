@@ -451,13 +451,18 @@ class TestCustomBlockRequirements:
         )
         return pipe
 
-    def test_custom_requirements_save_load(self):
+    def test_custom_requirements_save_load(self, tmp_path):
         pipe = self.get_dummy_block_pipe()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            config_path = os.path.join(tmpdir, "modular_config.json")
-            with open(config_path, "r") as f:
-                config = json.load(f)
+
+        # tmp_path is a pathlib.Path object.
+        # Most modern libraries accept Path objects directly.
+        pipe.save_pretrained(tmp_path)
+
+        # Use pathlib syntax (/) instead of os.path.join
+        config_path = tmp_path / "modular_config.json"
+
+        with open(config_path, "r") as f:
+            config = json.load(f)
 
         assert "requirements" in config
         requirements = config["requirements"]
@@ -470,20 +475,20 @@ class TestCustomBlockRequirements:
         }
         assert expected_requirements == requirements
 
-    def test_warnings(self):
+    def test_warnings(self, tmp_path):
         pipe = self.get_dummy_block_pipe()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
-            logger.setLevel(30)
 
-            with CaptureLogger(logger) as cap_logger:
-                pipe.save_pretrained(tmpdir)
+        logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
+        logger.setLevel(30)
 
-            template = "{req} was specified in the requirements but wasn't found in the current environment"
-            msg_xyz = template.format(req="xyz")
-            msg_abc = template.format(req="abc")
-            assert msg_xyz in str(cap_logger.out)
-            assert msg_abc in str(cap_logger.out)
+        with CaptureLogger(logger) as cap_logger:
+            pipe.save_pretrained(tmp_path)
+
+        template = "{req} was specified in the requirements but wasn't found in the current environment"
+        msg_xyz = template.format(req="xyz")
+        msg_abc = template.format(req="abc")
+        assert msg_xyz in str(cap_logger.out)
+        assert msg_abc in str(cap_logger.out)
 
 
 class TestModularModelCardContent:
