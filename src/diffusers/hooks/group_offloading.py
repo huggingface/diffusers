@@ -307,6 +307,17 @@ class GroupOffloadingHook(ModelHook):
         if self.group.onload_leader == module:
             if self.group.onload_self:
                 self.group.onload_()
+            else:
+                # onload_self=False means this group relies on prefetching from a previous group.
+                # However, for conditionally-executed modules (e.g. patch_short/patch_mid/patch_long in Helios),
+                # the prefetch chain may not cover them if they were absent during the first forward pass
+                # when the execution order was traced. In that case, their weights remain on offload_device,
+                # so we fall back to a synchronous onload here.
+                params = [p for m in self.group.modules for p in m.parameters()] + list(self.group.parameters)
+                if params and params[0].device == self.group.offload_device:
+                    self.group.onload_()
+                    if self.group.stream is not None:
+                        self.group.stream.synchronize()
 
             should_onload_next_group = self.next_group is not None and not self.next_group.onload_self
             if should_onload_next_group:
