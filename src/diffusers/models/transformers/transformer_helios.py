@@ -536,7 +536,14 @@ class HeliosTransformer3DModel(
     """
 
     _supports_gradient_checkpointing = True
-    _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
+    _skip_layerwise_casting_patterns = [
+        "patch_embedding",
+        "patch_short",
+        "patch_mid",
+        "patch_long",
+        "condition_embedder",
+        "norm",
+    ]
     _no_split_modules = ["HeliosTransformerBlock", "HeliosOutputNorm"]
     _keep_in_fp32_modules = [
         "time_embedder",
@@ -683,7 +690,6 @@ class HeliosTransformer3DModel(
 
         # 3. Process short history latents
         if latents_history_short is not None and indices_latents_history_short is not None:
-            latents_history_short = latents_history_short.to(hidden_states)
             latents_history_short = self.patch_short(latents_history_short)
             _, _, _, H1, W1 = latents_history_short.shape
             latents_history_short = latents_history_short.flatten(2).transpose(1, 2)
@@ -701,7 +707,6 @@ class HeliosTransformer3DModel(
 
         # 4. Process mid history latents
         if latents_history_mid is not None and indices_latents_history_mid is not None:
-            latents_history_mid = latents_history_mid.to(hidden_states)
             latents_history_mid = pad_for_3d_conv(latents_history_mid, (2, 4, 4))
             latents_history_mid = self.patch_mid(latents_history_mid)
             latents_history_mid = latents_history_mid.flatten(2).transpose(1, 2)
@@ -721,7 +726,6 @@ class HeliosTransformer3DModel(
 
         # 5. Process long history latents
         if latents_history_long is not None and indices_latents_history_long is not None:
-            latents_history_long = latents_history_long.to(hidden_states)
             latents_history_long = pad_for_3d_conv(latents_history_long, (4, 8, 8))
             latents_history_long = self.patch_long(latents_history_long)
             latents_history_long = latents_history_long.flatten(2).transpose(1, 2)
