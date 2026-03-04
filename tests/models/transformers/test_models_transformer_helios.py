@@ -146,3 +146,7 @@ class TestHeliosTransformer3DAttention(HeliosTransformer3DTesterConfig, Attentio
 
 class TestHeliosTransformer3DCompile(HeliosTransformer3DTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for Helios Transformer 3D."""
+    
+    @pytest.mark.xfail(reason="Helios DiT does not compile when deterministic algorithms are used due to https://github.com/pytorch/pytorch/issues/170079")
+    def test_torch_compile_recompilation_and_graph_break(self):
+        super().test_torch_compile_recompilation_and_graph_break()
