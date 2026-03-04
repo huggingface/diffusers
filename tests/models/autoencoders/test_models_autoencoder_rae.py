@@ -14,11 +14,11 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import pytest
 import torch
 import torch.nn.functional as F
+from torchvision.transforms.functional import to_tensor
 
 import diffusers.models.autoencoders.autoencoder_rae as _rae_module
 from diffusers.models.autoencoders.autoencoder_rae import (
@@ -26,11 +26,13 @@ from diffusers.models.autoencoders.autoencoder_rae import (
     AutoencoderRAE,
     _build_encoder,
 )
+from diffusers.utils import load_image
 
 from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     slow,
+    torch_all_close,
     torch_device,
 )
 from ..testing_utils import BaseModelTesterConfig, ModelTesterMixin
@@ -228,9 +230,8 @@ class TestAutoEncoderRAESlicingTiling(AutoencoderRAETesterConfig, AutoencoderTes
 
 @slow
 @pytest.mark.skip(reason="Not enough model usage to justify slow tests yet.")
-class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
+class AutoencoderRAEEncoderIntegrationTests:
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -267,9 +268,8 @@ class AutoencoderRAEEncoderIntegrationTests(unittest.TestCase):
 
 @slow
 @pytest.mark.skip(reason="Not enough model usage to justify slow tests yet.")
-class AutoencoderRAEIntegrationTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
+class AutoencoderRAEIntegrationTests:
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -277,16 +277,24 @@ class AutoencoderRAEIntegrationTests(unittest.TestCase):
         model = AutoencoderRAE.from_pretrained("nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08").to(torch_device)
         model.eval()
 
-        x = torch.rand(1, 3, 224, 224, device=torch_device)
+        image = load_image(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"
+        )
+        image = image.convert("RGB").resize((224, 224))
+        x = to_tensor(image).unsqueeze(0).to(torch_device)
 
         with torch.no_grad():
             latents = model.encode(x).latent
-            assert latents.ndim == 4
-            assert latents.shape[0] == 1
+            assert latents.shape == (1, 768, 16, 16)
 
-            decoded = model.decode(latents).sample
-            assert decoded.shape[0] == 1
-            assert decoded.shape[1] == 3
-
-            recon = model(x).sample
+            recon = model.decode(latents).sample
+            assert recon.shape == (1, 3, 256, 256)
             assert torch.isfinite(recon).all().item()
+
+            # fmt: off
+            expected_latent_slice = torch.tensor([0.7617, 0.8824, -0.4891])
+            expected_recon_slice = torch.tensor([0.1263, 0.1355, 0.1435])
+            # fmt: on
+
+            assert torch_all_close(latents[0, :3, 0, 0].float().cpu(), expected_latent_slice, atol=1e-3)
+            assert torch_all_close(recon[0, 0, 0, :3].float().cpu(), expected_recon_slice, atol=1e-3)
