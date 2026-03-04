@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import sqrt
-from typing import Any, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -372,7 +372,7 @@ class RAEDecoder(nn.Module):
         interpolate_pos_encoding: bool = False,
         drop_cls_token: bool = False,
         return_dict: bool = True,
-    ) -> Union[RAEDecoderOutput, Tuple[torch.Tensor]]:
+    ) -> RAEDecoderOutput | tuple[torch.Tensor]:
         x = self.decoder_embed(hidden_states)
         if drop_cls_token:
             x_ = x[:, 1:, :]
@@ -468,12 +468,12 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         decoder_intermediate_size: int = 2048,
         patch_size: int = 16,
         encoder_input_size: int = 224,
-        image_size: Optional[int] = None,
+        image_size: int | None = None,
         num_channels: int = 3,
-        encoder_norm_mean: Optional[list] = None,
-        encoder_norm_std: Optional[list] = None,
-        latents_mean: Optional[Union[list, tuple, torch.Tensor]] = None,
-        latents_std: Optional[Union[list, tuple, torch.Tensor]] = None,
+        encoder_norm_mean: list | None = None,
+        encoder_norm_std: list | None = None,
+        latents_mean: list | tuple | torch.Tensor | None = None,
+        latents_std: list | tuple | torch.Tensor | None = None,
         noise_tau: float = 0.0,
         reshape_to_2d: bool = True,
         use_encoder_loss: bool = False,
@@ -495,7 +495,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
                 return [_to_config_compatible(v) for v in value]
             return value
 
-        def _as_optional_tensor(value: Optional[Union[torch.Tensor, list, tuple]]) -> Optional[torch.Tensor]:
+        def _as_optional_tensor(value: torch.Tensor | list | tuple | None) -> torch.Tensor | None:
             if value is None:
                 return None
             if isinstance(value, torch.Tensor):
@@ -649,7 +649,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         return z
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[EncoderOutput, Tuple[torch.Tensor]]:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> EncoderOutput | tuple[torch.Tensor]:
         if self.use_slicing and x.shape[0] > 1:
             latents = torch.cat([self._encode(x_slice) for x_slice in x.split(1)], dim=0)
         else:
@@ -678,7 +678,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         return x_rec
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         if self.use_slicing and z.shape[0] > 1:
             decoded = torch.cat([self._decode(z_slice) for z_slice in z.split(1)], dim=0)
         else:
@@ -688,7 +688,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
             return (decoded,)
         return DecoderOutput(sample=decoded)
 
-    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         latents = self.encode(sample, return_dict=False)[0]
         decoded = self.decode(latents, return_dict=False)[0]
         if not return_dict:
