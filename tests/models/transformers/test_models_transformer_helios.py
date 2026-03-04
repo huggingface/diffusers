@@ -92,16 +92,30 @@ class HeliosTransformer3DTesterConfig(BaseModelTesterConfig):
             generator=self.generator,
             device=torch_device,
         )
-        timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
-        encoder_hidden_states = torch.randn((batch_size, sequence_length, text_encoder_embedding_dim)).to(torch_device)
+        timestep = torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device)
+        encoder_hidden_states = randn_tensor(
+            (batch_size, sequence_length, text_encoder_embedding_dim),
+            generator=self.generator,
+            device=torch_device,
+        )
         indices_hidden_states = torch.ones((batch_size, num_frames)).to(torch_device)
         indices_latents_history_short = torch.ones((batch_size, num_frames - 1)).to(torch_device)
         indices_latents_history_mid = torch.ones((batch_size, num_frames - 1)).to(torch_device)
         indices_latents_history_long = torch.ones((batch_size, (num_frames - 1) * 4)).to(torch_device)
-        latents_history_short = torch.randn((batch_size, num_channels, num_frames - 1, height, width)).to(torch_device)
-        latents_history_mid = torch.randn((batch_size, num_channels, num_frames - 1, height, width)).to(torch_device)
-        latents_history_long = torch.randn((batch_size, num_channels, (num_frames - 1) * 4, height, width)).to(
-            torch_device
+        latents_history_short = randn_tensor(
+            (batch_size, num_channels, num_frames - 1, height, width),
+            generator=self.generator,
+            device=torch_device,
+        )
+        latents_history_mid = randn_tensor(
+            (batch_size, num_channels, num_frames - 1, height, width),
+            generator=self.generator,
+            device=torch_device,
+        )
+        latents_history_long = randn_tensor(
+            (batch_size, num_channels, (num_frames - 1) * 4, height, width),
+            generator=self.generator,
+            device=torch_device,
         )
 
         return {
@@ -146,7 +160,9 @@ class TestHeliosTransformer3DAttention(HeliosTransformer3DTesterConfig, Attentio
 
 class TestHeliosTransformer3DCompile(HeliosTransformer3DTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for Helios Transformer 3D."""
-    
-    @pytest.mark.xfail(reason="Helios DiT does not compile when deterministic algorithms are used due to https://github.com/pytorch/pytorch/issues/170079")
+
+    @pytest.mark.xfail(
+        reason="Helios DiT does not compile when deterministic algorithms are used due to https://github.com/pytorch/pytorch/issues/170079"
+    )
     def test_torch_compile_recompilation_and_graph_break(self):
         super().test_torch_compile_recompilation_and_graph_break()
