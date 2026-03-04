@@ -75,9 +75,10 @@ class CosmosEmbedding(nn.Module):
         self.norm = RMSNorm(embedding_dim, eps=1e-6, elementwise_affine=True)
 
     def forward(self, hidden_states: torch.Tensor, timestep: torch.LongTensor) -> torch.Tensor:
-        timesteps_proj = self.time_proj(timestep).type_as(hidden_states)
-        temb = self.t_embedder(timesteps_proj)
-        embedded_timestep = self.norm(timesteps_proj)
+        with torch.amp.autocast("cuda", dtype=torch.float32):
+            timesteps_proj = self.time_proj(timestep)
+            temb = self.t_embedder(timesteps_proj)
+            embedded_timestep = self.norm(timesteps_proj)
         return temb, embedded_timestep
 
 
@@ -102,6 +103,7 @@ class CosmosAdaLayerNorm(nn.Module):
             embedded_timestep = embedded_timestep + temb[..., : 2 * self.embedding_dim]
 
         shift, scale = embedded_timestep.chunk(2, dim=-1)
+
         hidden_states = self.norm(hidden_states)
 
         if embedded_timestep.ndim == 2:
@@ -131,14 +133,19 @@ class CosmosAdaLayerNormZero(nn.Module):
         embedded_timestep: torch.Tensor,
         temb: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        embedded_timestep = self.activation(embedded_timestep)
-        embedded_timestep = self.linear_1(embedded_timestep)
-        embedded_timestep = self.linear_2(embedded_timestep)
+        original_dtype = hidden_states.dtype
+        with torch.amp.autocast(device_type="cuda", dtype=torch.float32):
+            embedded_timestep = self.activation(embedded_timestep)
+            embedded_timestep = self.linear_1(embedded_timestep)
+            embedded_timestep = self.linear_2(embedded_timestep)
 
-        if temb is not None:
-            embedded_timestep = embedded_timestep + temb
+            if temb is not None:
+                embedded_timestep = embedded_timestep + temb
 
-        shift, scale, gate = embedded_timestep.chunk(3, dim=-1)
+            shift, scale, gate = embedded_timestep.chunk(3, dim=-1)
+        shift = shift.to(original_dtype)
+        scale = scale.to(original_dtype)
+        gate = gate.to(original_dtype)
         hidden_states = self.norm(hidden_states)
 
         if embedded_timestep.ndim == 2:
@@ -181,8 +188,13 @@ class CosmosAttnProcessor2_0:
         if image_rotary_emb is not None:
             from ..embeddings import apply_rotary_emb
 
+            original_dtype = query.dtype
+            query = query.to(torch.float32)
+            key = key.to(torch.float32)
             query = apply_rotary_emb(query, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
             key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            query = query.to(original_dtype)
+            key = key.to(original_dtype)
 
         # 4. Prepare for GQA
         if torch.onnx.is_in_onnx_export():
@@ -248,8 +260,13 @@ class CosmosAttnProcessor2_5:
         if image_rotary_emb is not None:
             from ..embeddings import apply_rotary_emb
 
+            original_dtype = query.dtype
+            query = query.to(torch.float32)
+            key = key.to(torch.float32)
             query = apply_rotary_emb(query, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
             key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
+            query = query.to(original_dtype)
+            key = key.to(original_dtype)
 
         if torch.onnx.is_in_onnx_export():
             query_idx = torch.tensor(query.size(3), device=query.device)
@@ -797,8 +814,9 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
                 )
 
         # 8. Output norm & projection & unpatchify
-        hidden_states = self.norm_out(hidden_states, embedded_timestep, temb)
-        hidden_states = self.proj_out(hidden_states)
+        with torch.amp.autocast(device_type="cuda", dtype=torch.float32):
+            hidden_states = self.norm_out(hidden_states, embedded_timestep, temb)
+            hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.unflatten(2, (p_h, p_w, p_t, -1))
         hidden_states = hidden_states.unflatten(1, (post_patch_num_frames, post_patch_height, post_patch_width))
         # NOTE: The permutation order here is not the inverse operation of what happens when patching as usually expected.
