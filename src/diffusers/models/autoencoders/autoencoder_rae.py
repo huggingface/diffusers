@@ -93,6 +93,8 @@ def _build_encoder(encoder_type: str, hidden_size: int, patch_size: int, num_hid
             num_hidden_layers=num_hidden_layers,
         )
         model = Dinov2WithRegistersModel(config)
+        # RAE strips the final layernorm affine params (identity LN). Remove them from
+        # the architecture so `from_pretrained` doesn't leave them on the meta device.
         model.layernorm.weight = None
         model.layernorm.bias = None
     elif encoder_type == "siglip2":
@@ -104,6 +106,7 @@ def _build_encoder(encoder_type: str, hidden_size: int, patch_size: int, num_hid
             num_hidden_layers=num_hidden_layers,
         )
         model = SiglipVisionModel(config)
+        # See dinov2 comment above.
         model.vision_model.post_layernorm.weight = None
         model.vision_model.post_layernorm.bias = None
     elif encoder_type == "mae":
@@ -116,6 +119,7 @@ def _build_encoder(encoder_type: str, hidden_size: int, patch_size: int, num_hid
             mask_ratio=0.0,
         )
         model = ViTMAEModel(config)
+        # See dinov2 comment above.
         model.layernorm.weight = None
         model.layernorm.bias = None
     else:
@@ -515,8 +519,17 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         self.reshape_to_2d = bool(reshape_to_2d)
         self.use_encoder_loss = bool(use_encoder_loss)
 
-        # Frozen representation encoder (built from config, no downloads)
+        # Validate early, before building the (potentially large) encoder/decoder.
         encoder_patch_size = int(encoder_patch_size)
+        if self.encoder_input_size % encoder_patch_size != 0:
+            raise ValueError(
+                f"encoder_input_size={self.encoder_input_size} must be divisible by encoder_patch_size={encoder_patch_size}."
+            )
+        decoder_patch_size = int(patch_size)
+        if decoder_patch_size <= 0:
+            raise ValueError("patch_size must be a positive integer (this is decoder_patch_size).")
+
+        # Frozen representation encoder (built from config, no downloads)
         self.encoder: nn.Module = _build_encoder(
             encoder_type=encoder_type,
             hidden_size=encoder_hidden_size,
@@ -524,18 +537,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
             num_hidden_layers=encoder_num_hidden_layers,
         )
         self._encoder_forward_fn = _ENCODER_FORWARD_FNS[encoder_type]
-
-        # RAE-main: base_patches = (encoder_input_size // encoder_patch_size) ** 2
-        if self.encoder_input_size % encoder_patch_size != 0:
-            raise ValueError(
-                f"encoder_input_size={self.encoder_input_size} must be divisible by encoder_patch_size={encoder_patch_size}."
-            )
         num_patches = (self.encoder_input_size // encoder_patch_size) ** 2
-
-        # Decoder patch size is independent from encoder patch size.
-        decoder_patch_size = int(patch_size)
-        if decoder_patch_size <= 0:
-            raise ValueError("patch_size must be a positive integer (this is decoder_patch_size).")
 
         grid = int(sqrt(num_patches))
         if grid * grid != num_patches:
