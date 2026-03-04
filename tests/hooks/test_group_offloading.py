@@ -566,3 +566,111 @@ class GroupOffloadTests(unittest.TestCase):
             "layers_per_block": 1,
         }
         return init_dict
+
+
+# Model with conditionally-executed modules, simulating Helios patch_short/patch_mid/patch_long behavior.
+# These modules are only called when optional inputs are provided, which means the lazy prefetch
+# execution order tracer may not see them on the first forward pass. This can cause a device mismatch
+# on subsequent calls when the modules ARE invoked but their weights were never onloaded.
+# See: https://github.com/huggingface/diffusers/pull/13211
+class DummyModelWithConditionalModules(ModelMixin):
+    def __init__(self, in_features: int, hidden_features: int, out_features: int, num_layers: int) -> None:
+        super().__init__()
+
+        self.linear_1 = torch.nn.Linear(in_features, hidden_features)
+        self.activation = torch.nn.ReLU()
+        self.blocks = torch.nn.ModuleList(
+            [DummyBlock(hidden_features, hidden_features, hidden_features) for _ in range(num_layers)]
+        )
+        self.linear_2 = torch.nn.Linear(hidden_features, out_features)
+
+        # These modules are only invoked when optional_input is not None.
+        # Output dimension matches hidden_features so they can be added after linear_1.
+        self.optional_proj_1 = torch.nn.Linear(in_features, hidden_features)
+        self.optional_proj_2 = torch.nn.Linear(in_features, hidden_features)
+
+    def forward(self, x: torch.Tensor, optional_input: torch.Tensor | None = None) -> torch.Tensor:
+        x = self.linear_1(x)
+        x = self.activation(x)
+        if optional_input is not None:
+            # Add optional projections after linear_1 so dimensions match (both hidden_features)
+            x = x + self.optional_proj_1(optional_input)
+            x = x + self.optional_proj_2(optional_input)
+        for block in self.blocks:
+            x = block(x)
+        x = self.linear_2(x)
+        return x
+
+
+class ConditionalModuleGroupOffloadTests(GroupOffloadTests):
+    """Tests for conditionally-executed modules under group offloading with streams.
+
+    Regression tests for the case where a module is not executed during the first forward pass
+    (when the lazy prefetch execution order is traced), but IS executed on subsequent passes.
+    Without the fix, the weights of such modules remain on CPU while the input is on GPU,
+    causing a RuntimeError about tensor device mismatch.
+    """
+
+    def get_model(self):
+        torch.manual_seed(0)
+        return DummyModelWithConditionalModules(
+            in_features=self.in_features,
+            hidden_features=self.hidden_features,
+            out_features=self.out_features,
+            num_layers=self.num_layers,
+        )
+
+    @parameterized.expand([("leaf_level",), ("block_level",)])
+    def test_conditional_modules_with_stream(self, offload_type: str):
+        """Regression test: conditionally-executed modules must not cause device mismatch when using streams.
+
+        The first forward pass runs WITHOUT optional_input, so optional_proj_1 and optional_proj_2
+        are not executed and are not included in the lazy prefetch execution order. The second forward
+        pass runs WITH optional_input, which means these modules ARE called. Without the fix, their
+        weights remain on CPU while the input tensor is on GPU, causing a RuntimeError.
+        """
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        model = self.get_model()
+        model_ref = self.get_model()
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(
+            torch_device,
+            offload_type=offload_type,
+            num_blocks_per_group=1,
+            use_stream=True,
+        )
+
+        x = torch.randn(4, self.in_features).to(torch_device)
+        optional_input = torch.randn(4, self.in_features).to(torch_device)
+
+        with torch.no_grad():
+            # First forward pass WITHOUT optional_input — this is when the lazy prefetch
+            # execution order is traced. optional_proj_1/2 are NOT in the traced order.
+            out_ref_no_opt = model_ref(x, optional_input=None)
+            out_no_opt = model(x, optional_input=None)
+            self.assertTrue(
+                torch.allclose(out_ref_no_opt, out_no_opt, atol=1e-5),
+                f"[{offload_type}] Outputs do not match on first pass (no optional_input).",
+            )
+
+            # Second forward pass WITH optional_input — optional_proj_1/2 ARE now called.
+            # This is the regression case: without the fix, a RuntimeError is raised here
+            # because the weights of optional_proj_1/2 are still on CPU.
+            out_ref_with_opt = model_ref(x, optional_input=optional_input)
+            out_with_opt = model(x, optional_input=optional_input)
+            self.assertTrue(
+                torch.allclose(out_ref_with_opt, out_with_opt, atol=1e-5),
+                f"[{offload_type}] Outputs do not match on second pass (with optional_input).",
+            )
+
+            # Third pass again without optional_input — verify stable behavior.
+            out_ref_no_opt2 = model_ref(x, optional_input=None)
+            out_no_opt2 = model(x, optional_input=None)
+            self.assertTrue(
+                torch.allclose(out_ref_no_opt2, out_no_opt2, atol=1e-5),
+                f"[{offload_type}] Outputs do not match on third pass (back to no optional_input).",
+            )
