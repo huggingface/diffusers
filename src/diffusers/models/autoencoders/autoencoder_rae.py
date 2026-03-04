@@ -590,10 +590,12 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         # Slicing support (batch dimension) similar to other diffusers autoencoders
         self.use_slicing = False
 
-    def _noising(self, x: torch.Tensor) -> torch.Tensor:
+    def _noising(self, x: torch.Tensor, generator: torch.Generator | None = None) -> torch.Tensor:
         # Per-sample random sigma in [0, noise_tau]
-        noise_sigma = self.noise_tau * torch.rand((x.size(0),) + (1,) * (x.ndim - 1), device=x.device, dtype=x.dtype)
-        return x + noise_sigma * torch.randn_like(x)
+        noise_sigma = self.noise_tau * torch.rand(
+            (x.size(0),) + (1,) * (x.ndim - 1), device=x.device, dtype=x.dtype, generator=generator
+        )
+        return x + noise_sigma * torch.randn_like(x, generator=generator)
 
     def _maybe_resize_and_normalize(self, x: torch.Tensor) -> torch.Tensor:
         _, _, h, w = x.shape
@@ -620,7 +622,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         latents_std = self._latents_std.to(device=z.device, dtype=z.dtype)
         return z * (latents_std + 1e-5) + latents_mean
 
-    def _encode(self, x: torch.Tensor) -> torch.Tensor:
+    def _encode(self, x: torch.Tensor, generator: torch.Generator | None = None) -> torch.Tensor:
         x = self._maybe_resize_and_normalize(x)
 
         if self.config.encoder_type == "mae":
@@ -629,7 +631,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
             tokens = self._encoder_forward_fn(self.encoder, x)  # (B, N, C)
 
         if self.training and self.noise_tau > 0:
-            tokens = self._noising(tokens)
+            tokens = self._noising(tokens, generator=generator)
 
         if self.reshape_to_2d:
             b, n, c = tokens.shape
@@ -649,11 +651,13 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         return z
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> EncoderOutput | tuple[torch.Tensor]:
+    def encode(
+        self, x: torch.Tensor, return_dict: bool = True, generator: torch.Generator | None = None
+    ) -> EncoderOutput | tuple[torch.Tensor]:
         if self.use_slicing and x.shape[0] > 1:
-            latents = torch.cat([self._encode(x_slice) for x_slice in x.split(1)], dim=0)
+            latents = torch.cat([self._encode(x_slice, generator=generator) for x_slice in x.split(1)], dim=0)
         else:
-            latents = self._encode(x)
+            latents = self._encode(x, generator=generator)
 
         if not return_dict:
             return (latents,)
@@ -688,8 +692,10 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
             return (decoded,)
         return DecoderOutput(sample=decoded)
 
-    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
-        latents = self.encode(sample, return_dict=False)[0]
+    def forward(
+        self, sample: torch.Tensor, return_dict: bool = True, generator: torch.Generator | None = None
+    ) -> DecoderOutput | tuple[torch.Tensor]:
+        latents = self.encode(sample, return_dict=False, generator=generator)[0]
         decoded = self.decode(latents, return_dict=False)[0]
         if not return_dict:
             return (decoded,)
