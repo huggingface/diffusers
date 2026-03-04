@@ -658,8 +658,6 @@ class ConditionalModuleGroupOffloadTests(GroupOffloadTests):
             )
 
             # Second forward pass WITH optional_input — optional_proj_1/2 ARE now called.
-            # This is the regression case: without the fix, a RuntimeError is raised here
-            # because the weights of optional_proj_1/2 are still on CPU.
             out_ref_with_opt = model_ref(x, optional_input=optional_input)
             out_with_opt = model(x, optional_input=optional_input)
             self.assertTrue(
