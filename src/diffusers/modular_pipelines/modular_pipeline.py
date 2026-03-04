@@ -47,6 +47,7 @@ from .modular_pipeline_utils import (
     InputParam,
     InsertableDict,
     OutputParam,
+    _validate_requirements,
     combine_inputs,
     combine_outputs,
     format_components,
@@ -297,6 +298,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     config_name = "modular_config.json"
     model_name = None
+    _requirements: dict[str, str] | None = None
     _workflow_map = None
 
     @classmethod
@@ -411,6 +413,9 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                 "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
             )
 
+        if "requirements" in config and config["requirements"] is not None:
+            _ = _validate_requirements(config["requirements"])
+
         class_ref = config["auto_map"][cls.__name__]
         module_file, class_name = class_ref.split(".")
         module_file = module_file + ".py"
@@ -435,8 +440,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         module = full_mod.rsplit(".", 1)[-1].replace("__dynamic__", "")
         parent_module = self.save_pretrained.__func__.__qualname__.split(".", 1)[0]
         auto_map = {f"{parent_module}": f"{module}.{cls_name}"}
-
         self.register_to_config(auto_map=auto_map)
+
+        # resolve requirements
+        requirements = _validate_requirements(getattr(self, "_requirements", None))
+        if requirements:
+            self.register_to_config(requirements=requirements)
+
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
         config = dict(self.config)
         self._internal_dict = FrozenDict(config)
@@ -657,6 +667,15 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         named_outputs = [(name, block.outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
         return combined_outputs
+
+    @property
+    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks._requirements
+    def _requirements(self) -> dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
 
     # used for `__repr__`
     def _get_trigger_inputs(self) -> set:
@@ -1247,6 +1266,14 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             expected_configs=self.expected_configs,
         )
 
+    @property
+    def _requirements(self) -> dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
+
 
 class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     """
@@ -1384,6 +1411,15 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     @property
     def outputs(self) -> list[str]:
         return next(reversed(self.sub_blocks.values())).intermediate_outputs
+
+    @property
+    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks._requirements
+    def _requirements(self) -> dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
 
     def __init__(self):
         sub_blocks = InsertableDict()
