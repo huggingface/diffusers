@@ -285,11 +285,7 @@ class RAEDecoder(nn.Module):
         self.gradient_checkpointing = False
 
         self._initialize_weights(num_patches)
-        self.set_trainable_cls_token()
-
-    def set_trainable_cls_token(self, tensor: Optional[torch.Tensor] = None):
-        tensor = torch.zeros(1, 1, self.decoder_hidden_size) if tensor is None else tensor
-        self.trainable_cls_token = nn.Parameter(tensor)
+        self.trainable_cls_token = nn.Parameter(torch.zeros(1, 1, decoder_hidden_size))
 
     def _initialize_weights(self, num_patches: int):
         # Skip initialization when parameters are on meta device (e.g. during
