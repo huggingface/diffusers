@@ -89,6 +89,7 @@ output = pipeline(
     num_frames=99,
     num_inference_steps=50,
     guidance_scale=5.0,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_base_t2v_output.mp4", fps=24)
 ```
@@ -142,6 +143,7 @@ output = pipeline(
     num_frames=99,
     num_inference_steps=50,
     guidance_scale=5.0,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_base_t2v_output.mp4", fps=24)
 ```
@@ -193,6 +195,7 @@ output = pipeline(
     num_frames=99,
     num_inference_steps=50,
     guidance_scale=5.0,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_base_t2v_output.mp4", fps=24)
 
@@ -214,6 +217,7 @@ output = pipeline(
     num_frames=99,
     num_inference_steps=50,
     guidance_scale=5.0,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_base_i2v_output.mp4", fps=24)
 
@@ -234,6 +238,7 @@ output = pipeline(
     num_frames=99,
     num_inference_steps=50,
     guidance_scale=5.0,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_base_v2v_output.mp4", fps=24)
 ```
@@ -287,6 +292,7 @@ output = pipeline(
     guidance_scale=5.0,
     use_zero_init=True,
     zero_steps=1,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_pyramid_t2v_output.mp4", fps=24)
 
@@ -310,6 +316,7 @@ output = pipeline(
     guidance_scale=5.0,
     use_zero_init=True,
     zero_steps=1,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_pyramid_i2v_output.mp4", fps=24)
 
@@ -332,6 +339,7 @@ output = pipeline(
     guidance_scale=5.0,
     use_zero_init=True,
     zero_steps=1,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_pyramid_v2v_output.mp4", fps=24)
 ```
@@ -380,10 +388,11 @@ the vivid colors of its surroundings. A close-up shot with dynamic movement.
 output = pipeline(
     prompt=prompt,
     negative_prompt=negative_prompt,
-    num_frames=99,
+    num_frames=240,
     pyramid_num_inference_steps_list=[2, 2, 2],
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_distilled_t2v_output.mp4", fps=24)
 
@@ -402,10 +411,11 @@ output = pipeline(
     prompt=prompt,
     negative_prompt=negative_prompt,
     image=load_image(image_path).resize((640, 384)),
-    num_frames=99,
+    num_frames=240,
     pyramid_num_inference_steps_list=[2, 2, 2],
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_distilled_i2v_output.mp4", fps=24)
 
@@ -423,10 +433,11 @@ output = pipeline(
     prompt=prompt,
     negative_prompt=negative_prompt,
     video=load_video(video_path),
-    num_frames=99,
+    num_frames=240,
     pyramid_num_inference_steps_list=[2, 2, 2],
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).frames[0]
 export_to_video(output, "helios_distilled_v2v_output.mp4", fps=24)
 ```
