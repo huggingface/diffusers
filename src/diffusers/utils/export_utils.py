@@ -3,7 +3,6 @@ import random
 import struct
 import tempfile
 from contextlib import contextmanager
-from typing import List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -25,7 +24,7 @@ def buffered_writer(raw_f):
     f.flush()
 
 
-def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None, fps: int = 10) -> str:
+def export_to_gif(image: list[PIL.Image.Image], output_gif_path: str = None, fps: int = 10) -> str:
     if output_gif_path is None:
         output_gif_path = tempfile.NamedTemporaryFile(suffix=".gif").name
 
@@ -113,7 +112,7 @@ def export_to_obj(mesh, output_obj_path: str = None):
 
 
 def _legacy_export_to_video(
-    video_frames: Union[List[np.ndarray], List[PIL.Image.Image]], output_video_path: str = None, fps: int = 10
+    video_frames: list[np.ndarray] | list[PIL.Image.Image], output_video_path: str = None, fps: int = 10
 ):
     if is_opencv_available():
         import cv2
@@ -139,12 +138,12 @@ def _legacy_export_to_video(
 
 
 def export_to_video(
-    video_frames: Union[List[np.ndarray], List[PIL.Image.Image]],
+    video_frames: list[np.ndarray] | list[PIL.Image.Image],
     output_video_path: str = None,
     fps: int = 10,
     quality: float = 5.0,
-    bitrate: Optional[int] = None,
-    macro_block_size: Optional[int] = 16,
+    bitrate: int | None = None,
+    macro_block_size: int | None = 16,
 ) -> str:
     """
     quality:

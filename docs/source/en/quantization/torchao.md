@@ -66,7 +66,7 @@ from diffusers import DiffusionPipeline, PipelineQuantizationConfig, TorchAoConf
 from torchao.quantization import Int4WeightOnlyConfig
 
 pipeline_quant_config = PipelineQuantizationConfig(
-    quant_mapping={"transformer": TorchAoConfig(Int4WeightOnlyConfig(group_size=128)))}
+    quant_mapping={"transformer": TorchAoConfig(Int4WeightOnlyConfig(group_size=128))}
 )
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
