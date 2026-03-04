@@ -161,8 +161,8 @@ def compute_losses(
     encoder_loss = torch.zeros_like(reconstruction_loss)
     if use_encoder_loss and encoder_loss_weight > 0:
         base_model = model.module if hasattr(model, "module") else model
-        target_encoder_input = base_model._maybe_resize_and_normalize(pixel_values)
-        reconstructed_encoder_input = base_model._maybe_resize_and_normalize(decoded)
+        target_encoder_input = base_model._resize_and_normalize(pixel_values)
+        reconstructed_encoder_input = base_model._resize_and_normalize(decoded)
 
         encoder_forward_kwargs = {"model": base_model.encoder}
         if base_model.config.encoder_type == "mae":
