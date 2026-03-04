@@ -262,9 +262,7 @@ class RAEDecoder(nn.Module):
         self.num_patches = num_patches
 
         self.decoder_embed = nn.Linear(hidden_size, decoder_hidden_size, bias=True)
-        self.decoder_pos_embed = nn.Parameter(
-            torch.zeros(1, num_patches + 1, decoder_hidden_size), requires_grad=False
-        )
+        self.register_buffer("decoder_pos_embed", torch.zeros(1, num_patches + 1, decoder_hidden_size))
 
         self.decoder_layers = nn.ModuleList(
             [
