@@ -85,8 +85,6 @@ from .import_utils import (
     is_hpu_available,
     is_inflect_available,
     is_invisible_watermark_available,
-    is_k_diffusion_available,
-    is_k_diffusion_version,
     is_kernels_available,
     is_kornia_available,
     is_librosa_available,
