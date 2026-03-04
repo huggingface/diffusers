@@ -24,6 +24,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.import_utils import is_transformers_available
+from ...utils.torch_utils import randn_tensor
 
 
 if is_transformers_available():
@@ -595,7 +596,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         noise_sigma = self.noise_tau * torch.rand(
             (x.size(0),) + (1,) * (x.ndim - 1), device=x.device, dtype=x.dtype, generator=generator
         )
-        return x + noise_sigma * torch.randn_like(x, generator=generator)
+        return x + noise_sigma * randn_tensor(x.shape, generator=generator, device=x.device, dtype=x.dtype)
 
     def _resize_and_normalize(self, x: torch.Tensor) -> torch.Tensor:
         _, _, h, w = x.shape
