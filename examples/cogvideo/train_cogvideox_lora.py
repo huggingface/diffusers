@@ -1260,6 +1260,7 @@ def main(args):
     # Broadcast encoded latent distributions so every process has the full set
     if num_procs > 1:
         import torch.distributed as dist
+
         from diffusers.models.autoencoders.vae import DiagonalGaussianDistribution
 
         ref_params = next(v for v in encoded_videos if v is not None).parameters
