@@ -462,4 +462,4 @@ export_to_video(output, "helios_distilled_v2v_output.mp4", fps=24)
 
 ## HeliosPipelineOutput
 
-[[autodoc]] pipelines.Helios.pipeline_output.HeliosPipelineOutput
+[[autodoc]] pipelines.helios.pipeline_output.HeliosPipelineOutput
