@@ -2519,6 +2519,13 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
     if has_default:
         state_dict = {k.replace("default.", ""): v for k, v in state_dict.items()}
 
+    # Normalize ZImage-specific dot-separated module names to underscore form so they
+    # match the diffusers model parameter names (context_refiner, noise_refiner).
+    state_dict = {
+        k.replace("context.refiner.", "context_refiner.").replace("noise.refiner.", "noise_refiner."): v
+        for k, v in state_dict.items()
+    }
+
     converted_state_dict = {}
     all_keys = list(state_dict.keys())
     down_key = ".lora_down.weight"
@@ -2529,19 +2536,18 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
     has_non_diffusers_lora_id = any(down_key in k or up_key in k for k in all_keys)
     has_diffusers_lora_id = any(a_key in k or b_key in k for k in all_keys)
 
+    def get_alpha_scales(down_weight, alpha_key):
+        rank = down_weight.shape[0]
+        alpha = state_dict.pop(alpha_key).item()
+        scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+        return scale_down, scale_up
+
     if has_non_diffusers_lora_id:
-
-        def get_alpha_scales(down_weight, alpha_key):
-            rank = down_weight.shape[0]
-            alpha = state_dict.pop(alpha_key).item()
-            scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
-            scale_down = scale
-            scale_up = 1.0
-            while scale_down * 2 < scale_up:
-                scale_down *= 2
-                scale_up /= 2
-            return scale_down, scale_up
-
         for k in all_keys:
             if k.endswith(down_key):
                 diffusers_down_key = k.replace(down_key, ".lora_A.weight")
@@ -2554,13 +2560,69 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
                 converted_state_dict[diffusers_down_key] = down_weight * scale_down
                 converted_state_dict[diffusers_up_key] = up_weight * scale_up
 
-    # Already in diffusers format (lora_A/lora_B), just pop
+    # Already in diffusers format (lora_A/lora_B), apply alpha scaling and pop.
     elif has_diffusers_lora_id:
         for k in all_keys:
-            if a_key in k or b_key in k:
-                converted_state_dict[k] = state_dict.pop(k)
-            elif ".alpha" in k:
+            if k.endswith(a_key):
+                diffusers_up_key = k.replace(a_key, b_key)
+                alpha_key = k.replace(a_key, ".alpha")
+
+                down_weight = state_dict.pop(k)
+                up_weight = state_dict.pop(diffusers_up_key)
+                scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+                converted_state_dict[k] = down_weight * scale_down
+                converted_state_dict[diffusers_up_key] = up_weight * scale_up
+
+    # Handle dot-format LoRA keys: ".lora.down.weight" / ".lora.up.weight".
+    # Some external ZImage trainers (e.g. Anime-Z) use dots instead of underscores in
+    # lora weight names and also include redundant keys:
+    #   - "qkv.lora.*"    duplicates individual "to.q/k/v.lora.*" keys → skip qkv
+    #   - "out.lora.*"    duplicates "to_out.0.lora.*" keys → skip bare out
+    #   - "to.q/k/v.lora.*" → normalise to "to_q/k/v.lora_A/B.weight"
+    lora_dot_down_key = ".lora.down.weight"
+    lora_dot_up_key = ".lora.up.weight"
+    has_lora_dot_format = any(lora_dot_down_key in k for k in state_dict)
+
+    if has_lora_dot_format:
+        dot_keys = list(state_dict.keys())
+        for k in dot_keys:
+            if lora_dot_down_key not in k:
+                continue
+            if k not in state_dict:
+                continue  # already popped by a prior iteration
+
+            base = k[: -len(lora_dot_down_key)]
+
+            # Skip combined "qkv" projection — individual to.q/k/v keys are also present.
+            if base.endswith(".qkv"):
                 state_dict.pop(k)
+                state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
+                state_dict.pop(base + ".alpha", None)
+                continue
+
+            # Skip bare "out.lora.*" — "to_out.0.lora.*" covers the same projection.
+            if re.search(r"\.out$", base) and ".to_out" not in base:
+                state_dict.pop(k)
+                state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
+                continue
+
+            # Normalise "to.q/k/v" → "to_q/k/v" for the diffusers output key.
+            norm_k = re.sub(
+                r"\.to\.([qkv])" + re.escape(lora_dot_down_key) + r"$",
+                r".to_\1" + lora_dot_down_key,
+                k,
+            )
+            norm_base = norm_k[: -len(lora_dot_down_key)]
+            alpha_key = norm_base + ".alpha"
+
+            diffusers_down = norm_k.replace(lora_dot_down_key, ".lora_A.weight")
+            diffusers_up = norm_k.replace(lora_dot_down_key, ".lora_B.weight")
+
+            down_weight = state_dict.pop(k)
+            up_weight = state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key))
+            scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+            converted_state_dict[diffusers_down] = down_weight * scale_down
+            converted_state_dict[diffusers_up] = up_weight * scale_up
 
     if len(state_dict) > 0:
         raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
