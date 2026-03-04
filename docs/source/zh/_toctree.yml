@@ -132,6 +132,8 @@
   sections:
   - local: using-diffusers/consisid
     title: ConsisID
+  - local: using-diffusers/helios
+    title: Helios
 
 - title: Resources
   isExpanded: false
