@@ -621,16 +621,34 @@ class ConditionalModuleGroupOffloadTests(GroupOffloadTests):
         )
 
     @parameterized.expand([("leaf_level",), ("block_level",)])
+    @unittest.skipIf(
+        torch.device(torch_device).type not in ["cuda", "xpu"],
+        "Test requires a CUDA or XPU device.",
+    )
     def test_conditional_modules_with_stream(self, offload_type: str):
         """Regression test: conditionally-executed modules must not cause device mismatch when using streams.
 
-        The first forward pass runs WITHOUT optional_input, so optional_proj_1 and optional_proj_2
-        are not executed and are not included in the lazy prefetch execution order. The second forward
-        pass runs WITH optional_input, which means these modules ARE called. Without the fix, their
-        weights remain on CPU while the input tensor is on GPU, causing a RuntimeError.
+        The model contains two optional Linear layers (optional_proj_1, optional_proj_2) that are only
+        executed when `optional_input` is provided. This simulates modules like patch_short/patch_mid/
+        patch_long in HeliosTransformer3DModel, which are only called when history latents are present.
+
+        When using streams, `LazyPrefetchGroupOffloadingHook` traces the execution order on the first
+        forward pass and sets up a prefetch chain so each module pre-loads the next one's weights.
+        Modules not executed during this tracing pass are excluded from the prefetch chain.
+
+        The bug: if a module was absent from the first (tracing) pass, its `onload_self` flag gets set
+        to False (meaning "someone else will onload me"). But since it's not in the prefetch chain,
+        nobody ever does — so its weights remain on CPU. When the module is eventually called in a
+        subsequent pass, the input is on GPU but the weights are on CPU, causing a RuntimeError.
+
+        We therefore must invoke the model multiple times:
+        1. First pass WITHOUT optional_input: triggers the lazy prefetch tracing. optional_proj_1/2
+            are absent, so they are excluded from the prefetch chain.
+        2. Second pass WITH optional_input: the regression case. Without the fix, this raises a
+            RuntimeError because optional_proj_1/2 weights are still on CPU.
+        3. Third pass WITHOUT optional_input: verifies the model remains stable after having seen
+            both code paths.
         """
-        if torch.device(torch_device).type not in ["cuda", "xpu"]:
-            return
 
         model = self.get_model()
         model_ref = self.get_model()
