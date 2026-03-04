@@ -607,23 +607,23 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         std = self.encoder_std.to(device=x.device, dtype=x.dtype)
         return (x - mean) / std
 
-    def _maybe_denormalize_image(self, x: torch.Tensor) -> torch.Tensor:
+    def _denormalize_image(self, x: torch.Tensor) -> torch.Tensor:
         mean = self.encoder_mean.to(device=x.device, dtype=x.dtype)
         std = self.encoder_std.to(device=x.device, dtype=x.dtype)
         return x * std + mean
 
-    def _maybe_normalize_latents(self, z: torch.Tensor) -> torch.Tensor:
+    def _normalize_latents(self, z: torch.Tensor) -> torch.Tensor:
         latents_mean = self._latents_mean.to(device=z.device, dtype=z.dtype)
         latents_std = self._latents_std.to(device=z.device, dtype=z.dtype)
         return (z - latents_mean) / (latents_std + 1e-5)
 
-    def _maybe_denormalize_latents(self, z: torch.Tensor) -> torch.Tensor:
+    def _denormalize_latents(self, z: torch.Tensor) -> torch.Tensor:
         latents_mean = self._latents_mean.to(device=z.device, dtype=z.dtype)
         latents_std = self._latents_std.to(device=z.device, dtype=z.dtype)
         return z * (latents_std + 1e-5) + latents_mean
 
     def _encode(self, x: torch.Tensor, generator: torch.Generator | None = None) -> torch.Tensor:
-        x = self._maybe_resize_and_normalize(x)
+        x = self._resize_and_normalize(x)
 
         if self.config.encoder_type == "mae":
             tokens = self._encoder_forward_fn(self.encoder, x, self.config.encoder_patch_size)
@@ -642,7 +642,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         else:
             z = tokens
 
-        z = self._maybe_normalize_latents(z)
+        z = self._normalize_latents(z)
 
         # Follow diffusers convention: optionally scale latents for diffusion
         if self.config.scaling_factor != 1.0:
@@ -668,7 +668,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         if self.config.scaling_factor != 1.0:
             z = z / self.config.scaling_factor
 
-        z = self._maybe_denormalize_latents(z)
+        z = self._denormalize_latents(z)
 
         if self.reshape_to_2d:
             b, c, h, w = z.shape
@@ -678,7 +678,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
 
         logits = self.decoder(tokens, return_dict=True).logits
         x_rec = self.decoder.unpatchify(logits)
-        x_rec = self._maybe_denormalize_image(x_rec)
+        x_rec = self._denormalize_image(x_rec)
         return x_rec
 
     @apply_forward_hook
