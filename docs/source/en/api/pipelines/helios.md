@@ -88,9 +88,9 @@ output = pipeline(
     negative_prompt=negative_prompt,
     num_frames=99,
     num_inference_steps=50,
-    use_dynamic_shifting=True,
+    guidance_scale=5.0,
 ).frames[0]
-export_to_video(output, "output.mp4", fps=24)
+export_to_video(output, "helios_base_t2v_output.mp4", fps=24)
 ```
 
 </hfoption>
@@ -141,9 +141,9 @@ output = pipeline(
     negative_prompt=negative_prompt,
     num_frames=99,
     num_inference_steps=50,
-    use_dynamic_shifting=True,
+    guidance_scale=5.0,
 ).frames[0]
-export_to_video(output, "output.mp4", fps=24)
+export_to_video(output, "helios_base_t2v_output.mp4", fps=24)
 ```
 
 </hfoption>
@@ -192,9 +192,9 @@ output = pipeline(
     negative_prompt=negative_prompt,
     num_frames=99,
     num_inference_steps=50,
-    use_dynamic_shifting=True,
+    guidance_scale=5.0,
 ).frames[0]
-export_to_video(output, "output_t2v.mp4", fps=24)
+export_to_video(output, "helios_base_t2v_output.mp4", fps=24)
 
 # For Image-to-Video
 prompt = """
@@ -213,9 +213,9 @@ output = pipeline(
     image=load_image(image_path).resize((640, 384)),
     num_frames=99,
     num_inference_steps=50,
-    use_dynamic_shifting=True,
+    guidance_scale=5.0,
 ).frames[0]
-export_to_video(output, "output_i2v.mp4", fps=24)
+export_to_video(output, "helios_base_i2v_output.mp4", fps=24)
 
 # For Video-to-Video
 prompt = """
@@ -233,9 +233,9 @@ output = pipeline(
     video=load_video(video_path),
     num_frames=99,
     num_inference_steps=50,
-    use_dynamic_shifting=True,
+    guidance_scale=5.0,
 ).frames[0]
-export_to_video(output, "output_v2v.mp4", fps=24)
+export_to_video(output, "helios_base_v2v_output.mp4", fps=24)
 ```
 
 </hfoption>
@@ -284,10 +284,11 @@ output = pipeline(
     negative_prompt=negative_prompt,
     num_frames=99,
     pyramid_num_inference_steps_list=[20, 20, 20],
+    guidance_scale=5.0,
     use_zero_init=True,
     zero_steps=1,
 ).frames[0]
-export_to_video(output, "output_t2v.mp4", fps=24)
+export_to_video(output, "helios_pyramid_t2v_output.mp4", fps=24)
 
 # For Image-to-Video
 prompt = """
@@ -306,10 +307,11 @@ output = pipeline(
     image=load_image(image_path).resize((640, 384)),
     num_frames=99,
     pyramid_num_inference_steps_list=[20, 20, 20],
+    guidance_scale=5.0,
     use_zero_init=True,
     zero_steps=1,
 ).frames[0]
-export_to_video(output, "output_i2v.mp4", fps=24)
+export_to_video(output, "helios_pyramid_i2v_output.mp4", fps=24)
 
 # For Video-to-Video
 prompt = """
@@ -327,10 +329,11 @@ output = pipeline(
     video=load_video(video_path),
     num_frames=99,
     pyramid_num_inference_steps_list=[20, 20, 20],
+    guidance_scale=5.0,
     use_zero_init=True,
     zero_steps=1,
 ).frames[0]
-export_to_video(output, "output_v2v.mp4", fps=24)
+export_to_video(output, "helios_pyramid_v2v_output.mp4", fps=24)
 ```
 
 </hfoption>
@@ -382,7 +385,7 @@ output = pipeline(
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
 ).frames[0]
-export_to_video(output, "output_t2v.mp4", fps=24)
+export_to_video(output, "helios_distilled_t2v_output.mp4", fps=24)
 
 # For Image-to-Video
 prompt = """
@@ -404,7 +407,7 @@ output = pipeline(
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
 ).frames[0]
-export_to_video(output, "output_i2v.mp4", fps=24)
+export_to_video(output, "helios_distilled_i2v_output.mp4", fps=24)
 
 # For Video-to-Video
 prompt = """
@@ -425,7 +428,7 @@ output = pipeline(
     guidance_scale=1.0,
     is_amplify_first_chunk=True,
 ).frames[0]
-export_to_video(output, "output_v2v.mp4", fps=24)
+export_to_video(output, "helios_distilled_v2v_output.mp4", fps=24)
 ```
 
 </hfoption>
