@@ -10,7 +10,11 @@ import torch
 import diffusers
 from diffusers import AutoModel, ComponentsManager, ModularPipeline, ModularPipelineBlocks
 from diffusers.guiders import ClassifierFreeGuidance
-from diffusers.modular_pipelines import SequentialPipelineBlocks
+from diffusers.modular_pipelines import (
+    ConditionalPipelineBlocks,
+    LoopSequentialPipelineBlocks,
+    SequentialPipelineBlocks,
+)
 from diffusers.modular_pipelines.modular_pipeline_utils import (
     ComponentSpec,
     ConfigSpec,
@@ -451,14 +455,36 @@ class TestCustomBlockRequirements:
         )
         return pipe
 
-    def test_custom_requirements_save_load(self, tmp_path):
-        pipe = self.get_dummy_block_pipe()
+    def get_dummy_conditional_block_pipe(self):
+        class DummyBlockOne:
+            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
 
-        # tmp_path is a pathlib.Path object.
-        # Most modern libraries accept Path objects directly.
+        class DummyBlockTwo:
+            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
+
+        class DummyConditionalBlocks(ConditionalPipelineBlocks):
+            block_classes = [DummyBlockOne, DummyBlockTwo]
+            block_names = ["block_one", "block_two"]
+            block_trigger_inputs = []
+
+            def select_block(self, **kwargs):
+                return "block_one"
+
+        return DummyConditionalBlocks()
+
+    def get_dummy_loop_block_pipe(self):
+        class DummyBlockOne:
+            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
+
+        class DummyBlockTwo:
+            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
+
+        return LoopSequentialPipelineBlocks.from_blocks_dict({"block_one": DummyBlockOne, "block_two": DummyBlockTwo})
+
+    def test_sequential_block_requirements_save_load(self, tmp_path):
+        pipe = self.get_dummy_block_pipe()
         pipe.save_pretrained(tmp_path)
 
-        # Use pathlib syntax (/) instead of os.path.join
         config_path = tmp_path / "modular_config.json"
 
         with open(config_path, "r") as f:
@@ -475,7 +501,7 @@ class TestCustomBlockRequirements:
         }
         assert expected_requirements == requirements
 
-    def test_warnings(self, tmp_path):
+    def test_sequential_block_requirements_warnings(self, tmp_path):
         pipe = self.get_dummy_block_pipe()
 
         logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
@@ -489,6 +515,54 @@ class TestCustomBlockRequirements:
         msg_abc = template.format(req="abc")
         assert msg_xyz in str(cap_logger.out)
         assert msg_abc in str(cap_logger.out)
+
+    def test_conditional_block_requirements_collected(self):
+        pipe = self.get_dummy_conditional_block_pipe()
+        assert pipe._requirements == {
+            "block_one": {"xyz": ">=0.8.0", "abc": ">=10.0.0"},
+            "block_two": {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"},
+        }
+
+    def test_loop_block_requirements_collected(self):
+        pipe = self.get_dummy_loop_block_pipe()
+        assert pipe._requirements == {
+            "block_one": {"xyz": ">=0.8.0", "abc": ">=10.0.0"},
+            "block_two": {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"},
+        }
+
+    def test_conditional_block_requirements_save_load(self, tmp_path):
+        pipe = self.get_dummy_conditional_block_pipe()
+        pipe.save_pretrained(tmp_path)
+
+        config_path = tmp_path / "modular_config.json"
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        assert "requirements" in config
+        expected_requirements = {
+            "xyz": ">=0.8.0",
+            "abc": ">=10.0.0",
+            "transformers": ">=4.44.0",
+            "diffusers": ">=0.2.0",
+        }
+        assert expected_requirements == config["requirements"]
+
+    def test_loop_block_requirements_save_load(self, tmp_path):
+        pipe = self.get_dummy_loop_block_pipe()
+        pipe.save_pretrained(tmp_path)
+
+        config_path = tmp_path / "modular_config.json"
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        assert "requirements" in config
+        expected_requirements = {
+            "xyz": ">=0.8.0",
+            "abc": ">=10.0.0",
+            "transformers": ">=4.44.0",
+            "diffusers": ">=0.2.0",
+        }
+        assert expected_requirements == config["requirements"]
 
 
 class TestModularModelCardContent:
