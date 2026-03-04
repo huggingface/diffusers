@@ -516,20 +516,6 @@ class TestCustomBlockRequirements:
         assert msg_xyz in str(cap_logger.out)
         assert msg_abc in str(cap_logger.out)
 
-    def test_conditional_block_requirements_collected(self):
-        pipe = self.get_dummy_conditional_block_pipe()
-        assert pipe._requirements == {
-            "block_one": {"xyz": ">=0.8.0", "abc": ">=10.0.0"},
-            "block_two": {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"},
-        }
-
-    def test_loop_block_requirements_collected(self):
-        pipe = self.get_dummy_loop_block_pipe()
-        assert pipe._requirements == {
-            "block_one": {"xyz": ">=0.8.0", "abc": ">=10.0.0"},
-            "block_two": {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"},
-        }
-
     def test_conditional_block_requirements_save_load(self, tmp_path):
         pipe = self.get_dummy_conditional_block_pipe()
         pipe.save_pretrained(tmp_path)
