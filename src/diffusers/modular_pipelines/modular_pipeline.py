@@ -668,8 +668,8 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         combined_outputs = combine_outputs(*named_outputs)
         return combined_outputs
 
-    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks._requirements
     @property
+    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks._requirements
     def _requirements(self) -> dict[str, str]:
         requirements = {}
         for block_name, block in self.sub_blocks.items():
@@ -1412,8 +1412,8 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     def outputs(self) -> list[str]:
         return next(reversed(self.sub_blocks.values())).intermediate_outputs
 
-    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks._requirements
     @property
+    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks._requirements
     def _requirements(self) -> dict[str, str]:
         requirements = {}
         for block_name, block in self.sub_blocks.items():
