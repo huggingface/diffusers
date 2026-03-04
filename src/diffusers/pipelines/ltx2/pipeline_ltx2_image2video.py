@@ -22,7 +22,7 @@ from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTo
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
-from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
+from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LTX2Pipeline
+        >>> from diffusers import LTX2ImageToVideoPipeline
         >>> from diffusers.pipelines.ltx2.export_utils import encode_video
         >>> from diffusers.utils import load_image
 
@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
         >>> frame_rate = 24.0
-        >>> video = pipe(
+        >>> video, audio = pipe(
         ...     image=image,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
@@ -202,7 +202,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixin):
+class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
     r"""
     Pipeline for image-to-video generation.
 
@@ -699,9 +699,13 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         mask_shape = (batch_size, 1, num_frames, height, width)
 
         if latents is not None:
-            conditioning_mask = latents.new_zeros(mask_shape)
-            conditioning_mask[:, :, 0] = 1.0
             if latents.ndim == 5:
+                # conditioning_mask needs to the same shape as latents in two stages generation.
+                batch_size, _, num_frames, height, width = latents.shape
+                mask_shape = (batch_size, 1, num_frames, height, width)
+                conditioning_mask = latents.new_zeros(mask_shape)
+                conditioning_mask[:, :, 0] = 1.0
+
                 latents = self._normalize_latents(
                     latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
                 )
@@ -710,6 +714,9 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
                 latents = self._pack_latents(
                     latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
                 )
+            else:
+                conditioning_mask = latents.new_zeros(mask_shape)
+                conditioning_mask[:, :, 0] = 1.0
             conditioning_mask = self._pack_latents(
                 conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
             ).squeeze(-1)

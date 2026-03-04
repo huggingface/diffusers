@@ -205,7 +205,7 @@ class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
         return components, state
 
 
-class FluxVaeEncoderDynamicStep(ModularPipelineBlocks):
+class FluxVaeEncoderStep(ModularPipelineBlocks):
     model_name = "flux"
 
     def __init__(

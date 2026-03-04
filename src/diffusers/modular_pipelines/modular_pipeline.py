@@ -14,6 +14,7 @@
 import importlib
 import inspect
 import os
+import sys
 import traceback
 import warnings
 from collections import OrderedDict
@@ -28,10 +29,16 @@ from tqdm.auto import tqdm
 from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin, FrozenDict
-from ..pipelines.pipeline_loading_utils import _fetch_class_library_tuple, simple_get_class_obj
+from ..pipelines.pipeline_loading_utils import (
+    LOADABLE_CLASSES,
+    _fetch_class_library_tuple,
+    _unwrap_model,
+    simple_get_class_obj,
+)
 from ..utils import PushToHubMixin, is_accelerate_available, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 from ..utils.hub_utils import load_or_create_model_card, populate_model_card
+from ..utils.torch_utils import is_compiled_module
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
     MODULAR_MODEL_CARD_TEMPLATE,
@@ -40,8 +47,12 @@ from .modular_pipeline_utils import (
     InputParam,
     InsertableDict,
     OutputParam,
+    _validate_requirements,
+    combine_inputs,
+    combine_outputs,
     format_components,
     format_configs,
+    format_workflow,
     generate_modular_model_card_content,
     make_doc_string,
 )
@@ -287,6 +298,8 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     config_name = "modular_config.json"
     model_name = None
+    _requirements: dict[str, str] | None = None
+    _workflow_map = None
 
     @classmethod
     def _get_signature_keys(cls, obj):
@@ -342,6 +355,35 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     def outputs(self) -> list[OutputParam]:
         return self._get_outputs()
 
+    # currentlyonly ConditionalPipelineBlocks and SequentialPipelineBlocks support `get_execution_blocks`
+    def get_execution_blocks(self, **kwargs):
+        """
+        Get the block(s) that would execute given the inputs. Must be implemented by subclasses that support
+        conditional block selection.
+
+        Args:
+            **kwargs: Input names and values. Only trigger inputs affect block selection.
+        """
+        raise NotImplementedError(f"`get_execution_blocks` is not implemented for {self.__class__.__name__}")
+
+    # currently only SequentialPipelineBlocks support workflows
+    @property
+    def available_workflows(self):
+        """
+        Returns a list of available workflow names. Must be implemented by subclasses that define `_workflow_map`.
+        """
+        raise NotImplementedError(f"`available_workflows` is not implemented for {self.__class__.__name__}")
+
+    def get_workflow(self, workflow_name: str):
+        """
+        Get the execution blocks for a specific workflow. Must be implemented by subclasses that define
+        `_workflow_map`.
+
+        Args:
+            workflow_name: Name of the workflow to retrieve.
+        """
+        raise NotImplementedError(f"`get_workflow` is not implemented for {self.__class__.__name__}")
+
     @classmethod
     def from_pretrained(
         cls,
@@ -371,6 +413,9 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                 "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
             )
 
+        if "requirements" in config and config["requirements"] is not None:
+            _ = _validate_requirements(config["requirements"])
+
         class_ref = config["auto_map"][cls.__name__]
         module_file, class_name = class_ref.split(".")
         module_file = module_file + ".py"
@@ -395,8 +440,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         module = full_mod.rsplit(".", 1)[-1].replace("__dynamic__", "")
         parent_module = self.save_pretrained.__func__.__qualname__.split(".", 1)[0]
         auto_map = {f"{parent_module}": f"{module}.{cls_name}"}
-
         self.register_to_config(auto_map=auto_map)
+
+        # resolve requirements
+        requirements = _validate_requirements(getattr(self, "_requirements", None))
+        if requirements:
+            self.register_to_config(requirements=requirements)
+
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
         config = dict(self.config)
         self._internal_dict = FrozenDict(config)
@@ -480,72 +530,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                     if current_value is not param:  # Using identity comparison to check if object was modified
                         state.set(param_name, param, input_param.kwargs_type)
 
-    @staticmethod
-    def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> list[InputParam]:
-        """
-        Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if
-        current default value is None and new default value is not None. Warns if multiple non-None default values
-        exist for the same input.
-
-        Args:
-            named_input_lists: list of tuples containing (block_name, input_param_list) pairs
-
-        Returns:
-            list[InputParam]: Combined list of unique InputParam objects
-        """
-        combined_dict = {}  # name -> InputParam
-        value_sources = {}  # name -> block_name
-
-        for block_name, inputs in named_input_lists:
-            for input_param in inputs:
-                if input_param.name is None and input_param.kwargs_type is not None:
-                    input_name = "*_" + input_param.kwargs_type
-                else:
-                    input_name = input_param.name
-                if input_name in combined_dict:
-                    current_param = combined_dict[input_name]
-                    if (
-                        current_param.default is not None
-                        and input_param.default is not None
-                        and current_param.default != input_param.default
-                    ):
-                        warnings.warn(
-                            f"Multiple different default values found for input '{input_name}': "
-                            f"{current_param.default} (from block '{value_sources[input_name]}') and "
-                            f"{input_param.default} (from block '{block_name}'). Using {current_param.default}."
-                        )
-                    if current_param.default is None and input_param.default is not None:
-                        combined_dict[input_name] = input_param
-                        value_sources[input_name] = block_name
-                else:
-                    combined_dict[input_name] = input_param
-                    value_sources[input_name] = block_name
-
-        return list(combined_dict.values())
-
-    @staticmethod
-    def combine_outputs(*named_output_lists: list[tuple[str, list[OutputParam]]]) -> list[OutputParam]:
-        """
-        Combines multiple lists of OutputParam objects from different blocks. For duplicate outputs, keeps the first
-        occurrence of each output name.
-
-        Args:
-            named_output_lists: list of tuples containing (block_name, output_param_list) pairs
-
-        Returns:
-            list[OutputParam]: Combined list of unique OutputParam objects
-        """
-        combined_dict = {}  # name -> OutputParam
-
-        for block_name, outputs in named_output_lists:
-            for output_param in outputs:
-                if (output_param.name not in combined_dict) or (
-                    combined_dict[output_param.name].kwargs_type is None and output_param.kwargs_type is not None
-                ):
-                    combined_dict[output_param.name] = output_param
-
-        return list(combined_dict.values())
-
     @property
     def input_names(self) -> list[str]:
         return [input_param.name for input_param in self.inputs if input_param.name is not None]
@@ -577,7 +561,8 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 class ConditionalPipelineBlocks(ModularPipelineBlocks):
     """
     A Pipeline Blocks that conditionally selects a block to run based on the inputs. Subclasses must implement the
-    `select_block` method to define the logic for selecting the block.
+    `select_block` method to define the logic for selecting the block. Currently, we only support selection logic based
+    on the presence or absence of inputs (i.e., whether they are `None` or not)
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
@@ -585,15 +570,20 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
-        block_classes: List of block classes to be used
-        block_names: List of prefixes for each block
-        block_trigger_inputs: List of input names that select_block() uses to determine which block to run
+        block_classes: List of block classes to be used. Must have the same length as `block_names`.
+        block_names: List of names for each block. Must have the same length as `block_classes`.
+        block_trigger_inputs: List of input names that `select_block()` uses to determine which block to run.
+            For `ConditionalPipelineBlocks`, this does not need to correspond to `block_names` and `block_classes`. For
+            `AutoPipelineBlocks`, this must have the same length as `block_names` and `block_classes`, where each
+            element specifies the trigger input for the corresponding block.
+        default_block_name: Name of the default block to run when no trigger inputs match.
+            If None, this block can be skipped entirely when no trigger inputs are provided.
     """
 
     block_classes = []
     block_names = []
     block_trigger_inputs = []
-    default_block_name = None  # name of the default block if no trigger inputs are provided, if None, this block can be skipped if no trigger inputs are provided
+    default_block_name = None
 
     def __init__(self):
         sub_blocks = InsertableDict()
@@ -657,7 +647,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         named_inputs = [(name, block.inputs) for name, block in self.sub_blocks.items()]
-        combined_inputs = self.combine_inputs(*named_inputs)
+        combined_inputs = combine_inputs(*named_inputs)
         # mark Required inputs only if that input is required by all the blocks
         for input_param in combined_inputs:
             if input_param.name in self.required_inputs:
@@ -669,15 +659,25 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[str]:
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
-        combined_outputs = self.combine_outputs(*named_outputs)
+        combined_outputs = combine_outputs(*named_outputs)
         return combined_outputs
 
     @property
     def outputs(self) -> list[str]:
         named_outputs = [(name, block.outputs) for name, block in self.sub_blocks.items()]
-        combined_outputs = self.combine_outputs(*named_outputs)
+        combined_outputs = combine_outputs(*named_outputs)
         return combined_outputs
 
+    @property
+    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks._requirements
+    def _requirements(self) -> dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
+
+    # used for `__repr__`
     def _get_trigger_inputs(self) -> set:
         """
         Returns a set of all unique trigger input values found in this block and nested blocks.
@@ -706,15 +706,15 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
         return all_triggers
 
-    @property
-    def trigger_inputs(self):
-        """All trigger inputs including from nested blocks."""
-        return self._get_trigger_inputs()
-
     def select_block(self, **kwargs) -> str | None:
         """
         Select the block to run based on the trigger inputs. Subclasses must implement this method to define the logic
         for selecting the block.
+
+        Note: When trigger inputs include intermediate outputs from earlier blocks, the selection logic should only
+        depend on the presence or absence of the input (i.e., whether it is None or not), not on its actual value. This
+        is because `get_execution_blocks()` resolves conditions statically by propagating intermediate output names
+        without their runtime values.
 
         Args:
             **kwargs: Trigger input names and their values from the state.
@@ -750,6 +750,39 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             logger.error(error_msg)
             raise
 
+    def get_execution_blocks(self, **kwargs) -> ModularPipelineBlocks | None:
+        """
+        Get the block(s) that would execute given the inputs.
+
+        Recursively resolves nested ConditionalPipelineBlocks until reaching either:
+        - A leaf block (no sub_blocks or LoopSequentialPipelineBlocks) → returns single `ModularPipelineBlocks`
+        - A `SequentialPipelineBlocks` → delegates to its `get_execution_blocks()` which returns
+        a `SequentialPipelineBlocks` containing the resolved execution blocks
+
+        Args:
+            **kwargs: Input names and values. Only trigger inputs affect block selection.
+
+        Returns:
+            - `ModularPipelineBlocks`: A leaf block or resolved `SequentialPipelineBlocks`
+            - `None`: If this block would be skipped (no trigger matched and no default)
+        """
+        trigger_kwargs = {name: kwargs.get(name) for name in self.block_trigger_inputs if name is not None}
+        block_name = self.select_block(**trigger_kwargs)
+
+        if block_name is None:
+            block_name = self.default_block_name
+
+        if block_name is None:
+            return None
+
+        block = self.sub_blocks[block_name]
+
+        # Recursively resolve until we hit a leaf block
+        if block.sub_blocks and not isinstance(block, LoopSequentialPipelineBlocks):
+            return block.get_execution_blocks(**kwargs)
+
+        return block
+
     def __repr__(self):
         class_name = self.__class__.__name__
         base_class = self.__class__.__bases__[0].__name__
@@ -757,11 +790,11 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             f"{class_name}(\n  Class: {base_class}\n" if base_class and base_class != "object" else f"{class_name}(\n"
         )
 
-        if self.trigger_inputs:
+        if self._get_trigger_inputs():
             header += "\n"
             header += "  " + "=" * 100 + "\n"
             header += "  This pipeline contains blocks that are selected at runtime based on inputs.\n"
-            header += f"  Trigger Inputs: {sorted(self.trigger_inputs)}\n"
+            header += f"  Trigger Inputs: {sorted(self._get_trigger_inputs())}\n"
             header += "  " + "=" * 100 + "\n\n"
 
         # Format description with proper indentation
@@ -828,24 +861,56 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
 class AutoPipelineBlocks(ConditionalPipelineBlocks):
     """
-    A Pipeline Blocks that automatically selects a block to run based on the presence of trigger inputs.
+        A Pipeline Blocks that automatically selects a block to run based on the presence of trigger inputs.
+
+        This is a specialized version of `ConditionalPipelineBlocks` where:
+        - Each block has one corresponding trigger input (1:1 mapping)
+        - Block selection is automatic: the first block whose trigger input is present gets selected
+        - `block_trigger_inputs` must have the same length as `block_names` and `block_classes`
+        - Use `None` in `block_trigger_inputs` to specify the default block, i.e the block that will run if no trigger
+          inputs are present
+
+        Attributes:
+            block_classes:
+                List of block classes to be used. Must have the same length as `block_names` and
+                `block_trigger_inputs`.
+            block_names:
+                List of names for each block. Must have the same length as `block_classes` and `block_trigger_inputs`.
+            block_trigger_inputs:
+                List of input names where each element specifies the trigger input for the corresponding block. Use
+                `None` to mark the default block.
+
+        Example:
+    ```python
+        class MyAutoBlock(AutoPipelineBlocks):
+            block_classes = [InpaintEncoderBlock, ImageEncoderBlock, TextEncoderBlock]
+            block_names = ["inpaint", "img2img", "text2img"]
+            block_trigger_inputs = ["mask_image", "image", None]  # text2img is the default
+    ```
+
+        With this definition:
+        - As long as `mask_image` is provided, "inpaint" block runs (regardless of `image` being provided or not)
+        - If `mask_image` is not provided but `image` is provided, "img2img" block runs
+        - Otherwise, "text2img" block runs (default, trigger is `None`)
     """
 
     def __init__(self):
         super().__init__()
+
+        if self.default_block_name is not None:
+            raise ValueError(
+                f"In {self.__class__.__name__}, do not set `default_block_name` for AutoPipelineBlocks. "
+                f"Use `None` in `block_trigger_inputs` to specify the default block."
+            )
 
         if not (len(self.block_classes) == len(self.block_names) == len(self.block_trigger_inputs)):
             raise ValueError(
                 f"In {self.__class__.__name__}, the number of block_classes, block_names, and block_trigger_inputs must be the same."
             )
 
-    @property
-    def default_block_name(self) -> str | None:
-        """Derive default_block_name from block_trigger_inputs (None entry)."""
         if None in self.block_trigger_inputs:
             idx = self.block_trigger_inputs.index(None)
-            return self.block_names[idx]
-        return None
+            self.default_block_name = self.block_names[idx]
 
     def select_block(self, **kwargs) -> str | None:
         """Select block based on which trigger input is present (not None)."""
@@ -898,6 +963,29 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                 if config not in expected_configs:
                     expected_configs.append(config)
         return expected_configs
+
+    @property
+    def available_workflows(self):
+        if self._workflow_map is None:
+            raise NotImplementedError(
+                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
+            )
+
+        return list(self._workflow_map.keys())
+
+    def get_workflow(self, workflow_name: str):
+        if self._workflow_map is None:
+            raise NotImplementedError(
+                f"workflows is not supported because _workflow_map is not set for {self.__class__.__name__}"
+            )
+
+        if workflow_name not in self._workflow_map:
+            raise ValueError(f"Workflow {workflow_name} not found in {self.__class__.__name__}")
+
+        trigger_inputs = self._workflow_map[workflow_name]
+        workflow_blocks = self.get_execution_blocks(**trigger_inputs)
+
+        return workflow_blocks
 
     @classmethod
     def from_blocks_dict(
@@ -994,7 +1082,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             # filter out them here so they do not end up as intermediate_outputs
             if name not in inp_names:
                 named_outputs.append((name, block.intermediate_outputs))
-        combined_outputs = self.combine_outputs(*named_outputs)
+        combined_outputs = combine_outputs(*named_outputs)
         return combined_outputs
 
     # YiYi TODO: I think we can remove the outputs property
@@ -1018,6 +1106,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                 raise
         return pipeline, state
 
+    # used for `__repr__`
     def _get_trigger_inputs(self):
         """
         Returns a set of all unique trigger input values found in the blocks.
@@ -1041,89 +1130,56 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
         return fn_recursive_get_trigger(self.sub_blocks)
 
-    @property
-    def trigger_inputs(self):
-        return self._get_trigger_inputs()
-
-    def _traverse_trigger_blocks(self, active_inputs):
+    def get_execution_blocks(self, **kwargs) -> "SequentialPipelineBlocks":
         """
-        Traverse blocks and select which ones would run given the active inputs.
+        Get the blocks that would execute given the specified inputs.
+
+        As the traversal walks through sequential blocks, intermediate outputs from resolved blocks are added to the
+        active inputs. This means conditional blocks that depend on intermediates (e.g., "run img2img if image_latents
+        is present") will resolve correctly, as long as the condition is based on presence/absence (None or not None),
+        not on the actual value.
+
 
         Args:
-            active_inputs: Dict of input names to values that are "present"
+            **kwargs: Input names and values. Only trigger inputs affect block selection.
 
         Returns:
-            OrderedDict of block_name -> block that would execute
+            SequentialPipelineBlocks containing only the blocks that would execute
         """
+        # Copy kwargs so we can add outputs as we traverse
+        active_inputs = dict(kwargs)
 
         def fn_recursive_traverse(block, block_name, active_inputs):
             result_blocks = OrderedDict()
 
             # ConditionalPipelineBlocks (includes AutoPipelineBlocks)
             if isinstance(block, ConditionalPipelineBlocks):
-                trigger_kwargs = {name: active_inputs.get(name) for name in block.block_trigger_inputs}
-                selected_block_name = block.select_block(**trigger_kwargs)
-
-                if selected_block_name is None:
-                    selected_block_name = block.default_block_name
-
-                if selected_block_name is None:
+                block = block.get_execution_blocks(**active_inputs)
+                if block is None:
                     return result_blocks
 
-                selected_block = block.sub_blocks[selected_block_name]
-
-                if selected_block.sub_blocks:
-                    result_blocks.update(fn_recursive_traverse(selected_block, block_name, active_inputs))
-                else:
-                    result_blocks[block_name] = selected_block
-                    if hasattr(selected_block, "outputs"):
-                        for out in selected_block.outputs:
-                            active_inputs[out.name] = True
-
-                return result_blocks
-
-            # SequentialPipelineBlocks or LoopSequentialPipelineBlocks
-            if block.sub_blocks:
+            # Has sub_blocks (SequentialPipelineBlocks/ConditionalPipelineBlocks)
+            if block.sub_blocks and not isinstance(block, LoopSequentialPipelineBlocks):
                 for sub_block_name, sub_block in block.sub_blocks.items():
-                    blocks_to_update = fn_recursive_traverse(sub_block, sub_block_name, active_inputs)
-                    blocks_to_update = {f"{block_name}.{k}": v for k, v in blocks_to_update.items()}
-                    result_blocks.update(blocks_to_update)
+                    nested_blocks = fn_recursive_traverse(sub_block, sub_block_name, active_inputs)
+                    nested_blocks = {f"{block_name}.{k}": v for k, v in nested_blocks.items()}
+                    result_blocks.update(nested_blocks)
             else:
+                # Leaf block: single ModularPipelineBlocks or LoopSequentialPipelineBlocks
                 result_blocks[block_name] = block
-                if hasattr(block, "outputs"):
-                    for out in block.outputs:
+                # Add outputs to active_inputs so subsequent blocks can use them as triggers
+                if hasattr(block, "intermediate_outputs"):
+                    for out in block.intermediate_outputs:
                         active_inputs[out.name] = True
 
             return result_blocks
 
         all_blocks = OrderedDict()
         for block_name, block in self.sub_blocks.items():
-            blocks_to_update = fn_recursive_traverse(block, block_name, active_inputs)
-            all_blocks.update(blocks_to_update)
-        return all_blocks
+            nested_blocks = fn_recursive_traverse(block, block_name, active_inputs)
+            all_blocks.update(nested_blocks)
 
-    def get_execution_blocks(self, **kwargs):
-        """
-        Get the blocks that would execute given the specified inputs.
-
-        Args:
-            **kwargs: Input names and values. Only trigger inputs affect block selection.
-                    Pass any inputs that would be non-None at runtime.
-
-        Returns:
-            SequentialPipelineBlocks containing only the blocks that would execute
-
-        Example:
-            # Get blocks for inpainting workflow blocks = pipeline.get_execution_blocks(prompt="a cat", mask=mask,
-            image=image)
-
-            # Get blocks for text2image workflow blocks = pipeline.get_execution_blocks(prompt="a cat")
-        """
-        # Filter out None values
-        active_inputs = {k: v for k, v in kwargs.items() if v is not None}
-
-        blocks_triggered = self._traverse_trigger_blocks(active_inputs)
-        return SequentialPipelineBlocks.from_blocks_dict(blocks_triggered)
+        return SequentialPipelineBlocks.from_blocks_dict(all_blocks)
 
     def __repr__(self):
         class_name = self.__class__.__name__
@@ -1132,18 +1188,23 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             f"{class_name}(\n  Class: {base_class}\n" if base_class and base_class != "object" else f"{class_name}(\n"
         )
 
-        if self.trigger_inputs:
+        if self._workflow_map is None and self._get_trigger_inputs():
             header += "\n"
             header += "  " + "=" * 100 + "\n"
             header += "  This pipeline contains blocks that are selected at runtime based on inputs.\n"
-            header += f"  Trigger Inputs: {[inp for inp in self.trigger_inputs if inp is not None]}\n"
+            header += f"  Trigger Inputs: {[inp for inp in self._get_trigger_inputs() if inp is not None]}\n"
             # Get first trigger input as example
-            example_input = next(t for t in self.trigger_inputs if t is not None)
+            example_input = next(t for t in self._get_trigger_inputs() if t is not None)
             header += f"  Use `get_execution_blocks()` to see selected blocks (e.g. `get_execution_blocks({example_input}=...)`).\n"
             header += "  " + "=" * 100 + "\n\n"
 
+        description = self.description
+        if self._workflow_map is not None:
+            workflow_str = format_workflow(self._workflow_map)
+            description = f"{self.description}\n\n{workflow_str}"
+
         # Format description with proper indentation
-        desc_lines = self.description.split("\n")
+        desc_lines = description.split("\n")
         desc = []
         # First line with "Description:" label
         desc.append(f"  Description: {desc_lines[0]}")
@@ -1191,14 +1252,27 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     @property
     def doc(self):
+        description = self.description
+        if self._workflow_map is not None:
+            workflow_str = format_workflow(self._workflow_map)
+            description = f"{self.description}\n\n{workflow_str}"
+
         return make_doc_string(
             self.inputs,
             self.outputs,
-            self.description,
+            description=description,
             class_name=self.__class__.__name__,
             expected_components=self.expected_components,
             expected_configs=self.expected_configs,
         )
+
+    @property
+    def _requirements(self) -> dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
 
 
 class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
@@ -1327,7 +1401,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[str]:
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
-        combined_outputs = self.combine_outputs(*named_outputs)
+        combined_outputs = combine_outputs(*named_outputs)
         for output in self.loop_intermediate_outputs:
             if output.name not in {output.name for output in combined_outputs}:
                 combined_outputs.append(output)
@@ -1337,6 +1411,15 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     @property
     def outputs(self) -> list[str]:
         return next(reversed(self.sub_blocks.values())).intermediate_outputs
+
+    @property
+    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks._requirements
+    def _requirements(self) -> dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
 
     def __init__(self):
         sub_blocks = InsertableDict()
@@ -1593,7 +1676,14 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 blocks_class_name = self.default_blocks_name
             if blocks_class_name is not None:
                 diffusers_module = importlib.import_module("diffusers")
-                blocks_class = getattr(diffusers_module, blocks_class_name)
+                blocks_class = getattr(diffusers_module, blocks_class_name, None)
+                # If the blocks_class is not found or is a base class (e.g. SequentialPipelineBlocks saved by from_blocks_dict) with empty block_classes
+                # fall back to default_blocks_name
+                if blocks_class is None or not blocks_class.block_classes:
+                    blocks_class_name = self.default_blocks_name
+                    blocks_class = getattr(diffusers_module, blocks_class_name)
+
+            if blocks_class is not None:
                 blocks = blocks_class()
             else:
                 logger.warning(f"`blocks` is `None`, no default blocks class found for {self.__class__.__name__}")
@@ -1652,6 +1742,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         self.register_to_config(
             _blocks_class_name=self._blocks.__class__.__name__ if self._blocks is not None else None
         )
+
+        self._pretrained_model_name_or_path = pretrained_model_name_or_path
 
     @property
     def default_call_parameters(self) -> dict[str, Any]:
@@ -1779,44 +1871,136 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         )
         return pipeline
 
-    def save_pretrained(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
+    def save_pretrained(
+        self,
+        save_directory: str | os.PathLike,
+        safe_serialization: bool = True,
+        variant: str | None = None,
+        max_shard_size: int | str | None = None,
+        push_to_hub: bool = False,
+        **kwargs,
+    ):
         """
-        Save the pipeline to a directory. It does not save components, you need to save them separately.
+        Save the pipeline and all its components to a directory, so that it can be re-loaded using the
+        [`~ModularPipeline.from_pretrained`] class method.
 
         Args:
             save_directory (`str` or `os.PathLike`):
-                Path to the directory where the pipeline will be saved.
-            push_to_hub (`bool`, optional):
-                Whether to push the pipeline to the huggingface hub.
-            **kwargs: Additional arguments passed to `save_config()` method
+                Directory to save the pipeline to. Will be created if it doesn't exist.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            variant (`str`, *optional*):
+                If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
+            max_shard_size (`int` or `str`, defaults to `None`):
+                The maximum size for a checkpoint before being sharded. Checkpoints shard will then be each of size
+                lower than this size. If expressed as a string, needs to be digits followed by a unit (like `"5GB"`).
+                If expressed as an integer, the unit is bytes.
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether to push the pipeline to the Hugging Face model hub after saving it.
+            **kwargs: Additional keyword arguments:
+                - `overwrite_modular_index` (`bool`, *optional*, defaults to `False`):
+                    When saving a Modular Pipeline, its components in `modular_model_index.json` may reference repos
+                    different from the destination repo. Setting this to `True` updates all component references in
+                    `modular_model_index.json` so they point to the repo specified by `repo_id`.
+                - `repo_id` (`str`, *optional*):
+                    The repository ID to push the pipeline to. Defaults to the last component of `save_directory`.
+                - `commit_message` (`str`, *optional*):
+                    Commit message for the push to hub operation.
+                - `private` (`bool`, *optional*):
+                    Whether the repository should be private.
+                - `create_pr` (`bool`, *optional*, defaults to `False`):
+                    Whether to create a pull request instead of pushing directly.
+                - `token` (`str`, *optional*):
+                    The Hugging Face token to use for authentication.
         """
+        overwrite_modular_index = kwargs.pop("overwrite_modular_index", False)
+        repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
             private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
-            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            update_model_card = kwargs.pop("update_model_card", False)
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
-            # Generate modular pipeline card content
-            card_content = generate_modular_model_card_content(self.blocks)
+        for component_name, component_spec in self._component_specs.items():
+            if component_spec.default_creation_method != "from_pretrained":
+                continue
 
-            # Create a new empty model card and eventually tag it
+            component = getattr(self, component_name, None)
+            if component is None:
+                continue
+
+            model_cls = component.__class__
+            if is_compiled_module(component):
+                component = _unwrap_model(component)
+                model_cls = component.__class__
+
+            save_method_name = None
+            for library_name, library_classes in LOADABLE_CLASSES.items():
+                if library_name in sys.modules:
+                    library = importlib.import_module(library_name)
+                else:
+                    logger.info(
+                        f"{library_name} is not installed. Cannot save {component_name} as {library_classes} from {library_name}"
+                    )
+                    continue
+
+                for base_class, save_load_methods in library_classes.items():
+                    class_candidate = getattr(library, base_class, None)
+                    if class_candidate is not None and issubclass(model_cls, class_candidate):
+                        save_method_name = save_load_methods[0]
+                        break
+                if save_method_name is not None:
+                    break
+
+            if save_method_name is None:
+                logger.warning(f"self.{component_name}={component} of type {type(component)} cannot be saved.")
+                continue
+
+            save_method = getattr(component, save_method_name)
+            save_method_signature = inspect.signature(save_method)
+            save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
+            save_method_accept_variant = "variant" in save_method_signature.parameters
+            save_method_accept_max_shard_size = "max_shard_size" in save_method_signature.parameters
+
+            save_kwargs = {}
+            if save_method_accept_safe:
+                save_kwargs["safe_serialization"] = safe_serialization
+            if save_method_accept_variant:
+                save_kwargs["variant"] = variant
+            if save_method_accept_max_shard_size and max_shard_size is not None:
+                save_kwargs["max_shard_size"] = max_shard_size
+
+            component_save_path = os.path.join(save_directory, component_name)
+            save_method(component_save_path, **save_kwargs)
+
+            if component_name not in self.config:
+                continue
+
+            has_no_load_id = not hasattr(component, "_diffusers_load_id") or component._diffusers_load_id == "null"
+            if overwrite_modular_index or has_no_load_id:
+                library, class_name, component_spec_dict = self.config[component_name]
+                component_spec_dict["pretrained_model_name_or_path"] = repo_id if push_to_hub else save_directory
+                component_spec_dict["subfolder"] = component_name
+                self.register_to_config(**{component_name: (library, class_name, component_spec_dict)})
+
+        self.save_config(save_directory=save_directory)
+
+        if push_to_hub:
+            card_content = generate_modular_model_card_content(self.blocks)
             model_card = load_or_create_model_card(
                 repo_id,
                 token=token,
                 is_pipeline=True,
                 model_description=MODULAR_MODEL_CARD_TEMPLATE.format(**card_content),
                 is_modular=True,
+                update_model_card=update_model_card,
             )
             model_card = populate_model_card(model_card, tags=card_content["tags"])
-
             model_card.save(os.path.join(save_directory, "README.md"))
 
-        # YiYi TODO: maybe order the json file to make it more readable: configs first, then components
-        self.save_config(save_directory=save_directory)
-
-        if push_to_hub:
             self._upload_folder(
                 save_directory,
                 repo_id,
@@ -2067,58 +2251,30 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         - the `config` dict, which will be saved as `modular_model_index.json` during `save_pretrained`
 
         Args:
-            **kwargs: Component objects, ComponentSpec objects, or configuration values to update:
-                - Component objects: Only supports components we can extract specs using
-                  `ComponentSpec.from_component()` method i.e. components created with ComponentSpec.load() or
-                  ConfigMixin subclasses that aren't nn.Modules (e.g., `unet=new_unet, text_encoder=new_encoder`)
-                - ComponentSpec objects: Only supports default_creation_method == "from_config", will call create()
-                  method to create a new component (e.g., `guider=ComponentSpec(name="guider",
-                  type_hint=ClassifierFreeGuidance, config={...}, default_creation_method="from_config")`)
-                - Configuration values: Simple values to update configuration settings (e.g.,
-                  `requires_safety_checker=False`)
-
-        Raises:
-            ValueError: If a component object is not supported in ComponentSpec.from_component() method:
-                - nn.Module components without a valid `_diffusers_load_id` attribute
-                - Non-ConfigMixin components without a valid `_diffusers_load_id` attribute
+            **kwargs: Component objects or configuration values to update:
+                - Component objects: Models loaded with `AutoModel.from_pretrained()` or `ComponentSpec.load()`
+                are automatically tagged with loading information. ConfigMixin objects without weights (e.g.,
+                schedulers, guiders) can be passed directly.
+                - Configuration values: Simple values to update configuration settings
+                (e.g., `requires_safety_checker=False`)
 
         Examples:
             ```python
-            # Update multiple components at once
+            # Update pre-trained model
             pipeline.update_components(unet=new_unet_model, text_encoder=new_text_encoder)
 
             # Update configuration values
             pipeline.update_components(requires_safety_checker=False)
-
-            # Update both components and configs together
-            pipeline.update_components(unet=new_unet_model, requires_safety_checker=False)
-
-            # Update with ComponentSpec objects (from_config only)
-            pipeline.update_components(
-                guider=ComponentSpec(
-                    name="guider",
-                    type_hint=ClassifierFreeGuidance,
-                    config={"guidance_scale": 5.0},
-                    default_creation_method="from_config",
-                )
-            )
             ```
 
         Notes:
-            - Components with trained weights must be created using ComponentSpec.load(). If the component has not been
-              shared in huggingface hub and you don't have loading specs, you can upload it using `push_to_hub()`
-            - ConfigMixin objects without weights (e.g., schedulers, guiders) can be passed directly
-            - ComponentSpec objects with default_creation_method="from_pretrained" are not supported in
-              update_components()
+            - Components loaded with `AutoModel.from_pretrained()` or `ComponentSpec.load()` will have
+            loading specs preserved for serialization. Custom or locally loaded components without Hub references will
+            have their `modular_model_index.json` entries updated automatically during `save_pretrained()`.
+            - ConfigMixin objects without weights (e.g., schedulers, guiders) can be passed directly.
         """
 
-        # extract component_specs_updates & config_specs_updates from `specs`
-        passed_component_specs = {
-            k: kwargs.pop(k) for k in self._component_specs if k in kwargs and isinstance(kwargs[k], ComponentSpec)
-        }
-        passed_components = {
-            k: kwargs.pop(k) for k in self._component_specs if k in kwargs and not isinstance(kwargs[k], ComponentSpec)
-        }
+        passed_components = {k: kwargs.pop(k) for k in self._component_specs if k in kwargs}
         passed_config_values = {k: kwargs.pop(k) for k in self._config_specs if k in kwargs}
 
         for name, component in passed_components.items():
@@ -2136,13 +2292,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 new_component_spec = current_component_spec
                 if hasattr(self, name) and getattr(self, name) is not None:
                     logger.warning(f"ModularPipeline.update_components: setting {name} to None (spec unchanged)")
-            elif current_component_spec.default_creation_method == "from_pretrained" and not (
-                hasattr(component, "_diffusers_load_id") and component._diffusers_load_id is not None
+            elif (
+                current_component_spec.default_creation_method == "from_pretrained"
+                and getattr(component, "_diffusers_load_id", None) is None
             ):
-                logger.warning(
-                    f"ModularPipeline.update_components: {name} has no valid _diffusers_load_id. "
-                    f"This will result in empty loading spec, use ComponentSpec.load() for proper specs"
-                )
                 new_component_spec = ComponentSpec(name=name, type_hint=type(component))
             else:
                 new_component_spec = ComponentSpec.from_component(name, component)
@@ -2157,33 +2310,14 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         if len(kwargs) > 0:
             logger.warning(f"Unexpected keyword arguments, will be ignored: {kwargs.keys()}")
 
-        created_components = {}
-        for name, component_spec in passed_component_specs.items():
-            if component_spec.default_creation_method == "from_pretrained":
-                raise ValueError(
-                    "ComponentSpec object with default_creation_method == 'from_pretrained' is not supported in update_components() method"
-                )
-            created_components[name] = component_spec.create()
-            current_component_spec = self._component_specs[name]
-            # warn if type changed
-            if current_component_spec.type_hint is not None and not isinstance(
-                created_components[name], current_component_spec.type_hint
-            ):
-                logger.info(
-                    f"ModularPipeline.update_components: adding {name} with new type: {created_components[name].__class__.__name__}, previous type: {current_component_spec.type_hint.__name__}"
-                )
-            # update _component_specs based on the user passed component_spec
-            self._component_specs[name] = component_spec
-        self.register_components(**passed_components, **created_components)
+        self.register_components(**passed_components)
 
         config_to_register = {}
         for name, new_value in passed_config_values.items():
-            # e.g. requires_aesthetics_score = False
             self._config_specs[name].default = new_value
             config_to_register[name] = new_value
         self.register_to_config(**config_to_register)
 
-    # YiYi TODO: support map for additional from_pretrained kwargs
     def load_components(self, names: list[str] | str | None = None, **kwargs):
         """
         Load selected components from specs.
@@ -2234,17 +2368,49 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     elif "default" in value:
                         # check if the default is specified
                         component_load_kwargs[key] = value["default"]
+            # Only pass trust_remote_code to components from the same repo as the pipeline.
+            # When a user passes trust_remote_code=True, they intend to trust code from the
+            # pipeline's repo, not from external repos referenced in modular_model_index.json.
+            trust_remote_code_stripped = False
+            if (
+                "trust_remote_code" in component_load_kwargs
+                and self._pretrained_model_name_or_path is not None
+                and spec.pretrained_model_name_or_path != self._pretrained_model_name_or_path
+            ):
+                component_load_kwargs.pop("trust_remote_code")
+                trust_remote_code_stripped = True
+
+            if not spec.pretrained_model_name_or_path:
+                logger.info(f"Skipping component `{name}`: no pretrained model path specified.")
+                continue
+
             try:
                 components_to_register[name] = spec.load(**component_load_kwargs)
             except Exception:
-                logger.warning(
-                    f"\nFailed to create component {name}:\n"
-                    f"- Component spec: {spec}\n"
-                    f"- load() called with kwargs: {component_load_kwargs}\n"
-                    "If this component is not required for your workflow you can safely ignore this message.\n\n"
-                    "Traceback:\n"
-                    f"{traceback.format_exc()}"
-                )
+                tb = traceback.format_exc()
+                if trust_remote_code_stripped and "trust_remote_code" in tb:
+                    warning_msg = (
+                        f"Failed to load component `{name}` from external repository "
+                        f"`{spec.pretrained_model_name_or_path}`.\n\n"
+                        f"`trust_remote_code=True` was not forwarded to `{name}` because it comes from "
+                        f"a different repository than the pipeline (`{self._pretrained_model_name_or_path}`). "
+                        f"For safety, `trust_remote_code` is only forwarded to components from the same "
+                        f"repository as the pipeline.\n\n"
+                        f"You need to load this component manually with `trust_remote_code=True` and pass it "
+                        f"to the pipeline via `pipe.update_components()`. For example, if it is a custom model:\n\n"
+                        f'  {name} = AutoModel.from_pretrained("{spec.pretrained_model_name_or_path}", trust_remote_code=True)\n'
+                        f"  pipe.update_components({name}={name})\n"
+                    )
+                else:
+                    warning_msg = (
+                        f"Failed to create component {name}:\n"
+                        f"- Component spec: {spec}\n"
+                        f"- load() called with kwargs: {component_load_kwargs}\n"
+                        "If this component is not required for your workflow you can safely ignore this message.\n\n"
+                        "Traceback:\n"
+                        f"{tb}"
+                    )
+                logger.warning(warning_msg)
 
         # Register all components at once
         self.register_components(**components_to_register)
