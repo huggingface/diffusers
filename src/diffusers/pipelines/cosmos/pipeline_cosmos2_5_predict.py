@@ -594,7 +594,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         callback_on_step_end: Callable[[int, int, None], PipelineCallback | MultiPipelineCallbacks] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-        conditional_frame_timestep: float = 0.1,
+        conditional_frame_timestep: float = 0.0001,
         num_latent_conditional_frames: int = 2,
     ):
         r"""
