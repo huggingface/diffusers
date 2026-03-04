@@ -621,7 +621,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         return latents
 
     @staticmethod
-    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2ImageToVideoPipeline._normalize_latents
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2_image2video.LTX2ImageToVideoPipeline._normalize_latents
     def _normalize_latents(
         latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
     ) -> torch.Tensor:
