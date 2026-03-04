@@ -597,7 +597,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         )
         return x + noise_sigma * torch.randn_like(x, generator=generator)
 
-    def _maybe_resize_and_normalize(self, x: torch.Tensor) -> torch.Tensor:
+    def _resize_and_normalize(self, x: torch.Tensor) -> torch.Tensor:
         _, _, h, w = x.shape
         if h != self.encoder_input_size or w != self.encoder_input_size:
             x = F.interpolate(
