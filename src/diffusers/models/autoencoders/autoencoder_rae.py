@@ -263,7 +263,9 @@ class RAEDecoder(nn.Module):
         self.num_patches = num_patches
 
         self.decoder_embed = nn.Linear(hidden_size, decoder_hidden_size, bias=True)
-        self.register_buffer("decoder_pos_embed", torch.zeros(1, num_patches + 1, decoder_hidden_size))
+        self.register_buffer(
+            "decoder_pos_embed", torch.zeros(1, num_patches + 1, decoder_hidden_size), persistent=False
+        )
 
         self.decoder_layers = nn.ModuleList(
             [
@@ -680,7 +682,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
         logits = self.decoder(tokens, return_dict=True).logits
         x_rec = self.decoder.unpatchify(logits)
         x_rec = self._denormalize_image(x_rec)
-        return x_rec
+        return x_rec.to(device=z.device)
 
     @apply_forward_hook
     def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
