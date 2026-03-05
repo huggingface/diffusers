@@ -951,7 +951,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
 
         return latents, conditioning_mask, clean_latents
 
-    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline.prepare_audio_latents
     def prepare_audio_latents(
         self,
         batch_size: int = 1,
