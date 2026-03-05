@@ -141,7 +141,7 @@ def parse_args():
     parser.add_argument(
         "--max_train_steps",
         type=int,
-        default=None,
+        default=1000,
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
@@ -313,22 +313,7 @@ class VideoDataset(Dataset):
         caption_format: str = "auto",  # "text", "json", or "auto"
         video_paths: Optional[list[str]] = None,
     ) -> None:
-        """Dataset class for loading image-text-to-video generation data.
-
-        Args:
-            dataset_dir (str): Base path to the dataset directory
-            num_frames (int): Number of frames to load per sequence
-            video_size (tuple[int, int]): Target size (H,W) for video frames
-            prompt_type (str | None): Which prompt to use from JSON ("long", "short", "medium").
-                                     If None, uses the first available prompt type.
-                                     Only applicable when using JSON format.
-            caption_format (str): Caption format - "text", "json", or "auto" to detect automatically
-
-        Returns dict with:
-            - video: RGB frames tensor [T,C,H,W]
-            - video_name: Dict with episode/frame metadata
-        """
-
+        
         super().__init__()
         self.dataset_dir = dataset_dir
         self.num_frames = num_frames
@@ -612,8 +597,8 @@ def main():
         # only upcast trainable parameters (LoRA) into fp32
         cast_training_params(dit, dtype=torch.float32)
 
-    lora_layers = filter(lambda p: p.requires_grad, dit.parameters())
-    trainable_params = sum(p.numel() for p in dit.parameters() if p.requires_grad)
+    lora_params = [p for p in dit.parameters() if p.requires_grad]
+    num_trainable_params = sum(p.numel() for p in lora_params)
 
     if args.gradient_checkpointing:
         dit.enable_gradient_checkpointing()
@@ -628,70 +613,25 @@ def main():
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
-    # Initialize the optimizer
-    optimizer_cls = torch.optim.AdamW
-
-    optimizer = optimizer_cls(
-        lora_layers,
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
+    from optimizer_utils import build_optimizer_and_scheduler
+    optimizer, lr_scheduler = build_optimizer_and_scheduler(lora_params) # TODO: input args
 
     train_dataloader = build_dataloader(args)
-
-    # Scheduler and math around the number of training steps.
-    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
-    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
-    if args.max_train_steps is None:
-        len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
-        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
-        num_training_steps_for_scheduler = (
-            args.num_train_epochs * num_update_steps_per_epoch * accelerator.num_processes
-        )
-    else:
-        num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
-    lr_scheduler = get_scheduler(
-        args.lr_scheduler,
-        optimizer=optimizer,
-        num_warmup_steps=num_warmup_steps_for_scheduler,
-        num_training_steps=num_training_steps_for_scheduler,
-    )
 
     # Prepare everything with our `accelerator`.
     dit, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         dit, optimizer, train_dataloader, lr_scheduler
     )
 
-    # Register the hooks for efficient saving and loading of LoRA weights
-    # accelerator.register_save_state_pre_hook(save_model_hook)
-    # accelerator.register_load_state_pre_hook(load_model_hook)
-
-    # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        if num_training_steps_for_scheduler != args.max_train_steps * accelerator.num_processes:
-            logger.warning(
-                f"The length of the 'train_dataloader' after 'accelerator.prepare' ({len(train_dataloader)}) does not match "
-                f"the expected length ({len_train_dataloader_after_sharding}) when the learning rate scheduler was created. "
-                f"This inconsistency may result in the learning rate scheduler not functioning properly."
-            )
-    # Afterwards we recalculate our number of training epochs
-    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
-
-    # We need to initialize the trackers we use, and also store our configuration.
-    # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("text2image-fine-tune", config=vars(args))
+        accelerator.init_trackers("cosmos-v2v-fine-tune", config=vars(args))
 
     # Train
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataloader.dataset)}")
-    logger.info(f"Total Trainable Parameters: {trainable_params / 10**9:.2f}B")
+    logger.info(f"  Total Trainable Parameters: {num_trainable_params / 10**9:.2f}B")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
@@ -711,7 +651,7 @@ def main():
 
     transformer_dtype = dit.dtype
     noise_scheduler = pipe.scheduler
-    noise_scheduler.set_timesteps(num_training_steps_for_scheduler, device=device)
+    noise_scheduler.set_timesteps(1000, device=device) # TODO: add args
     padding_mask = torch.zeros(1, 1, args.height, args.width, dtype=transformer_dtype, device=device)
     # Create indicator and mask to make the first few frames of x_t be the ground truth frames
     latent_shape = pipe.get_latent_shape_cthw(args.height, args.width, args.num_frames)
@@ -722,6 +662,7 @@ def main():
     latents_mean = pipe.latents_mean.float().to(device)
     latents_std = pipe.latents_std.float().to(device) # 1/σ
 
+    # Start training
     torch.set_grad_enabled(True)  # disabled by Cosmos2_5_PredictBasePipeline
     for epoch in range(first_epoch, args.num_train_epochs):
         dit.train()
@@ -774,7 +715,7 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = lora_layers
+                    params_to_clip = lora_params
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
