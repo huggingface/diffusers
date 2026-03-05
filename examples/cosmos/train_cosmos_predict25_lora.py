@@ -290,6 +290,12 @@ def parse_args():
     parser.add_argument("--height", type=int, default=704, help="Height of the training videos in pixels.")
     parser.add_argument("--width", type=int, default=1280, help="Width of the training videos in pixels.")
     parser.add_argument("--num_frames", type=int, default=93, help="Number of frames per training video.")
+    parser.add_argument(
+        "--cfg_dropout_prob",
+        type=float,
+        default=0.2,
+        help="Probability of dropping text or video conditioning per sample for CFG training.",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -624,7 +630,7 @@ def main():
     )
 
     if accelerator.is_main_process:
-        accelerator.init_trackers("cosmos-v2v-fine-tune", config=vars(args))
+        accelerator.init_trackers("diffusers-lora", config=vars(args))
 
     # Train
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -683,9 +689,11 @@ def main():
                     device=device,
                 )
                 assert prompt_embeds.requires_grad == False
-                # TODO: cfg
 
+                # CFG dropout: independently zero out text conditioning per sample
                 bsz = clean_latent.shape[0]
+                is_drop = torch.rand(bsz, device=device) < args.cfg_dropout_prob
+                prompt_embeds[is_drop] = 0.0
 
                 # Sample a random timestep
                 sigma_t = sample_train_sigma_t(bsz, distribution='logitnormal', device=device)
