@@ -31,8 +31,6 @@ from diffusers.utils import (
 )
 from diffusers.video_processor import VideoProcessor
 
-H, W = 704, 1280
-NUM_FRAMES = 93
 
 if is_wandb_available():
     import wandb
@@ -184,8 +182,8 @@ def parse_args():
     parser.add_argument(
         "--conditional_frame_timestep",
         type=float,
-        default=0.1,
-        help="0.1 for post-trained model. Set to < 0 to disable.",
+        default=0.0001,
+        help="0.0001 for post-trained model. Set to < 0 to disable.",
     )
     parser.add_argument(
         "--snr_gamma",
@@ -289,6 +287,9 @@ def parse_args():
         action="store_true",
         help="Whether or not to use DoRA (Weight-Decomposed Low-Rank Adaptation).",
     )
+    parser.add_argument("--height", type=int, default=704, help="Height of the training videos in pixels.")
+    parser.add_argument("--width", type=int, default=1280, help="Width of the training videos in pixels.")
+    parser.add_argument("--num_frames", type=int, default=93, help="Number of frames per training video.")
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -475,8 +476,8 @@ class VideoDataset(Dataset):
 def build_dataloader(args):
     dataset = VideoDataset(
         video_paths=None,
-        num_frames=NUM_FRAMES,
-        video_size=[H, W],
+        num_frames=args.num_frames,
+        video_size=[args.height, args.width],
         dataset_dir=args.train_data_dir,
     )
 
@@ -489,14 +490,6 @@ def build_dataloader(args):
         pin_memory=True,
     )
     return dataloader
-
-
-def create_condition_mask(latent_shape, device, dtype, num_cond_latent_frames=2):
-    bsz, _C, _T, _H, _W = latent_shape
-    cond_indicator = torch.zeros(bsz, 1, _T, 1, 1, dtype=dtype, device=device)
-    cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0
-    cond_mask = cond_indicator.expand(-1, -1, -1, _H, _W)
-    return cond_indicator, cond_mask
 
 
 def get_flow_xt_and_target_v(clean_latent, t, cond_mask):
@@ -719,8 +712,12 @@ def main():
     transformer_dtype = dit.dtype
     noise_scheduler = pipe.scheduler
     noise_scheduler.set_timesteps(num_training_steps_for_scheduler, device=device)
-    padding_mask = torch.zeros(1, 1, H, W, dtype=transformer_dtype, device=device)
-    cond_indicator = None
+    padding_mask = torch.zeros(1, 1, args.height, args.width, dtype=transformer_dtype, device=device)
+    # Create indicator and mask to make the first few frames of x_t be the ground truth frames
+    latent_shape = pipe.get_latent_shape_cthw(args.height, args.width, args.num_frames)
+    cond_indicator, cond_mask = pipe.create_condition_mask(
+        (1, *latent_shape), device=device, dtype=torch.float32, num_cond_latent_frames=2
+    )
 
     latents_mean = pipe.latents_mean.float().to(device)
     latents_std = pipe.latents_std.float().to(device) # 1/σ
@@ -747,31 +744,26 @@ def main():
                 assert prompt_embeds.requires_grad == False
                 # TODO: cfg
 
-                # Create indicator and mask to make the first few frames of x_t be the ground truth frames
                 bsz = clean_latent.shape[0]
-                if cond_indicator is None:
-                    cond_indicator, cond_mask = create_condition_mask(
-                        clean_latent.shape, device=device, dtype=transformer_dtype
-                    )
 
                 # Sample a random timestep
                 sigma_t = sample_train_sigma_t(bsz, distribution='logitnormal', device=device)
-                if args.conditional_frame_timestep >= 0:
-                    sigma_t = cond_indicator * args.conditional_frame_timestep + (1 - cond_indicator) * sigma_t
-
                 # 1. Sample noise 2. Get the target velocity 3. Get xt by interpolation between noise and clean
                 xt_B_C_T_H_W, target_velocity = get_flow_xt_and_target_v(clean_latent, sigma_t, cond_mask)
-
+                
                 # Denoise
+                if args.conditional_frame_timestep >= 0:
+                    in_timestep = cond_indicator * args.conditional_frame_timestep + (1 - cond_indicator) * sigma_t
+                
                 pred_velocity = dit(
                     hidden_states=xt_B_C_T_H_W,
                     condition_mask=cond_mask,
-                    timestep=sigma_t,
+                    timestep=in_timestep,
                     encoder_hidden_states=prompt_embeds,
                     padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
-
+                # Loss is only calculated on the non-conditioned frames
                 pred_velocity = target_velocity * cond_mask + pred_velocity * (1 - cond_mask)
                 loss = F.mse_loss(pred_velocity.float(), target_velocity.float(), reduction="mean")
 
