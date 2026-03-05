@@ -38,6 +38,7 @@ from ..utils import (
     is_flash_attn_available,
     is_flash_attn_version,
     is_kernels_available,
+    is_kernels_version,
     is_sageattention_available,
     is_sageattention_version,
     is_torch_npu_available,
@@ -318,6 +319,7 @@ class _HubKernelConfig:
     repo_id: str
     function_attr: str
     revision: str | None = None
+    version: int | None = None
     kernel_fn: Callable | None = None
     wrapped_forward_attr: str | None = None
     wrapped_backward_attr: str | None = None
@@ -327,31 +329,34 @@ class _HubKernelConfig:
 
 # Registry for hub-based attention kernels
 _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
-    # TODO: temporary revision for now. Remove when merged upstream into `main`.
     AttentionBackendName._FLASH_3_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn3",
         function_attr="flash_attn_func",
-        revision="fake-ops-return-probs",
         wrapped_forward_attr="flash_attn_interface._flash_attn_forward",
         wrapped_backward_attr="flash_attn_interface._flash_attn_backward",
+        version=1,
     ),
     AttentionBackendName._FLASH_3_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn3",
         function_attr="flash_attn_varlen_func",
-        # revision="fake-ops-return-probs",
+        version=1,
     ),
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
-        revision=None,
         wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
         wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
+        version=1,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
-        repo_id="kernels-community/flash-attn2", function_attr="flash_attn_varlen_func", revision=None
+        repo_id="kernels-community/flash-attn2",
+        function_attr="flash_attn_varlen_func",
+        version=1,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
-        repo_id="kernels-community/sage_attention", function_attr="sageattn", revision=None
+        repo_id="kernels-community/sage-attention",
+        function_attr="sageattn",
+        version=1,
     ),
 }
 
@@ -520,6 +525,10 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         if not is_kernels_available():
             raise RuntimeError(
                 f"Backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
+            )
+        if not is_kernels_version(">=", "0.12"):
+            raise RuntimeError(
+                f"Backend '{backend.value}' needs to be used with a `kernels` version of at least 0.12. Please update with `pip install -U kernels`."
             )
 
     elif backend == AttentionBackendName.AITER:
@@ -694,7 +703,7 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
     try:
         from kernels import get_kernel
 
-        kernel_module = get_kernel(config.repo_id, revision=config.revision)
+        kernel_module = get_kernel(config.repo_id, revision=config.revision, version=config.version)
         if needs_kernel:
             config.kernel_fn = _resolve_kernel_attr(kernel_module, config.function_attr)
 

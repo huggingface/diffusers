@@ -10,6 +10,11 @@ import torch
 import diffusers
 from diffusers import AutoModel, ComponentsManager, ModularPipeline, ModularPipelineBlocks
 from diffusers.guiders import ClassifierFreeGuidance
+from diffusers.modular_pipelines import (
+    ConditionalPipelineBlocks,
+    LoopSequentialPipelineBlocks,
+    SequentialPipelineBlocks,
+)
 from diffusers.modular_pipelines.modular_pipeline_utils import (
     ComponentSpec,
     ConfigSpec,
@@ -19,7 +24,13 @@ from diffusers.modular_pipelines.modular_pipeline_utils import (
 )
 from diffusers.utils import logging
 
-from ..testing_utils import backend_empty_cache, numpy_cosine_similarity_distance, require_accelerator, torch_device
+from ..testing_utils import (
+    CaptureLogger,
+    backend_empty_cache,
+    numpy_cosine_similarity_distance,
+    require_accelerator,
+    torch_device,
+)
 
 
 class ModularPipelineTesterMixin:
@@ -429,6 +440,117 @@ class ModularGuiderTesterMixin:
         assert max_diff > expected_max_diff, "Output with CFG must be different from normal inference"
 
 
+class TestCustomBlockRequirements:
+    def get_dummy_block_pipe(self):
+        class DummyBlockOne:
+            # keep two arbitrary deps so that we can test warnings.
+            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
+
+        class DummyBlockTwo:
+            # keep two dependencies that will be available during testing.
+            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
+
+        pipe = SequentialPipelineBlocks.from_blocks_dict(
+            {"dummy_block_one": DummyBlockOne, "dummy_block_two": DummyBlockTwo}
+        )
+        return pipe
+
+    def get_dummy_conditional_block_pipe(self):
+        class DummyBlockOne:
+            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
+
+        class DummyBlockTwo:
+            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
+
+        class DummyConditionalBlocks(ConditionalPipelineBlocks):
+            block_classes = [DummyBlockOne, DummyBlockTwo]
+            block_names = ["block_one", "block_two"]
+            block_trigger_inputs = []
+
+            def select_block(self, **kwargs):
+                return "block_one"
+
+        return DummyConditionalBlocks()
+
+    def get_dummy_loop_block_pipe(self):
+        class DummyBlockOne:
+            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
+
+        class DummyBlockTwo:
+            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
+
+        return LoopSequentialPipelineBlocks.from_blocks_dict({"block_one": DummyBlockOne, "block_two": DummyBlockTwo})
+
+    def test_sequential_block_requirements_save_load(self, tmp_path):
+        pipe = self.get_dummy_block_pipe()
+        pipe.save_pretrained(tmp_path)
+
+        config_path = tmp_path / "modular_config.json"
+
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        assert "requirements" in config
+        requirements = config["requirements"]
+
+        expected_requirements = {
+            "xyz": ">=0.8.0",
+            "abc": ">=10.0.0",
+            "transformers": ">=4.44.0",
+            "diffusers": ">=0.2.0",
+        }
+        assert expected_requirements == requirements
+
+    def test_sequential_block_requirements_warnings(self, tmp_path):
+        pipe = self.get_dummy_block_pipe()
+
+        logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
+        logger.setLevel(30)
+
+        with CaptureLogger(logger) as cap_logger:
+            pipe.save_pretrained(tmp_path)
+
+        template = "{req} was specified in the requirements but wasn't found in the current environment"
+        msg_xyz = template.format(req="xyz")
+        msg_abc = template.format(req="abc")
+        assert msg_xyz in str(cap_logger.out)
+        assert msg_abc in str(cap_logger.out)
+
+    def test_conditional_block_requirements_save_load(self, tmp_path):
+        pipe = self.get_dummy_conditional_block_pipe()
+        pipe.save_pretrained(tmp_path)
+
+        config_path = tmp_path / "modular_config.json"
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        assert "requirements" in config
+        expected_requirements = {
+            "xyz": ">=0.8.0",
+            "abc": ">=10.0.0",
+            "transformers": ">=4.44.0",
+            "diffusers": ">=0.2.0",
+        }
+        assert expected_requirements == config["requirements"]
+
+    def test_loop_block_requirements_save_load(self, tmp_path):
+        pipe = self.get_dummy_loop_block_pipe()
+        pipe.save_pretrained(tmp_path)
+
+        config_path = tmp_path / "modular_config.json"
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        assert "requirements" in config
+        expected_requirements = {
+            "xyz": ">=0.8.0",
+            "abc": ">=10.0.0",
+            "transformers": ">=4.44.0",
+            "diffusers": ">=0.2.0",
+        }
+        assert expected_requirements == config["requirements"]
+
+
 class TestModularModelCardContent:
     def create_mock_block(self, name="TestBlock", description="Test block description"):
         class MockBlock:
@@ -687,6 +809,18 @@ class TestLoadComponentsSkipBehavior:
         assert pipe.unet is not None
         assert getattr(pipe, "vae", None) is None
 
+    def test_load_components_selective_loading_incremental(self):
+        """Loading a subset of components should not affect already-loaded components."""
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+
+        pipe.load_components(names="unet", torch_dtype=torch.float32)
+        pipe.load_components(names="text_encoder", torch_dtype=torch.float32)
+
+        assert hasattr(pipe, "unet")
+        assert pipe.unet is not None
+        assert hasattr(pipe, "text_encoder")
+        assert pipe.text_encoder is not None
+
     def test_load_components_skips_invalid_pretrained_path(self):
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
 
@@ -748,6 +882,36 @@ class TestCustomModelSavePretrained:
         assert set(original_state_dict.keys()) == set(loaded_state_dict.keys())
         for key in original_state_dict:
             assert torch.equal(original_state_dict[key], loaded_state_dict[key]), f"Mismatch in {key}"
+
+    def test_save_pretrained_updates_index_for_model_with_no_load_id(self, tmp_path):
+        """testing the workflow of update the pipeline with a custom model and save the pipeline,
+        the modular_model_index.json should point to the save directory."""
+        import json
+
+        from diffusers import UNet2DConditionModel
+
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        pipe.load_components(torch_dtype=torch.float32)
+
+        unet = UNet2DConditionModel.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-xl-pipe", subfolder="unet"
+        )
+        assert not hasattr(unet, "_diffusers_load_id")
+
+        pipe.update_components(unet=unet)
+
+        save_dir = str(tmp_path / "my-pipeline")
+        pipe.save_pretrained(save_dir)
+
+        with open(os.path.join(save_dir, "modular_model_index.json")) as f:
+            index = json.load(f)
+
+        _library, _cls, unet_spec = index["unet"]
+        assert unet_spec["pretrained_model_name_or_path"] == save_dir
+        assert unet_spec["subfolder"] == "unet"
+
+        _library, _cls, vae_spec = index["vae"]
+        assert vae_spec["pretrained_model_name_or_path"] == "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
 
     def test_save_pretrained_overwrite_modular_index(self, tmp_path):
         """With overwrite_modular_index=True, all component references should point to the save directory."""
