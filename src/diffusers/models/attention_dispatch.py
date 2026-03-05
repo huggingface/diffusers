@@ -703,7 +703,7 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
     try:
         from kernels import get_kernel
 
-        kernel_module = get_kernel(config.repo_id, revision=config.revision)
+        kernel_module = get_kernel(config.repo_id, revision=config.revision, version=config.version)
         if needs_kernel:
             config.kernel_fn = _resolve_kernel_attr(kernel_module, config.function_attr)
 
