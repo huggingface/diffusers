@@ -335,8 +335,11 @@ def convert(args: argparse.Namespace) -> None:
     model_keys |= {name for name, _ in model.named_buffers()}
     loaded_keys = set(full_state_dict.keys())
     missing = model_keys - loaded_keys
-    # trainable_cls_token and decoder_pos_embed are initialized, not loaded from original checkpoint
-    allowed_missing = {"decoder.trainable_cls_token", "decoder.decoder_pos_embed"}
+    # decoder_pos_embed is initialized in-model. trainable_cls_token is only
+    # allowed to be missing if it was absent in the source decoder checkpoint.
+    allowed_missing = {"decoder.decoder_pos_embed"}
+    if "trainable_cls_token" not in decoder_state_dict:
+        allowed_missing.add("decoder.trainable_cls_token")
     if missing - allowed_missing:
         print(f"Warning: missing keys after conversion: {sorted(missing - allowed_missing)}")
 
