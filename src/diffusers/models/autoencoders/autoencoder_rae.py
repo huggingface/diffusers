@@ -263,9 +263,11 @@ class RAEDecoder(nn.Module):
         self.num_patches = num_patches
 
         self.decoder_embed = nn.Linear(hidden_size, decoder_hidden_size, bias=True)
-        self.register_buffer(
-            "decoder_pos_embed", torch.zeros(1, num_patches + 1, decoder_hidden_size), persistent=False
+        grid_size = int(num_patches**0.5)
+        pos_embed = get_2d_sincos_pos_embed(
+            decoder_hidden_size, grid_size, cls_token=True, extra_tokens=1, output_type="pt"
         )
+        self.register_buffer("decoder_pos_embed", pos_embed.unsqueeze(0).float(), persistent=False)
 
         self.decoder_layers = nn.ModuleList(
             [
@@ -287,26 +289,7 @@ class RAEDecoder(nn.Module):
         self.decoder_pred = nn.Linear(decoder_hidden_size, patch_size**2 * num_channels, bias=True)
         self.gradient_checkpointing = False
 
-        self._initialize_weights(num_patches)
         self.trainable_cls_token = nn.Parameter(torch.zeros(1, 1, decoder_hidden_size))
-
-    def _initialize_weights(self, num_patches: int):
-        # Skip initialization when parameters are on meta device (e.g. during
-        # accelerate.init_empty_weights() used by low_cpu_mem_usage loading).
-        # The weights will be loaded from the checkpoint afterwards.
-        if self.decoder_pos_embed.device.type == "meta":
-            return
-
-        grid_size = int(num_patches**0.5)
-        pos_embed = get_2d_sincos_pos_embed(
-            self.decoder_pos_embed.shape[-1],
-            grid_size,
-            cls_token=True,
-            extra_tokens=1,
-            output_type="pt",
-            device=self.decoder_pos_embed.device,
-        )
-        self.decoder_pos_embed.data.copy_(pos_embed.unsqueeze(0).to(dtype=self.decoder_pos_embed.dtype))
 
     def interpolate_pos_encoding(self, embeddings: torch.Tensor) -> torch.Tensor:
         embeddings_positions = embeddings.shape[1] - 1
@@ -457,6 +440,7 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
     # NOTE: gradient checkpointing is not wired up for this model yet.
     _supports_gradient_checkpointing = False
     _no_split_modules = ["ViTMAELayer"]
+    _keys_to_ignore_on_load_unexpected = ["decoder.decoder_pos_embed"]
 
     @register_to_config
     def __init__(
