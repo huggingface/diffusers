@@ -194,6 +194,8 @@
   title: Model accelerators and hardware
 - isExpanded: false
   sections:
+  - local: using-diffusers/helios
+    title: Helios
   - local: using-diffusers/consisid
     title: ConsisID
   - local: using-diffusers/sdxl
@@ -350,6 +352,8 @@
         title: FluxTransformer2DModel
       - local: api/models/glm_image_transformer2d
         title: GlmImageTransformer2DModel
+      - local: api/models/helios_transformer3d
+        title: HeliosTransformer3DModel
       - local: api/models/hidream_image_transformer
         title: HiDreamImageTransformer2DModel
       - local: api/models/hunyuan_transformer2d
@@ -625,7 +629,6 @@
           title: Image-to-image
         - local: api/pipelines/stable_diffusion/inpaint
           title: Inpainting
-
         - local: api/pipelines/stable_diffusion/latent_upscale
           title: Latent upscaler
         - local: api/pipelines/stable_diffusion/ldm3d_diffusion
@@ -674,6 +677,8 @@
         title: ConsisID
       - local: api/pipelines/framepack
         title: Framepack
+      - local: api/pipelines/helios
+        title: Helios
       - local: api/pipelines/hunyuan_video
         title: HunyuanVideo
       - local: api/pipelines/hunyuan_video15
@@ -745,6 +750,10 @@
       title: FlowMatchEulerDiscreteScheduler
     - local: api/schedulers/flow_match_heun_discrete
       title: FlowMatchHeunDiscreteScheduler
+    - local: api/schedulers/helios_dmd
+      title: HeliosDMDScheduler
+    - local: api/schedulers/helios
+      title: HeliosScheduler
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm

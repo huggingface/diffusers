@@ -333,3 +333,48 @@ Browse the [Modular Diffusers Custom Blocks](https://huggingface.co/collections/
 
 </hfoption>
 </hfoptions>
+
+## Dependencies
+
+Declaring package dependencies in custom blocks prevents runtime import errors later on. Diffusers validates the dependencies and returns a warning if a package is missing or incompatible.
+
+Set a `_requirements` attribute in your block class, mapping package names to version specifiers.
+
+```py
+from diffusers.modular_pipelines import PipelineBlock
+
+class MyCustomBlock(PipelineBlock):
+    _requirements = {
+        "transformers": ">=4.44.0",
+        "sentencepiece": ">=0.2.0"
+    }
+```
+
+When there are blocks with different requirements, Diffusers merges their requirements.
+
+```py
+from diffusers.modular_pipelines import SequentialPipelineBlocks
+
+class BlockA(PipelineBlock):
+    _requirements = {"transformers": ">=4.44.0"}
+    # ...
+
+class BlockB(PipelineBlock):
+    _requirements = {"sentencepiece": ">=0.2.0"}
+    # ...
+
+pipe = SequentialPipelineBlocks.from_blocks_dict({
+    "block_a": BlockA,
+    "block_b": BlockB,
+})
+```
+
+When this block is saved with [`~ModularPipeline.save_pretrained`], the requirements are saved to the `modular_config.json` file. When this block is loaded, Diffusers checks each requirement against the current environment. If there is a mismatch or a package isn't found, Diffusers returns the following warning.
+
+```md
+# missing package
+xyz-package was specified in the requirements but wasn't found in the current environment.
+
+# version mismatch
+xyz requirement 'specific-version' is not satisfied by the installed version 'actual-version'. Things might work unexpected.
+```

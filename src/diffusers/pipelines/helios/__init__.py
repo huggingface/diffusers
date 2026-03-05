@@ -22,14 +22,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["connectors"] = ["LTX2TextConnectors"]
-    _import_structure["latent_upsampler"] = ["LTX2LatentUpsamplerModel"]
-    _import_structure["pipeline_ltx2"] = ["LTX2Pipeline"]
-    _import_structure["pipeline_ltx2_condition"] = ["LTX2ConditionPipeline"]
-    _import_structure["pipeline_ltx2_image2video"] = ["LTX2ImageToVideoPipeline"]
-    _import_structure["pipeline_ltx2_latent_upsample"] = ["LTX2LatentUpsamplePipeline"]
-    _import_structure["vocoder"] = ["LTX2Vocoder"]
-
+    _import_structure["pipeline_helios"] = ["HeliosPipeline"]
+    _import_structure["pipeline_helios_pyramid"] = ["HeliosPyramidPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -38,14 +32,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .connectors import LTX2TextConnectors
-        from .latent_upsampler import LTX2LatentUpsamplerModel
-        from .pipeline_ltx2 import LTX2Pipeline
-        from .pipeline_ltx2_condition import LTX2ConditionPipeline
-        from .pipeline_ltx2_image2video import LTX2ImageToVideoPipeline
-        from .pipeline_ltx2_latent_upsample import LTX2LatentUpsamplePipeline
-        from .vocoder import LTX2Vocoder
-
+        from .pipeline_helios import HeliosPipeline
+        from .pipeline_helios_pyramid import HeliosPyramidPipeline
 else:
     import sys
 
