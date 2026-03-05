@@ -13,4 +13,4 @@ accelerate launch --mixed_precision="bf16" train_cosmos_predict25_lora.py \
   --output_dir="outputs/mydiffusers" \
   --validation_prompt="" \
   --report_to=wandb \
-  --allow_tf32 --gradient_checkpointing
+  --allow_tf32 --gradient_checkpointing \
