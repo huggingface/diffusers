@@ -539,6 +539,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         negative_prompt_embeds=None,
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
+        latents=None,
+        audio_latents=None,
     ):
         if height % 32 != 0 or width % 32 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
@@ -581,6 +583,19 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                     f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
                     f" {negative_prompt_attention_mask.shape}."
                 )
+
+        if latents is not None and latents.ndim != 5:
+            raise ValueError(
+                f"Only unpacked (5D) video latents of shape `[batch_size, latent_channels, latent_frames,"
+                f" latent_height, latent_width] are supported, but got {latents.ndim} dims. If you have packed (3D)"
+                f" latents, please unpack them (e.g. using the `_unpack_latents` method)."
+            )
+        if audio_latents is not None and audio_latents.ndim != 4:
+            raise ValueError(
+                f"Only unpacked (4D) audio latents of shape `[batch_size, num_channels, audio_length, mel_bins] are"
+                f" supported, but got {latents.ndim} dims. If you have packed (3D) latents, please unpack them (e.g."
+                f" using the `_unpack_audio_latents` method)."
+            )
 
     @staticmethod
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._pack_latents
@@ -871,21 +886,19 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         mask_shape = (batch_size, 1, latent_num_frames, latent_height, latent_width)
 
         if latents is not None:
-            # Latents is either shape [B, F, C, H, W] or [B, seq_len, hidden_dim]
-            if latents.ndim == 5:
-                latents = self._normalize_latents(
-                    latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-                )
+            # Latents are expected to be unpacked (5D) with shape [B, F, C, H, W]
+            latents = self._normalize_latents(
+                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
         else:
             # NOTE: we set the initial latents to zeros rather a sample from the standard Gaussian prior because we
             # will sample from the prior later once we have calculated the conditioning mask
             latents = torch.zeros(shape, device=device, dtype=dtype)
 
         conditioning_mask = latents.new_zeros(mask_shape)
-        if latents.ndim == 5:
-            latents = self._pack_latents(
-                latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
-            )
+        latents = self._pack_latents(
+            latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+        )
         conditioning_mask = self._pack_latents(
             conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
         )  # [B, seq_len, 1]
@@ -952,18 +965,12 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if latents is not None:
-            if latents.ndim == 4:
-                # latents are of shape [B, C, L, M], need to be packed
-                latents = self._pack_audio_latents(latents)
-            if latents.ndim != 3:
-                raise ValueError(
-                    f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is [batch_size, num_seq, num_features]."
-                )
+            # latents expected to be unpacked (4D) with shape [B, C, L, M]
+            latents = self._pack_audio_latents(latents)
             latents = self._normalize_audio_latents(latents, self.audio_vae.latents_mean, self.audio_vae.latents_std)
             latents = self._create_noised_state(latents, noise_scale, generator)
             return latents.to(device=device, dtype=dtype)
 
-        # TODO: confirm whether this logic is correct
         latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
 
         shape = (batch_size, num_channels_latents, audio_latent_length, latent_mel_bins)
@@ -1153,6 +1160,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
+            latents=latents,
+            audio_latents=audio_latents,
         )
 
         self._guidance_scale = guidance_scale
@@ -1210,20 +1219,10 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         latent_height = height // self.vae_spatial_compression_ratio
         latent_width = width // self.vae_spatial_compression_ratio
         if latents is not None:
-            if latents.ndim == 5:
-                logger.info(
-                    "Got latents of shape [batch_size, latent_dim, latent_frames, latent_height, latent_width], `latent_num_frames`, `latent_height`, `latent_width` will be inferred."
-                )
-                _, _, latent_num_frames, latent_height, latent_width = latents.shape  # [B, C, F, H, W]
-            elif latents.ndim == 3:
-                logger.warning(
-                    f"You have supplied packed `latents` of shape {latents.shape}, so the latent dims cannot be"
-                    f" inferred. Make sure the supplied `height`, `width`, and `num_frames` are correct."
-                )
-            else:
-                raise ValueError(
-                    f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is either [batch_size, seq_len, num_features] or [batch_size, latent_dim, latent_frames, latent_height, latent_width]."
-                )
+            logger.info(
+                "Got latents of shape [batch_size, latent_dim, latent_frames, latent_height, latent_width], `latent_num_frames`, `latent_height`, `latent_width` will be inferred."
+            )
+            _, _, latent_num_frames, latent_height, latent_width = latents.shape  # [B, C, F, H, W]
         video_sequence_length = latent_num_frames * latent_height * latent_width
 
         num_channels_latents = self.transformer.config.in_channels
@@ -1249,20 +1248,10 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         )
         audio_num_frames = round(duration_s * audio_latents_per_second)
         if audio_latents is not None:
-            if audio_latents.ndim == 4:
-                logger.info(
-                    "Got audio_latents of shape [batch_size, num_channels, audio_length, mel_bins], `audio_num_frames` will be inferred."
-                )
-                _, _, audio_num_frames, _ = audio_latents.shape  # [B, C, L, M]
-            elif audio_latents.ndim == 3:
-                logger.warning(
-                    f"You have supplied packed `audio_latents` of shape {audio_latents.shape}, so the latent dims"
-                    f" cannot be inferred. Make sure the supplied `num_frames` and `frame_rate` are correct."
-                )
-            else:
-                raise ValueError(
-                    f"Provided `audio_latents` tensor has shape {audio_latents.shape}, but the expected shape is either [batch_size, seq_len, num_features] or [batch_size, num_channels, audio_length, mel_bins]."
-                )
+            logger.info(
+                "Got audio_latents of shape [batch_size, num_channels, audio_num_frames, mel_bins], `audio_num_frames` will be inferred."
+            )
+            _, _, audio_num_frames, _ = audio_latents.shape  # [B, C, L, M]
 
         num_mel_bins = self.audio_vae.config.mel_bins if getattr(self, "audio_vae", None) is not None else 64
         latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
