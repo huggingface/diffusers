@@ -275,7 +275,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         self.vae_temporal_compression_ratio = (
             self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 8
         )
-        # TODO: check whether the MEL compression ratio logic here is corrct
         self.audio_vae_mel_compression_ratio = (
             self.audio_vae.mel_compression_ratio if getattr(self, "audio_vae", None) is not None else 4
         )
@@ -906,9 +905,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         condition_frames, condition_strengths, condition_indices = self.preprocess_conditions(
             conditions, height, width, num_frames, device=device
         )
-        # TODO: should we first concatenate all of the condition tensors and encode them all together? The advantage
-        # is that this would generally respect VAE settings like tiling, but a disadvantage is that this would by
-        # default take a lot of memory (for LTX 2, tiled encoding/decoding is almost always necessary).
         condition_latents = []
         for condition_tensor in condition_frames:
             condition_latent = retrieve_latents(
