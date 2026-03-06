@@ -1682,7 +1682,7 @@ def main(args):
                 model_input_ids = torch.cat([model_input_ids, cond_model_input_ids], dim=1)
 
                 # handle guidance
-                if transformer.config.guidance_embeds:
+                if unwrap_model(transformer).config.guidance_embeds:
                     guidance = torch.full([1], args.guidance_scale, device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
