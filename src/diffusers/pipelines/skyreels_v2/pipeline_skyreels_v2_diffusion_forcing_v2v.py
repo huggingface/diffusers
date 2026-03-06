@@ -21,7 +21,7 @@ from typing import Any, Callable
 
 import torch
 from PIL import Image
-from transformers import AutoTokenizer, UMT5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import SkyReelsV2LoraLoaderMixin
@@ -214,7 +214,7 @@ class SkyReelsV2DiffusionForcingVideoToVideoPipeline(DiffusionPipeline, SkyReels
     def __init__(
         self,
         tokenizer: AutoTokenizer,
-        text_encoder: UMT5EncoderModel,
+        text_encoder: T5EncoderModel | UMT5EncoderModel,
         transformer: SkyReelsV2Transformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
