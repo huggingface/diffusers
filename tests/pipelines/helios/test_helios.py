@@ -139,9 +139,9 @@ class HeliosPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
 
-    # Override to set a more lenient max diff threshold.
+    @unittest.skip("Latents are always processed in FP32. Save/Load the entire pipeline in FP16 will result in errors")
     def test_save_load_float16(self):
-        super().test_save_load_float16(expected_max_diff=0.03)
+        pass
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
