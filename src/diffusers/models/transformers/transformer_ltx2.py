@@ -217,6 +217,105 @@ class LTX2AudioVideoAttnProcessor:
         return hidden_states
 
 
+class LTX2PerturbedAttnProcessor:
+    r"""
+    Processor which implements attention with perturbation masking and per-head gating for LTX-2.X models.
+    """
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __init__(self):
+        if is_torch_version("<", "2.0"):
+            raise ValueError(
+                "LTX attention processors require a minimum PyTorch version of 2.0. Please upgrade your PyTorch installation."
+            )
+
+    def __call__(
+        self,
+        attn: "LTX2Attention",
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        query_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        key_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        perturbation_mask: torch.Tensor | None = None,
+        all_perturbed: bool | None = None,
+    ) -> torch.Tensor:
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+
+        if attn.to_gate_logits is not None:
+            # Calculate gate logits on original hidden_states
+            gate_logits = attn.to_gate_logits(hidden_states)
+
+        value = attn.to_v(encoder_hidden_states)
+        if all_perturbed is None:
+            all_perturbed = torch.all(perturbation_mask == 0) if perturbation_mask is not None else False
+
+        if all_perturbed:
+            # Skip attention, use the value projection value
+            hidden_states = value
+        else:
+            query = attn.to_q(hidden_states)
+            key = attn.to_k(encoder_hidden_states)
+
+            query = attn.norm_q(query)
+            key = attn.norm_k(key)
+
+            if query_rotary_emb is not None:
+                if attn.rope_type == "interleaved":
+                    query = apply_interleaved_rotary_emb(query, query_rotary_emb)
+                    key = apply_interleaved_rotary_emb(
+                        key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb
+                    )
+                elif attn.rope_type == "split":
+                    query = apply_split_rotary_emb(query, query_rotary_emb)
+                    key = apply_split_rotary_emb(
+                        key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb
+                    )
+
+            query = query.unflatten(2, (attn.heads, -1))
+            key = key.unflatten(2, (attn.heads, -1))
+            value = value.unflatten(2, (attn.heads, -1))
+
+            hidden_states = dispatch_attention_fn(
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
+            )
+            hidden_states = hidden_states.flatten(2, 3)
+            hidden_states = hidden_states.to(query.dtype)
+
+            if perturbation_mask is not None:
+                value = value.flatten(2, 3)
+                hidden_states = torch.lerp(value, hidden_states, perturbation_mask)
+
+        if attn.to_gate_logits is not None:
+            hidden_states = hidden_states.unflatten(2, (attn.heads, -1))  # [B, T, H, D]
+            # The factor of 2.0 is so that if the gates logits are zero-initialized the initial gates are all 1
+            gates = 2.0 * torch.sigmoid(gate_logits)  # [B, T, H]
+            hidden_states = hidden_states * gates.unsqueeze(-1)
+            hidden_states = hidden_states.flatten(2, 3)
+
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
+
+
 class LTX2Attention(torch.nn.Module, AttentionModuleMixin):
     r"""
     Attention class for all LTX-2.0 attention layers. Compared to LTX-1.0, this supports specifying the query and key
@@ -224,7 +323,7 @@ class LTX2Attention(torch.nn.Module, AttentionModuleMixin):
     """
 
     _default_processor_cls = LTX2AudioVideoAttnProcessor
-    _available_processors = [LTX2AudioVideoAttnProcessor]
+    _available_processors = [LTX2AudioVideoAttnProcessor, LTX2PerturbedAttnProcessor]
 
     def __init__(
         self,
@@ -240,6 +339,7 @@ class LTX2Attention(torch.nn.Module, AttentionModuleMixin):
         norm_eps: float = 1e-6,
         norm_elementwise_affine: bool = True,
         rope_type: str = "interleaved",
+        apply_gated_attention: bool = False,
         processor=None,
     ):
         super().__init__()
@@ -265,6 +365,12 @@ class LTX2Attention(torch.nn.Module, AttentionModuleMixin):
         self.to_out = torch.nn.ModuleList([])
         self.to_out.append(torch.nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
         self.to_out.append(torch.nn.Dropout(dropout))
+
+        if apply_gated_attention:
+            # Per head gate values
+            self.to_gate_logits = torch.nn.Linear(query_dim, heads, bias=True)
+        else:
+            self.to_gate_logits = None
 
         if processor is None:
             processor = self._default_processor_cls()
