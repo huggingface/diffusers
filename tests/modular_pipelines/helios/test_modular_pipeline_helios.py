@@ -140,7 +140,7 @@ class TestHeliosPyramidModularPipelineFast(ModularPipelineTesterMixin):
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
-            "pyramid_num_inference_steps_list": [2, 2, 2],
+            "pyramid_num_inference_steps_list": [2, 2],
             "height": 64,
             "width": 64,
             "num_frames": 9,

@@ -50,9 +50,7 @@ def sample_block_noise(batch_size, channel, num_frames, height, width, gamma, pa
 
     cov = torch.eye(block_size) * (1 + gamma) - torch.ones(block_size, block_size) * gamma
     cov += torch.eye(block_size) * 1e-6
-    dist = torch.distributions.MultivariateNormal(
-        torch.zeros(block_size, device=cov.device), covariance_matrix=cov
-    )
+    dist = torch.distributions.MultivariateNormal(torch.zeros(block_size, device=cov.device), covariance_matrix=cov)
     block_number = batch_size * channel * num_frames * (height // ph) * (width // pw)
 
     noise = dist.sample((block_number,))  # [block number, block_size]

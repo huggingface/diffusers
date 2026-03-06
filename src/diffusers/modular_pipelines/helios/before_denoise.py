@@ -147,12 +147,21 @@ def repeat_tensor_to_batch_size(
 
     Raises:
         ValueError: If input_tensor is not a torch.Tensor or has invalid batch size
+
+    Examples:
+        tensor = torch.tensor([[1, 2, 3]]) # shape: [1, 3] repeated = repeat_tensor_to_batch_size("image", tensor,
+        batch_size=2, num_videos_per_prompt=2) repeated # tensor([[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3]]) - shape:
+        [4, 3]
+
+        tensor = torch.tensor([[1, 2, 3], [4, 5, 6]]) # shape: [2, 3] repeated = repeat_tensor_to_batch_size("image",
+        tensor, batch_size=2, num_videos_per_prompt=2) repeated # tensor([[1, 2, 3], [1, 2, 3], [4, 5, 6], [4, 5, 6]])
+        - shape: [4, 3]
     """
     # make sure input is a tensor
     if not isinstance(input_tensor, torch.Tensor):
         raise ValueError(f"`{input_name}` must be a tensor")
 
-    # make sure input tensor has batch size 1 or batch_size same as prompts
+    # make sure input tensor e.g. image_latents has batch size 1 or batch_size same as prompts
     if input_tensor.shape[0] == 1:
         repeat_by = batch_size * num_videos_per_prompt
     elif input_tensor.shape[0] == batch_size:
@@ -171,19 +180,26 @@ def repeat_tensor_to_batch_size(
 # Copied from diffusers.modular_pipelines.wan.before_denoise.calculate_dimension_from_latents
 def calculate_dimension_from_latents(
     latents: torch.Tensor, vae_scale_factor_temporal: int, vae_scale_factor_spatial: int
-) -> tuple[int, int, int]:
+) -> tuple[int, int]:
     """Calculate image dimensions from latent tensor dimensions.
 
+    This function converts latent temporal and spatial dimensions to image temporal and spatial dimensions by
+    multiplying the latent num_frames/height/width by the VAE scale factor.
+
     Args:
-        latents (torch.Tensor): The latent tensor with 5 dimensions [batch, channels, frames, height, width].
+        latents (torch.Tensor): The latent tensor. Must have 4 or 5 dimensions.
+            Expected shapes: [batch, channels, height, width] or [batch, channels, frames, height, width]
         vae_scale_factor_temporal (int): The scale factor used by the VAE to compress temporal dimension.
+            Typically 4 for most VAEs (video is 4x larger than latents in temporal dimension)
         vae_scale_factor_spatial (int): The scale factor used by the VAE to compress spatial dimension.
+            Typically 8 for most VAEs (image is 8x larger than latents in each dimension)
 
     Returns:
-        tuple[int, int, int]: The calculated dimensions as (num_frames, height, width)
+        tuple[int, int]: The calculated image dimensions as (height, width)
 
     Raises:
-        ValueError: If latents tensor doesn't have 5 dimensions
+        ValueError: If latents tensor doesn't have 4 or 5 dimensions
+
     """
     if latents.ndim != 5:
         raise ValueError(f"latents must have 5 dimensions, but got {latents.ndim}")
