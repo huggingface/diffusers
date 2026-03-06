@@ -154,8 +154,11 @@ class ClassifierFreeZeroStarGuidance(BaseGuidance):
 
 
 def cfg_zero_star_scale(cond: torch.Tensor, uncond: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    cond_dtype = cond.dtype
+    cond = cond.float()
+    uncond = uncond.float()
     dot_product = torch.sum(cond * uncond, dim=1, keepdim=True)
     squared_norm = torch.sum(uncond**2, dim=1, keepdim=True) + eps
     # st_star = v_cond^T * v_uncond / ||v_uncond||^2
     scale = dot_product / squared_norm
-    return scale
+    return scale.to(dtype=cond_dtype)
