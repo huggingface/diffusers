@@ -280,13 +280,14 @@ class TeaCacheConfig:
         if not isinstance(self.rel_l1_thresh, (int, float)):
             raise TypeError(
                 f"rel_l1_thresh must be a number, got {type(self.rel_l1_thresh).__name__}. "
-                f"Please provide a float value between 0.1 and 1.0."
+                f"Please provide a float value >= 0.0 (values between 0.1 and 1.0 are recommended)."
             )
-        if self.rel_l1_thresh <= 0:
+        if self.rel_l1_thresh < 0:
             raise ValueError(
-                f"rel_l1_thresh must be positive, got {self.rel_l1_thresh}. "
+                f"rel_l1_thresh must be non-negative, got {self.rel_l1_thresh}. "
                 f"Based on the TeaCache paper, values between 0.1 and 0.3 work best. "
-                f"Try 0.25 for 1.5x speedup or 0.6 for 2x speedup."
+                f"Try 0.25 for 1.5x speedup or 0.6 for 2x speedup. "
+                f"Note that rel_l1_thresh=0.0 effectively disables caching by forcing computation at every step."
             )
         if self.rel_l1_thresh < 0.05:
             logger.warning(
