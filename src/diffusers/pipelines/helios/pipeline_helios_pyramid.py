@@ -76,6 +76,8 @@ EXAMPLE_DOC_STRING = """
 
 
 def optimized_scale(positive_flat, negative_flat):
+    positive_flat = positive_flat.float()
+    negative_flat = negative_flat.float()
     # Calculate dot production
     dot_product = torch.sum(positive_flat * negative_flat, dim=1, keepdim=True)
     # Squared norm of uncondition
