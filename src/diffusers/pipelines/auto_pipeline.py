@@ -78,6 +78,7 @@ from .lumina import LuminaPipeline
 from .lumina2 import Lumina2Pipeline
 from .ovis_image import OvisImagePipeline
 from .pag import (
+    StableDiffusionControlNetPAGImg2ImgPipeline,
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
     SanaPAGPipeline,
@@ -199,6 +200,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
         ("kandinsky3", Kandinsky3Img2ImgPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
+        ("stable-diffusion-controlnet-pag", StableDiffusionControlNetPAGImg2ImgPipeline),
         ("stable-diffusion-pag", StableDiffusionPAGImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet-union", StableDiffusionXLControlNetUnionImg2ImgPipeline),
