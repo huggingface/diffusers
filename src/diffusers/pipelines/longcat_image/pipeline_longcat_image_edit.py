@@ -651,6 +651,7 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
             latent_image_ids = latents_ids
 
         # 6. Denoising loop
+        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
