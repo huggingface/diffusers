@@ -1715,7 +1715,7 @@ def main(args):
                 packed_noisy_model_input = Flux2KleinPipeline._pack_latents(noisy_model_input)
 
                 # handle guidance
-                if transformer.config.guidance_embeds:
+                if unwrap_model(transformer).config.guidance_embeds:
                     guidance = torch.full([1], args.guidance_scale, device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
