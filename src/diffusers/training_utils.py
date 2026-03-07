@@ -11,6 +11,7 @@ from typing import Any, Iterable
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 
 if getattr(torch, "distributed", None) is not None:
@@ -107,6 +108,92 @@ def compute_snr(noise_scheduler, timesteps):
     # Compute SNR.
     snr = (alpha / sigma) ** 2
     return snr
+
+
+def compute_confidence_aware_loss(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    *,
+    lambda_conf: float = 0.0,
+    temperature: float = 1.0,
+    per_token_weights: Optional[torch.Tensor] = None,
+    ignore_index: int = -100,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Computes a confidence-aware training loss for token classification-style heads.
+
+    This loss combines:
+      - `loss_sft`: standard supervised cross-entropy on all non-ignored labels.
+      - `loss_conf`: an entropy penalty applied only on tokens that are already predicted correctly.
+
+    Args:
+        logits (`torch.Tensor`): Logits of shape `(..., vocab_size)`.
+        labels (`torch.Tensor`): Labels of shape `(...)`, matching `logits.shape[:-1]`. Values set to `ignore_index`
+            are excluded from both losses.
+        lambda_conf (`float`, *optional*, defaults to `0.0`): Weight for the confidence term.
+        temperature (`float`, *optional*, defaults to `1.0`): Temperature used for the entropy term only. Lower values
+            sharpen the distribution and change the strength of the confidence gradients.
+        per_token_weights (`torch.Tensor`, *optional*): Optional weights of shape `(...)` to reweight both losses per
+            token (e.g. schedule-aware weights). Tokens with weight `0` contribute nothing.
+        ignore_index (`int`, *optional*, defaults to `-100`): Ignore index for labels.
+
+    Returns:
+        `Tuple[torch.Tensor, torch.Tensor, torch.Tensor]`: `(loss, loss_sft, loss_conf)`.
+    """
+    if logits.ndim < 2:
+        raise ValueError(f"`logits` must have at least 2 dims, got shape {tuple(logits.shape)}.")
+    if labels.shape != logits.shape[:-1]:
+        raise ValueError(
+            f"`labels` shape must match `logits.shape[:-1]`, got labels={tuple(labels.shape)} logits={tuple(logits.shape)}."
+        )
+    if temperature <= 0:
+        raise ValueError(f"`temperature` must be > 0, got {temperature}.")
+
+    valid = labels.ne(ignore_index)
+    if per_token_weights is None:
+        weights = torch.ones_like(labels, dtype=logits.dtype)
+    else:
+        if per_token_weights.shape != labels.shape:
+            raise ValueError(
+                f"`per_token_weights` shape must match `labels` shape, got {tuple(per_token_weights.shape)} != {tuple(labels.shape)}."
+            )
+        weights = per_token_weights.to(dtype=logits.dtype)
+
+    # Supervised CE (optionally weighted).
+    vocab_size = logits.shape[-1]
+    per_token_nll = F.cross_entropy(
+        logits.reshape(-1, vocab_size),
+        labels.reshape(-1),
+        reduction="none",
+        ignore_index=ignore_index,
+    ).reshape_as(labels)
+
+    denom_sft = (weights * valid.to(weights.dtype)).sum().clamp_min(1)
+    loss_sft = (per_token_nll * weights * valid.to(per_token_nll.dtype)).sum() / denom_sft
+
+    # Confidence loss: penalize entropy only where prediction is already correct.
+    if lambda_conf == 0.0:
+        loss_conf = torch.zeros((), device=logits.device, dtype=loss_sft.dtype)
+        return loss_sft, loss_sft, loss_conf
+
+    with torch.no_grad():
+        pred = logits.argmax(dim=-1)
+        correct = valid & pred.eq(labels)
+
+    scaled_logits = logits.float()
+    if temperature != 1.0:
+        scaled_logits = scaled_logits / float(temperature)
+
+    probs = torch.softmax(scaled_logits, dim=-1)
+    eps = torch.finfo(probs.dtype).tiny
+    log_probs = torch.log(probs.clamp_min(eps))
+    entropy = -(probs * log_probs).sum(dim=-1).to(dtype=logits.dtype)
+
+    denom_conf = (weights * correct.to(weights.dtype)).sum().clamp_min(1)
+    loss_conf = (entropy * weights * correct.to(entropy.dtype)).sum() / denom_conf
+
+    loss = loss_sft + float(lambda_conf) * loss_conf
+    return loss, loss_sft, loss_conf
 
 
 def resolve_interpolation_mode(interpolation_type: str):

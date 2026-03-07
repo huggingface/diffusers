@@ -1,0 +1,231 @@
+# Copyright 2025 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import torch
+
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...utils import BaseOutput
+from ..pipeline_utils import DiffusionPipeline, DiscreteDiffusionPipelineMixin
+
+
+@dataclass
+class BlockTokenDiffusionPipelineOutput(BaseOutput):
+    sequences: torch.LongTensor
+    texts: Optional[List[str]] = None
+
+
+class BlockTokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
+    """
+    Block-wise token diffusion sampling pipeline.
+
+    Compared to `TokenDiffusionPipeline`, this pipeline updates the sequence in blocks. Only the current block's
+    positions are allowed to change during the inner denoising loop.
+    """
+
+    model: Any
+    tokenizer: Any
+    scheduler: Any
+
+    _callback_tensor_inputs = ["input_ids", "logits", "block_mask"]
+
+    def __init__(
+        self,
+        model: Any,
+        scheduler: Any,
+        tokenizer: Optional[Any] = None,
+    ):
+        super().__init__()
+        self.register_modules(model=model, scheduler=scheduler, tokenizer=tokenizer)
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    def prepare_latents(
+        self,
+        batch_size: int,
+        seq_len: int,
+        generator: Optional[torch.Generator] = None,
+        device: Optional[torch.device] = None,
+    ) -> torch.LongTensor:
+        shape = torch.Size((batch_size, seq_len))
+        return self.scheduler.sample_prior(shape, device=device, generator=generator)
+
+    def check_inputs(
+        self,
+        batch_size: int,
+        seq_len: int,
+        block_size: int,
+        callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
+        callback_on_step_end_tensor_inputs: Optional[List[str]],
+        infill_mask: Optional[torch.BoolTensor],
+        prefix_ids: Optional[torch.LongTensor],
+    ):
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+        if infill_mask is not None and infill_mask.shape != (batch_size, seq_len):
+            raise ValueError(f"`infill_mask` must have shape {(batch_size, seq_len)}, got {tuple(infill_mask.shape)}.")
+        if prefix_ids is not None:
+            p = prefix_ids
+            if p.ndim == 1:
+                p = p.unsqueeze(0)
+            if p.ndim == 2 and p.shape[1] > seq_len:
+                raise ValueError(f"`prefix_ids` length {p.shape[1]} must be <= seq_len={seq_len}.")
+        if block_size <= 0 or block_size > seq_len:
+            raise ValueError(f"`block_size` must be in [1, seq_len], got block_size={block_size}, seq_len={seq_len}.")
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        batch_size: int = 1,
+        seq_len: int = 64,
+        block_size: int = 32,
+        num_inference_steps: int = 64,
+        generator: Optional[torch.Generator] = None,
+        prefix_ids: Optional[torch.LongTensor] = None,
+        infill_mask: Optional[torch.BoolTensor] = None,
+        inject_start_token: bool = False,
+        top_p: float = 1.0,
+        return_text: bool = True,
+        return_dict: bool = True,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
+        **model_kwargs,
+    ) -> Union[BlockTokenDiffusionPipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is None:
+            callback_on_step_end_tensor_inputs = ["input_ids"]
+
+        self.check_inputs(
+            batch_size=batch_size,
+            seq_len=seq_len,
+            block_size=block_size,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            infill_mask=infill_mask,
+            prefix_ids=prefix_ids,
+        )
+
+        device = self._execution_device
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
+
+        input_ids = self.prepare_latents(batch_size, seq_len, generator=generator, device=device)
+        attention_mask = torch.ones_like(input_ids, dtype=torch.long)
+
+        fixed_mask = None
+        fixed_values = None
+        if infill_mask is not None:
+            fixed_mask = (~infill_mask.to(device=device)).to(dtype=torch.bool)
+            fixed_values = input_ids.clone()
+
+        if prefix_ids is not None:
+            prefix_ids = self._normalize_prefix_ids(prefix_ids, batch_size=batch_size, device=device)
+            prefix_len = prefix_ids.shape[1]
+
+            input_ids[:, :prefix_len] = prefix_ids
+            if fixed_mask is None:
+                fixed_mask = torch.zeros((batch_size, seq_len), device=device, dtype=torch.bool)
+                fixed_values = input_ids.clone()
+            fixed_mask[:, :prefix_len] = True
+            fixed_values[:, :prefix_len] = prefix_ids
+
+        start_token_id = self._resolve_start_token_id()
+        if inject_start_token and start_token_id is not None:
+            input_ids[:, 0] = start_token_id
+            if fixed_mask is None:
+                fixed_mask = torch.zeros((batch_size, seq_len), device=device, dtype=torch.bool)
+                fixed_values = input_ids.clone()
+            fixed_mask[:, 0] = True
+            fixed_values[:, 0] = start_token_id
+
+        num_blocks = (seq_len + block_size - 1) // block_size
+        self._num_timesteps = len(timesteps) * int(num_blocks)
+        global_step = 0
+        for block_idx in range(num_blocks):
+            start = block_idx * block_size
+            end = min((block_idx + 1) * block_size, seq_len)
+
+            block_mask = torch.zeros((batch_size, seq_len), device=device, dtype=torch.bool)
+            block_mask[:, start:end] = True
+            if fixed_mask is not None:
+                block_mask = block_mask & (~fixed_mask)
+
+            if not torch.any(block_mask):
+                continue
+
+            input_ids = torch.where(block_mask, int(self.scheduler.mask_token_id), input_ids)
+
+            for step_idx, t in enumerate(timesteps):
+                out = self.model(input_ids=input_ids, attention_mask=attention_mask, **model_kwargs)
+                logits = getattr(out, "logits", None)
+                if logits is None:
+                    logits = out[0]
+
+                if top_p < 1.0:
+                    logits_block = logits[block_mask].view(-1, logits.shape[-1])
+                    logits_block = self._top_p_filtering(logits_block, top_p=top_p)
+                    logits = logits.clone()
+                    logits[block_mask] = logits_block.view(-1, logits.shape[-1])
+
+                input_ids = self.scheduler.step(
+                    logits,
+                    t,
+                    input_ids,
+                    generator=generator,
+                    return_dict=True,
+                    block_mask=block_mask,
+                ).prev_sample
+
+                if fixed_mask is not None:
+                    input_ids = torch.where(fixed_mask, fixed_values, input_ids)
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, global_step, t, callback_kwargs)
+                    input_ids = callback_outputs.pop("input_ids", input_ids)
+
+                global_step += 1
+
+        texts = None
+        if return_text and getattr(self, "tokenizer", None) is not None:
+            texts = self.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+
+        if not return_dict:
+            return (input_ids, texts)
+        return BlockTokenDiffusionPipelineOutput(sequences=input_ids, texts=texts)
+
+
+__all__ = ["BlockTokenDiffusionPipeline", "BlockTokenDiffusionPipelineOutput"]
