@@ -238,6 +238,21 @@ def collate_fn(examples):
     return {"pixel_values": pixel_values, "class_labels": class_labels}
 
 
+def compute_resume_offsets(
+    global_step: int, num_update_steps_per_epoch: int, gradient_accumulation_steps: int
+) -> tuple[int, int]:
+    first_epoch = global_step // num_update_steps_per_epoch
+    resume_global_step = global_step * gradient_accumulation_steps
+    resume_step = resume_global_step % (num_update_steps_per_epoch * gradient_accumulation_steps)
+    return first_epoch, resume_step
+
+
+def should_skip_resumed_batch(
+    should_resume: bool, epoch: int, first_epoch: int, step: int, resume_step: int
+) -> bool:
+    return should_resume and epoch == first_epoch and step < resume_step
+
+
 def get_latent_spec(autoencoder: AutoencoderRAE) -> tuple[int, int]:
     if not autoencoder.config.reshape_to_2d:
         raise ValueError("Stage-2 RAE DiT training expects `AutoencoderRAE.reshape_to_2d=True`.")
@@ -505,9 +520,11 @@ def main():
             accelerator.load_state(path)
             global_step = int(os.path.basename(path).split("-")[1])
             initial_global_step = global_step
-            resume_global_step = global_step * args.gradient_accumulation_steps
-            first_epoch = global_step // num_update_steps_per_epoch
-            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
+            first_epoch, resume_step = compute_resume_offsets(
+                global_step=global_step,
+                num_update_steps_per_epoch=num_update_steps_per_epoch,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+            )
 
     progress_bar = tqdm(
         range(0, args.max_train_steps),
@@ -518,11 +535,19 @@ def main():
 
     for epoch in range(first_epoch, args.num_train_epochs):
         transformer.train()
-        epoch_dataloader = train_dataloader
-        if args.resume_from_checkpoint and epoch == first_epoch and resume_step > 0:
-            epoch_dataloader = accelerator.skip_first_batches(train_dataloader, num_batches=resume_step)
+        if hasattr(train_dataloader, "set_epoch"):
+            train_dataloader.set_epoch(epoch)
 
-        for batch in epoch_dataloader:
+        for step, batch in enumerate(train_dataloader):
+            if should_skip_resumed_batch(
+                should_resume=args.resume_from_checkpoint is not None,
+                epoch=epoch,
+                first_epoch=first_epoch,
+                step=step,
+                resume_step=resume_step,
+            ):
+                continue
+
             with accelerator.accumulate(transformer):
                 pixel_values = batch["pixel_values"].to(device=accelerator.device, dtype=weight_dtype, non_blocking=True)
                 class_labels = batch["class_labels"].to(device=accelerator.device, non_blocking=True)
