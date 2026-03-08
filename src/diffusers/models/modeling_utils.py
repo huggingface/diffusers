@@ -215,7 +215,10 @@ def no_init_weights():
     """
 
     def _skip_init(*args, **kwargs):
-        pass
+        # Preserve the `torch.nn.init.*` return contract so third-party model
+        # constructors that chain on the returned tensor still work under
+        # `no_init_weights()`.
+        return args[0] if len(args) > 0 else None
 
     for name, init_func in TORCH_INIT_FUNCTIONS.items():
         setattr(torch.nn.init, name, _skip_init)
