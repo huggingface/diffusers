@@ -22,7 +22,26 @@ def _repeat_to_length(hidden_states: torch.Tensor, target_length: int) -> torch.
             f"Cannot repeat sequence of length {hidden_states.shape[1]} to match target length {target_length}."
         )
 
-    return hidden_states.repeat_interleave(target_length // hidden_states.shape[1], dim=1)
+    if hidden_states.shape[1] == 1:
+        return hidden_states.expand(-1, target_length, -1)
+
+    source_side = int(sqrt(hidden_states.shape[1]))
+    target_side = int(sqrt(target_length))
+    if (
+        source_side * source_side == hidden_states.shape[1]
+        and target_side * target_side == target_length
+        and target_side % source_side == 0
+    ):
+        scale = target_side // source_side
+        batch_size, _, channels = hidden_states.shape
+        hidden_states = hidden_states.reshape(batch_size, source_side, source_side, channels)
+        hidden_states = hidden_states.repeat_interleave(scale, dim=1).repeat_interleave(scale, dim=2)
+        return hidden_states.reshape(batch_size, target_length, channels)
+
+    raise ValueError(
+        "Cannot expand conditioning tokens without preserving their 2D layout: "
+        f"source length {hidden_states.shape[1]} is incompatible with target length {target_length}."
+    )
 
 
 def _ddt_modulate(hidden_states: torch.Tensor, shift: torch.Tensor | None, scale: torch.Tensor) -> torch.Tensor:

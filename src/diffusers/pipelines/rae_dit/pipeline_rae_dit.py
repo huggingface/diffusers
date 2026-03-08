@@ -33,10 +33,14 @@ class RAEDiTPipeline(DiffusionPipeline):
     ):
         super().__init__()
         self.register_modules(transformer=transformer, vae=vae, scheduler=scheduler)
+        serialized_id2label = None
+        if id2label is not None:
+            serialized_id2label = {str(key): value for key, value in id2label.items()}
+        self.register_to_config(id2label=serialized_id2label)
 
         self.labels = {}
-        if id2label is not None:
-            for key, value in id2label.items():
+        if self.config.id2label is not None:
+            for key, value in self.config.id2label.items():
                 for label in value.split(","):
                     self.labels[label.strip()] = int(key)
             self.labels = dict(sorted(self.labels.items()))

@@ -18,6 +18,7 @@ import unittest
 import torch
 
 from diffusers import RAEDiTTransformer2DModel
+from diffusers.models.transformers.transformer_rae_dit import _repeat_to_length
 
 from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
 from ..test_modeling_common import ModelTesterMixin
@@ -147,6 +148,49 @@ class RAEDiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
             ).sample
 
         self.assertTrue(torch.allclose(output_internal, output_precomputed, atol=1e-5, rtol=1e-4))
+
+    def test_repeat_to_length_preserves_2d_layout(self):
+        hidden_states = torch.tensor([[[1.0], [2.0], [3.0], [4.0]]])
+
+        repeated = _repeat_to_length(hidden_states, target_length=16)
+
+        expected = torch.tensor(
+            [
+                [
+                    [1.0],
+                    [1.0],
+                    [2.0],
+                    [2.0],
+                    [1.0],
+                    [1.0],
+                    [2.0],
+                    [2.0],
+                    [3.0],
+                    [3.0],
+                    [4.0],
+                    [4.0],
+                    [3.0],
+                    [3.0],
+                    [4.0],
+                    [4.0],
+                ]
+            ]
+        )
+        self.assertTrue(torch.equal(repeated, expected))
+
+    def test_repeat_to_length_broadcasts_global_conditioning(self):
+        hidden_states = torch.tensor([[[1.0, 2.0]]])
+
+        repeated = _repeat_to_length(hidden_states, target_length=4)
+
+        expected = torch.tensor([[[1.0, 2.0], [1.0, 2.0], [1.0, 2.0], [1.0, 2.0]]])
+        self.assertTrue(torch.equal(repeated, expected))
+
+    def test_repeat_to_length_rejects_incompatible_multi_token_layouts(self):
+        hidden_states = torch.randn(1, 2, 4)
+
+        with self.assertRaises(ValueError):
+            _repeat_to_length(hidden_states, target_length=8)
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"RAEDiTTransformer2DModel"}

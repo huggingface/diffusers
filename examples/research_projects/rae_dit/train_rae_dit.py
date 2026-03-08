@@ -485,23 +485,29 @@ def main():
     global_step = 0
     first_epoch = 0
     initial_global_step = 0
+    resume_step = 0
 
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
-            path = os.path.basename(args.resume_from_checkpoint)
+            path = args.resume_from_checkpoint
+            if not os.path.isdir(path):
+                path = os.path.join(args.output_dir, os.path.basename(path))
         else:
             checkpoints = [d for d in os.listdir(args.output_dir) if d.startswith("checkpoint-")]
             checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
-            path = checkpoints[-1] if checkpoints else None
+            path = os.path.join(args.output_dir, checkpoints[-1]) if checkpoints else None
 
-        if path is None:
+        if path is None or not os.path.isdir(path):
             logger.info(f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run.")
+            args.resume_from_checkpoint = None
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(os.path.join(args.output_dir, path))
-            global_step = int(path.split("-")[1])
+            accelerator.load_state(path)
+            global_step = int(os.path.basename(path).split("-")[1])
             initial_global_step = global_step
+            resume_global_step = global_step * args.gradient_accumulation_steps
             first_epoch = global_step // num_update_steps_per_epoch
+            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
     progress_bar = tqdm(
         range(0, args.max_train_steps),
@@ -512,8 +518,11 @@ def main():
 
     for epoch in range(first_epoch, args.num_train_epochs):
         transformer.train()
+        epoch_dataloader = train_dataloader
+        if args.resume_from_checkpoint and epoch == first_epoch and resume_step > 0:
+            epoch_dataloader = accelerator.skip_first_batches(train_dataloader, num_batches=resume_step)
 
-        for step, batch in enumerate(train_dataloader):
+        for batch in epoch_dataloader:
             with accelerator.accumulate(transformer):
                 pixel_values = batch["pixel_values"].to(device=accelerator.device, dtype=weight_dtype, non_blocking=True)
                 class_labels = batch["class_labels"].to(device=accelerator.device, non_blocking=True)

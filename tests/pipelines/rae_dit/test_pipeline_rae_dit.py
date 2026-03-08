@@ -236,3 +236,20 @@ class RAEDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         self.assertEqual(pipe.get_label_ids("first"), [1])
         self.assertEqual(pipe.get_label_ids(["zero", "one"]), [0, 1])
+
+    def test_save_load_preserves_label_ids(self):
+        pipe = self.pipeline_class(
+            **self.get_dummy_components(),
+            id2label={
+                0: "zero",
+                1: "one, first",
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+
+        self.assertEqual(pipe_loaded.config.id2label, {"0": "zero", "1": "one, first"})
+        self.assertEqual(pipe_loaded.get_label_ids("first"), [1])
+        self.assertEqual(pipe_loaded.get_label_ids(["zero", "one"]), [0, 1])
