@@ -449,8 +449,14 @@ class LTX2VideoTransformerBlock(nn.Module):
         eps: float = 1e-6,
         elementwise_affine: bool = False,
         rope_type: str = "interleaved",
+        perturbed_attn: bool = False,
     ):
         super().__init__()
+
+        if perturbed_attn:
+            attn_processor_cls = LTX2PerturbedAttnProcessor
+        else:
+            attn_processor_cls = LTX2AudioVideoAttnProcessor
 
         # 1. Self-Attention (video and audio)
         self.norm1 = RMSNorm(dim, eps=eps, elementwise_affine=elementwise_affine)
@@ -465,7 +471,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             qk_norm=qk_norm,
             rope_type=rope_type,
             apply_gated_attention=video_gated_attn,
-            processor=LTX2AudioVideoAttnProcessor(),
+            processor=attn_processor_cls(),
         )
 
         self.audio_norm1 = RMSNorm(audio_dim, eps=eps, elementwise_affine=elementwise_affine)
@@ -480,7 +486,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             qk_norm=qk_norm,
             rope_type=rope_type,
             apply_gated_attention=audio_gated_attn,
-            processor=LTX2AudioVideoAttnProcessor(),
+            processor=attn_processor_cls(),
         )
 
         # 2. Prompt Cross-Attention
@@ -496,7 +502,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             qk_norm=qk_norm,
             rope_type=rope_type,
             apply_gated_attention=video_gated_attn,
-            processor=LTX2AudioVideoAttnProcessor(),
+            processor=attn_processor_cls(),
         )
 
         self.audio_norm2 = RMSNorm(audio_dim, eps=eps, elementwise_affine=elementwise_affine)
@@ -511,7 +517,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             qk_norm=qk_norm,
             rope_type=rope_type,
             apply_gated_attention=audio_gated_attn,
-            processor=LTX2AudioVideoAttnProcessor(),
+            processor=attn_processor_cls(),
         )
 
         # 3. Audio-to-Video (a2v) and Video-to-Audio (v2a) Cross-Attention
@@ -528,7 +534,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             qk_norm=qk_norm,
             rope_type=rope_type,
             apply_gated_attention=video_gated_attn,
-            processor=LTX2AudioVideoAttnProcessor(),
+            processor=attn_processor_cls(),
         )
 
         # Video-to-Audio (v2a) Attention --> Q: Audio; K,V: Video
@@ -544,7 +550,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             qk_norm=qk_norm,
             rope_type=rope_type,
             apply_gated_attention=audio_gated_attn,
-            processor=LTX2AudioVideoAttnProcessor(),
+            processor=attn_processor_cls(),
         )
 
         # 4. Feedforward layers
