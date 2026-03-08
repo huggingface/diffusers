@@ -44,7 +44,7 @@ The example below demonstrates how to generate a video from text optimized for m
 
 Refer to the [Reduce memory usage](../../optimization/memory) guide for more details about the various memory saving techniques.
 
-The Helios model below requires ~19GB of VRAM.
+The Helios model below requires ~6GB of VRAM.
 
 ```py
 import torch
@@ -63,8 +63,7 @@ pipeline = HeliosPipeline.from_pretrained(
 pipeline.enable_group_offload(
     onload_device=torch.device("cuda"),
     offload_device=torch.device("cpu"),
-    offload_type="block_level",
-    num_blocks_per_group=1,
+    offload_type="leaf_level",
     use_stream=True,
     record_stream=True,
 )
@@ -97,7 +96,7 @@ export_to_video(output, "helios_base_t2v_output.mp4", fps=24)
 </hfoption>
 <hfoption id="inference speed">
 
-[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster. [Attention Backends](../../optimization/attention_backends) such as FlashAttention and SageAttention can significantly increase speed by optimizing the computation of the attention mechanism. [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
+[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster. [Attention Backends](../../optimization/attention_backends) such as FlashAttention and SageAttention can significantly increase speed by optimizing the computation of the attention mechanism. [Context Parallelism](../../training/distributed_inference#context-parallelism) splits the input sequence across multiple devices to enable processing of long contexts in parallel, reducing memory pressure and latency. [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 ```py
 import torch
