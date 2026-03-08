@@ -58,9 +58,3 @@ out = pipe(
 
 ## BlockRefinementPipelineOutput
 [[autodoc]] pipelines.BlockRefinementPipelineOutput
-
-## BlockRefinementScheduler
-[[autodoc]] BlockRefinementScheduler
-
-## BlockRefinementSchedulerOutput
-[[autodoc]] schedulers.scheduling_block_refinement.BlockRefinementSchedulerOutput
