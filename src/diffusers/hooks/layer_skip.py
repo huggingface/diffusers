@@ -111,9 +111,9 @@ class AttentionProcessorSkipHook(ModelHook):
     def __init__(
         self,
         skip_processor_output_fn: Callable,
-        skip_attn_scores_fn: Callable | None = None,
         skip_attention_scores: bool = False,
         dropout: float = 1.0,
+        skip_attn_scores_fn: Callable | None = None,
     ):
         super().__init__()
         self.skip_processor_output_fn = skip_processor_output_fn
