@@ -7,7 +7,7 @@ import re
 import warnings
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional, Tuple
 
 import numpy as np
 import torch
