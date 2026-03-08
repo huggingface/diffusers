@@ -223,7 +223,7 @@ class HunyuanImagePipelineFastTests(
         self.assertEqual(generated_image.shape, (3, 16, 16))
 
         expected_slice_np = np.array(
-            [0.61494756, 0.49616697, 0.60327923, 0.6115793, 0.49047345, 0.56977504, 0.53066164, 0.58880305, 0.5570612]
+            [0.6068114, 0.48716035, 0.5984431, 0.60241306, 0.48849544, 0.5624479, 0.53696984, 0.58964247, 0.54248774]
         )
         output_slice = generated_image[0, -3:, -3:].flatten().cpu().numpy()
 

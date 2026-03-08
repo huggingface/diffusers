@@ -97,5 +97,32 @@ If the custom model inherits from the [`ModelMixin`] class, it gets access to th
 > )
 > ```
 
+### Saving custom models
+
+Use [`~ConfigMixin.register_for_auto_class`] to add the `auto_map` entry to `config.json` automatically when saving. This avoids having to manually edit the config file.
+
+```py
+# my_model.py
+from diffusers import ModelMixin, ConfigMixin
+
+class MyCustomModel(ModelMixin, ConfigMixin):
+    ...
+
+MyCustomModel.register_for_auto_class("AutoModel")
+
+model = MyCustomModel(...)
+model.save_pretrained("./my_model")
+```
+
+The saved `config.json` will include the `auto_map` field.
+
+```json
+{
+  "auto_map": {
+    "AutoModel": "my_model.MyCustomModel"
+  }
+}
+```
+
 > [!NOTE]
 > Learn more about implementing custom models in the [Community components](../using-diffusers/custom_pipeline_overview#community-components) guide.
