@@ -929,7 +929,14 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
                         batch_size, channel, num_frames, pyramid_height, pyramid_width = latents.shape
                         noise = self.sample_block_noise(
-                            batch_size, channel, num_frames, pyramid_height, pyramid_width, patch_size, device, generator
+                            batch_size,
+                            channel,
+                            num_frames,
+                            pyramid_height,
+                            pyramid_width,
+                            patch_size,
+                            device,
+                            generator,
                         )
                         noise = noise.to(device=device, dtype=transformer_dtype)
                         latents = alpha * latents + beta * noise  # To fix the block artifact
