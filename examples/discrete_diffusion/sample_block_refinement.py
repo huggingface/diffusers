@@ -5,7 +5,7 @@ import argparse
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from diffusers import BlockRefinementPipeline
+from diffusers import BlockRefinementPipeline, BlockRefinementScheduler
 
 
 def main():
@@ -38,7 +38,8 @@ def main():
     if tokenizer.mask_token_id is None:
         raise ValueError("Tokenizer must have `mask_token_id` for block refinement sampling.")
 
-    pipe = BlockRefinementPipeline(model=model, tokenizer=tokenizer).to(args.device)
+    scheduler = BlockRefinementScheduler()
+    pipe = BlockRefinementPipeline(model=model, scheduler=scheduler, tokenizer=tokenizer).to(args.device)
     gen = torch.Generator(device=args.device).manual_seed(args.seed)
 
     prompt_ids = tokenizer(args.prompt, return_tensors="pt")["input_ids"].to(args.device)

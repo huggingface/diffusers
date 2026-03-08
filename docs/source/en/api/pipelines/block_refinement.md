@@ -21,19 +21,16 @@ You can set default sampling parameters when creating the pipeline. Passing `Non
 falls back to `pipe.config`.
 
 ```py
-from diffusers import BlockRefinementPipeline
+from diffusers import BlockRefinementPipeline, BlockRefinementScheduler
 
+scheduler = BlockRefinementScheduler()
 pipe = BlockRefinementPipeline(
     model=model,
+    scheduler=scheduler,
     tokenizer=tokenizer,
-    gen_length=256,
-    block_length=32,
-    steps=16,
-    temperature=0.8,
-    sampling_method="multinomial",
 )
 
-out = pipe(prompt="Explain gradient descent.")
+out = pipe(prompt="Explain gradient descent.", gen_length=256, block_length=32, steps=16, temperature=0.8)
 print(out.texts[0])
 ```
 
@@ -61,3 +58,9 @@ out = pipe(
 
 ## BlockRefinementPipelineOutput
 [[autodoc]] pipelines.BlockRefinementPipelineOutput
+
+## BlockRefinementScheduler
+[[autodoc]] BlockRefinementScheduler
+
+## BlockRefinementSchedulerOutput
+[[autodoc]] schedulers.scheduling_block_refinement.BlockRefinementSchedulerOutput

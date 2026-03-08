@@ -26,7 +26,7 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from torch.utils.data import DataLoader, Dataset
 
-from diffusers import BlockRefinementPipeline
+from diffusers import BlockRefinementPipeline, BlockRefinementScheduler
 from diffusers.training_utils import compute_confidence_aware_loss
 
 
@@ -249,7 +249,8 @@ def main():
     dataloader = DataLoader(dataset, batch_size=cfg.per_device_train_batch_size, shuffle=True, drop_last=True)
 
     model = TinyBlockRefinementLM(vocab_size=cfg.vocab_size)
-    pipe = BlockRefinementPipeline(model=model, tokenizer=None)
+    scheduler = BlockRefinementScheduler()
+    pipe = BlockRefinementPipeline(model=model, scheduler=scheduler, tokenizer=None)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
 

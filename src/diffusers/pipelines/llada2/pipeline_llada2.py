@@ -33,12 +33,15 @@ EXAMPLE_DOC_STRING = """
         >>> from transformers import AutoModelForCausalLM, AutoTokenizer
         >>> from diffusers import LLaDA2Pipeline
 
+        >>> from diffusers import BlockRefinementScheduler
+
         >>> model_id = "inclusionAI/LLaDA2.0-mini"
         >>> model = AutoModelForCausalLM.from_pretrained(model_id, trust_remote_code=True, torch_dtype=torch.bfloat16)
         >>> tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
         >>> model = model.to("cuda")
+        >>> scheduler = BlockRefinementScheduler()
 
-        >>> pipe = LLaDA2Pipeline(model=model, tokenizer=tokenizer)
+        >>> pipe = LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
         >>> output = pipe(prompt="What is the meaning of life?", gen_length=256)
         >>> print(output.texts[0])
         ```

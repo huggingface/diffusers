@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...schedulers import BlockRefinementScheduler
 from ...utils import BaseOutput
 from ..pipeline_utils import DiffusionPipeline, DiscreteDiffusionPipelineMixin
 
@@ -28,16 +29,6 @@ from ..pipeline_utils import DiffusionPipeline, DiscreteDiffusionPipelineMixin
 class BlockRefinementPipelineOutput(BaseOutput):
     sequences: torch.LongTensor
     texts: Optional[List[str]] = None
-
-
-def _get_num_transfer_tokens(block_length: int, steps: int) -> torch.LongTensor:
-    if steps <= 0:
-        return torch.zeros((0,), dtype=torch.long)
-    base = int(block_length) // int(steps)
-    remainder = int(block_length) % int(steps)
-    out = torch.full((int(steps),), base, dtype=torch.long)
-    out[:remainder] += 1
-    return out
 
 
 class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
@@ -52,6 +43,7 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
     """
 
     model: Any
+    scheduler: BlockRefinementScheduler
     tokenizer: Any
 
     _callback_tensor_inputs = ["cur_x", "x0", "x0_p", "transfer_index", "confidence", "active_block"]
@@ -59,10 +51,11 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
     def __init__(
         self,
         model: Any,
+        scheduler: BlockRefinementScheduler,
         tokenizer: Optional[Any] = None,
     ):
         super().__init__()
-        self.register_modules(model=model, tokenizer=tokenizer)
+        self.register_modules(model=model, scheduler=scheduler, tokenizer=tokenizer)
 
     @property
     def num_timesteps(self):
@@ -310,6 +303,8 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
 
         steps = min(int(steps), int(gen_length) // int(minimal_topk))
 
+        self.scheduler.set_timesteps(steps, device=model_device)
+
         num_blocks = (prompt_length + int(gen_length) + int(block_length) - 1) // int(block_length)
         total_length = int(num_blocks) * int(block_length)
 
@@ -333,7 +328,6 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
 
         prefill_blocks = prompt_length // int(block_length)
         self._num_timesteps = int(steps) * max(int(num_blocks) - int(prefill_blocks), 0)
-        transfer_schedule = _get_num_transfer_tokens(int(block_length), int(steps)).to(device=model_device)
 
         finished = torch.zeros((batch_size,), device=model_device, dtype=torch.bool)
         resolved_attention_mode: str = str(attention_mask_mode)
@@ -362,8 +356,9 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
                 if finished.all():
                     break
 
-                active_block = cur_x[:, -int(block_length) :] == int(mask_token_id)
-                masks_remaining = active_block.sum() > 0
+                block_tokens = cur_x[:, -int(block_length) :]
+                active_block = block_tokens == int(mask_token_id)
+                masks_remaining = active_block.any()
 
                 if not masks_remaining and not editing_enabled:
                     break
@@ -390,47 +385,26 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
                     use_multinomial=use_multinomial,
                 )
 
-                # --- Mask-filling transfer ---
-                transfer_index = torch.zeros_like(x0, dtype=torch.bool)
-                if masks_remaining and step_idx < int(steps):
-                    clamped_step = min(step_idx, len(transfer_schedule) - 1)
-                    num_to_transfer = int(transfer_schedule[clamped_step].item())
+                scheduler_output = self.scheduler.step(
+                    sampled_tokens=x0,
+                    sampled_probs=x0_p,
+                    timestep=step_idx,
+                    sample=block_tokens,
+                    mask_token_id=int(mask_token_id),
+                    threshold=float(threshold),
+                    editing_threshold=editing_threshold,
+                    minimal_topk=int(minimal_topk),
+                    prompt_mask=prompt_mask_in_block,
+                    generator=generator,
+                    return_dict=True,
+                )
 
-                    confidence = torch.where(
-                        active_block,
-                        x0_p.to(dtype=torch.float32),
-                        torch.full_like(x0_p, -torch.inf, dtype=torch.float32),
-                    )
-
-                    for b in range(batch_size):
-                        if finished[b]:
-                            continue
-                        high_conf = confidence[b] > float(threshold)
-                        if high_conf.sum().item() >= num_to_transfer:
-                            transfer_index[b] = high_conf
-                        else:
-                            k = min(num_to_transfer, int(active_block[b].sum().item()))
-                            if k > 0:
-                                _, idx = torch.topk(confidence[b], k=k)
-                                transfer_index[b, idx] = True
-
-                # --- Editing transfer (non-mask, non-prompt positions) ---
-                editing_transfer_index = torch.zeros_like(x0, dtype=torch.bool)
-                if editing_enabled:
-                    old_block_tokens = cur_x[:, -int(block_length) :]
-                    editable = (~active_block) & (~prompt_mask_in_block.unsqueeze(0))
-                    editing_conf = torch.where(
-                        editable, x0_p.to(dtype=torch.float32), torch.full_like(x0_p, -torch.inf, dtype=torch.float32)
-                    )
-                    high_conf_edit = editing_conf > float(editing_threshold)
-                    token_changed = x0 != old_block_tokens
-                    editing_transfer_index = high_conf_edit & token_changed & editable
-
+                transfer_index = scheduler_output.transfer_index
+                editing_transfer_index = scheduler_output.editing_transfer_index
                 final_transfer = transfer_index | editing_transfer_index
+
                 if final_transfer.any():
-                    updated = cur_x[:, -int(block_length) :].clone()
-                    updated[final_transfer] = x0[final_transfer]
-                    cur_x[:, -int(block_length) :] = updated
+                    cur_x[:, -int(block_length) :] = scheduler_output.prev_sample
 
                 # Break if no masks remain and no edits were made.
                 if not masks_remaining and not editing_transfer_index.any():

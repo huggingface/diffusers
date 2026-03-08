@@ -29,7 +29,7 @@ import argparse
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from diffusers import LLaDA2Pipeline
+from diffusers import BlockRefinementScheduler, LLaDA2Pipeline
 from diffusers.hooks import apply_group_offloading
 
 
@@ -207,7 +207,8 @@ def main():
     model.eval()
 
     # Create pipeline
-    pipe = LLaDA2Pipeline(model=model, tokenizer=tokenizer)
+    scheduler = BlockRefinementScheduler()
+    pipe = LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
 
     # Apply sequential CPU offload if requested
     if args.offload == "sequential":

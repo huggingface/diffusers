@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from diffusers import BlockRefinementPipeline
+from diffusers import BlockRefinementPipeline, BlockRefinementScheduler
 
 
 class _DummyModelOutput:
@@ -46,7 +46,8 @@ class BlockRefinementPipelineTest(unittest.TestCase):
     def test_pipeline_runs(self):
         vocab_size = 32
         model = _DummyCausalLM(vocab_size=vocab_size)
-        pipe = BlockRefinementPipeline(model=model, tokenizer=None).to("cpu")
+        scheduler = BlockRefinementScheduler()
+        pipe = BlockRefinementPipeline(model=model, scheduler=scheduler, tokenizer=None).to("cpu")
 
         prompt_ids = torch.tensor([[5, 6, 7, 8], [1, 2, 3, 4]], dtype=torch.long)
         out = pipe(
@@ -69,7 +70,8 @@ class BlockRefinementPipelineTest(unittest.TestCase):
     def test_pipeline_falls_back_to_2d_attention_mask(self):
         vocab_size = 32
         model = _DummyCausalLM2DOnly(vocab_size=vocab_size)
-        pipe = BlockRefinementPipeline(model=model, tokenizer=None).to("cpu")
+        scheduler = BlockRefinementScheduler()
+        pipe = BlockRefinementPipeline(model=model, scheduler=scheduler, tokenizer=None).to("cpu")
 
         out = pipe(
             prompt_ids=torch.tensor([[5, 6, 7, 8]], dtype=torch.long),
