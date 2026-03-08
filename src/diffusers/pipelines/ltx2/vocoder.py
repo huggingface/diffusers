@@ -63,6 +63,7 @@ class DownSample1d(nn.Module):
         kernel_size: int | None = None,
         use_padding: bool = True,
         padding_mode: str = "replicate",
+        persistent: bool = True,
     ):
         super().__init__()
         self.ratio = ratio
@@ -75,7 +76,7 @@ class DownSample1d(nn.Module):
         cutoff = 0.5 / ratio
         half_width = 0.6 / ratio
         low_pass_filter = kaiser_sinc_filter1d(cutoff, half_width, self.kernel_size)
-        self.register_buffer("filter", low_pass_filter.view(1, 1, self,kernel_size))
+        self.register_buffer("filter", low_pass_filter.view(1, 1, self,kernel_size), persistent=persistent)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x expected shape: [batch_size, num_channels, hidden_dim]
@@ -93,6 +94,7 @@ class UpSample1d(nn.Module):
         kernel_size: int | None  = None,
         window_type: str = "kaiser",
         padding_mode: str = "replicate",
+        persistent: bool = True,
     ):
         super().__init__()
         self.ratio = ratio
@@ -124,7 +126,7 @@ class UpSample1d(nn.Module):
                 kernel_size=self.kernel_size,
             )
 
-        self.register_buffer("filter", sinc_filter, persistent=True)
+        self.register_buffer("filter", sinc_filter, persistent=persistent)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x expected shape: [batch_size, num_channels, hidden_dim]
@@ -391,3 +393,183 @@ class LTX2Vocoder(ModelMixin, ConfigMixin):
             hidden_states = torch.clamp(hidden_states, -1, 1)
 
         return hidden_states
+
+
+class CausalSTFT(nn.Module):
+    """
+    Performs a causal short-time Fourier transform (STFT) using causal Hann windows on a waveform. The DFT bases
+    multiplied by the Hann windows are pre-calculated and stored as buffers. For exact parity with training, the
+    exact buffers should be loaded from the checkpoint in bfloat16.
+    """
+
+    def __init__(self, filter_length: int = 512, hop_length: int = 80, window_length: int = 512):
+        super().__init__()
+        self.hop_length = hop_length
+        self.window_length = window_length
+        n_freqs = filter_length // 2 + 1
+
+        self.register_buffer("forward_basis", torch.zeros(n_freqs * 2, 1, filter_length), persistent=True)
+        self.register_buffer("inverse_basis", torch.zeros(n_freqs * 2, 1, filter_length), persistent=True)
+
+    def forward(self, waveform: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        if waveform.ndim == 2:
+            waveform = waveform.unsqueeze(1)  # [B, num_channels, num_samples]
+
+        left_pad = max(0, self.window_length - self.hop_length)  # causal: left-only
+        waveform = F.pad(waveform, (left_pad, 0))
+
+        spec = F.conv1d(waveform, self.forward_basis, stride=self.hop_length, padding=0)
+        n_freqs = spec.shape[1] // 2
+        real, imag = spec[:, :n_freqs], spec[:, n_freqs:]
+        magnitude = torch.sqrt(real**2 + imag**2)
+        phase = torch.atan2(imag.float(), real.float()).to(dtype=real.dtype)
+        return magnitude, phase
+
+
+class MelSTFT(nn.Module):
+    """
+    Calculates a causal log-mel spectrogram from a waveform. Uses a pre-calculated mel filterbank, which should be
+    loaded from the checkpoint in bfloat16.
+    """
+
+    def __init__(
+        self,
+        filter_length: int = 512,
+        hop_length: int = 80,
+        window_length: int = 512,
+        num_mel_channels: int = 64,
+    ):
+        super().__init__()
+        self.stft_fn = CausalSTFT(filter_length, hop_length, window_length)
+
+        num_freqs = filter_length // 2 + 1
+        self.register_buffer("mel_basis", torch.zeros(num_mel_channels, num_freqs), persistent=True)
+
+    def forward(self, waveform: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        magnitude, phase = self.stft_fn(waveform)
+        energy = torch.norm(magnitude, dim=1)
+        mel = torch.matmul(self.mel_basis.to(magnitude.dtype), magnitude)
+        log_mel = torch.log(torch.clamp(mel, min=1e-5))
+        return log_mel, magnitude, phase, energy
+
+
+class LTX2VocoderWithBWE(ModelMixin, ConfigMixin):
+    """
+    LTX-2.X vocoder with bandwidth extension (BWE) upsampling. The vocoder and the BWE module run in sequence, with the
+    BWE module upsampling the vocoder output waveform to a higher sampling rate. The BWE module itself has the same
+    architecture as the original vocoder.
+    """
+
+    @register_to_config
+    def __init__(
+        self,
+        in_channels: int = 128,
+        hidden_channels: int = 1536,
+        out_channels: int = 2,
+        upsample_kernel_sizes: list[int] = [11, 4, 4, 4, 4, 4],
+        upsample_factors: list[int] = [5, 2, 2, 2, 2, 2],
+        resnet_kernel_sizes: list[int] = [3, 7, 11],
+        resnet_dilations: list[list[int]] = [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+        act_fn: str = "snakebeta",
+        leaky_relu_negative_slope: float = 0.1,
+        antialias: bool = True,
+        antialias_ratio: int = 2,
+        antialias_kernel_size: int = 12,
+        final_act_fn: str | None = None,
+        final_bias: bool = False,
+        bwe_in_channels: int = 128,
+        bwe_hidden_channels: int = 512,
+        bwe_out_channels: int = 2,
+        bwe_upsample_kernel_sizes: list[int] = [12, 11, 8, 4, 4],
+        bwe_upsample_factors: list[int] = [6, 5, 2, 2, 2],
+        bwe_resnet_kernel_sizes: list[int] = [3, 7, 11],
+        bwe_resnet_dilations: list[list[int]] = [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+        bwe_act_fn: str = "snakebeta",
+        bwe_leaky_relu_negative_slope: float = 0.1,
+        bwe_antialias: bool = True,
+        bwe_antialias_ratio: int = 2,
+        bwe_antialias_kernel_size: int = 12,
+        bwe_final_act_fn: str | None = None,
+        bwe_final_bias: bool = False,
+        filter_length: int = 512,
+        hop_length: int = 80,
+        window_length: int = 512,
+        num_mel_channels: int = 64,
+        input_sampling_rate: int = 16000,
+        output_sampling_rate: int = 48000,
+    ):
+        super().__init__()
+
+        self.vocoder = LTX2Vocoder(
+            in_channels=in_channels,
+            hidden_channels=hidden_channels,
+            out_channels=out_channels,
+            upsample_kernel_sizes=upsample_kernel_sizes,
+            upsample_factors=upsample_factors,
+            resnet_kernel_sizes=resnet_kernel_sizes,
+            resnet_dilations=resnet_dilations,
+            act_fn=act_fn,
+            leaky_relu_negative_slope=leaky_relu_negative_slope,
+            antialias=antialias,
+            antialias_ratio=antialias_ratio,
+            antialias_kernel_size=antialias_kernel_size,
+            final_act_fn=final_act_fn,
+            final_bias=final_bias,
+            output_sampling_rate=input_sampling_rate,
+        )
+        self.bwe_generator = LTX2Vocoder(
+            in_channels=bwe_in_channels,
+            hidden_channels=bwe_hidden_channels,
+            out_channels=bwe_out_channels,
+            upsample_kernel_sizes=bwe_upsample_kernel_sizes,
+            upsample_factors=bwe_upsample_factors,
+            resnet_kernel_sizes=bwe_resnet_kernel_sizes,
+            resnet_dilations=bwe_resnet_dilations,
+            act_fn=bwe_act_fn,
+            leaky_relu_negative_slope=bwe_leaky_relu_negative_slope,
+            antialias=bwe_antialias,
+            antialias_ratio=bwe_antialias_ratio,
+            antialias_kernel_size=bwe_antialias_kernel_size,
+            final_act_fn=bwe_final_act_fn,
+            final_bias=bwe_final_bias,
+            output_sampling_rate=output_sampling_rate,
+        )
+
+        self.mel_stft = MelSTFT(
+            filter_length=filter_length,
+            hop_length=hop_length,
+            window_length=window_length,
+            num_mel_channels=num_mel_channels,
+        )
+
+        self.resampler = UpSample1d(
+            ratio=output_sampling_rate // input_sampling_rate,
+            window_type="hann",
+            persistent=False,
+        )
+
+    def forward(self, mel_spec: torch.Tensor) -> torch.Tensor:
+        # 1. Run stage 1 vocoder to get low sampling rate waveform
+        x = self.vocoder(mel_spec)
+        batch_size, num_channels, num_samples = x.shape
+
+        # Pad to exact multiple of hop_length for exact mel frame count
+        remainder = num_samples % self.config.hop_length
+        if remainder != 0:
+            x = F.pad(x, (0, self.hop_length - remainder))
+
+        # 2. Compute mel spectrogram on vocoder output
+        x = x.flatten(0, 1)
+        mel, _, _, _ = self.mel_stft(x)
+        mel = mel.unflatten(0, (-1, num_channels))
+
+        # 3. Run bandwidth extender (BWE) on new mel spectrogram
+        mel_for_bwe = mel.transpose(2, 3)  # [B, C, num_mel_bins, num_frames] --> [B, C, num_frames, num_mel_bins]
+        residual = self.bwe_generator(mel_for_bwe)
+
+        # 4. Residual connection with resampler
+        skip = self.resampler(x)
+        waveform = torch.clamp(residual + skip, -1, 1)
+        output_samples = num_samples * self.config.output_sampling_rate // self.config.input_sampling_rate
+        waveform = waveform[..., :output_samples]
+        return waveform
