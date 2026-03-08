@@ -19,6 +19,7 @@ from typing import Any, Callable
 import regex as re
 import torch
 import torch.nn.functional as F
+from accelerate.utils import broadcast
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -921,6 +922,7 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                             batch_size, channel, num_frames, pyramid_height, pyramid_width, patch_size, device
                         )
                         noise = noise.to(device=device, dtype=transformer_dtype)
+                        noise = broadcast(noise, from_process=0)
                         latents = alpha * latents + beta * noise  # To fix the block artifact
 
                         if self.config.is_distilled:
