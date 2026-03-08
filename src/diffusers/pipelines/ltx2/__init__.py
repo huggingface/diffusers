@@ -44,7 +44,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_ltx2_condition import LTX2ConditionPipeline
         from .pipeline_ltx2_image2video import LTX2ImageToVideoPipeline
         from .pipeline_ltx2_latent_upsample import LTX2LatentUpsamplePipeline
-        from .vocoder import LTX2Vocoder
+        from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 else:
     import sys
