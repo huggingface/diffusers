@@ -456,6 +456,8 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         # the output will be non-deterministic and may produce incorrect results in CP context.
         if generator is None:
             generator = torch.Generator(device=device)
+        elif isinstance(generator, list):
+            generator = generator[0]
 
         gamma = self.scheduler.config.gamma
         _, ph, pw = patch_size
