@@ -117,7 +117,6 @@ class NerfEmbedder(nn.Module):
         self.hidden_size = hidden_size
         self.embedder = nn.Sequential(nn.Linear(in_channels + max_freqs**2, hidden_size))
 
-    @lru_cache(maxsize=4)
     def fetch_pos(self, patch_size, device, dtype) -> torch.Tensor:
         pos_x = torch.linspace(0, 1, patch_size, device=device, dtype=dtype)
         pos_y = torch.linspace(0, 1, patch_size, device=device, dtype=dtype)
