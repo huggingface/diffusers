@@ -33,15 +33,38 @@ from torchvision.datasets import ImageFolder
 from tqdm.auto import tqdm
 
 from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiT2DModel, RAEDiTPipeline
+from diffusers.models.model_loading_utils import load_state_dict
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3
-from diffusers.utils import check_min_version
+from diffusers.utils import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME, check_min_version
+from diffusers.utils.hub_utils import _get_model_file
 from diffusers.utils.torch_utils import is_compiled_module
 
 
 check_min_version("0.38.0.dev0")
 
 logger = get_logger(__name__)
+
+
+def load_autoencoder_rae(model_name_or_path: str) -> AutoencoderRAE:
+    config = AutoencoderRAE.load_config(model_name_or_path)
+    model = AutoencoderRAE.from_config(config)
+
+    try:
+        model_file = _get_model_file(model_name_or_path, weights_name=SAFETENSORS_WEIGHTS_NAME)
+    except EnvironmentError:
+        model_file = _get_model_file(model_name_or_path, weights_name=WEIGHTS_NAME)
+
+    state_dict = load_state_dict(model_file)
+    load_result = model.load_state_dict(state_dict, strict=False, assign=True)
+
+    unexpected_keys = set(load_result.unexpected_keys) - {"decoder.decoder_pos_embed"}
+    if len(load_result.missing_keys) > 0 or len(unexpected_keys) > 0:
+        raise RuntimeError(
+            "Error(s) in loading state_dict for AutoencoderRAE: "
+            f"missing_keys={load_result.missing_keys}, unexpected_keys={sorted(unexpected_keys)}"
+        )
+    return model
 
 
 def parse_args():
@@ -476,7 +499,7 @@ def main():
         os.makedirs(args.output_dir, exist_ok=True)
     accelerator.wait_for_everyone()
 
-    autoencoder = AutoencoderRAE.from_pretrained(args.pretrained_rae_model_name_or_path)
+    autoencoder = load_autoencoder_rae(args.pretrained_rae_model_name_or_path)
     autoencoder.requires_grad_(False)
     autoencoder.eval()
 

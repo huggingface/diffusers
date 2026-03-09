@@ -4,17 +4,6 @@ This folder contains the minimal Stage-2 follow-up for the RAE integration: trai
 
 It is intentionally placed under `examples/research_projects/rae_dit/` rather than the top-level `examples/` trainers because this is still an experimental follow-up to the new RAE support.
 
-## What this mirrors
-
-The scaffold is deliberately composed from existing `diffusers` patterns instead of introducing a new training style:
-
-- `examples/research_projects/autoencoder_rae/train_autoencoder_rae.py`
-  for ImageFolder loading, RAE-specific preprocessing, and the experimental research-project placement.
-- `examples/dreambooth/train_dreambooth_flux.py`
-  for the flow-matching training loop structure, checkpoint resume flow, and `accelerate.save_state(...)` hooks.
-- `examples/flux-control/train_control_flux.py`
-  for the transformer-only save layout and SD3-style flow-matching timestep weighting helpers.
-
 ## Current scope
 
 This is a minimal full-finetuning scaffold, not a paper-complete training stack. It currently does the following:

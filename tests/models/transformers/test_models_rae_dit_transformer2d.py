@@ -13,15 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 
 from diffusers import RAEDiT2DModel
-from diffusers.models.transformers.transformer_rae_dit import _repeat_to_length
+from diffusers.models.transformers.transformer_rae_dit import _expand_conditioning_tokens
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_modeling_common import ModelTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import BaseModelTesterConfig, ModelTesterMixin, TrainingTesterMixin
 
 
 enable_full_determinism()
@@ -40,34 +40,18 @@ def _initialize_non_zero_stage2_head(model: RAEDiT2DModel):
     model.final_layer.linear.bias.data.normal_(mean=0.0, std=0.02)
 
 
-class RAEDiT2DModelTests(ModelTesterMixin, unittest.TestCase):
+class RAEDiT2DTesterConfig(BaseModelTesterConfig):
     model_class = RAEDiT2DModel
     main_input_name = "hidden_states"
+    input_shape = (8, 4, 4)
+    output_shape = (8, 4, 4)
 
     @property
-    def dummy_input(self):
-        batch_size = 2
-        in_channels = 8
-        sample_size = 4
-        scheduler_num_train_steps = 1000
-        num_class_labels = 10
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
 
-        hidden_states = floats_tensor((batch_size, in_channels, sample_size, sample_size)).to(torch_device)
-        timesteps = torch.randint(0, scheduler_num_train_steps, size=(batch_size,)).to(torch_device)
-        class_labels = torch.randint(0, num_class_labels, size=(batch_size,)).to(torch_device)
-
-        return {"hidden_states": hidden_states, "timestep": timesteps, "class_labels": class_labels}
-
-    @property
-    def input_shape(self):
-        return (8, 4, 4)
-
-    @property
-    def output_shape(self):
-        return (8, 4, 4)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    def get_init_dict(self):
+        return {
             "sample_size": 4,
             "patch_size": 1,
             "in_channels": 8,
@@ -84,37 +68,73 @@ class RAEDiT2DModelTests(ModelTesterMixin, unittest.TestCase):
             "wo_shift": False,
             "use_pos_embed": True,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
-    def test_output(self):
-        super().test_output(
-            expected_output_shape=(self.dummy_input[self.main_input_name].shape[0],) + self.output_shape
+    def get_dummy_inputs(self):
+        batch_size = 2
+        in_channels = 8
+        sample_size = 4
+        scheduler_num_train_steps = 1000
+        num_class_labels = 10
+
+        hidden_states = randn_tensor(
+            (batch_size, in_channels, sample_size, sample_size), generator=self.generator, device=torch_device
+        )
+        timesteps = torch.randint(0, scheduler_num_train_steps, size=(batch_size,), generator=self.generator).to(
+            torch_device
+        )
+        class_labels = torch.randint(0, num_class_labels, size=(batch_size,), generator=self.generator).to(
+            torch_device
         )
 
+        return {"hidden_states": hidden_states, "timestep": timesteps, "class_labels": class_labels}
+
+
+class TestRAEDiT2DModel(RAEDiT2DTesterConfig, ModelTesterMixin):
+    def test_swiglu_feedforward_matches_previous_chunk_order(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        block = model.blocks[0]
+
+        hidden_states = randn_tensor((2, 4, model.encoder_hidden_size), generator=self.generator, device=torch_device)
+        projection = block.mlp.net[0].proj
+        output_projection = block.mlp.net[2]
+
+        unswapped_weight = torch.cat(projection.weight.data.chunk(2, dim=0)[::-1], dim=0)
+        unswapped_bias = None
+        if projection.bias is not None:
+            unswapped_bias = torch.cat(projection.bias.data.chunk(2, dim=0)[::-1], dim=0)
+
+        projected = torch.nn.functional.linear(hidden_states, unswapped_weight, unswapped_bias)
+        first_half, second_half = projected.chunk(2, dim=-1)
+        expected = torch.nn.functional.linear(
+            torch.nn.functional.silu(first_half) * second_half,
+            output_projection.weight,
+            output_projection.bias,
+        )
+
+        actual = block.mlp(hidden_states)
+        assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-5)
+
     def test_output_with_precomputed_conditioning_hidden_states(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        model = self.model_class(**init_dict).to(torch_device).eval()
         _initialize_non_zero_stage2_head(model)
 
         batch_size = inputs_dict[self.main_input_name].shape[0]
         num_patches = (init_dict["sample_size"] // init_dict["patch_size"]) ** 2
-        conditioning_hidden_states = floats_tensor((batch_size, num_patches, init_dict["hidden_size"][0])).to(
-            torch_device
+        conditioning_hidden_states = randn_tensor(
+            (batch_size, num_patches, init_dict["hidden_size"][0]), generator=self.generator, device=torch_device
         )
 
         with torch.no_grad():
             output = model(**inputs_dict, conditioning_hidden_states=conditioning_hidden_states).sample
 
-        self.assertEqual(output.shape, inputs_dict[self.main_input_name].shape)
+        assert output.shape == inputs_dict[self.main_input_name].shape
 
     def test_precomputed_conditioning_matches_internal_encoder_path(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        model = self.model_class(**init_dict).to(torch_device).eval()
         _initialize_non_zero_stage2_head(model)
 
         hidden_states = inputs_dict["hidden_states"]
@@ -147,12 +167,12 @@ class RAEDiT2DModelTests(ModelTesterMixin, unittest.TestCase):
                 conditioning_hidden_states=conditioning_hidden_states,
             ).sample
 
-        self.assertTrue(torch.allclose(output_internal, output_precomputed, atol=1e-5, rtol=1e-4))
+        assert torch.allclose(output_internal, output_precomputed, atol=1e-5, rtol=1e-4)
 
-    def test_repeat_to_length_preserves_2d_layout(self):
+    def test_expand_conditioning_tokens_preserves_2d_layout(self):
         hidden_states = torch.tensor([[[1.0], [2.0], [3.0], [4.0]]])
 
-        repeated = _repeat_to_length(hidden_states, target_length=16)
+        repeated = _expand_conditioning_tokens(hidden_states, target_length=16)
 
         expected = torch.tensor(
             [
@@ -176,31 +196,26 @@ class RAEDiT2DModelTests(ModelTesterMixin, unittest.TestCase):
                 ]
             ]
         )
-        self.assertTrue(torch.equal(repeated, expected))
+        assert torch.equal(repeated, expected)
 
-    def test_repeat_to_length_broadcasts_global_conditioning(self):
+    def test_expand_conditioning_tokens_broadcasts_global_conditioning(self):
         hidden_states = torch.tensor([[[1.0, 2.0]]])
 
-        repeated = _repeat_to_length(hidden_states, target_length=4)
+        repeated = _expand_conditioning_tokens(hidden_states, target_length=4)
 
         expected = torch.tensor([[[1.0, 2.0], [1.0, 2.0], [1.0, 2.0], [1.0, 2.0]]])
-        self.assertTrue(torch.equal(repeated, expected))
+        assert torch.equal(repeated, expected)
 
-    def test_repeat_to_length_rejects_incompatible_multi_token_layouts(self):
+    def test_expand_conditioning_tokens_rejects_incompatible_multi_token_layouts(self):
         hidden_states = torch.randn(1, 2, 4)
 
-        with self.assertRaises(ValueError):
-            _repeat_to_length(hidden_states, target_length=8)
+        with pytest.raises(ValueError):
+            _expand_conditioning_tokens(hidden_states, target_length=8)
 
+
+class TestRAEDiT2DTraining(RAEDiT2DTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"RAEDiT2DModel"}
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+        super().test_gradient_checkpointing_is_applied(expected_set={"RAEDiT2DModel"})
 
-    def test_effective_gradient_checkpointing(self):
-        super().test_effective_gradient_checkpointing(loss_tolerance=1e-4)
-
-    @unittest.skip(
-        "RAEDiT initializes the output head to zeros, so cosine-based layerwise casting checks are uninformative."
-    )
-    def test_layerwise_casting_inference(self):
-        pass
+    def test_gradient_checkpointing_equivalence(self):
+        super().test_gradient_checkpointing_equivalence(loss_tolerance=1e-4)

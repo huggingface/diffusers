@@ -9,7 +9,10 @@ import yaml
 from huggingface_hub import HfApi, hf_hub_download
 
 from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiTPipeline
+from diffusers.models.model_loading_utils import load_state_dict
 from diffusers.models.transformers.transformer_rae_dit import RAEDiT2DModel
+from diffusers.utils import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
+from diffusers.utils.hub_utils import _get_model_file
 
 
 DEFAULT_NUM_TRAIN_TIMESTEPS = 1000
@@ -207,6 +210,35 @@ def build_scheduler_config(config: dict[str, Any]) -> tuple[FlowMatchEulerDiscre
     return scheduler, metadata
 
 
+def _swap_projection_halves(tensor: torch.Tensor) -> torch.Tensor:
+    return torch.cat(tensor.chunk(2, dim=0)[::-1], dim=0)
+
+
+def translate_transformer_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
+    translated = {}
+
+    for key, value in state_dict.items():
+        if key == "pos_embed":
+            continue
+
+        if ".mlp.w12." in key:
+            new_key = key.replace(".mlp.w12.", ".mlp.net.0.proj.")
+            if isinstance(value, torch.Tensor):
+                value = _swap_projection_halves(value)
+        elif ".mlp.w3." in key:
+            new_key = key.replace(".mlp.w3.", ".mlp.net.2.")
+        elif ".mlp.fc1." in key:
+            new_key = key.replace(".mlp.fc1.", ".mlp.net.0.proj.")
+        elif ".mlp.fc2." in key:
+            new_key = key.replace(".mlp.fc2.", ".mlp.net.2.")
+        else:
+            new_key = key
+
+        translated[new_key] = value
+
+    return translated
+
+
 def convert_transformer_state_dict(
     transformer_config: dict[str, Any],
     checkpoint_path: Path,
@@ -219,11 +251,11 @@ def convert_transformer_state_dict(
 ) -> dict[str, Any]:
     raw_checkpoint = load_checkpoint(checkpoint_path)
     state_dict = unwrap_state_dict(raw_checkpoint, checkpoint_key=checkpoint_key, prefer_ema=prefer_ema)
+    state_dict = translate_transformer_state_dict(state_dict)
 
-    with torch.device("meta"):
-        model = RAEDiT2DModel(**transformer_config)
+    model = RAEDiT2DModel(**transformer_config)
 
-    load_result = model.load_state_dict(state_dict, strict=False, assign=True)
+    load_result = model.load_state_dict(state_dict, strict=False)
     missing_keys = set(load_result.missing_keys)
     unexpected_keys = set(load_result.unexpected_keys)
 
@@ -248,7 +280,15 @@ def convert_transformer_state_dict(
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(output_dir, safe_serialization=safe_serialization)
+    model.save_config(output_dir)
+    weights_path = output_dir / (SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME)
+    state_dict_to_save = model.state_dict()
+    if safe_serialization:
+        import safetensors.torch
+
+        safetensors.torch.save_file(state_dict_to_save, weights_path, metadata={"format": "pt"})
+    else:
+        torch.save(state_dict_to_save, weights_path)
 
     if verify_load:
         reloaded = RAEDiT2DModel.from_pretrained(output_dir, low_cpu_mem_usage=False)
@@ -267,6 +307,35 @@ def convert_transformer_state_dict(
 def write_metadata(output_path: Path, metadata: dict[str, Any]) -> None:
     with (output_path / "conversion_metadata.json").open("w") as handle:
         json.dump(metadata, handle, indent=2)
+
+
+def load_autoencoder_rae(model_name_or_path: str, cache_dir: str | None = None) -> AutoencoderRAE:
+    config = AutoencoderRAE.load_config(model_name_or_path, cache_dir=cache_dir)
+    model = AutoencoderRAE.from_config(config)
+
+    try:
+        model_file = _get_model_file(
+            model_name_or_path,
+            weights_name=SAFETENSORS_WEIGHTS_NAME,
+            cache_dir=cache_dir,
+        )
+    except EnvironmentError:
+        model_file = _get_model_file(
+            model_name_or_path,
+            weights_name=WEIGHTS_NAME,
+            cache_dir=cache_dir,
+        )
+
+    state_dict = load_state_dict(model_file)
+    load_result = model.load_state_dict(state_dict, strict=False, assign=True)
+
+    unexpected_keys = set(load_result.unexpected_keys) - {"decoder.decoder_pos_embed"}
+    if len(load_result.missing_keys) > 0 or len(unexpected_keys) > 0:
+        raise RuntimeError(
+            "Error(s) in loading state_dict for AutoencoderRAE: "
+            f"missing_keys={load_result.missing_keys}, unexpected_keys={sorted(unexpected_keys)}"
+        )
+    return model
 
 
 def resolve_input_path(accessor: RepoAccessor, path: str) -> Path:
@@ -419,7 +488,7 @@ def convert(args: argparse.Namespace) -> None:
     scheduler.save_pretrained(scheduler_output_dir)
 
     if args.vae_model_name_or_path is not None:
-        vae = AutoencoderRAE.from_pretrained(args.vae_model_name_or_path)
+        vae = load_autoencoder_rae(args.vae_model_name_or_path, cache_dir=args.cache_dir)
         transformer = RAEDiT2DModel.from_pretrained(transformer_output_dir, low_cpu_mem_usage=False)
         guidance_transformer = None
         if "guidance_transformer" in metadata:
