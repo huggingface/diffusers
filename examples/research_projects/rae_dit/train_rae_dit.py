@@ -253,6 +253,22 @@ def should_skip_resumed_batch(should_resume: bool, epoch: int, first_epoch: int,
     return should_resume and epoch == first_epoch and step < resume_step
 
 
+def maybe_load_resumed_scheduler(
+    args, checkpoint_path: str | None, noise_scheduler: FlowMatchEulerDiscreteScheduler
+) -> FlowMatchEulerDiscreteScheduler:
+    if checkpoint_path is None:
+        return noise_scheduler
+
+    scheduler_path = os.path.join(checkpoint_path, "scheduler")
+    if not os.path.isdir(scheduler_path):
+        return noise_scheduler
+
+    restored_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(scheduler_path)
+    args.num_train_timesteps = int(restored_scheduler.config.num_train_timesteps)
+    args.flow_shift = float(restored_scheduler.config.shift)
+    return restored_scheduler
+
+
 def get_latent_spec(autoencoder: AutoencoderRAE) -> tuple[int, int]:
     if not autoencoder.config.reshape_to_2d:
         raise ValueError("Stage-2 RAE DiT training expects `AutoencoderRAE.reshape_to_2d=True`.")
@@ -472,6 +488,38 @@ def main():
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
+    global_step = 0
+    first_epoch = 0
+    initial_global_step = 0
+    resume_step = 0
+    resume_path = None
+
+    if args.resume_from_checkpoint:
+        if args.resume_from_checkpoint != "latest":
+            resume_path = args.resume_from_checkpoint
+            if not os.path.isdir(resume_path):
+                resume_path = os.path.join(args.output_dir, os.path.basename(resume_path))
+        else:
+            checkpoints = [d for d in os.listdir(args.output_dir) if d.startswith("checkpoint-")]
+            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+            resume_path = os.path.join(args.output_dir, checkpoints[-1]) if checkpoints else None
+
+        if resume_path is None or not os.path.isdir(resume_path):
+            logger.info(f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run.")
+            args.resume_from_checkpoint = None
+        else:
+            noise_scheduler = maybe_load_resumed_scheduler(args, resume_path, noise_scheduler)
+            flow_shift = float(noise_scheduler.config.shift)
+            accelerator.print(f"Resuming from checkpoint {resume_path}")
+            accelerator.load_state(resume_path)
+            global_step = int(os.path.basename(resume_path).split("-")[1])
+            initial_global_step = global_step
+            first_epoch, resume_step = compute_resume_offsets(
+                global_step=global_step,
+                num_update_steps_per_epoch=num_update_steps_per_epoch,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+            )
+
     if accelerator.is_main_process:
         accelerator.init_trackers(
             "train_rae_dit",
@@ -496,35 +544,6 @@ def main():
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size = {total_batch_size}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
-
-    global_step = 0
-    first_epoch = 0
-    initial_global_step = 0
-    resume_step = 0
-
-    if args.resume_from_checkpoint:
-        if args.resume_from_checkpoint != "latest":
-            path = args.resume_from_checkpoint
-            if not os.path.isdir(path):
-                path = os.path.join(args.output_dir, os.path.basename(path))
-        else:
-            checkpoints = [d for d in os.listdir(args.output_dir) if d.startswith("checkpoint-")]
-            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
-            path = os.path.join(args.output_dir, checkpoints[-1]) if checkpoints else None
-
-        if path is None or not os.path.isdir(path):
-            logger.info(f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run.")
-            args.resume_from_checkpoint = None
-        else:
-            accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(path)
-            global_step = int(os.path.basename(path).split("-")[1])
-            initial_global_step = global_step
-            first_epoch, resume_step = compute_resume_offsets(
-                global_step=global_step,
-                num_update_steps_per_epoch=num_update_steps_per_epoch,
-                gradient_accumulation_steps=args.gradient_accumulation_steps,
-            )
 
     progress_bar = tqdm(
         range(0, args.max_train_steps),

@@ -17,14 +17,17 @@ import logging
 import os
 import sys
 import tempfile
+from types import SimpleNamespace
 
 from PIL import Image
 
 from diffusers import AutoencoderRAE
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from test_examples_utils import ExamplesTestsAccelerate, run_command  # noqa: E402
+from train_rae_dit import maybe_load_resumed_scheduler  # noqa: E402
 
 
 logging.basicConfig(level=logging.DEBUG)
@@ -126,3 +129,21 @@ class RAEDiT(ExamplesTestsAccelerate):
         self.assertIn("baseline_trace=", output)
         self.assertIn("resumed_trace=", output)
         self.assertIn("resume batch order verified", output)
+
+    def test_maybe_load_resumed_scheduler_prefers_checkpoint_config(self):
+        args = SimpleNamespace(num_train_timesteps=999, flow_shift=2.5)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scheduler_dir = os.path.join(tmpdir, "scheduler")
+            FlowMatchEulerDiscreteScheduler(num_train_timesteps=10, shift=7.0).save_pretrained(scheduler_dir)
+
+            restored = maybe_load_resumed_scheduler(
+                args=args,
+                checkpoint_path=tmpdir,
+                noise_scheduler=FlowMatchEulerDiscreteScheduler(num_train_timesteps=999, shift=2.5),
+            )
+
+        self.assertEqual(restored.config.num_train_timesteps, 10)
+        self.assertEqual(restored.config.shift, 7.0)
+        self.assertEqual(args.num_train_timesteps, 10)
+        self.assertEqual(args.flow_shift, 7.0)
