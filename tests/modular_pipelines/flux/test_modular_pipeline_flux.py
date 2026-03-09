@@ -133,7 +133,7 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        base_pipe.save_pretrained(tmp_path)
+        base_pipe.save_pretrained(str(tmp_path))
         pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
         pipe.load_components(torch_dtype=torch.float32)
         pipe.to(torch_device)
@@ -214,7 +214,7 @@ class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        base_pipe.save_pretrained(tmp_path)
+        base_pipe.save_pretrained(str(tmp_path))
         pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
         pipe.load_components(torch_dtype=torch.float32)
         pipe.to(torch_device)
