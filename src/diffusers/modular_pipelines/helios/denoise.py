@@ -60,6 +60,8 @@ def sample_block_noise(
     # the output will be non-deterministic and may produce incorrect results in CP context.
     if generator is None:
         generator = torch.Generator(device=device)
+    elif isinstance(generator, list):
+        generator = generator[0]
 
     _, ph, pw = patch_size
     block_size = ph * pw
