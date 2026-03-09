@@ -10,9 +10,9 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# RAEDiTTransformer2DModel
+# RAEDiT2DModel
 
-The `RAEDiTTransformer2DModel` is the Stage-2 latent diffusion transformer introduced in
+The `RAEDiT2DModel` is the Stage-2 latent diffusion transformer introduced in
 [Diffusion Transformers with Representation Autoencoders](https://huggingface.co/papers/2510.11690).
 
 Unlike DiT models that operate on VAE latents, this transformer denoises the latent space learned by
@@ -22,11 +22,11 @@ decoded back to RGB with [`AutoencoderRAE`].
 ## Loading a pretrained transformer
 
 ```python
-from diffusers import RAEDiTTransformer2DModel
+from diffusers import RAEDiT2DModel
 
-transformer = RAEDiTTransformer2DModel.from_pretrained("path/to/converted-stage2-transformer")
+transformer = RAEDiT2DModel.from_pretrained("path/to/converted-stage2-transformer")
 ```
 
-## RAEDiTTransformer2DModel
+## RAEDiT2DModel
 
-[[autodoc]] RAEDiTTransformer2DModel
+[[autodoc]] RAEDiT2DModel

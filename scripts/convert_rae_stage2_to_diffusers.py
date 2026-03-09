@@ -9,7 +9,7 @@ import yaml
 from huggingface_hub import HfApi, hf_hub_download
 
 from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiTPipeline
-from diffusers.models.transformers.transformer_rae_dit import RAEDiTTransformer2DModel
+from diffusers.models.transformers.transformer_rae_dit import RAEDiT2DModel
 
 
 DEFAULT_NUM_TRAIN_TIMESTEPS = 1000
@@ -221,7 +221,7 @@ def convert_transformer_state_dict(
     state_dict = unwrap_state_dict(raw_checkpoint, checkpoint_key=checkpoint_key, prefer_ema=prefer_ema)
 
     with torch.device("meta"):
-        model = RAEDiTTransformer2DModel(**transformer_config)
+        model = RAEDiT2DModel(**transformer_config)
 
     load_result = model.load_state_dict(state_dict, strict=False, assign=True)
     missing_keys = set(load_result.missing_keys)
@@ -251,11 +251,9 @@ def convert_transformer_state_dict(
     model.save_pretrained(output_dir, safe_serialization=safe_serialization)
 
     if verify_load:
-        reloaded = RAEDiTTransformer2DModel.from_pretrained(output_dir, low_cpu_mem_usage=False)
-        if not isinstance(reloaded, RAEDiTTransformer2DModel):
-            raise RuntimeError(
-                f"Verification failed for {component_name}: reloaded object is not RAEDiTTransformer2DModel."
-            )
+        reloaded = RAEDiT2DModel.from_pretrained(output_dir, low_cpu_mem_usage=False)
+        if not isinstance(reloaded, RAEDiT2DModel):
+            raise RuntimeError(f"Verification failed for {component_name}: reloaded object is not RAEDiT2DModel.")
 
     return {
         "checkpoint_path": str(checkpoint_path),
@@ -422,7 +420,7 @@ def convert(args: argparse.Namespace) -> None:
 
     if args.vae_model_name_or_path is not None:
         vae = AutoencoderRAE.from_pretrained(args.vae_model_name_or_path)
-        transformer = RAEDiTTransformer2DModel.from_pretrained(transformer_output_dir, low_cpu_mem_usage=False)
+        transformer = RAEDiT2DModel.from_pretrained(transformer_output_dir, low_cpu_mem_usage=False)
         scheduler_for_pipe = FlowMatchEulerDiscreteScheduler.from_pretrained(scheduler_output_dir)
 
         id2label = None

@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers import RAEDiTTransformer2DModel
+from diffusers import RAEDiT2DModel
 from diffusers.models.transformers.transformer_rae_dit import _repeat_to_length
 
 from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
@@ -27,7 +27,7 @@ from ..test_modeling_common import ModelTesterMixin
 enable_full_determinism()
 
 
-def _initialize_non_zero_stage2_head(model: RAEDiTTransformer2DModel):
+def _initialize_non_zero_stage2_head(model: RAEDiT2DModel):
     torch.manual_seed(0)
 
     for block in model.blocks:
@@ -40,8 +40,8 @@ def _initialize_non_zero_stage2_head(model: RAEDiTTransformer2DModel):
     model.final_layer.linear.bias.data.normal_(mean=0.0, std=0.02)
 
 
-class RAEDiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = RAEDiTTransformer2DModel
+class RAEDiT2DModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = RAEDiT2DModel
     main_input_name = "hidden_states"
 
     @property
@@ -193,7 +193,7 @@ class RAEDiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
             _repeat_to_length(hidden_states, target_length=8)
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"RAEDiTTransformer2DModel"}
+        expected_set = {"RAEDiT2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     def test_effective_gradient_checkpointing(self):
