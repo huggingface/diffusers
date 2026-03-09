@@ -23,8 +23,8 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 from ...testing_utils import IS_GITHUB_ACTIONS
+from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
 class AutoencoderVidTokTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
@@ -157,7 +157,7 @@ class AutoencoderVidTokTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCas
     @unittest.skip("Unsupported test.")
     def test_outputs_equivalence(self):
         pass
-    
+
     @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
     def test_layerwise_casting_training(self):
         super().test_layerwise_casting_training()
