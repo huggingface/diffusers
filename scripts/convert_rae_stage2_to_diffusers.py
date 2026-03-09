@@ -122,7 +122,7 @@ def unwrap_state_dict(
         raise ValueError("Resolved checkpoint payload is not a dictionary state dict.")
 
     state_dict = dict(state_dict)
-    for prefix in ("module.", "model.", "model.module."):
+    for prefix in ("model.module.", "model.", "module."):
         state_dict = _maybe_strip_common_prefix(state_dict, prefix)
     return state_dict
 
@@ -421,6 +421,9 @@ def convert(args: argparse.Namespace) -> None:
     if args.vae_model_name_or_path is not None:
         vae = AutoencoderRAE.from_pretrained(args.vae_model_name_or_path)
         transformer = RAEDiT2DModel.from_pretrained(transformer_output_dir, low_cpu_mem_usage=False)
+        guidance_transformer = None
+        if "guidance_transformer" in metadata:
+            guidance_transformer = RAEDiT2DModel.from_pretrained(guidance_output_dir, low_cpu_mem_usage=False)
         scheduler_for_pipe = FlowMatchEulerDiscreteScheduler.from_pretrained(scheduler_output_dir)
 
         id2label = None
@@ -428,7 +431,13 @@ def convert(args: argparse.Namespace) -> None:
             with Path(args.id2label_json_path).expanduser().open("r", encoding="utf-8") as handle:
                 id2label = json.load(handle)
 
-        pipe = RAEDiTPipeline(transformer=transformer, vae=vae, scheduler=scheduler_for_pipe, id2label=id2label)
+        pipe = RAEDiTPipeline(
+            transformer=transformer,
+            guidance_transformer=guidance_transformer,
+            vae=vae,
+            scheduler=scheduler_for_pipe,
+            id2label=id2label,
+        )
         pipe.save_pretrained(output_path, safe_serialization=args.safe_serialization)
         metadata["pipeline"] = {"saved": True, "id2label_json_path": args.id2label_json_path}
 

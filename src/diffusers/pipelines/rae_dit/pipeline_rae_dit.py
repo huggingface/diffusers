@@ -22,6 +22,7 @@ class RAEDiTPipeline(DiffusionPipeline):
             Flow-matching scheduler used to integrate the latent denoising trajectory.
     """
 
+    _optional_components = ["guidance_transformer"]
     model_cpu_offload_seq = "transformer->vae"
 
     def __init__(
@@ -29,10 +30,16 @@ class RAEDiTPipeline(DiffusionPipeline):
         transformer: RAEDiT2DModel,
         vae: AutoencoderRAE,
         scheduler: FlowMatchEulerDiscreteScheduler,
+        guidance_transformer: RAEDiT2DModel | None = None,
         id2label: dict[int, str] | None = None,
     ):
         super().__init__()
-        self.register_modules(transformer=transformer, vae=vae, scheduler=scheduler)
+        self.register_modules(
+            transformer=transformer,
+            guidance_transformer=guidance_transformer,
+            vae=vae,
+            scheduler=scheduler,
+        )
         serialized_id2label = None
         if id2label is not None:
             serialized_id2label = {str(key): value for key, value in id2label.items()}

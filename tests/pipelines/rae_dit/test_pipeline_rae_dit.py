@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import tempfile
 import unittest
 
@@ -136,7 +137,12 @@ class RAEDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         scheduler = FlowMatchEulerDiscreteScheduler(shift=1.0)
 
-        return {"transformer": transformer.eval(), "vae": vae.eval(), "scheduler": scheduler}
+        return {
+            "transformer": transformer.eval(),
+            "guidance_transformer": None,
+            "vae": vae.eval(),
+            "scheduler": scheduler,
+        }
 
     def get_dummy_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
@@ -253,3 +259,20 @@ class RAEDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(pipe_loaded.config.id2label, {"0": "zero", "1": "one, first"})
         self.assertEqual(pipe_loaded.get_label_ids("first"), [1])
         self.assertEqual(pipe_loaded.get_label_ids(["zero", "one"]), [0, 1])
+
+    def test_save_load_preserves_guidance_transformer(self):
+        components = self.get_dummy_components()
+        guidance_transformer = RAEDiT2DModel(**components["transformer"].config)
+        _initialize_non_zero_stage2_head(guidance_transformer)
+        components["guidance_transformer"] = guidance_transformer
+
+        pipe = self.pipeline_class(**components)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            self.assertTrue(os.path.isdir(os.path.join(tmpdir, "guidance_transformer")))
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+
+        self.assertIsNotNone(pipe_loaded.guidance_transformer)
+        self.assertIsInstance(pipe_loaded.guidance_transformer, RAEDiT2DModel)
+        self.assertEqual(pipe_loaded.guidance_transformer.config.sample_size, guidance_transformer.config.sample_size)
