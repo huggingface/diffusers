@@ -188,6 +188,11 @@ class RAEDiT(ExamplesTestsAccelerate):
                 --decoder_num_attention_heads 4
                 --mlp_ratio 2.0
                 --num_train_timesteps 10
+                --validation_steps 1
+                --validation_class_label 0
+                --num_validation_images 1
+                --validation_num_inference_steps 2
+                --seed 0
                 """.split()
 
             run_command(self._launch_args + test_args)
@@ -195,6 +200,11 @@ class RAEDiT(ExamplesTestsAccelerate):
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "transformer", "diffusion_pytorch_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "id2label.json")))
+            validation_image_path = os.path.join(tmpdir, "validation", "step-1", "image-0.png")
+            self.assertTrue(os.path.isfile(validation_image_path))
+            validation_image = Image.open(validation_image_path)
+            self.assertEqual(validation_image.size, (16, 16))
+            self.assertEqual(validation_image.mode, "RGB")
 
     def test_resume_batch_order_matches_uninterrupted_tail(self):
         seed = 123

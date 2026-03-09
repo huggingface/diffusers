@@ -24,6 +24,7 @@ This is a minimal full-finetuning scaffold, not a paper-complete training stack.
 - trains only the Stage-2 `RAEDiT2DModel`
 - uses `FlowMatchEulerDiscreteScheduler` with the same shifted-sigma schedule shape already used elsewhere in `diffusers`
 - consumes ImageFolder class ids as `class_labels`
+- can generate validation samples through `RAEDiTPipeline` during training
 - saves the trained transformer under `output_dir/transformer`
 - saves the scheduler config under `output_dir/scheduler`
 - writes `id2label.json` from the ImageFolder class mapping
@@ -31,7 +32,6 @@ This is a minimal full-finetuning scaffold, not a paper-complete training stack.
 It intentionally does not yet include:
 
 - a latent-caching path
-- validation image generation inside the script
 - autoguidance or the broader upstream transport stack
 - exact upstream distributed training/runtime features
 
@@ -69,6 +69,18 @@ accelerate launch examples/research_projects/rae_dit/train_rae_dit.py \
   --allow_tf32
 ```
 
+To emit validation samples during training, add:
+
+```bash
+  --validation_steps 1000 \
+  --validation_class_label 207 \
+  --num_validation_images 4 \
+  --validation_num_inference_steps 25 \
+  --validation_guidance_scale 1.0
+```
+
+Validation images are written to `output_dir/validation/step-<global_step>/`.
+
 If you already have a converted or partially trained Stage-2 checkpoint, resume from it with:
 
 ```bash
@@ -86,4 +98,5 @@ accelerate launch examples/research_projects/rae_dit/train_rae_dit.py \
 
 - The script derives a default flow shift from the latent dimensionality as `sqrt(latent_dim / time_shift_base)`, matching the upstream Stage-2 heuristic at a high level.
 - The trainer assumes the selected `AutoencoderRAE` uses `reshape_to_2d=True`, because `RAEDiT2DModel` operates on 2D latent feature maps.
-- This example is meant to land first as a training scaffold that matches the new Stage-2 model and export layout. A later follow-up can add cached latents and validation sampling through the pipeline.
+- Validation sampling uses a fresh scheduler cloned from the training config so sampling does not mutate the in-flight training scheduler state.
+- This example is meant to land first as a training scaffold that matches the new Stage-2 model and export layout. A later follow-up can add cached latents and other training conveniences.

@@ -22,6 +22,7 @@ import os
 import shutil
 from pathlib import Path
 
+import numpy as np
 import torch
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -31,7 +32,7 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from tqdm.auto import tqdm
 
-from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiT2DModel
+from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiT2DModel, RAEDiTPipeline
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3
 from diffusers.utils import check_min_version
@@ -220,6 +221,36 @@ def parse_args():
         default=1.29,
         help="Mode weighting scale used when weighting_scheme=mode.",
     )
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=None,
+        help="Run validation sampling every N optimizer steps. Disabled when omitted.",
+    )
+    parser.add_argument(
+        "--validation_class_label",
+        type=int,
+        default=None,
+        help="Class id to sample during validation. Disabled when omitted.",
+    )
+    parser.add_argument(
+        "--num_validation_images",
+        type=int,
+        default=1,
+        help="Number of validation images to generate each time validation runs.",
+    )
+    parser.add_argument(
+        "--validation_num_inference_steps",
+        type=int,
+        default=25,
+        help="Number of denoising steps to use for validation sampling.",
+    )
+    parser.add_argument(
+        "--validation_guidance_scale",
+        type=float,
+        default=1.0,
+        help="Classifier-free guidance scale used during validation sampling.",
+    )
     return parser.parse_args()
 
 
@@ -322,8 +353,102 @@ def maybe_prune_checkpoints(output_dir: str, checkpoints_total_limit: int | None
         shutil.rmtree(os.path.join(output_dir, checkpoint))
 
 
+def validate_args(args):
+    validation_enabled = args.validation_class_label is not None
+
+    if validation_enabled and args.validation_steps is None:
+        raise ValueError("`--validation_steps` must be provided when `--validation_class_label` is set.")
+    if args.validation_steps is not None and args.validation_steps < 1:
+        raise ValueError(f"`--validation_steps` must be >= 1, but got {args.validation_steps}.")
+    if args.validation_class_label is not None and args.validation_class_label < 0:
+        raise ValueError(
+            f"`--validation_class_label` must be >= 0, but got {args.validation_class_label}."
+        )
+    if args.num_validation_images < 1:
+        raise ValueError(f"`--num_validation_images` must be >= 1, but got {args.num_validation_images}.")
+    if args.validation_num_inference_steps < 1:
+        raise ValueError(
+            f"`--validation_num_inference_steps` must be >= 1, but got {args.validation_num_inference_steps}."
+        )
+    if args.validation_guidance_scale < 1.0:
+        raise ValueError(
+            f"`--validation_guidance_scale` must be >= 1.0, but got {args.validation_guidance_scale}."
+        )
+
+
+def log_validation(
+    transformer,
+    autoencoder: AutoencoderRAE,
+    scheduler: FlowMatchEulerDiscreteScheduler,
+    args,
+    accelerator: Accelerator,
+    step: int,
+    class_names: list[str],
+):
+    if not accelerator.is_main_process:
+        return
+
+    transformer_model = unwrap_model(accelerator, transformer)
+    was_training = transformer_model.training
+    transformer_model.eval()
+
+    validation_scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler.config)
+    pipeline = RAEDiTPipeline(
+        transformer=transformer_model,
+        vae=autoencoder,
+        scheduler=validation_scheduler,
+    )
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    generator = None
+    if args.seed is not None:
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed + step)
+
+    label_name = class_names[args.validation_class_label]
+    logger.info(
+        "Running validation... Generating %s image(s) for class %s (%s).",
+        args.num_validation_images,
+        args.validation_class_label,
+        label_name,
+    )
+    images = pipeline(
+        class_labels=[args.validation_class_label],
+        guidance_scale=args.validation_guidance_scale,
+        num_images_per_prompt=args.num_validation_images,
+        num_inference_steps=args.validation_num_inference_steps,
+        generator=generator,
+        output_type="pil",
+    ).images
+
+    validation_dir = os.path.join(args.output_dir, "validation", f"step-{step}")
+    os.makedirs(validation_dir, exist_ok=True)
+    for image_idx, image in enumerate(images):
+        image.save(os.path.join(validation_dir, f"image-{image_idx}.png"))
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "tensorboard":
+            formatted_images = np.stack([np.asarray(image) for image in images])
+            tracker.writer.add_images(f"validation/{label_name}", formatted_images, step, dataformats="NHWC")
+        elif tracker.name == "wandb":
+            import wandb
+
+            tracker.log(
+                {
+                    "validation": [
+                        wandb.Image(image, caption=f"{image_idx}: {label_name}")
+                        for image_idx, image in enumerate(images)
+                    ]
+                }
+            )
+
+    if was_training:
+        transformer_model.train()
+
+
 def main():
     args = parse_args()
+    validate_args(args)
 
     logging_dir = Path(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -365,6 +490,11 @@ def main():
     if num_classes < inferred_num_classes:
         raise ValueError(
             f"`--num_classes` ({num_classes}) must be >= the number of dataset classes ({inferred_num_classes})."
+        )
+    if args.validation_class_label is not None and args.validation_class_label >= inferred_num_classes:
+        raise ValueError(
+            f"`--validation_class_label` ({args.validation_class_label}) must be < the number of dataset classes "
+            f"({inferred_num_classes})."
         )
 
     train_dataloader = DataLoader(
@@ -638,6 +768,18 @@ def main():
                     if accelerator.is_main_process:
                         noise_scheduler.save_pretrained(os.path.join(save_path, "scheduler"))
                     logger.info(f"Saved state to {save_path}")
+
+                if args.validation_steps is not None and global_step % args.validation_steps == 0:
+                    log_validation(
+                        transformer=transformer,
+                        autoencoder=autoencoder,
+                        scheduler=noise_scheduler,
+                        args=args,
+                        accelerator=accelerator,
+                        step=global_step,
+                        class_names=dataset.classes,
+                    )
+                    accelerator.wait_for_everyone()
 
             if global_step >= args.max_train_steps:
                 break
