@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -42,14 +42,14 @@ class DDIMSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(
     num_diffusion_timesteps: int,
     max_beta: float = 0.999,
-    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
+    alpha_transform_type: Literal["cosine", "exp", "laplace"] = "cosine",
 ) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -63,8 +63,8 @@ def betas_for_alpha_bar(
             The number of betas to produce.
         max_beta (`float`, defaults to `0.999`):
             The maximum beta to use; use values lower than 1 to avoid numerical instability.
-        alpha_transform_type (`"cosine"` or `"exp"`, defaults to `"cosine"`):
-            The type of noise schedule for `alpha_bar`. Choose from `cosine` or `exp`.
+        alpha_transform_type (`str`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine`, `exp`, or `laplace`.
 
     Returns:
         `torch.Tensor`:
@@ -99,7 +99,7 @@ def betas_for_alpha_bar(
 
 
 # Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
-def rescale_zero_terminal_snr(betas):
+def rescale_zero_terminal_snr(betas: torch.Tensor) -> torch.Tensor:
     """
     Rescales betas to have zero terminal SNR Based on https://huggingface.co/papers/2305.08891 (Algorithm 1)
 
@@ -187,14 +187,14 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
-        beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        beta_schedule: Literal["linear", "scaled_linear", "squaredcos_cap_v2"] = "linear",
+        trained_betas: np.ndarray | list[float] | None = None,
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
-        prediction_type: str = "epsilon",
+        prediction_type: Literal["epsilon", "sample", "v_prediction"] = "epsilon",
         clip_sample_range: float = 1.0,
-        timestep_spacing: str = "leading",
+        timestep_spacing: Literal["leading", "trailing"] = "leading",
         rescale_betas_zero_snr: bool = False,
         **kwargs,
     ):
@@ -210,7 +210,15 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            self.betas = (
+                torch.linspace(
+                    beta_start**0.5,
+                    beta_end**0.5,
+                    num_train_timesteps,
+                    dtype=torch.float32,
+                )
+                ** 2
+            )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -239,7 +247,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps).copy().astype(np.int64))
 
     # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler.scale_model_input
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -256,7 +264,11 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        device: str | torch.device | None = None,
+    ) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -300,7 +312,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[DDIMSchedulerOutput, Tuple]:
+    ) -> DDIMSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -308,20 +320,10 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
-            timestep (`float`):
+            timestep (`int`):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
-            eta (`float`):
-                The weight of noise for added noise in diffusion step.
-            use_clipped_model_output (`bool`, defaults to `False`):
-                If `True`, computes "corrected" `model_output` from the clipped predicted original sample. Necessary
-                because predicted original sample is clipped to [-1, 1] when `self.config.clip_sample` is `True`. If no
-                clipping has happened, "corrected" `model_output` would coincide with the one provided as input and
-                `use_clipped_model_output` has no effect.
-            variance_noise (`torch.Tensor`):
-                Alternative to generating noise with `generator` by directly providing the noise for the variance
-                itself. Useful for methods such as [`CycleDiffusion`].
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~schedulers.scheduling_ddim_inverse.DDIMInverseSchedulerOutput`] or
                 `tuple`.
@@ -335,7 +337,8 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         # 1. get previous step value (=t+1)
         prev_timestep = timestep
         timestep = min(
-            timestep - self.config.num_train_timesteps // self.num_inference_steps, self.config.num_train_timesteps - 1
+            timestep - self.config.num_train_timesteps // self.num_inference_steps,
+            self.config.num_train_timesteps - 1,
         )
 
         # 2. compute alphas, betas
@@ -378,5 +381,5 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             return (prev_sample, pred_original_sample)
         return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps

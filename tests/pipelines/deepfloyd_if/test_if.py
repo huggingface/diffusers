@@ -18,9 +18,7 @@ import unittest
 
 import torch
 
-from diffusers import (
-    IFPipeline,
-)
+from diffusers import IFPipeline
 from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
 

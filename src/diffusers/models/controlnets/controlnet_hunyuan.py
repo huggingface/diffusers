@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Dict, Optional, Union
 
 import torch
 from torch import nn
@@ -27,7 +26,7 @@ from ..embeddings import (
 )
 from ..modeling_utils import ModelMixin
 from ..transformers.hunyuan_transformer_2d import HunyuanDiTBlock
-from .controlnet import Tuple, zero_module
+from .controlnet import zero_module
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -35,7 +34,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class HunyuanControlNetOutput(BaseOutput):
-    controlnet_block_samples: Tuple[torch.Tensor]
+    controlnet_block_samples: tuple[torch.Tensor]
 
 
 class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
@@ -45,8 +44,8 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         conditioning_channels: int = 3,
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
-        in_channels: Optional[int] = None,
-        patch_size: Optional[int] = None,
+        in_channels: int | None = None,
+        patch_size: int | None = None,
         activation_fn: str = "gelu-approximate",
         sample_size=32,
         hidden_size=1152,
@@ -116,7 +115,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
             self.controlnet_blocks.append(controlnet_block)
 
     @property
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -125,7 +124,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
 
@@ -139,7 +138,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -317,7 +316,7 @@ class HunyuanDiT2DMultiControlNetModel(ModelMixin):
     designed to be compatible with `HunyuanDiT2DControlNetModel`.
 
     Args:
-        controlnets (`List[HunyuanDiT2DControlNetModel]`):
+        controlnets (`list[HunyuanDiT2DControlNetModel]`):
             Provides additional conditioning to the unet during the denoising process. You must set multiple
             `HunyuanDiT2DControlNetModel` as a list.
     """

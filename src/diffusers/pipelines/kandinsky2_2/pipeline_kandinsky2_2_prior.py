@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable
 
 import PIL.Image
 import torch
@@ -137,13 +137,13 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_INTERPOLATE_DOC_STRING)
     def interpolate(
         self,
-        images_and_prompts: List[Union[str, PIL.Image.Image, torch.Tensor]],
-        weights: List[float],
+        images_and_prompts: list[str | PIL.Image.Image | torch.Tensor],
+        weights: list[float],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        negative_prior_prompt: Optional[str] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        negative_prior_prompt: str | None = None,
         negative_prompt: str = "",
         guidance_scale: float = 4.0,
         device=None,
@@ -152,16 +152,16 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         Function invoked when using the prior pipeline for interpolation.
 
         Args:
-            images_and_prompts (`List[Union[str, PIL.Image.Image, torch.Tensor]]`):
+            images_and_prompts (`list[str | PIL.Image.Image | torch.Tensor]`):
                 list of prompts and images to guide the image generation.
-            weights: (`List[float]`):
+            weights: (`list[float]`):
                 list of weights for each condition in `images_and_prompts`
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -171,7 +171,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
             negative_prior_prompt (`str`, *optional*):
                 The prompt not to guide the prior diffusion process. Ignored when not using guidance (i.e., ignored if
                 `guidance_scale` is less than `1`).
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt not to guide the image generation. Ignored when not using guidance (i.e., ignored if
                 `guidance_scale` is less than `1`).
             guidance_scale (`float`, *optional*, defaults to 4.0):
@@ -303,7 +303,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif type(prompt) is not type(negative_prompt):
@@ -376,25 +376,25 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: str | list[str] | None = None,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
         guidance_scale: float = 4.0,
-        output_type: Optional[str] = "pt",  # pt only
+        output_type: str | None = "pt",  # pt only
         return_dict: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -402,7 +402,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -425,7 +425,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
                 callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
