@@ -74,7 +74,7 @@ def sample_block_noise(
 
     L = torch.linalg.cholesky(cov)
     block_number = batch_size * channel * num_frames * (height // ph) * (width // pw)
-    z = torch.randn(block_number, block_size, device=device, generator=generator)
+    z = torch.randn(block_number, block_size, device=generator.device, generator=generator).to(device)
     noise = z @ L.T
 
     noise = noise.view(batch_size, channel, num_frames, height // ph, width // pw, ph, pw)
