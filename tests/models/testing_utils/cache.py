@@ -18,9 +18,10 @@ import gc
 import pytest
 import torch
 
-from diffusers.hooks import FasterCacheConfig, FirstBlockCacheConfig, PyramidAttentionBroadcastConfig
+from diffusers.hooks import FasterCacheConfig, FirstBlockCacheConfig, MagCacheConfig, PyramidAttentionBroadcastConfig
 from diffusers.hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
 from diffusers.hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
+from diffusers.hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
 from diffusers.hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
 from diffusers.models.cache_utils import CacheMixin
 
@@ -553,4 +554,71 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
 
     @require_cache_mixin
     def test_faster_cache_reset_stateful_cache(self):
+        self._test_reset_stateful_cache()
+
+
+@is_cache
+class MagCacheConfigMixin:
+    """
+    Base mixin providing MagCache config.
+
+    Expected class attributes:
+        - model_class: The model class to test (must use CacheMixin)
+    """
+
+    # Default MagCache config - can be overridden by subclasses.
+    # Uses neutral ratios [1.0, 1.0] and a high threshold so the second
+    # inference step is always skipped, which is required by _test_cache_inference.
+    MAG_CACHE_CONFIG = {
+        "num_inference_steps": 2,
+        "retention_ratio": 0.0,
+        "threshold": 100.0,
+        "mag_ratios": [1.0, 1.0],
+    }
+
+    def _get_cache_config(self):
+        return MagCacheConfig(**self.MAG_CACHE_CONFIG)
+
+    def _get_hook_names(self):
+        return [_MAG_CACHE_LEADER_BLOCK_HOOK, _MAG_CACHE_BLOCK_HOOK]
+
+
+@is_cache
+class MagCacheTesterMixin(MagCacheConfigMixin, CacheTesterMixin):
+    """
+    Mixin class for testing MagCache on models.
+
+    Expected class attributes:
+        - model_class: The model class to test (must use CacheMixin)
+
+    Expected methods to be implemented by subclasses:
+        - get_init_dict(): Returns dict of arguments to initialize the model
+        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Pytest mark: cache
+        Use `pytest -m "not cache"` to skip these tests
+    """
+
+    @require_cache_mixin
+    def test_mag_cache_enable_disable_state(self):
+        self._test_cache_enable_disable_state()
+
+    @require_cache_mixin
+    def test_mag_cache_double_enable_raises_error(self):
+        self._test_cache_double_enable_raises_error()
+
+    @require_cache_mixin
+    def test_mag_cache_hooks_registered(self):
+        self._test_cache_hooks_registered()
+
+    @require_cache_mixin
+    def test_mag_cache_inference(self):
+        self._test_cache_inference()
+
+    @require_cache_mixin
+    def test_mag_cache_context_manager(self):
+        self._test_cache_context_manager()
+
+    @require_cache_mixin
+    def test_mag_cache_reset_stateful_cache(self):
         self._test_reset_stateful_cache()

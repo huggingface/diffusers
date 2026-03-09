@@ -5,6 +5,8 @@ from .cache import (
     FasterCacheTesterMixin,
     FirstBlockCacheConfigMixin,
     FirstBlockCacheTesterMixin,
+    MagCacheConfigMixin,
+    MagCacheTesterMixin,
     PyramidAttentionBroadcastConfigMixin,
     PyramidAttentionBroadcastTesterMixin,
 )
@@ -50,6 +52,8 @@ __all__ = [
     "FasterCacheTesterMixin",
     "FirstBlockCacheConfigMixin",
     "FirstBlockCacheTesterMixin",
+    "MagCacheConfigMixin",
+    "MagCacheTesterMixin",
     "GGUFCompileTesterMixin",
     "GGUFConfigMixin",
     "GGUFTesterMixin",
