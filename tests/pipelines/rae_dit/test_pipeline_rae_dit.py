@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 
 import diffusers.models.autoencoders.autoencoder_rae as _rae_module
-from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiTPipeline
+from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiTPipeline, RAEDiTPipelineOutput
 from diffusers.models.autoencoders.autoencoder_rae import _ENCODER_FORWARD_FNS, _build_encoder
 from diffusers.models.transformers.transformer_rae_dit import RAEDiT2DModel
 
@@ -180,7 +180,9 @@ class RAEDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe = self.pipeline_class(**self.get_dummy_components()).to("cpu")
         pipe.set_progress_bar_config(disable=None)
 
-        image = pipe(**self.get_dummy_inputs("cpu")).images
+        output = pipe(**self.get_dummy_inputs("cpu"))
+        self.assertIsInstance(output, RAEDiTPipelineOutput)
+        image = output.images
         image_slice = image[0, -2:, -2:, -1]
 
         self.assertEqual(image.shape, (1, 4, 4, 3))

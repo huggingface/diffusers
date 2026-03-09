@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import torch
 
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderRAE
 from ...models.transformers.transformer_rae_dit import RAEDiT2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline
+from .pipeline_output import RAEDiTPipelineOutput
 
 
 class RAEDiTPipeline(DiffusionPipeline):
@@ -52,6 +54,7 @@ class RAEDiTPipeline(DiffusionPipeline):
                     self.labels[label.strip()] = int(key)
             self.labels = dict(sorted(self.labels.items()))
 
+        self.image_processor = VaeImageProcessor(vae_scale_factor=1, do_resize=False, do_normalize=False)
         self._guidance_scale = 1.0
 
     @property
@@ -87,7 +90,7 @@ class RAEDiTPipeline(DiffusionPipeline):
 
         return class_labels
 
-    def _prepare_latents(
+    def prepare_latents(
         self,
         batch_size: int,
         latent_channels: int,
@@ -98,6 +101,12 @@ class RAEDiTPipeline(DiffusionPipeline):
         latents: torch.Tensor | None,
     ) -> torch.Tensor:
         shape = (batch_size, latent_channels, latent_size, latent_size)
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested a batch size of "
+                f"{batch_size}. Make sure the batch size matches the length of the generators."
+            )
 
         if latents is None:
             return randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -139,7 +148,7 @@ class RAEDiTPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         output_type: str = "pil",
         return_dict: bool = True,
-    ) -> ImagePipelineOutput | tuple:
+    ) -> RAEDiTPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
@@ -163,7 +172,7 @@ class RAEDiTPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 Output format. Choose from `"pil"`, `"np"`, `"pt"`, or `"latent"`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether to return an [`ImagePipelineOutput`] instead of a tuple.
+                Whether to return an [`RAEDiTPipelineOutput`] instead of a tuple.
         """
 
         if num_images_per_prompt < 1:
@@ -194,7 +203,7 @@ class RAEDiTPipeline(DiffusionPipeline):
 
         latent_size = self.transformer.config.sample_size
         latent_channels = self.transformer.config.in_channels
-        latents = self._prepare_latents(
+        latents = self.prepare_latents(
             batch_size=batch_size,
             latent_channels=latent_channels,
             latent_size=latent_size,
@@ -244,16 +253,11 @@ class RAEDiTPipeline(DiffusionPipeline):
             output = latents
         else:
             images = self.vae.decode(latents).sample.clamp(0, 1)
-            if output_type == "pt":
-                output = images
-            else:
-                output = images.cpu().permute(0, 2, 3, 1).float().numpy()
-                if output_type == "pil":
-                    output = self.numpy_to_pil(output)
+            output = self.image_processor.postprocess(images, output_type=output_type)
 
         self.maybe_free_model_hooks()
 
         if not return_dict:
             return (output,)
 
-        return ImagePipelineOutput(images=output)
+        return RAEDiTPipelineOutput(images=output)

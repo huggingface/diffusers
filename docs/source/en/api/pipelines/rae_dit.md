@@ -54,6 +54,6 @@ image = pipe(class_labels=[class_id], num_inference_steps=25).images[0]
   - all
   - __call__
 
-## ImagePipelineOutput
+## RAEDiTPipelineOutput
 
-[[autodoc]] pipelines.ImagePipelineOutput
+[[autodoc]] RAEDiTPipelineOutput

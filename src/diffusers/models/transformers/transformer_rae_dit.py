@@ -7,13 +7,14 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ..embeddings import PatchEmbed, get_2d_sincos_pos_embed
+from ..attention import FeedForward
+from ..embeddings import PatchEmbed, apply_rotary_emb, get_2d_sincos_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
 
 
-def _repeat_to_length(hidden_states: torch.Tensor, target_length: int) -> torch.Tensor:
+def _expand_conditioning_tokens(hidden_states: torch.Tensor, target_length: int) -> torch.Tensor:
     if hidden_states.shape[1] == target_length:
         return hidden_states
 
@@ -44,20 +45,6 @@ def _repeat_to_length(hidden_states: torch.Tensor, target_length: int) -> torch.
     )
 
 
-def _ddt_modulate(hidden_states: torch.Tensor, shift: torch.Tensor | None, scale: torch.Tensor) -> torch.Tensor:
-    if shift is None:
-        shift = torch.zeros_like(scale)
-
-    shift = _repeat_to_length(shift, hidden_states.shape[1])
-    scale = _repeat_to_length(scale, hidden_states.shape[1])
-    return hidden_states * (1 + scale) + shift
-
-
-def _ddt_gate(hidden_states: torch.Tensor, gate: torch.Tensor) -> torch.Tensor:
-    gate = _repeat_to_length(gate, hidden_states.shape[1])
-    return hidden_states * gate
-
-
 def _to_pair(value: int | tuple[int, int] | list[int], name: str) -> tuple[int, int]:
     if isinstance(value, int):
         return value, value
@@ -68,39 +55,17 @@ def _to_pair(value: int | tuple[int, int] | list[int], name: str) -> tuple[int, 
     return int(value[0]), int(value[1])
 
 
-def _rotate_half(hidden_states: torch.Tensor) -> torch.Tensor:
-    hidden_states = hidden_states.view(*hidden_states.shape[:-1], -1, 2)
-    first, second = hidden_states.unbind(dim=-1)
-    hidden_states = torch.stack((-second, first), dim=-1)
-    return hidden_states.flatten(-2)
-
-
-class _ApproximateGELUMLP(nn.Module):
-    def __init__(self, hidden_size: int, intermediate_size: int):
-        super().__init__()
-        self.fc1 = nn.Linear(hidden_size, intermediate_size)
-        self.act = nn.GELU(approximate="tanh")
-        self.fc2 = nn.Linear(intermediate_size, hidden_size)
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.fc1(hidden_states)
-        hidden_states = self.act(hidden_states)
-        hidden_states = self.fc2(hidden_states)
-        return hidden_states
-
-
-class SwiGLUFFN(nn.Module):
-    def __init__(self, hidden_size: int, intermediate_size: int):
-        super().__init__()
-        self.w12 = nn.Linear(hidden_size, 2 * intermediate_size)
-        self.w3 = nn.Linear(intermediate_size, hidden_size)
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.w12(hidden_states)
-        hidden_states_1, hidden_states_2 = hidden_states.chunk(2, dim=-1)
-        hidden_states = F.silu(hidden_states_1) * hidden_states_2
-        hidden_states = self.w3(hidden_states)
-        return hidden_states
+def _swap_swiglu_projection_halves(feedforward: FeedForward) -> None:
+    projection = feedforward.net[0].proj
+    projection.weight.data = torch.cat(
+        projection.weight.data.chunk(2, dim=0)[::-1],
+        dim=0,
+    )
+    if projection.bias is not None:
+        projection.bias.data = torch.cat(
+            projection.bias.data.chunk(2, dim=0)[::-1],
+            dim=0,
+        )
 
 
 class GaussianFourierEmbedding(nn.Module):
@@ -150,7 +115,7 @@ class LabelEmbedder(nn.Module):
         return self.embedding_table(class_labels)
 
 
-class VisionRotaryEmbeddingFast(nn.Module):
+class VisionRotaryEmbedding(nn.Module):
     def __init__(self, dim: int, pt_seq_len: int, ft_seq_len: int | None = None, theta: float = 10000.0):
         super().__init__()
 
@@ -183,10 +148,10 @@ class VisionRotaryEmbeddingFast(nn.Module):
             freqs_cos = freqs_cos.repeat_interleave(repeat, dim=0)
             freqs_sin = freqs_sin.repeat_interleave(repeat, dim=0)
 
-        return hidden_states * freqs_cos + _rotate_half(hidden_states) * freqs_sin
+        return apply_rotary_emb(hidden_states, (freqs_cos, freqs_sin), sequence_dim=2)
 
 
-class NormAttention(nn.Module):
+class RAEDiTAttention(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -210,11 +175,13 @@ class NormAttention(nn.Module):
         self.k_norm = norm_cls(self.head_dim, **norm_kwargs) if qk_norm else nn.Identity()
         self.proj = nn.Linear(dim, dim)
 
-    def forward(self, hidden_states: torch.Tensor, rope: VisionRotaryEmbeddingFast | None = None) -> torch.Tensor:
-        batch_size, sequence_length, channels = hidden_states.shape
-        qkv = self.qkv(hidden_states)
-        qkv = qkv.view(batch_size, sequence_length, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
-        query, key, value = qkv.unbind(0)
+    def forward(self, hidden_states: torch.Tensor, rope: VisionRotaryEmbedding | None = None) -> torch.Tensor:
+        batch_size, _, channels = hidden_states.shape
+        query, key, value = self.qkv(hidden_states).chunk(3, dim=-1)
+
+        query = query.unflatten(-1, (self.num_heads, -1)).transpose(1, 2)
+        key = key.unflatten(-1, (self.num_heads, -1)).transpose(1, 2)
+        value = value.unflatten(-1, (self.num_heads, -1)).transpose(1, 2)
 
         query = self.q_norm(query)
         key = self.k_norm(key)
@@ -227,7 +194,7 @@ class NormAttention(nn.Module):
         key = key.to(dtype=value.dtype)
 
         hidden_states = F.scaled_dot_product_attention(query, key, value)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, sequence_length, channels)
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, channels)
         hidden_states = self.proj(hidden_states)
         return hidden_states
 
@@ -244,6 +211,7 @@ class RAEDiTBlock(nn.Module):
         wo_shift: bool = False,
     ):
         super().__init__()
+        self.use_swiglu = use_swiglu
 
         if use_rmsnorm:
             self.norm1 = RMSNorm(hidden_size, eps=1e-6)
@@ -252,7 +220,7 @@ class RAEDiTBlock(nn.Module):
             self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
             self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
-        self.attn = NormAttention(
+        self.attn = RAEDiTAttention(
             hidden_size,
             num_heads=num_heads,
             qkv_bias=True,
@@ -261,10 +229,13 @@ class RAEDiTBlock(nn.Module):
         )
 
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
-        if use_swiglu:
-            self.mlp = SwiGLUFFN(hidden_size, int(2 * mlp_hidden_dim / 3))
-        else:
-            self.mlp = _ApproximateGELUMLP(hidden_size, mlp_hidden_dim)
+        mlp_inner_dim = int(2 * mlp_hidden_dim / 3) if use_swiglu else mlp_hidden_dim
+        self.mlp = FeedForward(
+            hidden_size,
+            inner_dim=mlp_inner_dim,
+            activation_fn="swiglu" if use_swiglu else "gelu-approximate",
+            bias=True,
+        )
 
         self.wo_shift = wo_shift
         if wo_shift:
@@ -276,7 +247,7 @@ class RAEDiTBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         conditioning: torch.Tensor,
-        feat_rope: VisionRotaryEmbeddingFast | None = None,
+        feat_rope: VisionRotaryEmbedding | None = None,
     ) -> torch.Tensor:
         if conditioning.ndim < hidden_states.ndim:
             conditioning = conditioning.unsqueeze(1)
@@ -290,13 +261,25 @@ class RAEDiTBlock(nn.Module):
                 6, dim=-1
             )
 
-        hidden_states = hidden_states + _ddt_gate(
-            self.attn(_ddt_modulate(self.norm1(hidden_states), shift_msa, scale_msa), rope=feat_rope), gate_msa
-        )
-        hidden_states = hidden_states + _ddt_gate(
-            self.mlp(_ddt_modulate(self.norm2(hidden_states), shift_mlp, scale_mlp)),
-            gate_mlp,
-        )
+        if shift_msa is None:
+            shift_msa = torch.zeros_like(scale_msa)
+        if shift_mlp is None:
+            shift_mlp = torch.zeros_like(scale_mlp)
+
+        if shift_msa.shape[1] != hidden_states.shape[1]:
+            shift_msa = _expand_conditioning_tokens(shift_msa, hidden_states.shape[1])
+            scale_msa = _expand_conditioning_tokens(scale_msa, hidden_states.shape[1])
+            gate_msa = _expand_conditioning_tokens(gate_msa, hidden_states.shape[1])
+        if shift_mlp.shape[1] != hidden_states.shape[1]:
+            shift_mlp = _expand_conditioning_tokens(shift_mlp, hidden_states.shape[1])
+            scale_mlp = _expand_conditioning_tokens(scale_mlp, hidden_states.shape[1])
+            gate_mlp = _expand_conditioning_tokens(gate_mlp, hidden_states.shape[1])
+
+        norm_hidden_states = self.norm1(hidden_states)
+        hidden_states = hidden_states + self.attn(norm_hidden_states * (1 + scale_msa) + shift_msa, rope=feat_rope) * gate_msa
+
+        norm_hidden_states = self.norm2(hidden_states)
+        hidden_states = hidden_states + self.mlp(norm_hidden_states * (1 + scale_mlp) + shift_mlp) * gate_mlp
         return hidden_states
 
 
@@ -317,7 +300,11 @@ class RAEDiTFinalLayer(nn.Module):
             conditioning = conditioning.unsqueeze(1)
 
         shift, scale = self.adaLN_modulation(conditioning).chunk(2, dim=-1)
-        hidden_states = _ddt_modulate(self.norm_final(hidden_states), shift, scale)
+        if shift.shape[1] != hidden_states.shape[1]:
+            shift = _expand_conditioning_tokens(shift, hidden_states.shape[1])
+            scale = _expand_conditioning_tokens(scale, hidden_states.shape[1])
+
+        hidden_states = self.norm_final(hidden_states) * (1 + scale) + shift
         hidden_states = self.linear(hidden_states)
         return hidden_states
 
@@ -333,6 +320,7 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm", "final_layer"]
 
     @register_to_config
     def __init__(
@@ -410,10 +398,12 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
 
         num_patches = self.s_embedder.height * self.s_embedder.width
         if use_pos_embed:
-            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, encoder_hidden_size), requires_grad=False)
+            grid_size = int(num_patches**0.5)
+            pos_embed = get_2d_sincos_pos_embed(encoder_hidden_size, grid_size, output_type="pt")
+            self.register_buffer("pos_embed", pos_embed.unsqueeze(0).float(), persistent=False)
             self.x_pos_embed = None
         else:
-            self.register_parameter("pos_embed", None)
+            self.register_buffer("pos_embed", None, persistent=False)
             self.x_pos_embed = None
 
         if use_rope:
@@ -421,8 +411,8 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
             decoder_rope_dim = decoder_hidden_size // decoder_num_attention_heads // 2
             encoder_side = int(sqrt(num_patches))
             decoder_side = int(sqrt(self.x_embedder.height * self.x_embedder.width))
-            self.enc_feat_rope = VisionRotaryEmbeddingFast(encoder_rope_dim, pt_seq_len=encoder_side)
-            self.dec_feat_rope = VisionRotaryEmbeddingFast(decoder_rope_dim, pt_seq_len=decoder_side)
+            self.enc_feat_rope = VisionRotaryEmbedding(encoder_rope_dim, pt_seq_len=encoder_side)
+            self.dec_feat_rope = VisionRotaryEmbedding(decoder_rope_dim, pt_seq_len=decoder_side)
         else:
             self.enc_feat_rope = None
             self.dec_feat_rope = None
@@ -463,13 +453,9 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
 
-        if self.use_pos_embed:
-            pos_embed = get_2d_sincos_pos_embed(
-                self.pos_embed.shape[-1], int(sqrt(self.pos_embed.shape[1])), output_type="pt"
-            )
-            self.pos_embed.data.copy_(pos_embed.float().unsqueeze(0))
-
         for block in self.blocks:
+            if block.use_swiglu:
+                _swap_swiglu_projection_halves(block.mlp)
             nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
 
@@ -495,21 +481,6 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
         )
         return hidden_states
 
-    def _run_block(
-        self,
-        block: RAEDiTBlock,
-        hidden_states: torch.Tensor,
-        conditioning: torch.Tensor,
-        feat_rope: VisionRotaryEmbeddingFast | None,
-    ) -> torch.Tensor:
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-
-            def custom_forward(hidden_states: torch.Tensor, conditioning: torch.Tensor) -> torch.Tensor:
-                return block(hidden_states, conditioning, feat_rope=feat_rope)
-
-            return self._gradient_checkpointing_func(custom_forward, hidden_states, conditioning)
-        return block(hidden_states, conditioning, feat_rope=feat_rope)
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -533,31 +504,67 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
         if conditioning_hidden_states is None:
             conditioning_hidden_states = self.s_embedder(hidden_states)
             if self.use_pos_embed:
-                conditioning_hidden_states = conditioning_hidden_states + self.pos_embed
+                conditioning_hidden_states = conditioning_hidden_states + self.pos_embed.to(
+                    device=conditioning_hidden_states.device, dtype=conditioning_hidden_states.dtype
+                )
 
             for block_idx in range(self.num_encoder_blocks):
-                conditioning_hidden_states = self._run_block(
-                    self.blocks[block_idx],
-                    conditioning_hidden_states,
-                    conditioning,
-                    self.enc_feat_rope,
-                )
+                block = self.blocks[block_idx]
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
+
+                    def custom_forward(
+                        hidden_states: torch.Tensor,
+                        conditioning: torch.Tensor,
+                        block: RAEDiTBlock = block,
+                        feat_rope: VisionRotaryEmbedding | None = self.enc_feat_rope,
+                    ) -> torch.Tensor:
+                        return block(hidden_states, conditioning, feat_rope=feat_rope)
+
+                    conditioning_hidden_states = self._gradient_checkpointing_func(
+                        custom_forward, conditioning_hidden_states, conditioning
+                    )
+                else:
+                    conditioning_hidden_states = block(
+                        conditioning_hidden_states,
+                        conditioning,
+                        feat_rope=self.enc_feat_rope,
+                    )
 
             conditioning_hidden_states = F.silu(timestep_emb.unsqueeze(1) + conditioning_hidden_states)
 
+        projector_dtype = conditioning_hidden_states.dtype
+        projector_param = next(self.s_projector.parameters(), None)
+        if projector_param is not None:
+            projector_dtype = projector_param.dtype
+
+        conditioning_hidden_states = conditioning_hidden_states.to(device=hidden_states.device, dtype=projector_dtype)
         conditioning_hidden_states = self.s_projector(conditioning_hidden_states)
 
         hidden_states = self.x_embedder(hidden_states)
         if self.use_pos_embed and self.x_pos_embed is not None:
-            hidden_states = hidden_states + self.x_pos_embed
+            hidden_states = hidden_states + self.x_pos_embed.to(device=hidden_states.device, dtype=hidden_states.dtype)
 
         for block_idx in range(self.num_encoder_blocks, self.num_blocks):
-            hidden_states = self._run_block(
-                self.blocks[block_idx],
-                hidden_states,
-                conditioning_hidden_states,
-                self.dec_feat_rope,
-            )
+            block = self.blocks[block_idx]
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+
+                def custom_forward(
+                    hidden_states: torch.Tensor,
+                    conditioning_hidden_states: torch.Tensor,
+                    block: RAEDiTBlock = block,
+                    feat_rope: VisionRotaryEmbedding | None = self.dec_feat_rope,
+                ) -> torch.Tensor:
+                    return block(hidden_states, conditioning_hidden_states, feat_rope=feat_rope)
+
+                hidden_states = self._gradient_checkpointing_func(
+                    custom_forward, hidden_states, conditioning_hidden_states
+                )
+            else:
+                hidden_states = block(
+                    hidden_states,
+                    conditioning_hidden_states,
+                    feat_rope=self.dec_feat_rope,
+                )
 
         hidden_states = self.final_layer(hidden_states, conditioning_hidden_states)
         hidden_states = self.unpatchify(hidden_states)
