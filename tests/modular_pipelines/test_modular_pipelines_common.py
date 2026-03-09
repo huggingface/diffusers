@@ -345,7 +345,7 @@ class ModularPipelineTesterMixin:
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        base_pipe.save_pretrained(tmp_path)
+        base_pipe.save_pretrained(str(tmp_path))
         pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
         pipe.load_components(torch_dtype=torch.float32)
         pipe.to(torch_device)
@@ -365,7 +365,7 @@ class ModularPipelineTesterMixin:
         components_spec = pipe._component_specs
         components = sorted(components_spec.keys())
 
-        pipe.save_pretrained(tmp_path)
+        pipe.save_pretrained(str(tmp_path))
         index_file = tmp_path / "modular_model_index.json"
         assert index_file.exists()
 
@@ -480,7 +480,7 @@ class TestCustomBlockRequirements:
 
     def test_sequential_block_requirements_save_load(self, tmp_path):
         pipe = self.get_dummy_block_pipe()
-        pipe.save_pretrained(tmp_path)
+        pipe.save_pretrained(str(tmp_path))
 
         config_path = tmp_path / "modular_config.json"
 
@@ -505,7 +505,7 @@ class TestCustomBlockRequirements:
         logger.setLevel(30)
 
         with CaptureLogger(logger) as cap_logger:
-            pipe.save_pretrained(tmp_path)
+            pipe.save_pretrained(str(tmp_path))
 
         template = "{req} was specified in the requirements but wasn't found in the current environment"
         msg_xyz = template.format(req="xyz")
@@ -515,7 +515,7 @@ class TestCustomBlockRequirements:
 
     def test_conditional_block_requirements_save_load(self, tmp_path):
         pipe = self.get_dummy_conditional_block_pipe()
-        pipe.save_pretrained(tmp_path)
+        pipe.save_pretrained(str(tmp_path))
 
         config_path = tmp_path / "modular_config.json"
         with open(config_path, "r") as f:
@@ -532,7 +532,7 @@ class TestCustomBlockRequirements:
 
     def test_loop_block_requirements_save_load(self, tmp_path):
         pipe = self.get_dummy_loop_block_pipe()
-        pipe.save_pretrained(tmp_path)
+        pipe.save_pretrained(str(tmp_path))
 
         config_path = tmp_path / "modular_config.json"
         with open(config_path, "r") as f:
