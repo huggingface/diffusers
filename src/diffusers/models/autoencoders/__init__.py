@@ -20,5 +20,6 @@ from .autoencoder_kl_wan import AutoencoderKLWan
 from .autoencoder_oobleck import AutoencoderOobleck
 from .autoencoder_rae import AutoencoderRAE
 from .autoencoder_tiny import AutoencoderTiny
+from .autoencoder_vidtok import AutoencoderVidTok
 from .consistency_decoder_vae import ConsistencyDecoderVAE
 from .vq_model import VQModel
