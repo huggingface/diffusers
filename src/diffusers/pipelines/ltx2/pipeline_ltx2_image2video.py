@@ -271,74 +271,6 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
             self.tokenizer.model_max_length if getattr(self, "tokenizer", None) is not None else 1024
         )
 
-    @staticmethod
-    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._pack_text_embeds
-    def _pack_text_embeds(
-        text_hidden_states: torch.Tensor,
-        sequence_lengths: torch.Tensor,
-        device: str | torch.device,
-        padding_side: str = "left",
-        scale_factor: int = 8,
-        eps: float = 1e-6,
-    ) -> torch.Tensor:
-        """
-        Packs and normalizes text encoder hidden states, respecting padding. Normalization is performed per-batch and
-        per-layer in a masked fashion (only over non-padded positions).
-
-        Args:
-            text_hidden_states (`torch.Tensor` of shape `(batch_size, seq_len, hidden_dim, num_layers)`):
-                Per-layer hidden_states from a text encoder (e.g. `Gemma3ForConditionalGeneration`).
-            sequence_lengths (`torch.Tensor of shape `(batch_size,)`):
-                The number of valid (non-padded) tokens for each batch instance.
-            device: (`str` or `torch.device`, *optional*):
-                torch device to place the resulting embeddings on
-            padding_side: (`str`, *optional*, defaults to `"left"`):
-                Whether the text tokenizer performs padding on the `"left"` or `"right"`.
-            scale_factor (`int`, *optional*, defaults to `8`):
-                Scaling factor to multiply the normalized hidden states by.
-            eps (`float`, *optional*, defaults to `1e-6`):
-                A small positive value for numerical stability when performing normalization.
-
-        Returns:
-            `torch.Tensor` of shape `(batch_size, seq_len, hidden_dim * num_layers)`:
-                Normed and flattened text encoder hidden states.
-        """
-        batch_size, seq_len, hidden_dim, num_layers = text_hidden_states.shape
-        original_dtype = text_hidden_states.dtype
-
-        # Create padding mask
-        token_indices = torch.arange(seq_len, device=device).unsqueeze(0)
-        if padding_side == "right":
-            # For right padding, valid tokens are from 0 to sequence_length-1
-            mask = token_indices < sequence_lengths[:, None]  # [batch_size, seq_len]
-        elif padding_side == "left":
-            # For left padding, valid tokens are from (T - sequence_length) to T-1
-            start_indices = seq_len - sequence_lengths[:, None]  # [batch_size, 1]
-            mask = token_indices >= start_indices  # [B, T]
-        else:
-            raise ValueError(f"padding_side must be 'left' or 'right', got {padding_side}")
-        mask = mask[:, :, None, None]  # [batch_size, seq_len] --> [batch_size, seq_len, 1, 1]
-
-        # Compute masked mean over non-padding positions of shape (batch_size, 1, 1, seq_len)
-        masked_text_hidden_states = text_hidden_states.masked_fill(~mask, 0.0)
-        num_valid_positions = (sequence_lengths * hidden_dim).view(batch_size, 1, 1, 1)
-        masked_mean = masked_text_hidden_states.sum(dim=(1, 2), keepdim=True) / (num_valid_positions + eps)
-
-        # Compute min/max over non-padding positions of shape (batch_size, 1, 1 seq_len)
-        x_min = text_hidden_states.masked_fill(~mask, float("inf")).amin(dim=(1, 2), keepdim=True)
-        x_max = text_hidden_states.masked_fill(~mask, float("-inf")).amax(dim=(1, 2), keepdim=True)
-
-        # Normalization
-        normalized_hidden_states = (text_hidden_states - masked_mean) / (x_max - x_min + eps)
-        normalized_hidden_states = normalized_hidden_states * scale_factor
-
-        # Pack the hidden states to a 3D tensor (batch_size, seq_len, hidden_dim * num_layers)
-        normalized_hidden_states = normalized_hidden_states.flatten(2)
-        mask_flat = mask.squeeze(-1).expand(-1, -1, hidden_dim * num_layers)
-        normalized_hidden_states = normalized_hidden_states.masked_fill(~mask_flat, 0.0)
-        normalized_hidden_states = normalized_hidden_states.to(dtype=original_dtype)
-        return normalized_hidden_states
-
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._get_gemma_prompt_embeds
     def _get_gemma_prompt_embeds(
         self,
@@ -392,16 +324,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         )
         text_encoder_hidden_states = text_encoder_outputs.hidden_states
         text_encoder_hidden_states = torch.stack(text_encoder_hidden_states, dim=-1)
-        sequence_lengths = prompt_attention_mask.sum(dim=-1)
-
-        prompt_embeds = self._pack_text_embeds(
-            text_encoder_hidden_states,
-            sequence_lengths,
-            device=device,
-            padding_side=self.tokenizer.padding_side,
-            scale_factor=scale_factor,
-        )
-        prompt_embeds = prompt_embeds.to(dtype=dtype)
+        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(dtype=dtype)  # Pack to 3D
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
@@ -1017,9 +940,11 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-        additive_attention_mask = (1 - prompt_attention_mask.to(prompt_embeds.dtype)) * -1000000.0
+        tokenizer_padding_side = "left"  # Padding side for default Gemma3-12B text encoder
+        if getattr(self, "tokenizer", None) is not None:
+            tokenizer_padding_side = getattr(self.tokenizer, "padding_side", "left")
         connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = self.connectors(
-            prompt_embeds, additive_attention_mask, additive_mask=True
+            prompt_embeds, prompt_attention_mask, padding_side=tokenizer_padding_side
         )
 
         # 4. Prepare latent variables

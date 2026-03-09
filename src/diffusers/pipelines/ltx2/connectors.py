@@ -11,6 +11,73 @@ from ...models.modeling_utils import ModelMixin
 from ...models.transformers.transformer_ltx2 import LTX2Attention, LTX2AudioVideoAttnProcessor
 
 
+def per_batch_per_layer_mean_norm(
+    text_hidden_states: torch.Tensor,
+    sequence_lengths: torch.Tensor,
+    device: str | torch.device,
+    padding_side: str = "left",
+    scale_factor: int = 8,
+    eps: float = 1e-6,
+):
+    """
+    Performs per-batch per-layer normalization using a masked mean and range on per-layer text encoder hidden_states.
+    Respects the padding of the hidden states.
+
+    Args:
+        text_hidden_states (`torch.Tensor` of shape `(batch_size, seq_len, hidden_dim, num_layers)`):
+            Per-layer hidden_states from a text encoder (e.g. `Gemma3ForConditionalGeneration`).
+        sequence_lengths (`torch.Tensor of shape `(batch_size,)`):
+            The number of valid (non-padded) tokens for each batch instance.
+        device: (`str` or `torch.device`, *optional*):
+            torch device to place the resulting embeddings on
+        padding_side: (`str`, *optional*, defaults to `"left"`):
+            Whether the text tokenizer performs padding on the `"left"` or `"right"`.
+        scale_factor (`int`, *optional*, defaults to `8`):
+            Scaling factor to multiply the normalized hidden states by.
+        eps (`float`, *optional*, defaults to `1e-6`):
+            A small positive value for numerical stability when performing normalization.
+
+    Returns:
+        `torch.Tensor` of shape `(batch_size, seq_len, hidden_dim * num_layers)`:
+            Normed and flattened text encoder hidden states.
+    """
+    batch_size, seq_len, hidden_dim, num_layers = text_hidden_states.shape
+    original_dtype = text_hidden_states.dtype
+
+    # Create padding mask
+    token_indices = torch.arange(seq_len, device=device).unsqueeze(0)
+    if padding_side == "right":
+        # For right padding, valid tokens are from 0 to sequence_length-1
+        mask = token_indices < sequence_lengths[:, None]  # [batch_size, seq_len]
+    elif padding_side == "left":
+        # For left padding, valid tokens are from (T - sequence_length) to T-1
+        start_indices = seq_len - sequence_lengths[:, None]  # [batch_size, 1]
+        mask = token_indices >= start_indices  # [B, T]
+    else:
+        raise ValueError(f"padding_side must be 'left' or 'right', got {padding_side}")
+    mask = mask[:, :, None, None]  # [batch_size, seq_len] --> [batch_size, seq_len, 1, 1]
+
+    # Compute masked mean over non-padding positions of shape (batch_size, 1, 1, seq_len)
+    masked_text_hidden_states = text_hidden_states.masked_fill(~mask, 0.0)
+    num_valid_positions = (sequence_lengths * hidden_dim).view(batch_size, 1, 1, 1)
+    masked_mean = masked_text_hidden_states.sum(dim=(1, 2), keepdim=True) / (num_valid_positions + eps)
+
+    # Compute min/max over non-padding positions of shape (batch_size, 1, 1 seq_len)
+    x_min = text_hidden_states.masked_fill(~mask, float("inf")).amin(dim=(1, 2), keepdim=True)
+    x_max = text_hidden_states.masked_fill(~mask, float("-inf")).amax(dim=(1, 2), keepdim=True)
+
+    # Normalization
+    normalized_hidden_states = (text_hidden_states - masked_mean) / (x_max - x_min + eps)
+    normalized_hidden_states = normalized_hidden_states * scale_factor
+
+    # Pack the hidden states to a 3D tensor (batch_size, seq_len, hidden_dim * num_layers)
+    normalized_hidden_states = normalized_hidden_states.flatten(2)
+    mask_flat = mask.squeeze(-1).expand(-1, -1, hidden_dim * num_layers)
+    normalized_hidden_states = normalized_hidden_states.masked_fill(~mask_flat, 0.0)
+    normalized_hidden_states = normalized_hidden_states.to(dtype=original_dtype)
+    return normalized_hidden_states
+
+
 def per_token_rms_norm(text_encoder_hidden_states: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     variance = torch.mean(text_encoder_hidden_states ** 2, dim=2, keepdim=2)
     norm_text_encoder_hidden_states = text_encoder_hidden_states + torch.rsqrt(variance + eps)
@@ -320,26 +387,37 @@ class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
         )
 
     def forward(
-        self, text_encoder_hidden_states: torch.Tensor, attention_mask: torch.Tensor, additive_mask: bool = False
+        self,
+        text_encoder_hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor,
+        padding_side: str = "left",
+        scale_factor: int = 8,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Given per-layer text encoder hidden_states, extracts features and runs per-modality connectors to get text
         embeddings for the LTX-2.X DiT models.
 
         Args:
-            text_encoder_hidden_states (`torch.Tensor` of shape `(batch_size, seq_len, caption_channels, text_proj_in_factor)`):
-                Per-layer text encoder hidden_states.
+            text_encoder_hidden_states (`torch.Tensor`)):
+                Per-layer text encoder hidden_states. Can either be 4D with shape `(batch_size, seq_len,
+                caption_channels, text_proj_in_factor) or 3D with the last two dimensions flattened.
             attention_mask (`torch.Tensor` of shape `(batch_size, seq_len)`):
                 Multiplicative binary attention mask where 1s indicate unmasked positions and 0s indicate masked
                 positions.
+            padding_side (`str`, *optional*, defaults to `"left"`):
+                The padding side used by the text encoder's text encoder (either `"left"` or `"right"`). Defaults to
+                `"left"` as this is what the default Gemma3-12B text encoder uses. Only used if
+                `per_modality_projections` is `False` (LTX-2.0 models).
+            scale_factor (`int`, *optional*, defaults to `8`):
+                Scale factor for masked mean/range normalization. Only used if `per_modality_projections` is `False`
+                (LTX-2.0 models).
         """
-        # Convert to additive attention mask, if necessary
-        if not additive_mask:
-            text_dtype = text_encoder_hidden_states.dtype
-            attention_mask = (attention_mask - 1).reshape(attention_mask.shape[0], 1, -1, attention_mask.shape[-1])
-            attention_mask = attention_mask.to(text_dtype) * torch.finfo(text_dtype).max
+        if text_encoder_hidden_states.ndim == 3:
+            # Ensure shape is [batch_size, seq_len, caption_channels, text_proj_in_factor]
+            text_encoder_hidden_states = text_encoder_hidden_states.unflatten(2, (self.config.caption_channels, -1))
 
         if self.config.per_modality_projections:
+            # LTX-2.3
             norm_text_encoder_hidden_states = per_token_rms_norm(text_encoder_hidden_states)
 
             norm_text_encoder_hidden_states = norm_text_encoder_hidden_states.flatten(2, 3)
@@ -348,7 +426,7 @@ class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
                 bool_mask, norm_text_encoder_hidden_states, torch.zeros_like(norm_text_encoder_hidden_states)
             )
 
-            # Rescale norms for video and audio dims
+            # Rescale norms with respect to video and audio dims for feature extractors
             video_scale_factor = math.sqrt(self.config.video_hidden_dim / self.config.caption_channels)
             video_norm_text_emb = norm_text_encoder_hidden_states * video_scale_factor
             audio_scale_factor = math.sqrt(self.config.audio_hidden_dim / self.config.caption_channels)
@@ -358,20 +436,31 @@ class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
             video_text_emb_proj = self.video_text_proj_in(video_norm_text_emb)
             audio_text_emb_proj = self.audio_text_proj_in(audio_norm_text_emb)
         else:
-            # Convert to additive attention mask, if necessary
-            if not additive_mask:
-                text_dtype = text_encoder_hidden_states.dtype
-                attention_mask = (attention_mask - 1).reshape(attention_mask.shape[0], 1, -1, attention_mask.shape[-1])
-                attention_mask = attention_mask.to(text_dtype) * torch.finfo(text_dtype).max
-            video_text_emb_proj, audio_text_emb_proj = self.text_proj_in(text_encoder_hidden_states)
+            # LTX-2.0
+            sequence_lengths = attention_mask.sum(dim=-1)
+            norm_text_encoder_hidden_states = per_batch_per_layer_mean_norm(
+                text_hidden_states=text_encoder_hidden_states,
+                sequence_lengths=sequence_lengths,
+                device=text_encoder_hidden_states.device,
+                padding_side=padding_side,
+                scale_factor=scale_factor,
+            )
 
-        video_text_embedding, new_attn_mask = self.video_connector(video_text_emb_proj, attention_mask)
+            video_text_emb_proj, audio_text_emb_proj = self.text_proj_in(norm_text_encoder_hidden_states)
 
-        attn_mask = (new_attn_mask < 1e-6).to(torch.int64)
-        attn_mask = attn_mask.reshape(video_text_embedding.shape[0], video_text_embedding.shape[1], 1)
-        video_text_embedding = video_text_embedding * attn_mask
-        new_attn_mask = attn_mask.squeeze(-1)
+        # Convert to additive attention mask for connectors
+        text_dtype = video_text_emb_proj.dtype
+        attention_mask = (attention_mask.to(torch.int64) - 1).to(text_dtype)
+        attention_mask = attention_mask.reshape(attention_mask.shape[0], 1, -1, attention_mask.shape[-1])
+        add_attn_mask = attention_mask * torch.finfo(text_dtype).max
 
-        audio_text_embedding, _ = self.audio_connector(audio_text_emb_proj, attention_mask)
+        video_text_embedding, video_attn_mask = self.video_connector(video_text_emb_proj, add_attn_mask)
 
-        return video_text_embedding, audio_text_embedding, new_attn_mask
+        # Convert video attn mask to binary (multiplicative) mask and mask video text embedding
+        binary_attn_mask = (video_attn_mask < 1e-6).to(torch.int64)
+        binary_attn_mask = binary_attn_mask.reshape(video_text_embedding.shape[0], video_text_embedding.shape[1], 1)
+        video_text_embedding = video_text_embedding * binary_attn_mask
+
+        audio_text_embedding, _ = self.audio_connector(audio_text_emb_proj, add_attn_mask)
+
+        return video_text_embedding, audio_text_embedding, binary_attn_mask.squeeze(-1)
