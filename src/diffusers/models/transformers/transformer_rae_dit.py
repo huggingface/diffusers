@@ -322,7 +322,7 @@ class RAEDiTFinalLayer(nn.Module):
         return hidden_states
 
 
-class RAEDiTTransformer2DModel(ModelMixin, ConfigMixin):
+class RAEDiT2DModel(ModelMixin, ConfigMixin):
     r"""
     Stage-2 latent diffusion transformer used by the RAE paper.
 

@@ -389,7 +389,7 @@
       - local: api/models/qwenimage_transformer2d
         title: QwenImageTransformer2DModel
       - local: api/models/rae_dit_transformer2d
-        title: RAEDiTTransformer2DModel
+        title: RAEDiT2DModel
       - local: api/models/sana_transformer2d
         title: SanaTransformer2DModel
       - local: api/models/sana_video_transformer3d

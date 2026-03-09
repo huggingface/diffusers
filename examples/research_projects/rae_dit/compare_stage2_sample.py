@@ -25,7 +25,7 @@ import yaml
 from PIL import Image, ImageDraw
 
 from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler
-from diffusers.models.transformers.transformer_rae_dit import RAEDiTTransformer2DModel
+from diffusers.models.transformers.transformer_rae_dit import RAEDiT2DModel
 
 
 def parse_args() -> argparse.Namespace:
@@ -130,7 +130,7 @@ def main():
     upstream_model.to(device=device, dtype=torch.float32)
     upstream_model.eval()
 
-    hf_model = RAEDiTTransformer2DModel.from_pretrained(converted_transformer_path, low_cpu_mem_usage=False)
+    hf_model = RAEDiT2DModel.from_pretrained(converted_transformer_path, low_cpu_mem_usage=False)
     hf_model.to(device=device, dtype=torch.float32)
     hf_model.eval()
 

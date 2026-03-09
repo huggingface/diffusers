@@ -1541,7 +1541,7 @@ class QwenImageTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class RAEDiTTransformer2DModel(metaclass=DummyObject):
+class RAEDiT2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

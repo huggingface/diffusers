@@ -18,7 +18,7 @@ latent space.
 
 [`RAEDiTPipeline`] implements the Stage-2 class-conditional generator in Diffusers. It combines:
 
-- [`RAEDiTTransformer2DModel`] for latent denoising
+- [`RAEDiT2DModel`] for latent denoising
 - [`FlowMatchEulerDiscreteScheduler`] for the denoising trajectory
 - [`AutoencoderRAE`] for decoding latent samples to RGB images
 

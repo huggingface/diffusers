@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from ...models import AutoencoderRAE
-from ...models.transformers.transformer_rae_dit import RAEDiTTransformer2DModel
+from ...models.transformers.transformer_rae_dit import RAEDiT2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
@@ -14,7 +14,7 @@ class RAEDiTPipeline(DiffusionPipeline):
     Pipeline for class-conditioned image generation in RAE latent space.
 
     Parameters:
-        transformer ([`RAEDiTTransformer2DModel`]):
+        transformer ([`RAEDiT2DModel`]):
             Class-conditioned latent transformer used for Stage-2 denoising in RAE latent space.
         vae ([`AutoencoderRAE`]):
             Representation autoencoder used to decode latent samples back to RGB images.
@@ -26,7 +26,7 @@ class RAEDiTPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        transformer: RAEDiTTransformer2DModel,
+        transformer: RAEDiT2DModel,
         vae: AutoencoderRAE,
         scheduler: FlowMatchEulerDiscreteScheduler,
         id2label: dict[int, str] | None = None,

@@ -1,6 +1,6 @@
 # Training RAEDiT Stage 2
 
-This folder contains the minimal Stage-2 follow-up for the RAE integration: training `RAEDiTTransformer2DModel` on top of a frozen `AutoencoderRAE`.
+This folder contains the minimal Stage-2 follow-up for the RAE integration: training `RAEDiT2DModel` on top of a frozen `AutoencoderRAE`.
 
 It is intentionally placed under `examples/research_projects/rae_dit/` rather than the top-level `examples/` trainers because this is still an experimental follow-up to the new RAE support.
 
@@ -21,7 +21,7 @@ This is a minimal full-finetuning scaffold, not a paper-complete training stack.
 
 - loads a frozen pretrained `AutoencoderRAE`
 - encodes RGB images to normalized Stage-1 latents on the fly
-- trains only the Stage-2 `RAEDiTTransformer2DModel`
+- trains only the Stage-2 `RAEDiT2DModel`
 - uses `FlowMatchEulerDiscreteScheduler` with the same shifted-sigma schedule shape already used elsewhere in `diffusers`
 - consumes ImageFolder class ids as `class_labels`
 - saves the trained transformer under `output_dir/transformer`
@@ -99,5 +99,5 @@ accelerate launch examples/research_projects/rae_dit/train_rae_dit.py \
 ## Notes
 
 - The script derives a default flow shift from the latent dimensionality as `sqrt(latent_dim / time_shift_base)`, matching the upstream Stage-2 heuristic at a high level.
-- The trainer assumes the selected `AutoencoderRAE` uses `reshape_to_2d=True`, because `RAEDiTTransformer2DModel` operates on 2D latent feature maps.
+- The trainer assumes the selected `AutoencoderRAE` uses `reshape_to_2d=True`, because `RAEDiT2DModel` operates on 2D latent feature maps.
 - This example is meant to land first as a training scaffold that matches the new Stage-2 model and export layout. A later follow-up can add cached latents, validation sampling through the pipeline, and broader parity tooling.

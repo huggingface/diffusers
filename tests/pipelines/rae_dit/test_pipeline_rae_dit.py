@@ -23,7 +23,7 @@ import torch.nn.functional as F
 import diffusers.models.autoencoders.autoencoder_rae as _rae_module
 from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiTPipeline
 from diffusers.models.autoencoders.autoencoder_rae import _ENCODER_FORWARD_FNS, _build_encoder
-from diffusers.models.transformers.transformer_rae_dit import RAEDiTTransformer2DModel
+from diffusers.models.transformers.transformer_rae_dit import RAEDiT2DModel
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import (
@@ -36,7 +36,7 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-def _initialize_non_zero_stage2_head(model: RAEDiTTransformer2DModel):
+def _initialize_non_zero_stage2_head(model: RAEDiT2DModel):
     torch.manual_seed(0)
 
     for block in model.blocks:
@@ -97,7 +97,7 @@ class RAEDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = RAEDiTTransformer2DModel(
+        transformer = RAEDiT2DModel(
             sample_size=2,
             patch_size=1,
             in_channels=8,

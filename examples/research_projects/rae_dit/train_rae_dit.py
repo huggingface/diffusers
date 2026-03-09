@@ -31,7 +31,7 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from tqdm.auto import tqdm
 
-from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiTTransformer2DModel
+from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiT2DModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3
 from diffusers.utils import check_min_version
@@ -44,7 +44,7 @@ logger = get_logger(__name__)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Minimal stage-2 trainer for RAEDiTTransformer2DModel.")
+    parser = argparse.ArgumentParser(description="Minimal stage-2 trainer for RAEDiT2DModel.")
     parser.add_argument(
         "--train_data_dir",
         type=str,
@@ -362,7 +362,7 @@ def main():
     )
 
     if args.pretrained_transformer_model_name_or_path is not None:
-        transformer = RAEDiTTransformer2DModel.from_pretrained(args.pretrained_transformer_model_name_or_path)
+        transformer = RAEDiT2DModel.from_pretrained(args.pretrained_transformer_model_name_or_path)
         if transformer.config.in_channels != latent_channels or transformer.config.sample_size != latent_size:
             raise ValueError(
                 "Loaded transformer latent shape does not match the selected AutoencoderRAE. "
@@ -374,7 +374,7 @@ def main():
                 f"Loaded transformer supports {transformer.config.num_classes} classes but dataset requires {num_classes}."
             )
     else:
-        transformer = RAEDiTTransformer2DModel(
+        transformer = RAEDiT2DModel(
             sample_size=latent_size,
             patch_size=args.patch_size,
             in_channels=latent_channels,
@@ -432,7 +432,7 @@ def main():
             return
 
         for model in models:
-            if isinstance(unwrap_model(accelerator, model), RAEDiTTransformer2DModel):
+            if isinstance(unwrap_model(accelerator, model), RAEDiT2DModel):
                 unwrap_model(accelerator, model).save_pretrained(os.path.join(output_dir, "transformer"))
             else:
                 raise ValueError(f"Unexpected model type during save: {type(model)}")
@@ -444,10 +444,10 @@ def main():
         while len(models) > 0:
             model = models.pop()
             target_model = unwrap_model(accelerator, model)
-            if not isinstance(target_model, RAEDiTTransformer2DModel):
+            if not isinstance(target_model, RAEDiT2DModel):
                 raise ValueError(f"Unexpected model type during load: {type(model)}")
 
-            load_model = RAEDiTTransformer2DModel.from_pretrained(input_dir, subfolder="transformer")
+            load_model = RAEDiT2DModel.from_pretrained(input_dir, subfolder="transformer")
             target_model.register_to_config(**load_model.config)
             target_model.load_state_dict(load_model.state_dict())
             del load_model
