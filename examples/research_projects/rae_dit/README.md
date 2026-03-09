@@ -35,20 +35,6 @@ It intentionally does not yet include:
 - autoguidance or the broader upstream transport stack
 - exact upstream distributed training/runtime features
 
-## Parity check
-
-`verify_stage2_parity.py` compares a converted diffusers transformer against the upstream `DiTwDDTHead` with the same published checkpoint and synthetic latent inputs. This is the quickest way to confirm that a conversion still matches upstream numerically before opening or updating a PR.
-
-Example:
-
-```bash
-python examples/research_projects/rae_dit/verify_stage2_parity.py \
-  --upstream_repo_path /path/to/RAE \
-  --config_path /path/to/RAE/configs/stage2/sampling/ImageNet256/DiTDHXL-DINOv2-B.yaml \
-  --checkpoint_path /path/to/stage2_model.pt \
-  --converted_transformer_path /path/to/diffusers-transformer
-```
-
 ## Dataset format
 
 The script expects an `ImageFolder`-compatible dataset:
@@ -100,4 +86,4 @@ accelerate launch examples/research_projects/rae_dit/train_rae_dit.py \
 
 - The script derives a default flow shift from the latent dimensionality as `sqrt(latent_dim / time_shift_base)`, matching the upstream Stage-2 heuristic at a high level.
 - The trainer assumes the selected `AutoencoderRAE` uses `reshape_to_2d=True`, because `RAEDiT2DModel` operates on 2D latent feature maps.
-- This example is meant to land first as a training scaffold that matches the new Stage-2 model and export layout. A later follow-up can add cached latents, validation sampling through the pipeline, and broader parity tooling.
+- This example is meant to land first as a training scaffold that matches the new Stage-2 model and export layout. A later follow-up can add cached latents and validation sampling through the pipeline.
