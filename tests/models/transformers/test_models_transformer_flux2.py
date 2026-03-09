@@ -30,6 +30,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -307,6 +308,10 @@ class TestFlux2TransformerGGUF(Flux2TransformerTesterConfig, GGUFTesterMixin):
             "timestep": timestep,
             "guidance": guidance,
         }
+
+
+class TestFlux2TransformerTorchAoCompile(Flux2TransformerTesterConfig, TorchAoCompileTesterMixin):
+    """TorchAO + compile tests for Flux2 Transformer."""
 
 
 class TestFlux2TransformerGGUFCompile(Flux2TransformerTesterConfig, GGUFCompileTesterMixin):
