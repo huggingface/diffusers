@@ -16,7 +16,7 @@
 # The codebase is modified based on https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
 
 import math
-from typing import Callable, List, Literal, Optional, Tuple, Union
+from typing import Callable, Literal
 
 import numpy as np
 import torch
@@ -162,23 +162,23 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        trained_betas: np.ndarray | list[float] | None = None,
         predictor_order: int = 2,
         corrector_order: int = 2,
         prediction_type: str = "epsilon",
-        tau_func: Optional[Callable] = None,
+        tau_func: Callable | None = None,
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
         algorithm_type: str = "data_prediction",
         lower_order_final: bool = True,
-        use_karras_sigmas: Optional[bool] = False,
-        use_exponential_sigmas: Optional[bool] = False,
-        use_beta_sigmas: Optional[bool] = False,
-        use_flow_sigmas: Optional[bool] = False,
-        flow_shift: Optional[float] = 1.0,
+        use_karras_sigmas: bool = False,
+        use_exponential_sigmas: bool = False,
+        use_beta_sigmas: bool = False,
+        use_flow_sigmas: bool = False,
+        flow_shift: float = 1.0,
         lambda_min_clipped: float = -float("inf"),
-        variance_type: Optional[str] = None,
+        variance_type: str | None = None,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
     ):
@@ -266,7 +266,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(self, num_inference_steps: int = None, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int = None, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -438,7 +438,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 The sigma value(s) to convert.
 
         Returns:
-            `Tuple[torch.Tensor, torch.Tensor]`:
+            `tuple[torch.Tensor, torch.Tensor]`:
                 A tuple containing (alpha_t, sigma_t) values.
         """
         if self.config.use_flow_sigmas:
@@ -1123,8 +1123,8 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
     def index_for_timestep(
         self,
-        timestep: Union[int, torch.Tensor],
-        schedule_timesteps: Optional[torch.Tensor] = None,
+        timestep: int | torch.Tensor,
+        schedule_timesteps: torch.Tensor | None = None,
     ) -> int:
         """
         Find the index for a given timestep in the schedule.
@@ -1181,7 +1181,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the SA-Solver.

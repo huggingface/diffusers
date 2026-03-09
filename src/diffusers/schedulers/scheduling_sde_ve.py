@@ -16,7 +16,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import torch
 
@@ -86,7 +85,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
         self.set_sigmas(num_train_timesteps, sigma_min, sigma_max, sampling_eps)
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -103,9 +102,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(
-        self, num_inference_steps: int, sampling_eps: float = None, device: Union[str, torch.device] = None
-    ):
+    def set_timesteps(self, num_inference_steps: int, sampling_eps: float = None, device: str | torch.device = None):
         """
         Sets the continuous timesteps used for the diffusion chain (to be run before inference).
 
@@ -162,9 +159,9 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: int,
         sample: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[SdeVeOutput, Tuple]:
+    ) -> SdeVeOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -229,9 +226,9 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self,
         model_output: torch.Tensor,
         sample: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | tuple:
         """
         Correct the predicted sample based on the `model_output` of the network. This is often run repeatedly after
         making the prediction for the previous timestep.

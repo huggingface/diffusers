@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import torch
 
@@ -46,7 +46,7 @@ class WanLoopBeforeDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "latents",
@@ -80,7 +80,7 @@ class WanImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "latents",
@@ -115,7 +115,7 @@ class WanLoopDenoiser(ModularPipelineBlocks):
 
     def __init__(
         self,
-        guider_input_fields: Dict[str, Any] = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")},
+        guider_input_fields: dict[str, Any] = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")},
     ):
         """Initialize a denoiser block that calls the denoiser model. This block is used in Wan2.1.
 
@@ -136,7 +136,7 @@ class WanLoopDenoiser(ModularPipelineBlocks):
         super().__init__()
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -156,7 +156,7 @@ class WanLoopDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         inputs = [
             InputParam("attention_kwargs"),
             InputParam(
@@ -225,7 +225,7 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
 
     def __init__(
         self,
-        guider_input_fields: Dict[str, Any] = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")},
+        guider_input_fields: dict[str, Any] = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")},
     ):
         """Initialize a denoiser block that calls the denoiser model. This block is used in Wan2.2.
 
@@ -246,7 +246,7 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
         super().__init__()
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -273,7 +273,7 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def expected_configs(self) -> List[ConfigSpec]:
+    def expected_configs(self) -> list[ConfigSpec]:
         return [
             ConfigSpec(
                 name="boundary_ratio",
@@ -283,7 +283,7 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         inputs = [
             InputParam("attention_kwargs"),
             InputParam(
@@ -359,7 +359,7 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", UniPCMultistepScheduler),
         ]
@@ -400,13 +400,13 @@ class WanDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         )
 
     @property
-    def loop_expected_components(self) -> List[ComponentSpec]:
+    def loop_expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", UniPCMultistepScheduler),
         ]
 
     @property
-    def loop_inputs(self) -> List[InputParam]:
+    def loop_inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "timesteps",

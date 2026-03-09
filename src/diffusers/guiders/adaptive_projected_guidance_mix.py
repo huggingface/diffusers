@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -88,7 +88,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         self.use_original_formulation = use_original_formulation
         self.momentum_buffer = None
 
-    def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
+    def prepare_inputs(self, data: dict[str, tuple[torch.Tensor, torch.Tensor]]) -> list["BlockState"]:
         if self._step == 0:
             if self.adaptive_projected_guidance_momentum is not None:
                 self.momentum_buffer = MomentumBuffer(self.adaptive_projected_guidance_momentum)
@@ -100,8 +100,8 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         return data_batches
 
     def prepare_inputs_from_block_state(
-        self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
-    ) -> List["BlockState"]:
+        self, data: "BlockState", input_fields: dict[str, str | tuple[str, str]]
+    ) -> list["BlockState"]:
         if self._step == 0:
             if self.adaptive_projected_guidance_momentum is not None:
                 self.momentum_buffer = MomentumBuffer(self.adaptive_projected_guidance_momentum)
@@ -112,7 +112,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: torch.Tensor | None = None) -> GuiderOutput:
         pred = None
 
         # no guidance
@@ -254,7 +254,7 @@ class MomentumBuffer:
 def update_momentum_buffer(
     pred_cond: torch.Tensor,
     pred_uncond: torch.Tensor,
-    momentum_buffer: Optional[MomentumBuffer] = None,
+    momentum_buffer: MomentumBuffer | None = None,
 ):
     diff = pred_cond - pred_uncond
     if momentum_buffer is not None:
@@ -265,7 +265,7 @@ def normalized_guidance(
     pred_cond: torch.Tensor,
     pred_uncond: torch.Tensor,
     guidance_scale: float,
-    momentum_buffer: Optional[MomentumBuffer] = None,
+    momentum_buffer: MomentumBuffer | None = None,
     eta: float = 1.0,
     norm_threshold: float = 0.0,
     use_original_formulation: bool = False,

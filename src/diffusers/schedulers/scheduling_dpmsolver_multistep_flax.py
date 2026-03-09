@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
 
 import flax
 import jax
@@ -45,13 +44,13 @@ class DPMSolverMultistepSchedulerState:
     # setable values
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
-    num_inference_steps: Optional[int] = None
+    num_inference_steps: int = None
 
     # running values
-    model_outputs: Optional[jnp.ndarray] = None
-    lower_order_nums: Optional[jnp.int32] = None
-    prev_timestep: Optional[jnp.int32] = None
-    cur_sample: Optional[jnp.ndarray] = None
+    model_outputs: jnp.ndarray | None = None
+    lower_order_nums: jnp.int32 | None = None
+    prev_timestep: jnp.int32 | None = None
+    cur_sample: jnp.ndarray | None = None
 
     @classmethod
     def create(
@@ -163,7 +162,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         solver_order: int = 2,
         prediction_type: str = "epsilon",
         thresholding: bool = False,
@@ -181,7 +180,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DPMSolverMultistepSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> DPMSolverMultistepSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 
@@ -214,7 +213,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         self,
         state: DPMSolverMultistepSchedulerState,
         num_inference_steps: int,
-        shape: Tuple,
+        shape: tuple,
     ) -> DPMSolverMultistepSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -224,7 +223,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
                 the `FlaxDPMSolverMultistepScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
-            shape (`Tuple`):
+            shape (`tuple`):
                 the shape of the samples to be generated.
         """
         last_timestep = self.config.num_train_timesteps
@@ -379,7 +378,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         self,
         state: DPMSolverMultistepSchedulerState,
         model_output_list: jnp.ndarray,
-        timestep_list: List[int],
+        timestep_list: list[int],
         prev_timestep: int,
         sample: jnp.ndarray,
     ) -> jnp.ndarray:
@@ -387,7 +386,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         One step for the second-order multistep DPM-Solver.
 
         Args:
-            model_output_list (`List[jnp.ndarray]`):
+            model_output_list (`list[jnp.ndarray]`):
                 direct outputs from learned diffusion model at current and latter timesteps.
             timestep (`int`): current and latter discrete timestep in the diffusion chain.
             prev_timestep (`int`): previous discrete timestep in the diffusion chain.
@@ -443,7 +442,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         self,
         state: DPMSolverMultistepSchedulerState,
         model_output_list: jnp.ndarray,
-        timestep_list: List[int],
+        timestep_list: list[int],
         prev_timestep: int,
         sample: jnp.ndarray,
     ) -> jnp.ndarray:
@@ -451,7 +450,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         One step for the third-order multistep DPM-Solver.
 
         Args:
-            model_output_list (`List[jnp.ndarray]`):
+            model_output_list (`list[jnp.ndarray]`):
                 direct outputs from learned diffusion model at current and latter timesteps.
             timestep (`int`): current and latter discrete timestep in the diffusion chain.
             prev_timestep (`int`): previous discrete timestep in the diffusion chain.
@@ -507,7 +506,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[FlaxDPMSolverMultistepSchedulerOutput, Tuple]:
+    ) -> FlaxDPMSolverMultistepSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by DPM-Solver. Core function to propagate the diffusion process
         from the learned model outputs (most often the predicted noise).
@@ -641,7 +640,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         self,
         state: DPMSolverMultistepSchedulerState,
         sample: jnp.ndarray,
-        timestep: Optional[int] = None,
+        timestep: int | None = None,
     ) -> jnp.ndarray:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 from torch import nn
@@ -94,7 +94,7 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
             The frequency shift to apply to the time embedding.
         down_block_types (`tuple[str]`, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use.
-        only_cross_attention (`Union[bool, Tuple[bool]]`, defaults to `False`):
+        only_cross_attention (`bool | tuple[bool]`, defaults to `False`):
         block_out_channels (`tuple[int]`, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, defaults to 2):
@@ -112,7 +112,7 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
             The epsilon to use for the normalization.
         cross_attention_dim (`int`, defaults to 1280):
             The dimension of the cross attention features.
-        transformer_layers_per_block (`int` or `Tuple[int]`, *optional*, defaults to 1):
+        transformer_layers_per_block (`int` or `tuple[int]`, *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
             [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
@@ -122,7 +122,7 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
             If given, the `encoder_hidden_states` and potentially other embeddings are down-projected to text
             embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
-        attention_head_dim (`Union[int, Tuple[int]]`, defaults to 8):
+        attention_head_dim (`int | tuple[int]`, defaults to 8):
             The dimension of the attention heads.
         use_linear_projection (`bool`, defaults to `False`):
         class_embed_type (`str`, *optional*, defaults to `None`):
@@ -156,36 +156,36 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         conditioning_channels: int = 3,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        only_cross_attention: Union[bool, Tuple[bool]] = False,
-        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
+        only_cross_attention: bool | tuple[bool] = False,
+        block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
-        norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int | None = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
-        transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1,
-        encoder_hid_dim: Optional[int] = None,
-        encoder_hid_dim_type: Optional[str] = None,
-        attention_head_dim: Union[int, Tuple[int, ...]] = 8,
-        num_attention_heads: Optional[Union[int, Tuple[int, ...]]] = None,
+        transformer_layers_per_block: int | tuple[int, ...] = 1,
+        encoder_hid_dim: int | None = None,
+        encoder_hid_dim_type: str | None = None,
+        attention_head_dim: int | tuple[int, ...] = 8,
+        num_attention_heads: int | tuple[int, ...] | None = None,
         use_linear_projection: bool = False,
-        class_embed_type: Optional[str] = None,
-        addition_embed_type: Optional[str] = None,
-        addition_time_embed_dim: Optional[int] = None,
-        num_class_embeds: Optional[int] = None,
+        class_embed_type: str | None = None,
+        addition_embed_type: str | None = None,
+        addition_time_embed_dim: int | None = None,
+        num_class_embeds: int | None = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        projection_class_embeddings_input_dim: Optional[int] = None,
+        projection_class_embeddings_input_dim: int | None = None,
         controlnet_conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (48, 96, 192, 384),
+        conditioning_embedding_out_channels: tuple[int, ...] | None = (48, 96, 192, 384),
         global_pool_conditions: bool = False,
         addition_embed_type_num_heads: int = 64,
         num_control_type: int = 6,
@@ -390,7 +390,7 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         cls,
         unet: UNet2DConditionModel,
         controlnet_conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: tuple[int, ...] | None = (16, 32, 96, 256),
         load_weights_from_unet: bool = True,
     ):
         r"""
@@ -472,7 +472,7 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         self.set_attn_processor(processor)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attention_slice
-    def set_attention_slice(self, slice_size: Union[str, int, List[int]]) -> None:
+    def set_attention_slice(self, slice_size: str | int | list[int]) -> None:
         r"""
         Enable sliced attention computation.
 
@@ -526,7 +526,7 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
         # Recursively walk through all the children.
         # Any children which exposes the set_attention_slice method
         # gets the message
-        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: List[int]):
+        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: list[int]):
             if hasattr(module, "set_attention_slice"):
                 module.set_attention_slice(slice_size.pop())
 
@@ -540,37 +540,37 @@ class ControlNetUnionModel(ModelMixin, AttentionMixin, ConfigMixin, FromOriginal
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
-        controlnet_cond: List[torch.Tensor],
+        controlnet_cond: list[torch.Tensor],
         control_type: torch.Tensor,
-        control_type_idx: List[int],
-        conditioning_scale: Union[float, List[float]] = 1.0,
-        class_labels: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        control_type_idx: list[int],
+        conditioning_scale: float | list[float] = 1.0,
+        class_labels: torch.Tensor | None = None,
+        timestep_cond: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        added_cond_kwargs: dict[str, torch.Tensor] | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         from_multi: bool = False,
         guess_mode: bool = False,
         return_dict: bool = True,
-    ) -> Union[ControlNetOutput, Tuple[Tuple[torch.Tensor, ...], torch.Tensor]]:
+    ) -> ControlNetOutput | tuple[tuple[torch.Tensor, ...], torch.Tensor]:
         """
         The [`ControlNetUnionModel`] forward method.
 
         Args:
             sample (`torch.Tensor`):
                 The noisy input tensor.
-            timestep (`Union[torch.Tensor, float, int]`):
+            timestep (`torch.Tensor | float | int`):
                 The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.
-            controlnet_cond (`List[torch.Tensor]`):
+            controlnet_cond (`list[torch.Tensor]`):
                 The conditional input tensors.
             control_type (`torch.Tensor`):
                 A tensor of shape `(batch, num_control_type)` with values `0` or `1` depending on whether the control
                 type is used.
-            control_type_idx (`List[int]`):
+            control_type_idx (`list[int]`):
                 The indices of `control_type`.
             conditioning_scale (`float`, defaults to `1.0`):
                 The scale factor for ControlNet outputs.

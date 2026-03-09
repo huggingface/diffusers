@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -238,7 +237,7 @@ class HunyuanImageEncoder2D(nn.Module):
         self,
         in_channels: int,
         z_channels: int,
-        block_out_channels: Tuple[int, ...],
+        block_out_channels: tuple[int, ...],
         num_res_blocks: int,
         spatial_compression_ratio: int,
         non_linearity: str = "silu",
@@ -329,7 +328,7 @@ class HunyuanImageDecoder2D(nn.Module):
         Number of latent channels.
     out_channels : int
         Number of output channels.
-    block_out_channels : Tuple[int, ...]
+    block_out_channels : tuple[int, ...]
         Output channels for each block.
     num_res_blocks : int
         Number of residual blocks per block.
@@ -344,7 +343,7 @@ class HunyuanImageDecoder2D(nn.Module):
         self,
         z_channels: int,
         out_channels: int,
-        block_out_channels: Tuple[int, ...],
+        block_out_channels: tuple[int, ...],
         num_res_blocks: int,
         spatial_compression_ratio: int,
         upsample_match_channel: bool = True,
@@ -427,7 +426,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromO
         in_channels: int,
         out_channels: int,
         latent_channels: int,
-        block_out_channels: Tuple[int, ...],
+        block_out_channels: tuple[int, ...],
         layers_per_block: int,
         spatial_compression_ratio: int,
         sample_size: int,
@@ -467,8 +466,8 @@ class AutoencoderKLHunyuanImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromO
 
     def enable_tiling(
         self,
-        tile_sample_min_size: Optional[int] = None,
-        tile_overlap_factor: Optional[float] = None,
+        tile_sample_min_size: int | None = None,
+        tile_overlap_factor: float | None = None,
     ) -> None:
         r"""
         Enable spatial tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles
@@ -500,7 +499,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromO
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         r"""
         Encode a batch of images into latents.
 
@@ -539,7 +538,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromO
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images.
 
@@ -620,7 +619,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromO
 
         return moments
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         """
         Decode latent using spatial tiling strategy.
 
@@ -670,8 +669,8 @@ class AutoencoderKLHunyuanImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromO
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+        generator: torch.Generator | None = None,
+    ) -> DecoderOutput | torch.Tensor:
         """
         Args:
             sample (`torch.Tensor`): Input sample.

@@ -1,7 +1,7 @@
 import argparse
 import os
 from contextlib import nullcontext
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import safetensors.torch
 import torch
@@ -94,15 +94,15 @@ LTX_2_0_TEXT_ENCODER_RENAME_DICT = {
 }
 
 
-def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key: str) -> None:
+def update_state_dict_inplace(state_dict: dict[str, Any], old_key: str, new_key: str) -> None:
     state_dict[new_key] = state_dict.pop(old_key)
 
 
-def remove_keys_inplace(key: str, state_dict: Dict[str, Any]) -> None:
+def remove_keys_inplace(key: str, state_dict: dict[str, Any]) -> None:
     state_dict.pop(key)
 
 
-def convert_ltx2_transformer_adaln_single(key: str, state_dict: Dict[str, Any]) -> None:
+def convert_ltx2_transformer_adaln_single(key: str, state_dict: dict[str, Any]) -> None:
     # Skip if not a weight, bias
     if ".weight" not in key and ".bias" not in key:
         return
@@ -120,7 +120,7 @@ def convert_ltx2_transformer_adaln_single(key: str, state_dict: Dict[str, Any]) 
     return
 
 
-def convert_ltx2_audio_vae_per_channel_statistics(key: str, state_dict: Dict[str, Any]) -> None:
+def convert_ltx2_audio_vae_per_channel_statistics(key: str, state_dict: dict[str, Any]) -> None:
     if key.startswith("per_channel_statistics"):
         new_key = ".".join(["decoder", key])
         param = state_dict.pop(key)
@@ -156,7 +156,7 @@ LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP = {}
 LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP = {}
 
 
-def split_transformer_and_connector_state_dict(state_dict: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def split_transformer_and_connector_state_dict(state_dict: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     connector_prefixes = (
         "video_embeddings_connector",
         "audio_embeddings_connector",
@@ -178,7 +178,7 @@ def split_transformer_and_connector_state_dict(state_dict: Dict[str, Any]) -> Tu
     return transformer_state_dict, connector_state_dict
 
 
-def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "test":
         # Produces a transformer of the same size as used in test_models_transformer_ltx2.py
         config = {
@@ -270,7 +270,7 @@ def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str,
     return config, rename_dict, special_keys_remap
 
 
-def get_ltx2_connectors_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def get_ltx2_connectors_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "test":
         config = {
             "model_id": "diffusers-internal-dev/dummy-ltx2",
@@ -319,7 +319,7 @@ def get_ltx2_connectors_config(version: str) -> Tuple[Dict[str, Any], Dict[str, 
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_transformer(original_state_dict: Dict[str, Any], version: str) -> Dict[str, Any]:
+def convert_ltx2_transformer(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_transformer_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -347,7 +347,7 @@ def convert_ltx2_transformer(original_state_dict: Dict[str, Any], version: str) 
     return transformer
 
 
-def convert_ltx2_connectors(original_state_dict: Dict[str, Any], version: str) -> LTX2TextConnectors:
+def convert_ltx2_connectors(original_state_dict: dict[str, Any], version: str) -> LTX2TextConnectors:
     config, rename_dict, special_keys_remap = get_ltx2_connectors_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -376,7 +376,7 @@ def convert_ltx2_connectors(original_state_dict: Dict[str, Any], version: str) -
 
 def get_ltx2_video_vae_config(
     version: str, timestep_conditioning: bool = False
-) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "test":
         config = {
             "model_id": "diffusers-internal-dev/dummy-ltx2",
@@ -455,8 +455,8 @@ def get_ltx2_video_vae_config(
 
 
 def convert_ltx2_video_vae(
-    original_state_dict: Dict[str, Any], version: str, timestep_conditioning: bool
-) -> Dict[str, Any]:
+    original_state_dict: dict[str, Any], version: str, timestep_conditioning: bool
+) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_video_vae_config(version, timestep_conditioning)
     diffusers_config = config["diffusers_config"]
 
@@ -482,7 +482,7 @@ def convert_ltx2_video_vae(
     return vae
 
 
-def get_ltx2_audio_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def get_ltx2_audio_vae_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "2.0":
         config = {
             "model_id": "diffusers-internal-dev/new-ltx-model",
@@ -511,7 +511,7 @@ def get_ltx2_audio_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, A
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_audio_vae(original_state_dict: Dict[str, Any], version: str) -> Dict[str, Any]:
+def convert_ltx2_audio_vae(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_audio_vae_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -537,7 +537,7 @@ def convert_ltx2_audio_vae(original_state_dict: Dict[str, Any], version: str) ->
     return vae
 
 
-def get_ltx2_vocoder_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "2.0":
         config = {
             "model_id": "diffusers-internal-dev/new-ltx-model",
@@ -558,7 +558,7 @@ def get_ltx2_vocoder_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any
     return config, rename_dict, special_keys_remap
 
 
-def convert_ltx2_vocoder(original_state_dict: Dict[str, Any], version: str) -> Dict[str, Any]:
+def convert_ltx2_vocoder(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_vocoder_config(version)
     diffusers_config = config["diffusers_config"]
 
@@ -601,7 +601,7 @@ def get_ltx2_spatial_latent_upsampler_config(version: str):
 
 
 def convert_ltx2_spatial_latent_upsampler(
-    original_state_dict: Dict[str, Any], config: Dict[str, Any], dtype: torch.dtype
+    original_state_dict: dict[str, Any], config: dict[str, Any], dtype: torch.dtype
 ):
     with init_empty_weights():
         latent_upsampler = LTX2LatentUpsamplerModel(**config)
@@ -611,7 +611,7 @@ def convert_ltx2_spatial_latent_upsampler(
     return latent_upsampler
 
 
-def load_original_checkpoint(args, filename: Optional[str]) -> Dict[str, Any]:
+def load_original_checkpoint(args, filename: str | None) -> dict[str, Any]:
     if args.original_state_dict_repo_id is not None:
         ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename=filename)
     elif args.checkpoint_path is not None:
@@ -623,7 +623,7 @@ def load_original_checkpoint(args, filename: Optional[str]) -> Dict[str, Any]:
     return original_state_dict
 
 
-def load_hub_or_local_checkpoint(repo_id: Optional[str] = None, filename: Optional[str] = None) -> Dict[str, Any]:
+def load_hub_or_local_checkpoint(repo_id: str | None = None, filename: str | None = None) -> dict[str, Any]:
     if repo_id is None and filename is None:
         raise ValueError("Please supply at least one of `repo_id` or `filename`")
 
@@ -643,7 +643,7 @@ def load_hub_or_local_checkpoint(repo_id: Optional[str] = None, filename: Option
     return state_dict
 
 
-def get_model_state_dict_from_combined_ckpt(combined_ckpt: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+def get_model_state_dict_from_combined_ckpt(combined_ckpt: dict[str, Any], prefix: str) -> dict[str, Any]:
     # Ensure that the key prefix ends with a dot (.)
     if not prefix.endswith("."):
         prefix = prefix + "."

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Tuple
 
 import torch
 
@@ -47,7 +46,7 @@ class QwenImageLoopBeforeDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="latents",
@@ -77,7 +76,7 @@ class QwenImageEditLoopBeforeDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="latents",
@@ -101,7 +100,7 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
     model_name = "qwenimage"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -121,7 +120,7 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "control_image_latents",
@@ -133,7 +132,7 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
             InputParam(
                 name="controlnet_keep",
                 required=True,
-                type_hint=List[float],
+                type_hint=list[float],
                 description="The controlnet keep values. Can be generated in prepare_controlnet_inputs step.",
             ),
         ]
@@ -181,7 +180,7 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -193,14 +192,14 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("attention_kwargs"),
             InputParam.template("denoiser_input_fields"),
             InputParam(
                 "img_shapes",
                 required=True,
-                type_hint=List[Tuple[int, int]],
+                type_hint=list[tuple[int, int]],
                 description="The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.",
             ),
         ]
@@ -266,7 +265,7 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -278,14 +277,14 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("attention_kwargs"),
             InputParam.template("denoiser_input_fields"),
             InputParam(
                 "img_shapes",
                 required=True,
-                type_hint=List[Tuple[int, int]],
+                type_hint=list[tuple[int, int]],
                 description="The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.",
             ),
         ]
@@ -355,13 +354,13 @@ class QwenImageLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam.template("latents"),
         ]
@@ -396,7 +395,7 @@ class QwenImageLoopAfterDenoiserInpaint(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "mask",
@@ -414,7 +413,7 @@ class QwenImageLoopAfterDenoiserInpaint(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam.template("latents"),
         ]
@@ -449,13 +448,13 @@ class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         )
 
     @property
-    def loop_expected_components(self) -> List[ComponentSpec]:
+    def loop_expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
         ]
 
     @property
-    def loop_inputs(self) -> List[InputParam]:
+    def loop_inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="timesteps",
@@ -519,11 +518,11 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
 
       Outputs:
@@ -577,11 +576,11 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
           mask (`Tensor`):
               The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.
@@ -646,13 +645,13 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
               The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.
           controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
               Scale for ControlNet conditioning. (updated in prepare_controlnet_inputs step.)
-          controlnet_keep (`List`):
+          controlnet_keep (`list`):
               The controlnet keep values. Can be generated in prepare_controlnet_inputs step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
 
       Outputs:
@@ -712,13 +711,13 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
               The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.
           controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
               Scale for ControlNet conditioning. (updated in prepare_controlnet_inputs step.)
-          controlnet_keep (`List`):
+          controlnet_keep (`list`):
               The controlnet keep values. Can be generated in prepare_controlnet_inputs step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. can be generated in prepare_additional_inputs step.
           mask (`Tensor`):
               The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.
@@ -788,11 +787,11 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
           image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.
 
       Outputs:
@@ -847,11 +846,11 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
           image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.
           mask (`Tensor`):
               The mask to use for the inpainting process. Can be generated in inpaint prepare latents step.
@@ -911,11 +910,11 @@ class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
           image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
-          attention_kwargs (`Dict`, *optional*):
+          attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          img_shapes (`List`):
+          img_shapes (`list`):
               The shape of the image latents for RoPE calculation. Can be generated in prepare_additional_inputs step.
 
       Outputs:

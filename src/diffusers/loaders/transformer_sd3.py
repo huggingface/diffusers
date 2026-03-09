@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from contextlib import nullcontext
-from typing import Dict
 
 from ..models.attention_processor import SD3IPAdapterJointAttnProcessor2_0
 from ..models.embeddings import IPAdapterTimeImageProjection
@@ -29,8 +28,8 @@ class SD3Transformer2DLoadersMixin:
     """Load IP-Adapters and LoRA layers into a `[SD3Transformer2DModel]`."""
 
     def _convert_ip_adapter_attn_to_diffusers(
-        self, state_dict: Dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT
-    ) -> Dict:
+        self, state_dict: dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT
+    ) -> dict:
         if low_cpu_mem_usage:
             if is_accelerate_available():
                 from accelerate import init_empty_weights
@@ -87,7 +86,7 @@ class SD3Transformer2DLoadersMixin:
         return attn_procs
 
     def _convert_ip_adapter_image_proj_to_diffusers(
-        self, state_dict: Dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT
+        self, state_dict: dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT
     ) -> IPAdapterTimeImageProjection:
         if low_cpu_mem_usage:
             if is_accelerate_available():
@@ -155,7 +154,7 @@ class SD3Transformer2DLoadersMixin:
 
         return image_proj
 
-    def _load_ip_adapter_weights(self, state_dict: Dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT) -> None:
+    def _load_ip_adapter_weights(self, state_dict: dict, low_cpu_mem_usage: bool = _LOW_CPU_MEM_USAGE_DEFAULT) -> None:
         """Sets IP-Adapter attention processors, image projection, and loads state_dict.
 
         Args:

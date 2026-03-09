@@ -21,6 +21,7 @@ from torch.utils.checkpoint import checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
+from ...utils import apply_lora_scale
 from ..attention import AttentionMixin, BasicTransformerBlock, SkipFFTransformerBlock
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -146,6 +147,7 @@ class UVit2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("cross_attention_kwargs")
     def forward(self, input_ids, encoder_hidden_states, pooled_text_emb, micro_conds, cross_attention_kwargs=None):
         encoder_hidden_states = self.encoder_proj(encoder_hidden_states)
         encoder_hidden_states = self.encoder_proj_layer_norm(encoder_hidden_states)
