@@ -39,23 +39,42 @@ from .modular_pipeline import HeliosModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def sample_block_noise(batch_size, channel, num_frames, height, width, gamma, patch_size=(1, 2, 2), device=None):
+def sample_block_noise(
+    batch_size,
+    channel,
+    num_frames,
+    height,
+    width,
+    gamma,
+    patch_size=(1, 2, 2),
+    device=None,
+    generator=None,
+):
     """Generate spatially-correlated block noise for pyramid upsampling correction.
 
     Uses a multivariate normal distribution with covariance based on `gamma` to produce noise with block structure,
     matching the upsampling artifacts that need correction.
     """
+    # NOTE: A generator must be provided to ensure correct and reproducible results.
+    # Creating a default generator here is a fallback only — without a fixed seed,
+    # the output will be non-deterministic and may produce incorrect results in CP context.
+    if generator is None:
+        generator = torch.Generator(device=device)
+
     _, ph, pw = patch_size
     block_size = ph * pw
 
     cov = (
         torch.eye(block_size, device=device) * (1 + gamma) - torch.ones(block_size, block_size, device=device) * gamma
     )
-    cov += torch.eye(block_size, device=device) * 1e-6
-    dist = torch.distributions.MultivariateNormal(torch.zeros(block_size, device=device), covariance_matrix=cov)
-    block_number = batch_size * channel * num_frames * (height // ph) * (width // pw)
+    cov += torch.eye(block_size, device=device) * 1e-8
+    cov = cov.float()  # Upcast to fp32 for numerical stability — cholesky is unreliable in fp16/bf16.
 
-    noise = dist.sample((block_number,))  # [block number, block_size]
+    L = torch.linalg.cholesky(cov)
+    block_number = batch_size * channel * num_frames * (height // ph) * (width // pw)
+    z = torch.randn(block_number, block_size, device=device, generator=generator)
+    noise = z @ L.T
+
     noise = noise.view(batch_size, channel, num_frames, height // ph, width // pw, ph, pw)
     noise = noise.permute(0, 1, 2, 3, 5, 4, 6).reshape(batch_size, channel, num_frames, height, width)
     return noise
@@ -570,8 +589,18 @@ class HeliosPyramidChunkDenoiseInner(ModularPipelineBlocks):
                 beta = alpha * (1 - ori_sigma) / math.sqrt(gamma)
 
                 batch_size, num_channels_latents, num_frames, h, w = latents.shape
-                noise = sample_block_noise(batch_size, num_channels_latents, num_frames, h, w, gamma, patch_size)
-                noise = noise.to(device=device, dtype=transformer_dtype)
+                noise = sample_block_noise(
+                    batch_size,
+                    num_channels_latents,
+                    num_frames,
+                    h,
+                    w,
+                    gamma,
+                    patch_size,
+                    device=device,
+                    generator=block_state.generator,
+                )
+                noise = noise.to(dtype=transformer_dtype)
                 latents = alpha * latents + beta * noise
 
             # --- Timestep denoising loop ---
@@ -893,8 +922,18 @@ class HeliosPyramidDistilledChunkDenoiseInner(ModularPipelineBlocks):
                 beta = alpha * (1 - ori_sigma) / math.sqrt(gamma)
 
                 batch_size, num_channels_latents, num_frames, h, w = latents.shape
-                noise = sample_block_noise(batch_size, num_channels_latents, num_frames, h, w, gamma, patch_size)
-                noise = noise.to(device=device, dtype=transformer_dtype)
+                noise = sample_block_noise(
+                    batch_size,
+                    num_channels_latents,
+                    num_frames,
+                    h,
+                    w,
+                    gamma,
+                    patch_size,
+                    device=device,
+                    generator=block_state.generator,
+                )
+                noise = noise.to(dtype=transformer_dtype)
                 latents = alpha * latents + beta * noise
 
                 start_point_list.append(latents)
