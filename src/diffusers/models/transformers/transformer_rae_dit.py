@@ -130,7 +130,9 @@ class LabelEmbedder(nn.Module):
         self.dropout_prob = dropout_prob
         self.embedding_table = nn.Embedding(num_classes + int(dropout_prob > 0), hidden_size)
 
-    def token_drop(self, class_labels: torch.LongTensor, force_drop_ids: torch.Tensor | None = None) -> torch.LongTensor:
+    def token_drop(
+        self, class_labels: torch.LongTensor, force_drop_ids: torch.Tensor | None = None
+    ) -> torch.LongTensor:
         if force_drop_ids is None:
             drop_ids = torch.rand(class_labels.shape[0], device=class_labels.device) < self.dropout_prob
         else:
@@ -394,7 +396,9 @@ class RAEDiTTransformer2DModel(ModelMixin, ConfigMixin):
         )
 
         self.s_projector = (
-            nn.Linear(encoder_hidden_size, decoder_hidden_size) if encoder_hidden_size != decoder_hidden_size else nn.Identity()
+            nn.Linear(encoder_hidden_size, decoder_hidden_size)
+            if encoder_hidden_size != decoder_hidden_size
+            else nn.Identity()
         )
         self.t_embedder = GaussianFourierEmbedding(encoder_hidden_size)
         self.y_embedder = LabelEmbedder(num_classes, encoder_hidden_size, class_dropout_prob)
@@ -427,7 +431,9 @@ class RAEDiTTransformer2DModel(ModelMixin, ConfigMixin):
             [
                 RAEDiTBlock(
                     hidden_size=encoder_hidden_size if index < encoder_num_layers else decoder_hidden_size,
-                    num_heads=encoder_num_attention_heads if index < encoder_num_layers else decoder_num_attention_heads,
+                    num_heads=encoder_num_attention_heads
+                    if index < encoder_num_layers
+                    else decoder_num_attention_heads,
                     mlp_ratio=mlp_ratio,
                     use_qknorm=use_qknorm,
                     use_swiglu=use_swiglu,
@@ -458,7 +464,9 @@ class RAEDiTTransformer2DModel(ModelMixin, ConfigMixin):
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
 
         if self.use_pos_embed:
-            pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(sqrt(self.pos_embed.shape[1])), output_type="pt")
+            pos_embed = get_2d_sincos_pos_embed(
+                self.pos_embed.shape[-1], int(sqrt(self.pos_embed.shape[1])), output_type="pt"
+            )
             self.pos_embed.data.copy_(pos_embed.float().unsqueeze(0))
 
         for block in self.blocks:
@@ -482,7 +490,9 @@ class RAEDiTTransformer2DModel(ModelMixin, ConfigMixin):
 
         hidden_states = hidden_states.reshape(hidden_states.shape[0], height, width, patch_size, patch_size, channels)
         hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
-        hidden_states = hidden_states.reshape(hidden_states.shape[0], channels, height * patch_size, width * patch_size)
+        hidden_states = hidden_states.reshape(
+            hidden_states.shape[0], channels, height * patch_size, width * patch_size
+        )
         return hidden_states
 
     def _run_block(
@@ -493,6 +503,7 @@ class RAEDiTTransformer2DModel(ModelMixin, ConfigMixin):
         feat_rope: VisionRotaryEmbeddingFast | None,
     ) -> torch.Tensor:
         if torch.is_grad_enabled() and self.gradient_checkpointing:
+
             def custom_forward(hidden_states: torch.Tensor, conditioning: torch.Tensor) -> torch.Tensor:
                 return block(hidden_states, conditioning, feat_rope=feat_rope)
 

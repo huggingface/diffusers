@@ -161,7 +161,9 @@ def parse_args():
     )
     parser.add_argument("--use_qknorm", action="store_true", help="Enable QK norm in attention.")
     parser.add_argument("--use_swiglu", action=argparse.BooleanOptionalAction, default=True, help="Use SwiGLU MLPs.")
-    parser.add_argument("--use_rope", action=argparse.BooleanOptionalAction, default=True, help="Use rotary embeddings.")
+    parser.add_argument(
+        "--use_rope", action=argparse.BooleanOptionalAction, default=True, help="Use rotary embeddings."
+    )
     parser.add_argument(
         "--use_rmsnorm",
         action=argparse.BooleanOptionalAction,
@@ -198,7 +200,7 @@ def parse_args():
         type=str,
         default="none",
         choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "none"],
-        help='Weighting scheme for flow-matching timestep sampling and loss weighting.',
+        help="Weighting scheme for flow-matching timestep sampling and loss weighting.",
     )
     parser.add_argument(
         "--logit_mean",
@@ -247,9 +249,7 @@ def compute_resume_offsets(
     return first_epoch, resume_step
 
 
-def should_skip_resumed_batch(
-    should_resume: bool, epoch: int, first_epoch: int, step: int, resume_step: int
-) -> bool:
+def should_skip_resumed_batch(should_resume: bool, epoch: int, first_epoch: int, step: int, resume_step: int) -> bool:
     return should_resume and epoch == first_epoch and step < resume_step
 
 
@@ -484,7 +484,7 @@ def main():
             },
         )
         with open(os.path.join(args.output_dir, "id2label.json"), "w", encoding="utf-8") as f:
-            json.dump({idx: label for idx, label in enumerate(dataset.classes)}, f, indent=2, sort_keys=True)
+            json.dump(dict(enumerate(dataset.classes)), f, indent=2, sort_keys=True)
 
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
     logger.info("***** Running stage-2 RAE DiT training *****")
@@ -549,7 +549,9 @@ def main():
                 continue
 
             with accelerator.accumulate(transformer):
-                pixel_values = batch["pixel_values"].to(device=accelerator.device, dtype=weight_dtype, non_blocking=True)
+                pixel_values = batch["pixel_values"].to(
+                    device=accelerator.device, dtype=weight_dtype, non_blocking=True
+                )
                 class_labels = batch["class_labels"].to(device=accelerator.device, non_blocking=True)
 
                 with torch.no_grad():

@@ -773,7 +773,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .prx import PRXPipeline
-        from .rae_dit import RAEDiTPipeline
         from .qwenimage import (
             QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,
@@ -785,6 +784,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredPipeline,
             QwenImagePipeline,
         )
+        from .rae_dit import RAEDiTPipeline
         from .sana import (
             SanaControlNetPipeline,
             SanaPipeline,

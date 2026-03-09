@@ -253,7 +253,9 @@ def convert_transformer_state_dict(
     if verify_load:
         reloaded = RAEDiTTransformer2DModel.from_pretrained(output_dir, low_cpu_mem_usage=False)
         if not isinstance(reloaded, RAEDiTTransformer2DModel):
-            raise RuntimeError(f"Verification failed for {component_name}: reloaded object is not RAEDiTTransformer2DModel.")
+            raise RuntimeError(
+                f"Verification failed for {component_name}: reloaded object is not RAEDiTTransformer2DModel."
+            )
 
     return {
         "checkpoint_path": str(checkpoint_path),
@@ -304,7 +306,11 @@ def resolve_checkpoint_path(
 
 def convert(args: argparse.Namespace) -> None:
     weights_accessor = RepoAccessor(args.repo_or_path, cache_dir=args.cache_dir)
-    config_accessor = RepoAccessor(args.config_repo_or_path, cache_dir=args.cache_dir) if args.config_repo_or_path else weights_accessor
+    config_accessor = (
+        RepoAccessor(args.config_repo_or_path, cache_dir=args.cache_dir)
+        if args.config_repo_or_path
+        else weights_accessor
+    )
     config = read_yaml(config_accessor, args.config_path)
 
     stage2 = _resolve_section(config, "stage_2", "stage2")
@@ -320,7 +326,9 @@ def convert(args: argparse.Namespace) -> None:
         description="Stage-2 checkpoint",
     )
     if checkpoint_path is None:
-        raise ValueError("Could not resolve a Stage-2 checkpoint. Pass `--checkpoint_path` or provide `stage_2.ckpt` in config.")
+        raise ValueError(
+            "Could not resolve a Stage-2 checkpoint. Pass `--checkpoint_path` or provide `stage_2.ckpt` in config."
+        )
 
     scheduler, scheduler_metadata = build_scheduler_config(config)
     sampler = _resolve_section(config, "sampler")
@@ -361,7 +369,10 @@ def convert(args: argparse.Namespace) -> None:
     print(f"Using config:              {args.config_path}")
     print(f"Using Stage-2 checkpoint:  {checkpoint_path}")
     print(f"Derived scheduler shift:   {scheduler.config.shift:.6f}")
-    if metadata["sampler"]["mode"] != "ODE" or metadata["sampler"]["params"].get("sampling_method", "euler") != "euler":
+    if (
+        metadata["sampler"]["mode"] != "ODE"
+        or metadata["sampler"]["params"].get("sampling_method", "euler") != "euler"
+    ):
         print(
             "Warning: upstream sampler is not the public ODE/Euler path. The saved scheduler still uses "
             "FlowMatchEulerDiscreteScheduler for diffusers V1 compatibility."

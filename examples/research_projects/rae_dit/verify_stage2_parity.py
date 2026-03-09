@@ -27,7 +27,9 @@ from diffusers.models.transformers.transformer_rae_dit import RAEDiTTransformer2
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compare a converted RAEDiT checkpoint against the upstream Stage-2 model.")
+    parser = argparse.ArgumentParser(
+        description="Compare a converted RAEDiT checkpoint against the upstream Stage-2 model."
+    )
     parser.add_argument("--upstream_repo_path", type=str, required=True, help="Path to the cloned upstream RAE repo.")
     parser.add_argument(
         "--config_path",
@@ -142,7 +144,9 @@ def main():
     stage2_params = stage2.get("params", {})
     misc = _resolve_section(config, "misc")
     latent_size = misc["latent_size"]
-    shift = math.sqrt(int(misc.get("time_dist_shift_dim", math.prod(latent_size))) / int(misc.get("time_dist_shift_base", 4096)))
+    shift = math.sqrt(
+        int(misc.get("time_dist_shift_dim", math.prod(latent_size))) / int(misc.get("time_dist_shift_base", 4096))
+    )
 
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
     state_dict = unwrap_state_dict(load_checkpoint(checkpoint_path), prefer_ema=True)

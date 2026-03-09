@@ -199,6 +199,8 @@ class RAEDiTTransformer2DModelTests(ModelTesterMixin, unittest.TestCase):
     def test_effective_gradient_checkpointing(self):
         super().test_effective_gradient_checkpointing(loss_tolerance=1e-4)
 
-    @unittest.skip("RAEDiT initializes the output head to zeros, so cosine-based layerwise casting checks are uninformative.")
+    @unittest.skip(
+        "RAEDiT initializes the output head to zeros, so cosine-based layerwise casting checks are uninformative."
+    )
     def test_layerwise_casting_inference(self):
         pass

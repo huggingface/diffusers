@@ -180,7 +180,9 @@ class RAEDiTPipeline(DiffusionPipeline):
         device = self._execution_device
         dtype = self.transformer.dtype
 
-        class_labels = self._prepare_class_labels(class_labels, num_images_per_prompt=num_images_per_prompt, device=device)
+        class_labels = self._prepare_class_labels(
+            class_labels, num_images_per_prompt=num_images_per_prompt, device=device
+        )
         batch_size = class_labels.shape[0]
 
         latent_size = self.transformer.config.sample_size
@@ -223,7 +225,9 @@ class RAEDiTPipeline(DiffusionPipeline):
             if self.do_classifier_free_guidance:
                 cond_model_output, uncond_model_output = model_output.chunk(2, dim=0)
                 guided_model_output = uncond_model_output + guidance_scale * (cond_model_output - uncond_model_output)
-                guidance_mask = ((timestep_input[:batch_size] >= guidance_start) & (timestep_input[:batch_size] <= guidance_end))
+                guidance_mask = (timestep_input[:batch_size] >= guidance_start) & (
+                    timestep_input[:batch_size] <= guidance_end
+                )
                 guidance_mask = guidance_mask.view(-1, *([1] * (cond_model_output.ndim - 1)))
                 model_output = torch.where(guidance_mask, guided_model_output, cond_model_output)
 

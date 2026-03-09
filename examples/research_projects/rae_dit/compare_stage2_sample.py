@@ -29,7 +29,9 @@ from diffusers.models.transformers.transformer_rae_dit import RAEDiTTransformer2
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create a visual side-by-side sample comparison between upstream and diffusers Stage-2 RAE DiT.")
+    parser = argparse.ArgumentParser(
+        description="Create a visual side-by-side sample comparison between upstream and diffusers Stage-2 RAE DiT."
+    )
     parser.add_argument("--upstream_repo_path", type=str, required=True)
     parser.add_argument("--config_path", type=str, required=True)
     parser.add_argument("--checkpoint_path", type=str, required=True)
@@ -115,7 +117,9 @@ def main():
     stage2_params = stage2.get("params", {})
     misc = _resolve_section(config, "misc")
     latent_size = misc["latent_size"]
-    shift = math.sqrt(int(misc.get("time_dist_shift_dim", math.prod(latent_size))) / int(misc.get("time_dist_shift_base", 4096)))
+    shift = math.sqrt(
+        int(misc.get("time_dist_shift_dim", math.prod(latent_size))) / int(misc.get("time_dist_shift_base", 4096))
+    )
     num_train_timesteps = int(_resolve_section(config, "transport").get("params", {}).get("num_train_timesteps", 1000))
 
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -157,7 +161,9 @@ def main():
                 if isinstance(model, DiTwDDTHead):
                     model_output = model(latents, timestep_input, class_labels)
                 else:
-                    model_output = model(hidden_states=latents, timestep=timestep_input, class_labels=class_labels).sample
+                    model_output = model(
+                        hidden_states=latents, timestep=timestep_input, class_labels=class_labels
+                    ).sample
                 latents = scheduler.step(model_output, timestep, latents).prev_sample
             return vae.decode(latents).sample.clamp(0, 1)
 

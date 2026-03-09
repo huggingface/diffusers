@@ -28,7 +28,6 @@ from accelerate.utils import set_seed
 from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
-
 from train_rae_dit import build_transforms, collate_fn, compute_resume_offsets, should_skip_resumed_batch
 
 
@@ -127,9 +126,7 @@ def collect_class_label_trace(
             if len(trace) >= expected_microbatches:
                 return trace
 
-    raise AssertionError(
-        f"Expected to record {expected_microbatches} microbatches, but only collected {len(trace)}."
-    )
+    raise AssertionError(f"Expected to record {expected_microbatches} microbatches, but only collected {len(trace)}.")
 
 
 def main():
