@@ -470,7 +470,6 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         L = torch.linalg.cholesky(cov)
         block_number = batch_size * channel * num_frames * (height // ph) * (width // pw)
-        # z = torch.randn(block_number, block_size, device=device, generator=generator)
         z = torch.randn(block_number, block_size, generator=generator).to(device=device)
         noise = z @ L.T
 
