@@ -1,7 +1,6 @@
 import gc
 import json
 import os
-import tempfile
 from typing import Callable
 
 import pytest
@@ -341,16 +340,15 @@ class ModularPipelineTesterMixin:
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
-    def test_save_from_pretrained(self):
+    def test_save_from_pretrained(self, tmp_path):
         pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            base_pipe.save_pretrained(tmpdirname)
-            pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
-            pipe.load_components(torch_dtype=torch.float32)
-            pipe.to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+        pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
+        pipe.load_components(torch_dtype=torch.float32)
+        pipe.to(torch_device)
 
         pipes.append(pipe)
 
@@ -362,32 +360,31 @@ class ModularPipelineTesterMixin:
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
-    def test_modular_index_consistency(self):
+    def test_modular_index_consistency(self, tmp_path):
         pipe = self.get_pipeline()
         components_spec = pipe._component_specs
         components = sorted(components_spec.keys())
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            index_file = os.path.join(tmpdir, "modular_model_index.json")
-            assert os.path.exists(index_file)
+        pipe.save_pretrained(str(tmp_path))
+        index_file = tmp_path / "modular_model_index.json"
+        assert index_file.exists()
 
-            with open(index_file) as f:
-                index_contents = json.load(f)
+        with open(index_file) as f:
+            index_contents = json.load(f)
 
-            compulsory_keys = {"_blocks_class_name", "_class_name", "_diffusers_version"}
-            for k in compulsory_keys:
-                assert k in index_contents
+        compulsory_keys = {"_blocks_class_name", "_class_name", "_diffusers_version"}
+        for k in compulsory_keys:
+            assert k in index_contents
 
-            to_check_attrs = {"pretrained_model_name_or_path", "revision", "subfolder"}
-            for component in components:
-                spec = components_spec[component]
-                for attr in to_check_attrs:
-                    if getattr(spec, "pretrained_model_name_or_path", None) is not None:
-                        for attr in to_check_attrs:
-                            assert component in index_contents, f"{component} should be present in index but isn't."
-                            attr_value_from_index = index_contents[component][2][attr]
-                            assert getattr(spec, attr) == attr_value_from_index
+        to_check_attrs = {"pretrained_model_name_or_path", "revision", "subfolder"}
+        for component in components:
+            spec = components_spec[component]
+            for attr in to_check_attrs:
+                if getattr(spec, "pretrained_model_name_or_path", None) is not None:
+                    for attr in to_check_attrs:
+                        assert component in index_contents, f"{component} should be present in index but isn't."
+                        attr_value_from_index = index_contents[component][2][attr]
+                        assert getattr(spec, attr) == attr_value_from_index
 
     def test_workflow_map(self):
         blocks = self.pipeline_blocks_class()
@@ -483,7 +480,7 @@ class TestCustomBlockRequirements:
 
     def test_sequential_block_requirements_save_load(self, tmp_path):
         pipe = self.get_dummy_block_pipe()
-        pipe.save_pretrained(tmp_path)
+        pipe.save_pretrained(str(tmp_path))
 
         config_path = tmp_path / "modular_config.json"
 
@@ -508,7 +505,7 @@ class TestCustomBlockRequirements:
         logger.setLevel(30)
 
         with CaptureLogger(logger) as cap_logger:
-            pipe.save_pretrained(tmp_path)
+            pipe.save_pretrained(str(tmp_path))
 
         template = "{req} was specified in the requirements but wasn't found in the current environment"
         msg_xyz = template.format(req="xyz")
@@ -518,7 +515,7 @@ class TestCustomBlockRequirements:
 
     def test_conditional_block_requirements_save_load(self, tmp_path):
         pipe = self.get_dummy_conditional_block_pipe()
-        pipe.save_pretrained(tmp_path)
+        pipe.save_pretrained(str(tmp_path))
 
         config_path = tmp_path / "modular_config.json"
         with open(config_path, "r") as f:
@@ -535,7 +532,7 @@ class TestCustomBlockRequirements:
 
     def test_loop_block_requirements_save_load(self, tmp_path):
         pipe = self.get_dummy_loop_block_pipe()
-        pipe.save_pretrained(tmp_path)
+        pipe.save_pretrained(str(tmp_path))
 
         config_path = tmp_path / "modular_config.json"
         with open(config_path, "r") as f:
