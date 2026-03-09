@@ -1466,6 +1466,8 @@ class LTX2VideoTransformer3DModel(
                     audio_cross_attn_scale_shift,
                     video_cross_attn_a2v_gate,
                     audio_cross_attn_v2a_gate,
+                    None,  # temb_prompt
+                    None,  # temb_prompt_audio
                     video_rotary_emb,
                     audio_rotary_emb,
                     video_cross_attn_rotary_emb,
@@ -1485,6 +1487,8 @@ class LTX2VideoTransformer3DModel(
                     temb_ca_audio_scale_shift=audio_cross_attn_scale_shift,
                     temb_ca_gate=video_cross_attn_a2v_gate,
                     temb_ca_audio_gate=audio_cross_attn_v2a_gate,
+                    temb_prompt=None,
+                    temb_prompt_audio=None,
                     video_rotary_emb=video_rotary_emb,
                     audio_rotary_emb=audio_rotary_emb,
                     ca_video_rotary_emb=video_cross_attn_rotary_emb,
