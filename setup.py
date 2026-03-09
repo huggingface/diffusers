@@ -101,6 +101,7 @@ _deps = [
     "datasets",
     "filelock",
     "flax>=0.4.1",
+    "ftfy",
     "hf-doc-builder>=0.3.0",
     "httpx<1.0.0",
     "huggingface-hub>=0.34.0,<2.0",
@@ -111,7 +112,6 @@ _deps = [
     "jax>=0.4.1",
     "jaxlib>=0.4.1",
     "Jinja2",
-    "k-diffusion==0.0.12",
     "torchsde",
     "note_seq",
     "librosa",
@@ -222,13 +222,14 @@ extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft", "timm")
 extras["test"] = deps_list(
     "compel",
+    "ftfy",
     "GitPython",
     "datasets",
     "Jinja2",
     "invisible-watermark",
-    "k-diffusion",
     "librosa",
     "parameterized",
+    "protobuf",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -237,6 +238,7 @@ extras["test"] = deps_list(
     "sentencepiece",
     "scipy",
     "tiktoken",
+    "torchsde",
     "torchvision",
     "transformers",
     "phonemizer",
@@ -274,7 +276,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.37.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.38.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

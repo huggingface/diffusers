@@ -107,6 +107,7 @@ def load_or_create_model_card(
     widget: list[dict] | None = None,
     inference: bool | None = None,
     is_modular: bool = False,
+    update_model_card: bool = False,
 ) -> ModelCard:
     """
     Loads or creates a model card.
@@ -133,6 +134,9 @@ def load_or_create_model_card(
             `load_or_create_model_card` from a training script.
         is_modular: (`bool`, optional): Boolean flag to denote if the model card is for a modular pipeline.
             When True, uses model_description as-is without additional template formatting.
+        update_model_card: (`bool`, optional): When True, regenerates the model card content even if one
+            already exists on the remote repo. Existing card metadata (tags, license, etc.) is preserved. Only
+            supported for modular pipelines (i.e., `is_modular=True`).
     """
     if not is_jinja_available():
         raise ValueError(
@@ -141,9 +145,17 @@ def load_or_create_model_card(
             " To install it, please run `pip install Jinja2`."
         )
 
+    if update_model_card and not is_modular:
+        raise ValueError("`update_model_card=True` is only supported for modular pipelines (`is_modular=True`).")
+
     try:
         # Check if the model card is present on the remote repo
         model_card = ModelCard.load(repo_id_or_path, token=token)
+        # For modular pipelines, regenerate card content when requested (preserve existing metadata)
+        if update_model_card and is_modular and model_description is not None:
+            existing_data = model_card.data
+            model_card = ModelCard(model_description)
+            model_card.data = existing_data
     except (EntryNotFoundError, RepositoryNotFoundError):
         # Otherwise create a model card from template
         if from_training:

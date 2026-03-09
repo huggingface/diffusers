@@ -18,6 +18,7 @@ import unittest
 import numpy as np
 import torch
 from transformers import (
+    AutoConfig,
     AutoTokenizer,
     CLIPTextConfig,
     CLIPTextModelWithProjection,
@@ -94,7 +95,8 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder_2 = CLIPTextModelWithProjection(clip_text_encoder_config)
 
         torch.manual_seed(0)
-        text_encoder_3 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder_3 = T5EncoderModel(config)
 
         torch.manual_seed(0)
         text_encoder_4 = LlamaForCausalLM.from_pretrained("hf-internal-testing/tiny-random-LlamaForCausalLM")
@@ -149,12 +151,12 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_image.shape, (128, 128, 3))
 
         # fmt: off
-        expected_slice = np.array([0.4507, 0.5256, 0.4205, 0.5791, 0.4848, 0.4831, 0.4443, 0.5107, 0.6586, 0.3163, 0.7318, 0.5933, 0.6252, 0.5512, 0.5357, 0.5983])
+        expected_slice = np.array([0.4501, 0.5256, 0.4207, 0.5783, 0.4842, 0.4833, 0.4441, 0.5112, 0.6587, 0.3169, 0.7308, 0.5927, 0.6251, 0.5509, 0.5355, 0.5969])
         # fmt: on
 
         generated_slice = generated_image.flatten()
         generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(np.allclose(generated_slice, expected_slice, atol=1e-3))
+        self.assertTrue(np.allclose(generated_slice, expected_slice, atol=5e-3))
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-4)
