@@ -350,7 +350,7 @@ class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
         rope_double_precision: bool = True,
         causal_temporal_positioning: bool = False,
         rope_type: str = "interleaved",
-        per_modality_projections: bool = True,
+        per_modality_projections: bool = False,
         video_hidden_dim: int = 4096,
         audio_hidden_dim: int = 2048,
         proj_bias: bool = False,
@@ -446,7 +446,9 @@ class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
                 scale_factor=scale_factor,
             )
 
-            video_text_emb_proj, audio_text_emb_proj = self.text_proj_in(norm_text_encoder_hidden_states)
+            text_emb_proj = self.text_proj_in(norm_text_encoder_hidden_states)
+            video_text_emb_proj = text_emb_proj
+            audio_text_emb_proj = text_emb_proj
 
         # Convert to additive attention mask for connectors
         text_dtype = video_text_emb_proj.dtype

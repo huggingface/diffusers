@@ -207,7 +207,7 @@ class ResBlock(nn.Module):
             elif act_fn == "snake":
                 act = SnakeBeta(channels, use_beta=False)
             else:
-                act_fn = nn.LeakyReLU(negative_slope=leaky_relu_negative_slope)
+                act = nn.LeakyReLU(negative_slope=leaky_relu_negative_slope)
 
             if antialias:
                 act = nn.Sequential(
@@ -242,7 +242,7 @@ class ResBlock(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for act1, conv1, act2, conv2 in zip(self.acts1, self.convs1, self.acts2, self.convs2):
-            xt = act1(xt)
+            xt = act1(x)
             xt = conv1(xt)
             xt = act2(xt)
             xt = conv2(xt)
