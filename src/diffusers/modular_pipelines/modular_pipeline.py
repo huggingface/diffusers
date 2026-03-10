@@ -106,6 +106,16 @@ def _wan_i2v_map_fn(config_dict=None):
         return "WanImage2VideoModularPipeline"
 
 
+def _helios_pyramid_map_fn(config_dict=None):
+    if config_dict is None:
+        return "HeliosPyramidModularPipeline"
+
+    if config_dict.get("is_distilled", False):
+        return "HeliosPyramidDistilledModularPipeline"
+    else:
+        return "HeliosPyramidModularPipeline"
+
+
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
@@ -120,6 +130,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
+        ("helios", _create_default_map_fn("HeliosModularPipeline")),
+        ("helios-pyramid", _helios_pyramid_map_fn),
     ]
 )
 
