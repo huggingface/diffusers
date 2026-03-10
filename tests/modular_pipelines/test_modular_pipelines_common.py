@@ -5,6 +5,7 @@ from typing import Callable
 
 import pytest
 import torch
+from huggingface_hub import hf_hub_download
 
 import diffusers
 from diffusers import AutoModel, ComponentsManager, ModularPipeline, ModularPipelineBlocks
@@ -30,6 +31,30 @@ from ..testing_utils import (
     require_accelerator,
     torch_device,
 )
+
+
+def _get_specified_components(path_or_repo_id, cache_dir=None):
+    if os.path.isdir(path_or_repo_id):
+        config_path = os.path.join(path_or_repo_id, "modular_model_index.json")
+    else:
+        config_path = hf_hub_download(
+            repo_id=path_or_repo_id,
+            filename="modular_model_index.json",
+            local_dir=cache_dir,
+        )
+
+    with open(config_path) as f:
+        config = json.load(f)
+
+    components = set()
+    for k, v in config.items():
+        if isinstance(v, str):
+            continue
+        for entry in v:
+            if isinstance(entry, dict) and (entry.get("repo") or entry.get("pretrained_model_name_or_path")):
+                components.add(k)
+                break
+    return components
 
 
 class ModularPipelineTesterMixin:
@@ -359,6 +384,36 @@ class ModularPipelineTesterMixin:
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+    def test_load_expected_components_from_pretrained(self, tmp_path):
+        pipe = self.get_pipeline()
+        expected = _get_specified_components(self.pretrained_model_name_or_path, cache_dir=tmp_path)
+        actual = {
+            name
+            for name in pipe.components
+            if getattr(pipe, name, None) is not None
+            and getattr(getattr(pipe, name), "_diffusers_load_id", None) != "null"
+        }
+        assert expected == actual, f"Component mismatch: missing={expected - actual}, unexpected={actual - expected}"
+
+    def test_load_expected_components_from_save_pretrained(self, tmp_path):
+        pipe = self.get_pipeline()
+        save_dir = str(tmp_path / "saved-pipeline")
+        pipe.save_pretrained(save_dir)
+
+        expected = _get_specified_components(save_dir)
+        loaded_pipe = ModularPipeline.from_pretrained(save_dir)
+        loaded_pipe.load_components(torch_dtype=torch.float32)
+
+        actual = {
+            name
+            for name in loaded_pipe.components
+            if getattr(loaded_pipe, name, None) is not None
+            and getattr(getattr(loaded_pipe, name), "_diffusers_load_id", None) != "null"
+        }
+        assert expected == actual, (
+            f"Component mismatch after save/load: missing={expected - actual}, unexpected={actual - expected}"
+        )
 
     def test_modular_index_consistency(self, tmp_path):
         pipe = self.get_pipeline()
