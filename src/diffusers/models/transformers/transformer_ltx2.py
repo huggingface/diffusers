@@ -574,7 +574,7 @@ class LTX2VideoTransformerBlock(nn.Module):
         self.cross_attn_adaln = video_cross_attn_adaln or audio_cross_attn_adaln
         if self.cross_attn_adaln:
             self.prompt_scale_shift_table = nn.Parameter(torch.randn(2, dim))
-            self.audio_prompt_scale_shift_table = nn.Parameter(torch.randn(2, dim))
+            self.audio_prompt_scale_shift_table = nn.Parameter(torch.randn(2, audio_dim))
 
         # Per-layer a2v, v2a Cross-Attention mod params
         self.video_a2v_cross_attn_scale_shift_table = nn.Parameter(torch.randn(5, dim))
@@ -1122,6 +1122,7 @@ class LTX2VideoTransformer3DModel(
         timestep_scale_multiplier: int = 1000,
         cross_attn_timestep_scale_multiplier: int = 1000,
         rope_type: str = "interleaved",
+        use_prompt_embeddings=True,
         perturbed_attn: bool = False,
     ) -> None:
         super().__init__()
@@ -1136,17 +1137,25 @@ class LTX2VideoTransformer3DModel(
         self.audio_proj_in = nn.Linear(audio_in_channels, audio_inner_dim)
 
         # 2. Prompt embeddings
-        self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
-        self.audio_caption_projection = PixArtAlphaTextProjection(
-            in_features=caption_channels, hidden_size=audio_inner_dim
-        )
+        if use_prompt_embeddings:
+            # LTX-2.0; LTX-2.3 uses per-modality feature projections in the connector instead
+            self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
+            self.audio_caption_projection = PixArtAlphaTextProjection(
+                in_features=caption_channels, hidden_size=audio_inner_dim
+            )
 
         # 3. Timestep Modulation Params and Embedding
+        self.prompt_modulation = cross_attn_mod or audio_cross_attn_mod  # used by LTX-2.3
+
         # 3.1. Global Timestep Modulation Parameters (except for cross-attention) and timestep + size embedding
         # time_embed and audio_time_embed calculate both the timestep embedding and (global) modulation parameters
-        self.time_embed = LTX2AdaLayerNormSingle(inner_dim, num_mod_params=6, use_additional_conditions=False)
+        video_time_emb_mod_params = 9 if cross_attn_mod else 6
+        audio_time_emb_mod_params = 9 if audio_cross_attn_mod else 6
+        self.time_embed = LTX2AdaLayerNormSingle(
+            inner_dim, num_mod_params=video_time_emb_mod_params, use_additional_conditions=False
+        )
         self.audio_time_embed = LTX2AdaLayerNormSingle(
-            audio_inner_dim, num_mod_params=6, use_additional_conditions=False
+            audio_inner_dim, num_mod_params=audio_time_emb_mod_params, use_additional_conditions=False
         )
 
         # 3.2. Global Cross Attention Modulation Parameters
@@ -1176,11 +1185,10 @@ class LTX2VideoTransformer3DModel(
         self.audio_scale_shift_table = nn.Parameter(torch.randn(2, audio_inner_dim) / audio_inner_dim**0.5)
 
         # 3.4. Prompt Scale/Shift Modulation parameters (LTX-2.3)
-        self.prompt_modulation = cross_attn_mod or audio_cross_attn_mod
         if self.prompt_modulation:
             self.prompt_adaln = LTX2AdaLayerNormSingle(inner_dim, num_mod_params=2, use_additional_conditions=False)
             self.audio_prompt_adaln = LTX2AdaLayerNormSingle(
-                inner_dim, num_mod_params=2, use_additional_conditions=False
+                audio_inner_dim, num_mod_params=2, use_additional_conditions=False
             )
 
         # 4. Rotary Positional Embeddings (RoPE)
@@ -1485,12 +1493,13 @@ class LTX2VideoTransformer3DModel(
         )
         audio_cross_attn_v2a_gate = audio_cross_attn_v2a_gate.view(batch_size, -1, audio_cross_attn_v2a_gate.shape[-1])
 
-        # 4. Prepare prompt embeddings
-        encoder_hidden_states = self.caption_projection(encoder_hidden_states)
-        encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.size(-1))
+        # 4. Prepare prompt embeddings (LTX-2.0)
+        if self.config.use_prompt_embeddings:
+            encoder_hidden_states = self.caption_projection(encoder_hidden_states)
+            encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.size(-1))
 
-        audio_encoder_hidden_states = self.audio_caption_projection(audio_encoder_hidden_states)
-        audio_encoder_hidden_states = audio_encoder_hidden_states.view(batch_size, -1, audio_hidden_states.size(-1))
+            audio_encoder_hidden_states = self.audio_caption_projection(audio_encoder_hidden_states)
+            audio_encoder_hidden_states = audio_encoder_hidden_states.view(batch_size, -1, audio_hidden_states.size(-1))
 
         # 5. Run transformer blocks
         for block in self.transformer_blocks:

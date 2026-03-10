@@ -44,6 +44,12 @@ LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT = {
     "k_norm": "norm_k",
 }
 
+LTX_2_3_TRANSFORMER_KEYS_RENAME_DICT = {
+    **LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT,
+    "audio_prompt_adaln_single": "audio_prompt_adaln",
+    "prompt_adaln_single": "prompt_adaln",
+}
+
 LTX_2_0_VIDEO_VAE_RENAME_DICT = {
     # Encoder
     "down_blocks.0": "down_blocks.0",
@@ -267,6 +273,7 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
                 "timestep_scale_multiplier": 1000,
                 "cross_attn_timestep_scale_multiplier": 1000,
                 "rope_type": "split",
+                "use_prompt_embeddings": True,
                 "perturbed_attn": False,
             },
         }
@@ -300,8 +307,8 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
                 "audio_pos_embed_max_pos": 20,
                 "audio_sampling_rate": 16000,
                 "audio_hop_length": 160,
-                "audio_gated_attn": False,
-                "audio_cross_attn_mod": False,
+                "audio_gated_attn": True,
+                "audio_cross_attn_mod": True,
                 "num_layers": 48,
                 "activation_fn": "gelu-approximate",
                 "qk_norm": "rms_norm_across_heads",
@@ -316,10 +323,11 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
                 "timestep_scale_multiplier": 1000,
                 "cross_attn_timestep_scale_multiplier": 1000,
                 "rope_type": "split",
+                "use_prompt_embeddings": False,
                 "perturbed_attn": True,
             },
         }
-        rename_dict = LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT
+        rename_dict = LTX_2_3_TRANSFORMER_KEYS_RENAME_DICT
         special_keys_remap = LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
@@ -881,7 +889,7 @@ def get_args():
         "--version",
         type=str,
         default="2.0",
-        choices=["test", "2.0"],
+        choices=["test", "2.0", "2.3"],
         help="Version of the LTX 2.0 model",
     )
 
