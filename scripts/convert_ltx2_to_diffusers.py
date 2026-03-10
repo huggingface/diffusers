@@ -106,10 +106,25 @@ LTX_2_3_VOCODER_RENAME_DICT= {
     "downsample.lowpass": "downsample",
 }
 
-LTX_2_0_TEXT_ENCODER_RENAME_DICT = {
+LTX_2_0_CONNECTORS_KEYS_RENAME_DICT = {
+    "connectors.": "",
     "video_embeddings_connector": "video_connector",
     "audio_embeddings_connector": "audio_connector",
     "transformer_1d_blocks": "transformer_blocks",
+    "text_embedding_projection.aggregate_embed": "text_proj_in",
+    # Attention QK Norms
+    "q_norm": "norm_q",
+    "k_norm": "norm_k",
+}
+
+LTX_2_3_CONNECTORS_KEYS_RENAME_DICT = {
+    "connectors.": "",
+    "video_embeddings_connector": "video_connector",
+    "audio_embeddings_connector": "audio_connector",
+    "transformer_1d_blocks": "transformer_blocks",
+    # LTX-2.3 uses per-modality embedding projections
+    "text_embedding_projection.audio_aggregate_embed": "audio_text_proj_in",
+    "text_embedding_projection.video_aggregate_embed": "video_text_proj_in",
     # Attention QK Norms
     "q_norm": "norm_q",
     "k_norm": "norm_k",
@@ -169,17 +184,6 @@ LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "adaln_single": convert_ltx2_transformer_adaln_single,
 }
 
-LTX_2_0_CONNECTORS_KEYS_RENAME_DICT = {
-    "connectors.": "",
-    "video_embeddings_connector": "video_connector",
-    "audio_embeddings_connector": "audio_connector",
-    "transformer_1d_blocks": "transformer_blocks",
-    "text_embedding_projection.aggregate_embed": "text_proj_in",
-    # Attention QK Norms
-    "q_norm": "norm_q",
-    "k_norm": "norm_k",
-}
-
 LTX_2_0_VAE_SPECIAL_KEYS_REMAP = {
     "per_channel_statistics.channel": remove_keys_inplace,
     "per_channel_statistics.mean-of-stds": remove_keys_inplace,
@@ -193,13 +197,15 @@ LTX_2_3_VOCODER_SPECIAL_KEYS_REMAP = {
     ".ups.": convert_ltx2_3_vocoder_upsamplers,
 }
 
+LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP = {}
+
 
 def split_transformer_and_connector_state_dict(state_dict: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     connector_prefixes = (
         "video_embeddings_connector",
         "audio_embeddings_connector",
         "transformer_1d_blocks",
-        "text_embedding_projection.aggregate_embed",
+        "text_embedding_projection",
         "connectors.",
         "video_connector",
         "audio_connector",
@@ -410,6 +416,8 @@ def get_ltx2_connectors_config(version: str) -> tuple[dict[str, Any], dict[str, 
                 "proj_bias": False,
             },
         }
+        rename_dict = LTX_2_0_CONNECTORS_KEYS_RENAME_DICT
+        special_keys_remap = LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP
     elif version == "2.3":
         config = {
             "model_id": "Lightricks/LTX-2.3",
@@ -437,9 +445,8 @@ def get_ltx2_connectors_config(version: str) -> tuple[dict[str, Any], dict[str, 
                 "proj_bias": True,
             },
         }
-
-    rename_dict = LTX_2_0_CONNECTORS_KEYS_RENAME_DICT
-    special_keys_remap = {}
+        rename_dict = LTX_2_3_CONNECTORS_KEYS_RENAME_DICT
+        special_keys_remap = LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP
 
     return config, rename_dict, special_keys_remap
 
@@ -894,9 +901,13 @@ def get_model_state_dict_from_combined_ckpt(combined_ckpt: dict[str, Any], prefi
 
     if prefix == "model.diffusion_model.":
         # Some checkpoints store the text connector projection outside the diffusion model prefix.
-        connector_key = "text_embedding_projection.aggregate_embed.weight"
-        if connector_key in combined_ckpt and connector_key not in model_state_dict:
-            model_state_dict[connector_key] = combined_ckpt[connector_key]
+        connector_prefixes = ["text_embedding_projection"]
+        for param_name, param in combined_ckpt.items():
+            for prefix in connector_prefixes:
+                if param_name.startswith(prefix):
+                    # Check to make sure we're not overwriting an existing key
+                    if param_name not in model_state_dict:
+                        model_state_dict[param_name] = combined_ckpt[param_name]
 
     return model_state_dict
 
@@ -1026,7 +1037,7 @@ def main(args):
             args.audio_vae,
             args.dit,
             args.vocoder,
-            args.text_encoder,
+            args.connectors,
             args.full_pipeline,
             args.upsample_pipeline,
         ]

@@ -11,7 +11,7 @@ from ...models.modeling_utils import ModelMixin
 from ...models.transformers.transformer_ltx2 import LTX2Attention, LTX2AudioVideoAttnProcessor
 
 
-def per_batch_per_layer_mean_norm(
+def per_layer_masked_mean_norm(
     text_hidden_states: torch.Tensor,
     sequence_lengths: torch.Tensor,
     device: str | torch.device,
@@ -446,7 +446,7 @@ class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
         else:
             # LTX-2.0
             sequence_lengths = attention_mask.sum(dim=-1)
-            norm_text_encoder_hidden_states = per_batch_per_layer_mean_norm(
+            norm_text_encoder_hidden_states = per_layer_masked_mean_norm(
                 text_hidden_states=text_encoder_hidden_states,
                 sequence_lengths=sequence_lengths,
                 device=text_encoder_hidden_states.device,
