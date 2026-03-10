@@ -48,7 +48,7 @@ def _get_specified_components(path_or_repo_id, cache_dir=None):
 
     components = set()
     for k, v in config.items():
-        if isinstance(v, str):
+        if isinstance(v, (str, int, float, bool)):
             continue
         for entry in v:
             if isinstance(entry, dict) and (entry.get("repo") or entry.get("pretrained_model_name_or_path")):
