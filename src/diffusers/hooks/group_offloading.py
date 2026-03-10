@@ -246,6 +246,8 @@ class ModuleGroup:
             for group_module in self.modules:
                 for param in group_module.parameters():
                     param.data = self.cpu_param_dict[param]
+                for buffer in group_module.buffers():
+                    buffer.data = self.cpu_param_dict[buffer]
             for param in self.parameters:
                 param.data = self.cpu_param_dict[param]
             for buffer in self.buffers:
