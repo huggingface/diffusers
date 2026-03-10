@@ -181,6 +181,7 @@ class LTX2TransformerBlock1d(nn.Module):
         activation_fn: str = "gelu-approximate",
         eps: float = 1e-6,
         rope_type: str = "interleaved",
+        apply_gated_attention: bool = False,
     ):
         super().__init__()
 
@@ -190,8 +191,9 @@ class LTX2TransformerBlock1d(nn.Module):
             heads=num_attention_heads,
             kv_heads=num_attention_heads,
             dim_head=attention_head_dim,
-            processor=LTX2AudioVideoAttnProcessor(),
             rope_type=rope_type,
+            apply_gated_attention=apply_gated_attention,
+            processor=LTX2AudioVideoAttnProcessor(),
         )
 
         self.norm2 = torch.nn.RMSNorm(dim, eps=eps, elementwise_affine=False)
@@ -235,6 +237,7 @@ class LTX2ConnectorTransformer1d(nn.Module):
         eps: float = 1e-6,
         causal_temporal_positioning: bool = False,
         rope_type: str = "interleaved",
+        gated_attention: bool = False,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -263,6 +266,7 @@ class LTX2ConnectorTransformer1d(nn.Module):
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
                     rope_type=rope_type,
+                    apply_gated_attention=gated_attention,
                 )
                 for _ in range(num_layers)
             ]
@@ -341,10 +345,12 @@ class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
         video_connector_attention_head_dim: int = 128,
         video_connector_num_layers: int = 2,
         video_connector_num_learnable_registers: int | None = 128,
+        video_gated_attn: bool = False,
         audio_connector_num_attention_heads: int = 30,
         audio_connector_attention_head_dim: int = 128,
         audio_connector_num_layers: int = 2,
         audio_connector_num_learnable_registers: int | None = 128,
+        audio_gated_attn: bool = False,
         connector_rope_base_seq_len: int = 4096,
         rope_theta: float = 10000.0,
         rope_double_precision: bool = True,
@@ -373,6 +379,7 @@ class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
             rope_double_precision=rope_double_precision,
             causal_temporal_positioning=causal_temporal_positioning,
             rope_type=rope_type,
+            gated_attention=video_gated_attn,
         )
         self.audio_connector = LTX2ConnectorTransformer1d(
             num_attention_heads=audio_connector_num_attention_heads,
@@ -384,6 +391,7 @@ class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
             rope_double_precision=rope_double_precision,
             causal_temporal_positioning=causal_temporal_positioning,
             rope_type=rope_type,
+            gated_attention=audio_gated_attn,
         )
 
     def forward(

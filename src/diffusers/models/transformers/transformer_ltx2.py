@@ -1122,7 +1122,7 @@ class LTX2VideoTransformer3DModel(
         timestep_scale_multiplier: int = 1000,
         cross_attn_timestep_scale_multiplier: int = 1000,
         rope_type: str = "interleaved",
-        prompt_modulation: bool = False,
+        perturbed_attn: bool = False,
     ) -> None:
         super().__init__()
 
@@ -1176,7 +1176,8 @@ class LTX2VideoTransformer3DModel(
         self.audio_scale_shift_table = nn.Parameter(torch.randn(2, audio_inner_dim) / audio_inner_dim**0.5)
 
         # 3.4. Prompt Scale/Shift Modulation parameters (LTX-2.3)
-        if prompt_modulation:
+        self.prompt_modulation = cross_attn_mod or audio_cross_attn_mod
+        if self.prompt_modulation:
             self.prompt_adaln = LTX2AdaLayerNormSingle(inner_dim, num_mod_params=2, use_additional_conditions=False)
             self.audio_prompt_adaln = LTX2AdaLayerNormSingle(
                 inner_dim, num_mod_params=2, use_additional_conditions=False
@@ -1269,6 +1270,7 @@ class LTX2VideoTransformer3DModel(
                     eps=norm_eps,
                     elementwise_affine=norm_elementwise_affine,
                     rope_type=rope_type,
+                    perturbed_attn=perturbed_attn,
                 )
                 for _ in range(num_layers)
             ]
@@ -1439,7 +1441,7 @@ class LTX2VideoTransformer3DModel(
         temb_audio = temb_audio.view(batch_size, -1, temb_audio.size(-1))
         audio_embedded_timestep = audio_embedded_timestep.view(batch_size, -1, audio_embedded_timestep.size(-1))
 
-        if self.config.prompt_modulation:
+        if self.prompt_modulation:
             # LTX-2.3
             temb_prompt, _ = self.prompt_adaln(
                 sigma.flatten(), batch_size=batch_size, hidden_dtype=hidden_states.dtype

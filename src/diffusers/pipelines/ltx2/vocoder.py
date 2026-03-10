@@ -270,7 +270,7 @@ class LTX2Vocoder(ModelMixin, ConfigMixin):
         antialias: bool = False,
         antialias_ratio: int = 2,
         antialias_kernel_size: int = 12,
-        final_act_fn: str | None = "tanh",
+        final_act_fn: str | None = "tanh",  # tanh, clamp, None
         final_bias: bool = True,
         output_sampling_rate: int = 24000,
     ):
@@ -389,7 +389,7 @@ class LTX2Vocoder(ModelMixin, ConfigMixin):
         hidden_states = self.conv_out(hidden_states)
         if self.final_act_fn == "tanh":
             hidden_states = torch.tanh(hidden_states)
-        else:
+        elif self.final_act_fn == "clamp":
             hidden_states = torch.clamp(hidden_states, -1, 1)
 
         return hidden_states

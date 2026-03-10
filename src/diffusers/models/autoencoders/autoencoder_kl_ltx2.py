@@ -740,7 +740,7 @@ class LTX2VideoEncoder3d(nn.Module):
             "LTX2VideoDownBlock3D",
             "LTX2VideoDownBlock3D",
         ),
-        spatio_temporal_scaling: tuple[bool, ...] = (True, True, True, True),
+        spatio_temporal_scaling: bool | tuple[bool, ...] = (True, True, True, True),
         layers_per_block: tuple[int, ...] = (4, 6, 6, 2, 2),
         downsample_type: tuple[str, ...] = ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
         patch_size: int = 4,
@@ -750,6 +750,9 @@ class LTX2VideoEncoder3d(nn.Module):
         spatial_padding_mode: str = "zeros",
     ):
         super().__init__()
+        num_encoder_blocks = len(layers_per_block)
+        if isinstance(spatio_temporal_scaling, bool):
+            spatio_temporal_scaling = (spatio_temporal_scaling,) * (num_encoder_blocks - 1)
 
         self.patch_size = patch_size
         self.patch_size_t = patch_size_t
@@ -884,20 +887,27 @@ class LTX2VideoDecoder3d(nn.Module):
         in_channels: int = 128,
         out_channels: int = 3,
         block_out_channels: tuple[int, ...] = (256, 512, 1024),
-        spatio_temporal_scaling: tuple[bool, ...] = (True, True, True),
+        spatio_temporal_scaling: bool | tuple[bool, ...] = (True, True, True),
         layers_per_block: tuple[int, ...] = (5, 5, 5, 5),
         upsample_type: tuple[str, ...] = ("spatiotemporal", "spatiotemporal", "spatiotemporal"),
         patch_size: int = 4,
         patch_size_t: int = 1,
         resnet_norm_eps: float = 1e-6,
         is_causal: bool = False,
-        inject_noise: tuple[bool, ...] = (False, False, False),
+        inject_noise: bool | tuple[bool, ...] = (False, False, False),
         timestep_conditioning: bool = False,
-        upsample_residual: tuple[bool, ...] = (True, True, True),
+        upsample_residual: bool | tuple[bool, ...] = (True, True, True),
         upsample_factor: tuple[bool, ...] = (2, 2, 2),
         spatial_padding_mode: str = "reflect",
     ) -> None:
         super().__init__()
+        num_decoder_blocks = len(layers_per_block)
+        if isinstance(spatio_temporal_scaling, bool):
+            spatio_temporal_scaling = (spatio_temporal_scaling,) * (num_decoder_blocks - 1)
+        if isinstance(inject_noise, bool):
+            inject_noise = (inject_noise,) * num_decoder_blocks
+        if isinstance(upsample_residual, bool):
+            upsample_residual = (upsample_residual,) * (num_decoder_blocks - 1)
 
         self.patch_size = patch_size
         self.patch_size_t = patch_size_t
@@ -1084,12 +1094,12 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         decoder_block_out_channels: tuple[int, ...] = (256, 512, 1024),
         layers_per_block: tuple[int, ...] = (4, 6, 6, 2, 2),
         decoder_layers_per_block: tuple[int, ...] = (5, 5, 5, 5),
-        spatio_temporal_scaling: tuple[bool, ...] = (True, True, True, True),
-        decoder_spatio_temporal_scaling: tuple[bool, ...] = (True, True, True),
-        decoder_inject_noise: tuple[bool, ...] = (False, False, False, False),
+        spatio_temporal_scaling: bool | tuple[bool, ...] = (True, True, True, True),
+        decoder_spatio_temporal_scaling: bool | tuple[bool, ...] = (True, True, True),
+        decoder_inject_noise: bool | tuple[bool, ...] = (False, False, False, False),
         downsample_type: tuple[str, ...] = ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
         upsample_type: tuple[str, ...] = ("spatiotemporal", "spatiotemporal", "spatiotemporal"),
-        upsample_residual: tuple[bool, ...] = (True, True, True),
+        upsample_residual: bool | tuple[bool, ...] = (True, True, True),
         upsample_factor: tuple[int, ...] = (2, 2, 2),
         timestep_conditioning: bool = False,
         patch_size: int = 4,
@@ -1104,6 +1114,16 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         temporal_compression_ratio: int = None,
     ) -> None:
         super().__init__()
+        num_encoder_blocks = len(layers_per_block)
+        num_decoder_blocks = len(decoder_layers_per_block)
+        if isinstance(spatio_temporal_scaling, bool):
+            spatio_temporal_scaling = (spatio_temporal_scaling,) * (num_encoder_blocks - 1)
+        if isinstance(decoder_spatio_temporal_scaling, bool):
+            decoder_spatio_temporal_scaling = (decoder_spatio_temporal_scaling,) * (num_decoder_blocks - 1)
+        if isinstance(decoder_inject_noise, bool):
+            decoder_inject_noise = (decoder_inject_noise,) * num_decoder_blocks
+        if isinstance(upsample_residual, bool):
+            upsample_residual = (upsample_residual,) * (num_decoder_blocks - 1)
 
         self.encoder = LTX2VideoEncoder3d(
             in_channels=in_channels,
