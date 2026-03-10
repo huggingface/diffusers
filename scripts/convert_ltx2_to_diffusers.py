@@ -78,6 +78,13 @@ LTX_2_0_VIDEO_VAE_RENAME_DICT = {
     "per_channel_statistics.std-of-means": "latents_std",
 }
 
+LTX_2_3_VIDEO_VAE_RENAME_DICT = {
+    **LTX_2_0_VIDEO_VAE_RENAME_DICT,
+    # Decoder extra blocks
+    "up_blocks.7": "up_blocks.3.upsamplers.0",
+    "up_blocks.8": "up_blocks.3",
+}
+
 LTX_2_0_AUDIO_VAE_RENAME_DICT = {
     "per_channel_statistics.mean-of-means": "latents_mean",
     "per_channel_statistics.std-of-means": "latents_std",
@@ -566,7 +573,7 @@ def get_ltx2_video_vae_config(
                 "decoder_spatio_temporal_scaling": (True, True, True, True),
                 "decoder_inject_noise": (False, False, False, False, False),
                 "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
-                "upsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+                "upsample_type": ("spatiotemporal", "spatiotemporal", "temporal", "spatial"),
                 "upsample_residual": (True, True, True, True),
                 "upsample_factor": (2, 2, 1, 2),
                 "timestep_conditioning": timestep_conditioning,
@@ -581,7 +588,7 @@ def get_ltx2_video_vae_config(
                 "temporal_compression_ratio": 8,
             },
         }
-        rename_dict = LTX_2_0_VIDEO_VAE_RENAME_DICT
+        rename_dict = LTX_2_3_VIDEO_VAE_RENAME_DICT
         special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
