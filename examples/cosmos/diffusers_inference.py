@@ -216,7 +216,7 @@ def main(args: Args):
         revision=args.revision,
         device_map=args.device,
         torch_dtype=torch.bfloat16,
-        text_encoder_attn_implementation="flash_attention_2",
+        autocast_fp32=True, # optinal
         safety_checker=MockSafetyChecker(),
     )
 
