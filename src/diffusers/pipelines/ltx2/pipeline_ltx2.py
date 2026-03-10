@@ -31,7 +31,7 @@ from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .connectors import LTX2TextConnectors
 from .pipeline_output import LTX2PipelineOutput
-from .vocoder import LTX2Vocoder
+from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
 if is_torch_xla_available():
@@ -221,7 +221,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
-        vocoder: LTX2Vocoder,
+        vocoder: LTX2Vocoder | LTX2VocoderWithBWE,
     ):
         super().__init__()
 
@@ -1037,8 +1037,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                         encoder_hidden_states=connector_prompt_embeds,
                         audio_encoder_hidden_states=connector_audio_prompt_embeds,
                         timestep=timestep,
+                        sigma=timestep,  # Used by LTX-2.3
                         encoder_attention_mask=connector_attention_mask,
                         audio_encoder_attention_mask=connector_attention_mask,
+                        self_attention_mask=None,
+                        audio_self_attention_mask=None,
                         num_frames=latent_num_frames,
                         height=latent_height,
                         width=latent_width,

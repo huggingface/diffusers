@@ -612,8 +612,11 @@ class LTX2VideoTransformerBlock(nn.Module):
         ca_audio_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         audio_encoder_attention_mask: torch.Tensor | None = None,
+        self_attention_mask: torch.Tensor | None = None,
+        audio_self_attention_mask: torch.Tensor | None = None,
         a2v_cross_attention_mask: torch.Tensor | None = None,
         v2a_cross_attention_mask: torch.Tensor | None = None,
+        perturbation_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size = hidden_states.size(0)
 
@@ -631,6 +634,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=None,
             query_rotary_emb=video_rotary_emb,
+            attention_mask=self_attention_mask,
         )
         hidden_states = hidden_states + attn_hidden_states * gate_msa
 
@@ -649,6 +653,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             hidden_states=norm_audio_hidden_states,
             encoder_hidden_states=None,
             query_rotary_emb=audio_rotary_emb,
+            attention_mask=audio_self_attention_mask,
         )
         audio_hidden_states = audio_hidden_states + attn_audio_hidden_states * audio_gate_msa
 
@@ -1307,6 +1312,7 @@ class LTX2VideoTransformer3DModel(
         encoder_attention_mask: torch.Tensor | None = None,
         audio_encoder_attention_mask: torch.Tensor | None = None,
         self_attention_mask: torch.Tensor | None = None,
+        audio_self_attention_mask: torch.Tensor | None = None,
         num_frames: int | None = None,
         height: int | None = None,
         width: int | None = None,
@@ -1400,6 +1406,18 @@ class LTX2VideoTransformer3DModel(
                     self_attention_mask[unmasked_entries].clamp(min=dtype_finfo.tiny)
                 ).to(hidden_states.dtype)
             self_attention_mask = additive_self_attn_mask.unsqueeze(1)  # [batch_size, 1, seq_len, seq_len]
+
+        if audio_self_attention_mask is not None and audio_self_attention_mask.ndim == 3:
+            # Convert to additive attention mask in log-space where 0 (masked) values get mapped to a large negative
+            # number and positive values are mapped to their logarithm.
+            dtype_finfo = torch.finfo(hidden_states.dtype)
+            additive_self_attn_mask = torch.full_like(audio_self_attention_mask, dtype_finfo.min, dtype=hidden_states.dtype)
+            unmasked_entries = audio_self_attention_mask > 0
+            if torch.any(unmasked_entries):
+                additive_self_attn_mask[unmasked_entries] = torch.log(
+                    audio_self_attention_mask[unmasked_entries].clamp(min=dtype_finfo.tiny)
+                ).to(hidden_states.dtype)
+            audio_self_attention_mask = additive_self_attn_mask.unsqueeze(1)  # [batch_size, 1, seq_len, seq_len]
 
         batch_size = hidden_states.size(0)
 
