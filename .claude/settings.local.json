@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/modular_pipelines/test_conditional_pipeline_blocks.py -v 2>&1)"
+    ]
+  }
+}
