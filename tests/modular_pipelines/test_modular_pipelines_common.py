@@ -6,6 +6,7 @@ from typing import Callable
 import pytest
 import torch
 from huggingface_hub import hf_hub_download
+from huggingface_hub.errors import RemoteEntryNotFoundError
 
 import diffusers
 from diffusers import AutoModel, ComponentsManager, ModularPipeline, ModularPipelineBlocks
@@ -37,11 +38,14 @@ def _get_specified_components(path_or_repo_id, cache_dir=None):
     if os.path.isdir(path_or_repo_id):
         config_path = os.path.join(path_or_repo_id, "modular_model_index.json")
     else:
-        config_path = hf_hub_download(
-            repo_id=path_or_repo_id,
-            filename="modular_model_index.json",
-            local_dir=cache_dir,
-        )
+        try:
+            config_path = hf_hub_download(
+                repo_id=path_or_repo_id,
+                filename="modular_model_index.json",
+                local_dir=cache_dir,
+            )
+        except RemoteEntryNotFoundError:
+            return None
 
     with open(config_path) as f:
         config = json.load(f)
@@ -388,6 +392,9 @@ class ModularPipelineTesterMixin:
     def test_load_expected_components_from_pretrained(self, tmp_path):
         pipe = self.get_pipeline()
         expected = _get_specified_components(self.pretrained_model_name_or_path, cache_dir=tmp_path)
+        if not expected:
+            pytest.skip("Skipping test as we couldn't fetch the expected components.")
+
         actual = {
             name
             for name in pipe.components
