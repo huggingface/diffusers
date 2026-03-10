@@ -6,7 +6,6 @@ from typing import Callable
 import pytest
 import torch
 from huggingface_hub import hf_hub_download
-from huggingface_hub.errors import RemoteEntryNotFoundError
 
 import diffusers
 from diffusers import AutoModel, ComponentsManager, ModularPipeline, ModularPipelineBlocks
@@ -44,7 +43,7 @@ def _get_specified_components(path_or_repo_id, cache_dir=None):
                 filename="modular_model_index.json",
                 local_dir=cache_dir,
             )
-        except RemoteEntryNotFoundError:
+        except Exception:
             return None
 
     with open(config_path) as f:
