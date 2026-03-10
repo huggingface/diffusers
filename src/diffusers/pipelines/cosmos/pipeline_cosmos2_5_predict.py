@@ -238,21 +238,13 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample='bilinear')
 
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).float()
-            if getattr(self.vae.config, "latents_mean", None) is not None
-            else None
-        )
-        latents_std = (
-            torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).float()
-            if getattr(self.vae.config, "latents_std", None) is not None
-            else None
-        )
+        assert getattr(self.vae.config, "latents_mean", None), "VAE configuration must define `latents_mean`."
+        assert getattr(self.vae.config, "latents_std", None), "VAE configuration must define `latents_std`."
+        
+        latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).float()
+        latents_std = torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).float()
         self.latents_mean = latents_mean
         self.latents_std = 1.0 / latents_std
-
-        if self.latents_mean is None or self.latents_std is None:
-            raise ValueError("VAE configuration must define both `latents_mean` and `latents_std`.")
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
@@ -490,7 +482,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             if needs_preprocessing:
                 video = self.video_processor.preprocess_video(video, height, width)
 
-            video = video.to(device=device, dtype=self.vae.dtype)
             if isinstance(generator, list):
                 cond_latents = [
                     retrieve_latents(self.vae.encode(video[i].unsqueeze(0)), generator=generator[i], sample_mode="argmax")
@@ -727,13 +718,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
         )
 
-        is_video = video is not None
-        is_image = image is not None
-        assert is_image or is_video, "Either `image` or `video` must be provided as input"
-        assert is_image != is_video, "Only one of `image` or `video` can be provided as input"
-
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
+        is_video = video is not None
+        is_image = image is not None
 
         if is_image:
             image = torchvision.transforms.functional.to_tensor(image).unsqueeze(0)
@@ -770,6 +758,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 video = torch.cat((video, pad_frames), dim=2)
             num_frames_in = frames_to_extract
 
+        else:
+            video = torch.zeros(batch_size, num_frames, 3, height, width, dtype=torch.uint8)
+            num_frames_in = 0
+
         video = video.to(device=device, dtype=vae_dtype)
 
         num_channels_latents = self.transformer.config.in_channels - 1
@@ -805,11 +797,13 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                     continue
 
                 self._current_timestep = t.cpu().item()
-                # Scale timestep t to [0, 1]
-                sigma_t = (t.float() / self.scheduler.config.num_train_timesteps).expand(latents.shape[0]).to(device)
+                
+                # NOTE: assumes sigma(t) \in [0, 1]
+                sigma_t = self.scheduler.sigmas[i].expand(batch_size).to(device=device, dtype=torch.float32)
+                
+                in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                 in_latents = in_latents.to(transformer_dtype)
-                in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
 
                 noise_pred = self.transformer(
                     hidden_states=in_latents,
