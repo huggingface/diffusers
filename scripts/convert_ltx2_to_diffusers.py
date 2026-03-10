@@ -1102,7 +1102,7 @@ def main(args):
         if not args.full_pipeline:
             tokenizer.save_pretrained(os.path.join(args.output_path, "tokenizer"))
 
-    if args.latent_upsampler or args.full_pipeline or args.upsample_pipeline:
+    if args.latent_upsampler or args.upsample_pipeline:
         original_latent_upsampler_ckpt = load_hub_or_local_checkpoint(
             repo_id=args.original_state_dict_repo_id, filename=args.latent_upsampler_filename
         )
