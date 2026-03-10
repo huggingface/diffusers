@@ -219,6 +219,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
         safety_checker: CosmosSafetyChecker = None,
+        autocast_fp32: bool = True,
     ):
         super().__init__()
 
@@ -234,6 +235,9 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             safety_checker=safety_checker,
         )
 
+        if transformer is not None:
+            transformer.set_autocast_fp32(autocast_fp32)
+
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample='bilinear')
@@ -248,11 +252,12 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        text_encoder_attn_implementation = kwargs.pop("text_encoder_attn_implementation", None)
-        if text_encoder_attn_implementation is not None and "text_encoder" not in kwargs:
+        text_encoder_attn_implementation = kwargs.pop("text_encoder_attn_implementation", "flash_attention_2")
+        if "text_encoder" not in kwargs:
             load_kwargs = kwargs.copy()
             load_kwargs['attn_implementation'] = text_encoder_attn_implementation
             load_kwargs.pop('safety_checker', None)
+            load_kwargs.pop('autocast_fp32', None)
             
             if os.path.isdir(pretrained_model_name_or_path):
                 text_encoder_path = os.path.join(pretrained_model_name_or_path, "text_encoder")
