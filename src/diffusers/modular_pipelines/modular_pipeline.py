@@ -47,6 +47,7 @@ from .modular_pipeline_utils import (
     InputParam,
     InsertableDict,
     OutputParam,
+    _validate_requirements,
     combine_inputs,
     combine_outputs,
     format_components,
@@ -105,6 +106,16 @@ def _wan_i2v_map_fn(config_dict=None):
         return "WanImage2VideoModularPipeline"
 
 
+def _helios_pyramid_map_fn(config_dict=None):
+    if config_dict is None:
+        return "HeliosPyramidModularPipeline"
+
+    if config_dict.get("is_distilled", False):
+        return "HeliosPyramidDistilledModularPipeline"
+    else:
+        return "HeliosPyramidModularPipeline"
+
+
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
@@ -119,6 +130,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
+        ("helios", _create_default_map_fn("HeliosModularPipeline")),
+        ("helios-pyramid", _helios_pyramid_map_fn),
     ]
 )
 
@@ -297,6 +310,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     config_name = "modular_config.json"
     model_name = None
+    _requirements: dict[str, str] | None = None
     _workflow_map = None
 
     @classmethod
@@ -411,6 +425,9 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                 "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
             )
 
+        if "requirements" in config and config["requirements"] is not None:
+            _ = _validate_requirements(config["requirements"])
+
         class_ref = config["auto_map"][cls.__name__]
         module_file, class_name = class_ref.split(".")
         module_file = module_file + ".py"
@@ -435,8 +452,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         module = full_mod.rsplit(".", 1)[-1].replace("__dynamic__", "")
         parent_module = self.save_pretrained.__func__.__qualname__.split(".", 1)[0]
         auto_map = {f"{parent_module}": f"{module}.{cls_name}"}
-
         self.register_to_config(auto_map=auto_map)
+
+        # resolve requirements
+        requirements = _validate_requirements(getattr(self, "_requirements", None))
+        if requirements:
+            self.register_to_config(requirements=requirements)
+
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
         config = dict(self.config)
         self._internal_dict = FrozenDict(config)
@@ -657,6 +679,15 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         named_outputs = [(name, block.outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
         return combined_outputs
+
+    @property
+    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks._requirements
+    def _requirements(self) -> dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
 
     # used for `__repr__`
     def _get_trigger_inputs(self) -> set:
@@ -1247,6 +1278,14 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             expected_configs=self.expected_configs,
         )
 
+    @property
+    def _requirements(self) -> dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
+
 
 class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     """
@@ -1384,6 +1423,15 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     @property
     def outputs(self) -> list[str]:
         return next(reversed(self.sub_blocks.values())).intermediate_outputs
+
+    @property
+    # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks._requirements
+    def _requirements(self) -> dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
 
     def __init__(self):
         sub_blocks = InsertableDict()
@@ -1707,6 +1755,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             _blocks_class_name=self._blocks.__class__.__name__ if self._blocks is not None else None
         )
 
+        self._pretrained_model_name_or_path = pretrained_model_name_or_path
+
     @property
     def default_call_parameters(self) -> dict[str, Any]:
         """
@@ -1883,6 +1933,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             private = kwargs.pop("private", None)
             create_pr = kwargs.pop("create_pr", False)
             token = kwargs.pop("token", None)
+            update_model_card = kwargs.pop("update_model_card", False)
             repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
         for component_name, component_spec in self._component_specs.items():
@@ -1957,6 +2008,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 is_pipeline=True,
                 model_description=MODULAR_MODEL_CARD_TEMPLATE.format(**card_content),
                 is_modular=True,
+                update_model_card=update_model_card,
             )
             model_card = populate_model_card(model_card, tags=card_content["tags"])
             model_card.save(os.path.join(save_directory, "README.md"))
@@ -2252,6 +2304,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 new_component_spec = current_component_spec
                 if hasattr(self, name) and getattr(self, name) is not None:
                     logger.warning(f"ModularPipeline.update_components: setting {name} to None (spec unchanged)")
+            elif (
+                current_component_spec.default_creation_method == "from_pretrained"
+                and getattr(component, "_diffusers_load_id", None) is None
+            ):
+                new_component_spec = ComponentSpec(name=name, type_hint=type(component))
             else:
                 new_component_spec = ComponentSpec.from_component(name, component)
 
@@ -2323,17 +2380,49 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     elif "default" in value:
                         # check if the default is specified
                         component_load_kwargs[key] = value["default"]
+            # Only pass trust_remote_code to components from the same repo as the pipeline.
+            # When a user passes trust_remote_code=True, they intend to trust code from the
+            # pipeline's repo, not from external repos referenced in modular_model_index.json.
+            trust_remote_code_stripped = False
+            if (
+                "trust_remote_code" in component_load_kwargs
+                and self._pretrained_model_name_or_path is not None
+                and spec.pretrained_model_name_or_path != self._pretrained_model_name_or_path
+            ):
+                component_load_kwargs.pop("trust_remote_code")
+                trust_remote_code_stripped = True
+
+            if not spec.pretrained_model_name_or_path:
+                logger.info(f"Skipping component `{name}`: no pretrained model path specified.")
+                continue
+
             try:
                 components_to_register[name] = spec.load(**component_load_kwargs)
             except Exception:
-                logger.warning(
-                    f"\nFailed to create component {name}:\n"
-                    f"- Component spec: {spec}\n"
-                    f"- load() called with kwargs: {component_load_kwargs}\n"
-                    "If this component is not required for your workflow you can safely ignore this message.\n\n"
-                    "Traceback:\n"
-                    f"{traceback.format_exc()}"
-                )
+                tb = traceback.format_exc()
+                if trust_remote_code_stripped and "trust_remote_code" in tb:
+                    warning_msg = (
+                        f"Failed to load component `{name}` from external repository "
+                        f"`{spec.pretrained_model_name_or_path}`.\n\n"
+                        f"`trust_remote_code=True` was not forwarded to `{name}` because it comes from "
+                        f"a different repository than the pipeline (`{self._pretrained_model_name_or_path}`). "
+                        f"For safety, `trust_remote_code` is only forwarded to components from the same "
+                        f"repository as the pipeline.\n\n"
+                        f"You need to load this component manually with `trust_remote_code=True` and pass it "
+                        f"to the pipeline via `pipe.update_components()`. For example, if it is a custom model:\n\n"
+                        f'  {name} = AutoModel.from_pretrained("{spec.pretrained_model_name_or_path}", trust_remote_code=True)\n'
+                        f"  pipe.update_components({name}={name})\n"
+                    )
+                else:
+                    warning_msg = (
+                        f"Failed to create component {name}:\n"
+                        f"- Component spec: {spec}\n"
+                        f"- load() called with kwargs: {component_load_kwargs}\n"
+                        "If this component is not required for your workflow you can safely ignore this message.\n\n"
+                        "Traceback:\n"
+                        f"{tb}"
+                    )
+                logger.warning(warning_msg)
 
         # Register all components at once
         self.register_components(**components_to_register)
