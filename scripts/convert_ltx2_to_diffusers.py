@@ -17,7 +17,7 @@ from diffusers import (
     LTX2Pipeline,
     LTX2VideoTransformer3DModel,
 )
-from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel, LTX2TextConnectors, LTX2Vocoder
+from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel, LTX2TextConnectors, LTX2Vocoder, LTX2VocoderWithBWE
 from diffusers.utils.import_utils import is_accelerate_available
 
 
@@ -97,6 +97,15 @@ LTX_2_0_VOCODER_RENAME_DICT = {
     "conv_post": "conv_out",
 }
 
+LTX_2_3_VOCODER_RENAME_DICT= {
+    # Handle upsamplers ("ups" --> "upsamplers") due to name clash
+    "resblocks": "resnets",
+    "conv_pre": "conv_in",
+    "conv_post": "conv_out",
+    "act_post": "act_out",
+    "downsample.lowpass": "downsample",
+}
+
 LTX_2_0_TEXT_ENCODER_RENAME_DICT = {
     "video_embeddings_connector": "video_connector",
     "audio_embeddings_connector": "audio_connector",
@@ -142,6 +151,18 @@ def convert_ltx2_audio_vae_per_channel_statistics(key: str, state_dict: dict[str
     return
 
 
+def convert_ltx2_3_vocoder_upsamplers(key: str, state_dict: dict[str, Any]) -> None:
+    # Skip if not a weight, bias
+    if ".weight" not in key and ".bias" not in key:
+        return
+
+    if ".ups." in key:
+        new_key = key.replace(".ups.", ".upsamplers.")
+        param = state_dict.pop(key)
+        state_dict[new_key] = param
+    return
+
+
 LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "video_embeddings_connector": remove_keys_inplace,
     "audio_embeddings_connector": remove_keys_inplace,
@@ -167,6 +188,10 @@ LTX_2_0_VAE_SPECIAL_KEYS_REMAP = {
 LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP = {}
 
 LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP = {}
+
+LTX_2_3_VOCODER_SPECIAL_KEYS_REMAP = {
+    ".ups.": convert_ltx2_3_vocoder_upsamplers,
+}
 
 
 def split_transformer_and_connector_state_dict(state_dict: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -728,7 +753,7 @@ def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any
             "model_id": "Lightricks/LTX-2.3",
             "diffusers_config": {
                 "in_channels": 128,
-                "hidden_channels": 1024,
+                "hidden_channels": 1536,
                 "out_channels": 2,
                 "upsample_kernel_sizes": [11, 4, 4, 4, 4, 4],
                 "upsample_factors": [5, 2, 2, 2, 2, 2],
@@ -744,7 +769,7 @@ def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any
                 "bwe_in_channels": 128,
                 "bwe_hidden_channels": 512,
                 "bwe_out_channels": 2,
-                "bwe_upsample_kernel_sizes": [12, 11, 8, 4, 4],
+                "bwe_upsample_kernel_sizes": [12, 11, 4, 4, 4],
                 "bwe_upsample_factors": [6, 5, 2, 2, 2],
                 "bwe_resnet_kernel_sizes": [3, 7, 11],
                 "bwe_resnet_dilations": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
@@ -763,17 +788,21 @@ def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any
                 "output_sampling_rate": 48000,
             },
         }
-        rename_dict = LTX_2_0_VOCODER_RENAME_DICT
-        special_keys_remap = LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP
+        rename_dict = LTX_2_3_VOCODER_RENAME_DICT
+        special_keys_remap = LTX_2_3_VOCODER_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
 
 def convert_ltx2_vocoder(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_vocoder_config(version)
     diffusers_config = config["diffusers_config"]
+    if version == "2.3":
+        vocoder_cls = LTX2VocoderWithBWE
+    else:
+        vocoder_cls = LTX2Vocoder
 
     with init_empty_weights():
-        vocoder = LTX2Vocoder.from_config(diffusers_config)
+        vocoder = vocoder_cls.from_config(diffusers_config)
 
     # Handle official code --> diffusers key remapping via the remap dict
     for key in list(original_state_dict.keys()):
@@ -861,7 +890,7 @@ def get_model_state_dict_from_combined_ckpt(combined_ckpt: dict[str, Any], prefi
     model_state_dict = {}
     for param_name, param in combined_ckpt.items():
         if param_name.startswith(prefix):
-            model_state_dict[param_name.replace(prefix, "")] = param
+            model_state_dict[param_name.removeprefix(prefix)] = param
 
     if prefix == "model.diffusion_model.":
         # Some checkpoints store the text connector projection outside the diffusion model prefix.

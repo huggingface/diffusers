@@ -26,6 +26,7 @@ def kaiser_sinc_filter1d(cutoff: float, half_width: float, kernel_size: int) -> 
             The Kaiser sinc kernel.
     """
     delta_f = 4 * half_width
+    half_size = kernel_size // 2
     amplitude = 2.285 * (half_size - 1) * math.pi * delta_f + 7.95
     if amplitude > 50.0:
         beta = 0.1102 * (amplitude - 8.7)
@@ -37,7 +38,6 @@ def kaiser_sinc_filter1d(cutoff: float, half_width: float, kernel_size: int) -> 
     window = torch.kaiser_window(kernel_size, beta=beta, periodic=False)
 
     even = kernel_size % 2 == 0
-    half_size = kernel_size // 2
     time = torch.arange(-half_size, half_size) + 0.5 if even else torch.arange(kernel_size) - half_size
 
     if cutoff == 0.0:
@@ -76,7 +76,7 @@ class DownSample1d(nn.Module):
         cutoff = 0.5 / ratio
         half_width = 0.6 / ratio
         low_pass_filter = kaiser_sinc_filter1d(cutoff, half_width, self.kernel_size)
-        self.register_buffer("filter", low_pass_filter.view(1, 1, self,kernel_size), persistent=persistent)
+        self.register_buffer("filter", low_pass_filter.view(1, 1, self.kernel_size), persistent=persistent)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x expected shape: [batch_size, num_channels, hidden_dim]
@@ -117,8 +117,8 @@ class UpSample1d(nn.Module):
             # Kaiser sinc filter is BigVGAN default
             self.kernel_size = int(6 * ratio // 2) * 2 if kernel_size is None else kernel_size
             self.pad = self.kernel_size // ratio - 1
-            self.pad_left = self.pad * self.stride + (self.kernel_size - self.stride) // 2
-            self.pad_right = self.pad * self.stride + (self.kernel_size - self.stride + 1) // 2
+            self.pad_left = self.pad * self.ratio + (self.kernel_size - self.ratio) // 2
+            self.pad_right = self.pad * self.ratio + (self.kernel_size - self.ratio + 1) // 2
 
             sinc_filter = kaiser_sinc_filter1d(
                 cutoff=0.5 / ratio,
@@ -126,7 +126,7 @@ class UpSample1d(nn.Module):
                 kernel_size=self.kernel_size,
             )
 
-        self.register_buffer("filter", sinc_filter, persistent=persistent)
+        self.register_buffer("filter", sinc_filter.view(1, 1, self.kernel_size), persistent=persistent)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x expected shape: [batch_size, num_channels, hidden_dim]
@@ -135,6 +135,37 @@ class UpSample1d(nn.Module):
         low_pass_filter = self.filter.to(dtype=x.dtype, device=x.device).expand(num_channels, -1, -1)
         x = self.ratio * F.conv_transpose1d(x, low_pass_filter, stride=self.ratio, groups=num_channels)
         return x[..., self.pad_left:-self.pad_right]
+
+
+class AntiAliasAct1d(nn.Module):
+    """
+    Antialiasing activation for a 1D signal: upsamples, applies an activation (usually snakebeta), and then downsamples
+    to avoid aliasing.
+    """
+    def __init__(
+        self,
+        act_fn: str | nn.Module,
+        ratio: int = 2,
+        kernel_size: int = 12,
+        **kwargs,
+    ):
+        super().__init__()
+        self.upsample = UpSample1d(ratio=ratio, kernel_size=kernel_size)
+        if isinstance(act_fn, str):
+            if act_fn == "snakebeta":
+                act_fn = SnakeBeta(**kwargs)
+            elif act_fn == "snake":
+                act_fn = SnakeBeta(**kwargs)
+            else:
+                act_fn = nn.LeakyReLU(**kwargs)
+        self.act = act_fn
+        self.downsample = DownSample1d(ratio=ratio, kernel_size=kernel_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.upsample(x)
+        x = self.act(x)
+        x = self.downsample(x)
+        return x
 
 
 class SnakeBeta(nn.Module):
@@ -150,6 +181,7 @@ class SnakeBeta(nn.Module):
         logscale: bool = True,
         use_beta: bool = True,
     ):
+        super().__init__()
         self.eps = eps
         self.logscale = logscale
         self.use_beta = use_beta
@@ -210,11 +242,7 @@ class ResBlock(nn.Module):
                 act = nn.LeakyReLU(negative_slope=leaky_relu_negative_slope)
 
             if antialias:
-                act = nn.Sequential(
-                    UpSample1d(ratio=antialias_ratio, kernel_size=antialias_kernel_size),
-                    act,
-                    DownSample1d(ratio=antialias_ratio, kernel_size=antialias_kernel_size),
-                )
+                act = AntiAliasAct1d(act, ratio=antialias_ratio, kernel_size=antialias_kernel_size)
             self.acts1.append(act)
 
         self.convs2 = nn.ModuleList(
@@ -233,11 +261,7 @@ class ResBlock(nn.Module):
                 act_fn = nn.LeakyReLU(negative_slope=leaky_relu_negative_slope)
 
             if antialias:
-                act = nn.Sequential(
-                    UpSample1d(ratio=antialias_ratio, kernel_size=antialias_kernel_size),
-                    act,
-                    DownSample1d(ratio=antialias_ratio, kernel_size=antialias_kernel_size),
-                )
+                act = AntiAliasAct1d(act, ratio=antialias_ratio, kernel_size=antialias_kernel_size)
             self.acts2.append(act)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -336,11 +360,8 @@ class LTX2Vocoder(ModelMixin, ConfigMixin):
 
         if act_fn == "snakebeta" or act_fn == "snake":
             # Always use antialiasing
-            self.act_out = nn.Sequential(
-                UpSample1d(ratio=antialias_ratio, kernel_size=antialias_kernel_size),
-                SnakeBeta(channels=out_channels, use_beta=True),
-                DownSample1d(ratio=antialias_ratio, kernel_size=antialias_kernel_size),
-            )
+            act_out = SnakeBeta(channels=output_channels, use_beta=True)
+            self.act_out = AntiAliasAct1d(act_out, ratio=antialias_ratio, kernel_size=antialias_kernel_size)
         elif act_fn == "leaky_relu":
             # NOTE: does NOT use self.negative_slope, following the original code
             self.act_out = nn.LeakyReLU()
@@ -480,7 +501,7 @@ class LTX2VocoderWithBWE(ModelMixin, ConfigMixin):
         bwe_in_channels: int = 128,
         bwe_hidden_channels: int = 512,
         bwe_out_channels: int = 2,
-        bwe_upsample_kernel_sizes: list[int] = [12, 11, 8, 4, 4],
+        bwe_upsample_kernel_sizes: list[int] = [12, 11, 4, 4, 4],
         bwe_upsample_factors: list[int] = [6, 5, 2, 2, 2],
         bwe_resnet_kernel_sizes: list[int] = [3, 7, 11],
         bwe_resnet_dilations: list[list[int]] = [[1, 3, 5], [1, 3, 5], [1, 3, 5]],

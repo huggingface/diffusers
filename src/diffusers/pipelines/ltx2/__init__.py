@@ -28,7 +28,7 @@ else:
     _import_structure["pipeline_ltx2_condition"] = ["LTX2ConditionPipeline"]
     _import_structure["pipeline_ltx2_image2video"] = ["LTX2ImageToVideoPipeline"]
     _import_structure["pipeline_ltx2_latent_upsample"] = ["LTX2LatentUpsamplePipeline"]
-    _import_structure["vocoder"] = ["LTX2Vocoder"]
+    _import_structure["vocoder"] = ["LTX2Vocoder", "LTX2VocoderWithBWE"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
