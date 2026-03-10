@@ -22,6 +22,8 @@
     title: Reproducibility
   - local: using-diffusers/schedulers
     title: Schedulers
+  - local: using-diffusers/guiders
+    title: Guiders
   - local: using-diffusers/automodel
     title: AutoModel
   - local: using-diffusers/other-formats
@@ -110,8 +112,6 @@
     title: ModularPipeline
   - local: modular_diffusers/components_manager
     title: ComponentsManager
-  - local: modular_diffusers/guiders
-    title: Guiders
   - local: modular_diffusers/custom_blocks
     title: Building Custom Blocks
   - local: modular_diffusers/mellon

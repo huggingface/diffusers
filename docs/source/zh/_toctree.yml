@@ -80,7 +80,7 @@
     title: ModularPipeline
   - local: modular_diffusers/components_manager
     title: ComponentsManager
-  - local: modular_diffusers/guiders
+  - local: using-diffusers/guiders
     title: Guiders
 
 - title: Training
