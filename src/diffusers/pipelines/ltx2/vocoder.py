@@ -580,8 +580,7 @@ class LTX2VocoderWithBWE(ModelMixin, ConfigMixin):
             x = F.pad(x, (0, self.hop_length - remainder))
 
         # 2. Compute mel spectrogram on vocoder output
-        x = x.flatten(0, 1)
-        mel, _, _, _ = self.mel_stft(x)
+        mel, _, _, _ = self.mel_stft(x.flatten(0, 1))
         mel = mel.unflatten(0, (-1, num_channels))
 
         # 3. Run bandwidth extender (BWE) on new mel spectrogram
