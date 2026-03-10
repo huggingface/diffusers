@@ -9,6 +9,8 @@ from .cache import (
     MagCacheTesterMixin,
     PyramidAttentionBroadcastConfigMixin,
     PyramidAttentionBroadcastTesterMixin,
+    TaylorSeerCacheConfigMixin,
+    TaylorSeerCacheTesterMixin,
 )
 from .common import BaseModelTesterConfig, ModelTesterMixin
 from .compile import TorchCompileTesterMixin
@@ -69,6 +71,8 @@ __all__ = [
     "ModelTesterMixin",
     "PyramidAttentionBroadcastConfigMixin",
     "PyramidAttentionBroadcastTesterMixin",
+    "TaylorSeerCacheConfigMixin",
+    "TaylorSeerCacheTesterMixin",
     "QuantizationCompileTesterMixin",
     "QuantizationTesterMixin",
     "QuantoCompileTesterMixin",
