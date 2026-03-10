@@ -392,7 +392,7 @@ class ModularPipelineTesterMixin:
             name
             for name in pipe.components
             if getattr(pipe, name, None) is not None
-            and getattr(getattr(pipe, name), "_diffusers_load_id", None) != "null"
+            and getattr(getattr(pipe, name), "_diffusers_load_id", None) not in (None, "null")
         }
         assert expected == actual, f"Component mismatch: missing={expected - actual}, unexpected={actual - expected}"
 
@@ -409,7 +409,7 @@ class ModularPipelineTesterMixin:
             name
             for name in loaded_pipe.components
             if getattr(loaded_pipe, name, None) is not None
-            and getattr(getattr(loaded_pipe, name), "_diffusers_load_id", None) != "null"
+            and getattr(getattr(loaded_pipe, name), "_diffusers_load_id", None) not in (None, "null")
         }
         assert expected == actual, (
             f"Component mismatch after save/load: missing={expected - actual}, unexpected={actual - expected}"
