@@ -115,10 +115,33 @@ class KVAECausalConv3d(nn.Module):
         return self.conv(input_padded)
 
 
-class KVAECachedCausalConv3d(KVAECausalConv3d):
+class KVAECachedCausalConv3d(nn.Module):
     r"""
     A 3D causal convolution layer with caching for temporal processing.
     """
+
+    def __init__(
+        self,
+        chan_in: int,
+        chan_out: int,
+        kernel_size: Union[int, Tuple[int, int, int]],
+        stride: Tuple[int, int, int] = (1, 1, 1),
+        dilation: Tuple[int, int, int] = (1, 1, 1),
+        **kwargs,
+    ):
+        super().__init__()
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size, kernel_size, kernel_size)
+
+        time_kernel_size, height_kernel_size, width_kernel_size = kernel_size
+
+        self.height_pad = height_kernel_size // 2
+        self.width_pad = width_kernel_size // 2
+        self.time_pad = time_kernel_size - 1
+        self.time_kernel_size = time_kernel_size
+        self.stride = stride
+
+        self.conv = KVAESafeConv3d(chan_in, chan_out, kernel_size, stride=stride, dilation=dilation, **kwargs)
 
     def forward(self, input: torch.Tensor, cache: Dict) -> torch.Tensor:
         t_stride = self.stride[0]
@@ -155,23 +178,20 @@ class KVAECachedCausalConv3d(KVAECausalConv3d):
         return output
 
 
-class KVAECachedGroupNorm(nn.GroupNorm):
+class KVAECachedGroupNorm(nn.Module):
     r"""
     GroupNorm with caching support for temporal processing.
     """
+    def __init__(self, in_channels: int):  
+          super().__init__()  
+          self.norm = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True) 
 
     def forward(self, x: torch.Tensor, cache: Dict = None) -> torch.Tensor:
-        out = super().forward(x)
-        if cache is not None:
-            if cache.get('mean') is None and cache.get('var') is None:
-                cache['mean'] = 1
-                cache['var'] = 1
+        out = self.norm(x)
+        if cache is not None and cache.get('mean') is None and cache.get('var') is None:
+            cache['mean'] = 1
+            cache['var'] = 1
         return out
-
-
-def Normalize(in_channels: int, gather: bool = False, **kwargs) -> nn.GroupNorm:
-    return KVAECachedGroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
-
 
 # =============================================================================
 # Cached layers
@@ -187,11 +207,9 @@ class KVAECachedSpatialNorm3D(nn.Module):
         f_channels: int,
         zq_channels: int,
         add_conv: bool = False,
-        normalization = Normalize,
-        **norm_layer_params,
     ):
         super().__init__()
-        self.norm_layer = normalization(in_channels=f_channels, **norm_layer_params)
+        self.norm_layer = KVAECachedGroupNorm(f_channels)
         self.add_conv = add_conv
 
         if add_conv:
@@ -231,15 +249,6 @@ class KVAECachedSpatialNorm3D(nn.Module):
         return norm_f
 
 
-def Normalize3D(in_channels: int, zq_ch: int, add_conv: bool, normalization = Normalize):
-    return KVAECachedSpatialNorm3D(
-        in_channels, zq_ch,
-        add_conv=add_conv,
-        num_groups=32, eps=1e-6, affine=True,
-        normalization=normalization
-    )
-
-
 class KVAECachedResnetBlock3D(nn.Module):
     r"""
     A 3D ResNet block with caching.
@@ -255,7 +264,6 @@ class KVAECachedResnetBlock3D(nn.Module):
         zq_ch: Optional[int] = None,
         add_conv: bool = False,
         gather_norm: bool = False,
-        normalization = Normalize,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -263,13 +271,20 @@ class KVAECachedResnetBlock3D(nn.Module):
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
 
-        self.norm1 = normalization(in_channels, zq_ch=zq_ch, add_conv=add_conv)
+        if zq_ch is None:
+            self.norm1 = KVAECachedSpatialNorm3D(in_channels, zq_ch, add_conv=add_conv)
+        else:
+            self.norm1 = KVAECachedGroupNorm(in_channels)
         self.conv1 = KVAECachedCausalConv3d(chan_in=in_channels, chan_out=out_channels, kernel_size=3)
 
         if temb_channels > 0:
             self.temb_proj = nn.Linear(temb_channels, out_channels)
 
-        self.norm2 = normalization(out_channels, zq_ch=zq_ch, add_conv=add_conv)
+        if zq_ch is None:
+            self.norm2 = KVAECachedSpatialNorm3D(out_channels, zq_ch, add_conv=add_conv)
+        else:
+            self.norm2 = KVAECachedGroupNorm(out_channels)
+
         self.conv2 = KVAECachedCausalConv3d(chan_in=out_channels, chan_out=out_channels, kernel_size=3)
 
         if self.in_channels != self.out_channels:
@@ -336,19 +351,22 @@ class KVAECachedPXSDownsample(nn.Module):
         self.linear = nn.Conv3d(in_channels, in_channels, kernel_size=1, stride=1)
 
     def spatial_downsample(self, input: torch.Tensor) -> torch.Tensor:
-        from einops import rearrange
-        pxs_input = rearrange(input, 'b c t h w -> (b t) c h w')
+        b, c, t, h, w = input.shape
+        pxs_input = input.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+        # pxs_input = rearrange(input, 'b c t h w -> (b t) c h w')
         pxs_interm = self.unshuffle(pxs_input)
-        b, c, h, w = pxs_interm.shape
-        pxs_interm_view = pxs_interm.view(b, c // self.factor ** 2, self.factor ** 2, h, w)
+        b_it, c_it, h_it, w_it = pxs_interm.shape
+        pxs_interm_view = pxs_interm.view(b_it, c_it // self.factor ** 2, self.factor ** 2, h_it, w_it)
         pxs_out = torch.mean(pxs_interm_view, dim=2)
-        pxs_out = rearrange(pxs_out, '(b t) c h w -> b c t h w', t=input.size(2))
+        pxs_out = pxs_out.view(b, t, -1, h_it, w_it).permute(0, 2, 1, 3, 4)
+        # pxs_out = rearrange(pxs_out, '(b t) c h w -> b c t h w', t=input.size(2))
         conv_out = self.spatial_conv(input)
         return conv_out + pxs_out
 
     def temporal_downsample(self, input: torch.Tensor, cache: list) -> torch.Tensor:
-        from einops import rearrange
-        permuted = rearrange(input, "b c t h w -> (b h w) c t")
+        b, c, t, h, w = input.shape
+
+        permuted = input.permute(0, 3, 4, 1, 2).reshape(b * h * w, c, t)
 
         if cache[0]['padding'] is None:
             first, rest = permuted[..., :1], permuted[..., 1:]
@@ -362,7 +380,8 @@ class KVAECachedPXSDownsample(nn.Module):
             if rest.size(-1) > 0:
                 full_interp = F.avg_pool1d(rest, kernel_size=2, stride=2)
 
-        full_interp = rearrange(full_interp, "(b h w) c t -> b c t h w", h=input.size(-2), w=input.size(-1))
+        t_new = full_interp.size(-1)
+        full_interp = full_interp.view(b, h, w, c, t_new).permute(0, 3, 4, 1, 2)
         conv_out = self.temporal_conv(input, cache[0])
         return conv_out + full_interp
 
@@ -453,7 +472,6 @@ class KVAECachedEncoder3D(nn.Module):
         z_channels: int = 16,
         double_z: bool = True,
         temporal_compress_times: int = 4,
-        **ignore_kwargs,
     ):
         super().__init__()
         self.ch = ch
@@ -483,7 +501,6 @@ class KVAECachedEncoder3D(nn.Module):
                         out_channels=block_out,
                         dropout=dropout,
                         temb_channels=self.temb_ch,
-                        normalization=Normalize,
                     )
                 )
                 block_in = block_out
@@ -501,13 +518,13 @@ class KVAECachedEncoder3D(nn.Module):
 
         self.mid = nn.Module()
         self.mid.block_1 = KVAECachedResnetBlock3D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout, normalization=Normalize
+            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
         )
         self.mid.block_2 = KVAECachedResnetBlock3D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout, normalization=Normalize
+            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
         )
 
-        self.norm_out = Normalize(block_in)
+        self.norm_out = KVAECachedGroupNorm(block_in)
         self.conv_out = KVAECachedCausalConv3d(
             chan_in=block_in, chan_out=2 * z_channels if double_z else z_channels, kernel_size=3
         )
@@ -551,7 +568,6 @@ class KVAECachedDecoder3D(nn.Module):
         zq_ch: Optional[int] = None,
         add_conv: bool = False,
         temporal_compress_times: int = 4,
-        **kwargs,
     ):
         super().__init__()
         self.ch = ch
@@ -567,16 +583,14 @@ class KVAECachedDecoder3D(nn.Module):
 
         self.conv_in = KVAECachedCausalConv3d(chan_in=z_channels, chan_out=block_in, kernel_size=3)
 
-        modulated_norm = functools.partial(Normalize3D, normalization=Normalize)
-
         self.mid = nn.Module()
         self.mid.block_1 = KVAECachedResnetBlock3D(
             in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch,
-            dropout=dropout, zq_ch=zq_ch, add_conv=add_conv, normalization=modulated_norm
+            dropout=dropout, zq_ch=zq_ch, add_conv=add_conv
         )
         self.mid.block_2 = KVAECachedResnetBlock3D(
             in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch,
-            dropout=dropout, zq_ch=zq_ch, add_conv=add_conv, normalization=modulated_norm
+            dropout=dropout, zq_ch=zq_ch, add_conv=add_conv
         )
 
         self.up = nn.ModuleList()
@@ -589,7 +603,7 @@ class KVAECachedDecoder3D(nn.Module):
                 block.append(
                     KVAECachedResnetBlock3D(
                         in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch,
-                        dropout=dropout, zq_ch=zq_ch, add_conv=add_conv, normalization=modulated_norm
+                        dropout=dropout, zq_ch=zq_ch, add_conv=add_conv
                     )
                 )
                 block_in = block_out
@@ -605,7 +619,7 @@ class KVAECachedDecoder3D(nn.Module):
                     up.upsample = KVAECachedPXSUpsample(block_in, compress_time=True)
             self.up.insert(0, up)
 
-        self.norm_out = modulated_norm(block_in, zq_ch, add_conv=add_conv)
+        self.norm_out = KVAECachedSpatialNorm3D(block_in, zq_ch, add_conv=add_conv)
         self.conv_out = KVAECachedCausalConv3d(chan_in=block_in, chan_out=out_ch, kernel_size=3)
 
     def forward(self, z: torch.Tensor, cache_dict: Dict) -> torch.Tensor:
@@ -671,7 +685,7 @@ class AutoencoderKLKVAEVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
     ):
         super().__init__()
 
-        encoder_params = dict(
+        self.encoder = KVAECachedEncoder3D(
             ch=ch,
             ch_mult=ch_mult,
             num_res_blocks=num_res_blocks,
@@ -681,7 +695,7 @@ class AutoencoderKLKVAEVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             temporal_compress_times=temporal_compress_times,
         )
 
-        decoder_params = dict(
+        self.decoder = KVAECachedDecoder3D(
             ch=ch,
             ch_mult=ch_mult,
             num_res_blocks=num_res_blocks,
@@ -689,10 +703,6 @@ class AutoencoderKLKVAEVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             z_channels=z_channels,
             temporal_compress_times=temporal_compress_times,
         )
-
-        self.encoder = KVAECachedEncoder3D(**encoder_params)
-
-        self.decoder = KVAECachedDecoder3D(**decoder_params)
 
         self.use_slicing = False
         self.use_tiling = False
