@@ -586,9 +586,8 @@ class LTX2VideoTransformerBlock(nn.Module):
         scale_shift_table: torch.Tensor, temb: torch.Tensor, batch_size: int
     ) -> tuple[torch.Tensor, ...]:
         num_ada_params = scale_shift_table.shape[0]
-        ada_values = (
-            scale_shift_table[None, None].to(temb.device)
-            + temb.reshape(batch_size, temb.shape[1], num_ada_params, -1)
+        ada_values = scale_shift_table[None, None].to(temb.device) + temb.reshape(
+            batch_size, temb.shape[1], num_ada_params, -1
         )
         ada_params = ada_values.unbind(dim=2)
         return ada_params
@@ -676,7 +675,9 @@ class LTX2VideoTransformerBlock(nn.Module):
             video_prompt_ada_params = self.get_mod_params(self.prompt_scale_shift_table, temb_prompt, batch_size)
             shift_text_kv, scale_text_kv = video_prompt_ada_params
 
-            audio_prompt_ada_params = self.get_mod_params(self.audio_prompt_scale_shift_table, temb_prompt_audio, batch_size)
+            audio_prompt_ada_params = self.get_mod_params(
+                self.audio_prompt_scale_shift_table, temb_prompt_audio, batch_size
+            )
             audio_shift_text_kv, audio_scale_text_kv = audio_prompt_ada_params
 
         # 2.1. Video-Text Cross-Attention (Q: Video; K,V: Test)
@@ -733,7 +734,9 @@ class LTX2VideoTransformerBlock(nn.Module):
             audio_per_layer_ca_scale_shift = self.audio_a2v_cross_attn_scale_shift_table[:4, :]
             audio_per_layer_ca_gate = self.audio_a2v_cross_attn_scale_shift_table[4:, :]
 
-            audio_ca_ada_params = self.get_mod_params(audio_per_layer_ca_scale_shift, temb_ca_audio_scale_shift, batch_size)
+            audio_ca_ada_params = self.get_mod_params(
+                audio_per_layer_ca_scale_shift, temb_ca_audio_scale_shift, batch_size
+            )
             audio_ca_gate_param = self.get_mod_params(audio_per_layer_ca_gate, temb_ca_audio_gate, batch_size)
 
             audio_a2v_ca_scale, audio_a2v_ca_shift, audio_v2a_ca_scale, audio_v2a_ca_shift = audio_ca_ada_params
@@ -741,9 +744,9 @@ class LTX2VideoTransformerBlock(nn.Module):
 
             # 3.2. Audio-to-Video Cross Attention: Q: Video; K,V: Audio
             if use_a2v_cross_attention:
-                mod_norm_hidden_states = norm_hidden_states * (1 + video_a2v_ca_scale.squeeze(2)) + video_a2v_ca_shift.squeeze(
-                    2
-                )
+                mod_norm_hidden_states = norm_hidden_states * (
+                    1 + video_a2v_ca_scale.squeeze(2)
+                ) + video_a2v_ca_shift.squeeze(2)
                 mod_norm_audio_hidden_states = norm_audio_hidden_states * (
                     1 + audio_a2v_ca_scale.squeeze(2)
                 ) + audio_a2v_ca_shift.squeeze(2)
@@ -760,9 +763,9 @@ class LTX2VideoTransformerBlock(nn.Module):
 
             # 3.3. Video-to-Audio Cross Attention: Q: Audio; K,V: Video
             if use_v2a_cross_attention:
-                mod_norm_hidden_states = norm_hidden_states * (1 + video_v2a_ca_scale.squeeze(2)) + video_v2a_ca_shift.squeeze(
-                    2
-                )
+                mod_norm_hidden_states = norm_hidden_states * (
+                    1 + video_v2a_ca_scale.squeeze(2)
+                ) + video_v2a_ca_shift.squeeze(2)
                 mod_norm_audio_hidden_states = norm_audio_hidden_states * (
                     1 + audio_v2a_ca_scale.squeeze(2)
                 ) + audio_v2a_ca_shift.squeeze(2)
@@ -1442,7 +1445,9 @@ class LTX2VideoTransformer3DModel(
             # Convert to additive attention mask in log-space where 0 (masked) values get mapped to a large negative
             # number and positive values are mapped to their logarithm.
             dtype_finfo = torch.finfo(hidden_states.dtype)
-            additive_self_attn_mask = torch.full_like(audio_self_attention_mask, dtype_finfo.min, dtype=hidden_states.dtype)
+            additive_self_attn_mask = torch.full_like(
+                audio_self_attention_mask, dtype_finfo.min, dtype=hidden_states.dtype
+            )
             unmasked_entries = audio_self_attention_mask > 0
             if torch.any(unmasked_entries):
                 additive_self_attn_mask[unmasked_entries] = torch.log(
@@ -1548,7 +1553,9 @@ class LTX2VideoTransformer3DModel(
             encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.size(-1))
 
             audio_encoder_hidden_states = self.audio_caption_projection(audio_encoder_hidden_states)
-            audio_encoder_hidden_states = audio_encoder_hidden_states.view(batch_size, -1, audio_hidden_states.size(-1))
+            audio_encoder_hidden_states = audio_encoder_hidden_states.view(
+                batch_size, -1, audio_hidden_states.size(-1)
+            )
 
         # 5. Run transformer blocks
         spatio_temporal_guidance_blocks = spatio_temporal_guidance_blocks or []

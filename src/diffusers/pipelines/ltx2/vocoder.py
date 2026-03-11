@@ -91,7 +91,7 @@ class UpSample1d(nn.Module):
     def __init__(
         self,
         ratio: int = 2,
-        kernel_size: int | None  = None,
+        kernel_size: int | None = None,
         window_type: str = "kaiser",
         padding_mode: str = "replicate",
         persistent: bool = True,
@@ -134,7 +134,7 @@ class UpSample1d(nn.Module):
         x = F.pad(x, (self.pad, self.pad), mode=self.padding_mode)
         low_pass_filter = self.filter.to(dtype=x.dtype, device=x.device).expand(num_channels, -1, -1)
         x = self.ratio * F.conv_transpose1d(x, low_pass_filter, stride=self.ratio, groups=num_channels)
-        return x[..., self.pad_left:-self.pad_right]
+        return x[..., self.pad_left : -self.pad_right]
 
 
 class AntiAliasAct1d(nn.Module):
@@ -142,6 +142,7 @@ class AntiAliasAct1d(nn.Module):
     Antialiasing activation for a 1D signal: upsamples, applies an activation (usually snakebeta), and then downsamples
     to avoid aliasing.
     """
+
     def __init__(
         self,
         act_fn: str | nn.Module,
@@ -172,6 +173,7 @@ class SnakeBeta(nn.Module):
     """
     Implements the Snake and SnakeBeta activations, which help with learning periodic patterns.
     """
+
     def __init__(
         self,
         channels: int,
@@ -419,8 +421,8 @@ class LTX2Vocoder(ModelMixin, ConfigMixin):
 class CausalSTFT(nn.Module):
     """
     Performs a causal short-time Fourier transform (STFT) using causal Hann windows on a waveform. The DFT bases
-    multiplied by the Hann windows are pre-calculated and stored as buffers. For exact parity with training, the
-    exact buffers should be loaded from the checkpoint in bfloat16.
+    multiplied by the Hann windows are pre-calculated and stored as buffers. For exact parity with training, the exact
+    buffers should be loaded from the checkpoint in bfloat16.
     """
 
     def __init__(self, filter_length: int = 512, hop_length: int = 80, window_length: int = 512):

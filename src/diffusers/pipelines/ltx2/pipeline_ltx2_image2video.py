@@ -1217,7 +1217,9 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                     video_cfg_delta = (self.guidance_scale - 1) * (noise_pred_video - noise_pred_video_uncond_text)
 
                     noise_pred_audio_uncond_text, noise_pred_audio = noise_pred_audio.chunk(2)
-                    audio_cfg_delta = (self.audio_guidance_scale - 1) * (noise_pred_audio - noise_pred_audio_uncond_text)
+                    audio_cfg_delta = (self.audio_guidance_scale - 1) * (
+                        noise_pred_audio - noise_pred_audio_uncond_text
+                    )
 
                     if self.guidance_rescale > 0:
                         # Based on 3.4. in https://huggingface.co/papers/2305.08891
@@ -1231,9 +1233,9 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                             noise_pred_text=noise_pred_audio,
                             guidance_rescale=self.audio_guidance_rescale,
                         )
-                    
+
                     # Get positive values from merged CFG inputs in case we need to do other DiT forward passes
-                    if (self.do_spatio_temporal_guidance or self.do_modality_isolation_guidance):
+                    if self.do_spatio_temporal_guidance or self.do_modality_isolation_guidance:
                         if i == 0:
                             # Only split values that remain constant throughout the loop once
                             video_prompt_embeds = connector_prompt_embeds.chunk(2, dim=0)[1]
@@ -1255,7 +1257,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
 
                     video_pos_ids = video_coords
                     audio_pos_ids = audio_coords
-                
+
                 if self.do_spatio_temporal_guidance:
                     with self.transformer.cache_context("uncond_stg"):
                         noise_pred_video_uncond_stg, noise_pred_audio_uncond_stg = self.transformer(
@@ -1291,7 +1293,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                     audio_stg_delta = self.audio_stg_scale * (noise_pred_audio - noise_pred_audio_uncond_stg)
                 else:
                     video_stg_delta = audio_stg_delta = 0
-                
+
                 if self.do_modality_isolation_guidance:
                     with self.transformer.cache_context("uncond_modality"):
                         noise_pred_video_uncond_modality, noise_pred_audio_uncond_modality = self.transformer(
@@ -1323,11 +1325,11 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                     noise_pred_video_uncond_modality = noise_pred_video_uncond_modality.float()
                     noise_pred_audio_uncond_modality = noise_pred_audio_uncond_modality.float()
 
-                    video_modality_delta = (
-                        (self.modality_scale - 1) * (noise_pred_video - noise_pred_video_uncond_modality)
+                    video_modality_delta = (self.modality_scale - 1) * (
+                        noise_pred_video - noise_pred_video_uncond_modality
                     )
-                    audio_modality_delta = (
-                        (self.audio_modality_scale - 1) * (noise_pred_audio - noise_pred_audio_uncond_modality)
+                    audio_modality_delta = (self.audio_modality_scale - 1) * (
+                        noise_pred_audio - noise_pred_audio_uncond_modality
                     )
                 else:
                     video_modality_delta = audio_modality_delta = 0

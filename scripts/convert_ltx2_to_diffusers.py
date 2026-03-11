@@ -97,7 +97,7 @@ LTX_2_0_VOCODER_RENAME_DICT = {
     "conv_post": "conv_out",
 }
 
-LTX_2_3_VOCODER_RENAME_DICT= {
+LTX_2_3_VOCODER_RENAME_DICT = {
     # Handle upsamplers ("ups" --> "upsamplers") due to name clash
     "resblocks": "resnets",
     "conv_pre": "conv_in",
@@ -749,7 +749,7 @@ def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any
                 "leaky_relu_negative_slope": 0.1,
                 "antialias": False,
                 "final_act_fn": "tanh",
-                "final_bias": True, 
+                "final_bias": True,
                 "output_sampling_rate": 24000,
             },
         }
