@@ -26,18 +26,6 @@ from ..modeling_utils import ModelMixin
 from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
-def get_norm_layer_2d(
-        in_channels: int,
-        num_groups: int = 32,
-        **kwargs
-    ) -> nn.GroupNorm:
-    """
-    Creates a 2D GroupNorm normalization layer.
-    """
-
-    return nn.GroupNorm(num_channels=in_channels, num_groups=num_groups, eps=1e-6, affine=True)
-
-
 class KVAEResnetBlock2D(nn.Module):
     r"""
     A Resnet block with optional guidance.
@@ -65,7 +53,7 @@ class KVAEResnetBlock2D(nn.Module):
         temb_channels: int = 512,
         zq_ch: Optional[int] = None,
         add_conv: bool = False,
-        normalization: nn.Module = get_norm_layer_2d,
+        normalization: nn.Module = nn.GroupNorm,
         act_fn: str = 'swish'
     ):
         super().__init__()
@@ -75,14 +63,20 @@ class KVAEResnetBlock2D(nn.Module):
         self.use_conv_shortcut = conv_shortcut
         self.nonlinearity = get_activation(act_fn)
 
-        self.norm1 = normalization(in_channels, zq_channels=zq_ch, add_conv=add_conv)
+        if zq_ch is None:
+            self.norm1 = normalization(num_channels=in_channels, num_groups=32, eps=1e-6, affine=True)
+        else:
+            self.norm1 = normalization(in_channels, zq_channels=zq_ch, add_conv=add_conv)
 
         self.conv1 = nn.Conv2d(
             in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=(1, 1), padding_mode="replicate"
         )
         if temb_channels > 0:
             self.temb_proj = torch.nn.Linear(temb_channels, out_channels)
-        self.norm2 = normalization(out_channels, zq_channels=zq_ch, add_conv=add_conv)
+        if zq_ch is None:
+            self.norm2 = normalization(num_channels=out_channels, num_groups=32, eps=1e-6, affine=True)
+        else:
+            self.norm2 = normalization(out_channels, zq_channels=zq_ch, add_conv=add_conv)
         self.conv2 = nn.Conv2d(
             in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=(1, 1), padding_mode="replicate"
         )
@@ -222,7 +216,7 @@ class KVAEDecoderSpacialNorm2D(nn.Module):
         **norm_layer_params,
     ):
         super().__init__()
-        self.norm_layer = get_norm_layer_2d(in_channels, **norm_layer_params)
+        self.norm_layer = nn.GroupNorm(num_channels=in_channels, num_groups=32, eps=1e-6, affine=True)
 
         self.add_conv = add_conv
         if add_conv:
@@ -341,7 +335,7 @@ class KVAEEncoder2D(nn.Module):
         )
 
         # end
-        self.norm_out = get_norm_layer_2d(block_in)
+        self.norm_out = nn.GroupNorm(num_channels=block_in, num_groups=32, eps=1e-6, affine=True)
 
         self.conv_out = nn.Conv2d(
             in_channels=block_in,
@@ -727,65 +721,6 @@ class AutoencoderKLKVAE(
         enc = torch.cat(result_rows, dim=2)
         return enc
 
-    def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> AutoencoderKLOutput:
-        r"""Encode a batch of images using a tiled encoder.
-
-        When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
-        steps. This is useful to keep memory use constant regardless of image size. The end result of tiled encoding is
-        different from non-tiled encoding because each tile uses a different encoder. To avoid tiling artifacts, the
-        tiles overlap and are blended together to form a smooth output. You may still see tile-sized changes in the
-        output, but they should be much less noticeable.
-
-        Args:
-            x (`torch.Tensor`): Input batch of images.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
-
-        Returns:
-            [`~models.autoencoder_kl.AutoencoderKLOutput`] or `tuple`:
-                If return_dict is True, a [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain
-                `tuple` is returned.
-        """
-        deprecation_message = (
-            "The tiled_encode implementation supporting the `return_dict` parameter is deprecated. In the future, the "
-            "implementation of this method will be replaced with that of `_tiled_encode` and you will no longer be able "
-            "to pass `return_dict`. You will also have to create a `DiagonalGaussianDistribution()` from the returned value."
-        )
-        deprecate("tiled_encode", "1.0.0", deprecation_message, standard_warn=False)
-
-        overlap_size = int(self.tile_sample_min_size * (1 - self.tile_overlap_factor))
-        blend_extent = int(self.tile_latent_min_size * self.tile_overlap_factor)
-        row_limit = self.tile_latent_min_size - blend_extent
-
-        # Split the image into 512x512 tiles and encode them separately.
-        rows = []
-        for i in range(0, x.shape[2], overlap_size):
-            row = []
-            for j in range(0, x.shape[3], overlap_size):
-                tile = x[:, :, i : i + self.tile_sample_min_size, j : j + self.tile_sample_min_size]
-                tile = self.encoder(tile)
-                row.append(tile)
-            rows.append(row)
-        result_rows = []
-        for i, row in enumerate(rows):
-            result_row = []
-            for j, tile in enumerate(row):
-                # blend the above tile and the left tile
-                # to the current tile and add the current tile to the result row
-                if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_extent)
-                if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_extent)
-                result_row.append(tile[:, :, :row_limit, :row_limit])
-            result_rows.append(torch.cat(result_row, dim=3))
-
-        moments = torch.cat(result_rows, dim=2)
-        posterior = DiagonalGaussianDistribution(moments)
-
-        if not return_dict:
-            return (posterior,)
-
-        return AutoencoderKLOutput(latent_dist=posterior)
 
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""
