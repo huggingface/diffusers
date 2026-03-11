@@ -106,3 +106,13 @@ class TestLTXTransformerTraining(LTXTransformerTesterConfig, TrainingTesterMixin
 
 class TestLTXTransformerCompile(LTXTransformerTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for LTX Video Transformer."""
+
+
+# TODO: Add pretrained_model_name_or_path once a tiny LTX model is available on the Hub
+# class TestLTXTransformerBitsAndBytes(LTXTransformerTesterConfig, BitsAndBytesTesterMixin):
+#     """BitsAndBytes quantization tests for LTX Video Transformer."""
+
+
+# TODO: Add pretrained_model_name_or_path once a tiny LTX model is available on the Hub
+# class TestLTXTransformerTorchAo(LTXTransformerTesterConfig, TorchAoTesterMixin):
+#     """TorchAo quantization tests for LTX Video Transformer."""

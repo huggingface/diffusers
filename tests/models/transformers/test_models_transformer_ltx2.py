@@ -139,3 +139,13 @@ class TestLTX2TransformerAttention(LTX2TransformerTesterConfig, AttentionTesterM
 
 class TestLTX2TransformerCompile(LTX2TransformerTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for LTX2 Video Transformer."""
+
+
+# TODO: Add pretrained_model_name_or_path once a tiny LTX2 model is available on the Hub
+# class TestLTX2TransformerBitsAndBytes(LTX2TransformerTesterConfig, BitsAndBytesTesterMixin):
+#     """BitsAndBytes quantization tests for LTX2 Video Transformer."""
+
+
+# TODO: Add pretrained_model_name_or_path once a tiny LTX2 model is available on the Hub
+# class TestLTX2TransformerTorchAo(LTX2TransformerTesterConfig, TorchAoTesterMixin):
+#     """TorchAo quantization tests for LTX2 Video Transformer."""
