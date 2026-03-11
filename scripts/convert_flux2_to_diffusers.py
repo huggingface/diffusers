@@ -44,7 +44,7 @@ CTX = init_empty_weights if is_accelerate_available() else nullcontext
 parser = argparse.ArgumentParser()
 parser.add_argument("--original_state_dict_repo_id", default=None, type=str)
 parser.add_argument("--vae_filename", default="flux2-vae.sft", type=str)
-parser.add_argument("--dit_filename", default="flux-dev-dummy.sft", type=str)
+parser.add_argument("--dit_filename", default="flux2-dev.safetensors", type=str)
 parser.add_argument("--vae", action="store_true")
 parser.add_argument("--dit", action="store_true")
 parser.add_argument("--vae_dtype", type=str, default="fp32")
@@ -385,9 +385,9 @@ def update_state_dict(state_dict: Dict[str, Any], old_key: str, new_key: str) ->
 
 
 def get_flux2_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
-    if model_type == "test" or model_type == "dummy-flux2":
+    if model_type == "flux2-dev":
         config = {
-            "model_id": "diffusers-internal-dev/dummy-flux2",
+            "model_id": "black-forest-labs/FLUX.2-dev",
             "diffusers_config": {
                 "patch_size": 1,
                 "in_channels": 128,
@@ -405,6 +405,53 @@ def get_flux2_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         rename_dict = FLUX2_TRANSFORMER_KEYS_RENAME_DICT
         special_keys_remap = TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif model_type == "klein-4b":
+        config = {
+            "model_id": "diffusers-internal-dev/dummy0115",
+            "diffusers_config": {
+                "patch_size": 1,
+                "in_channels": 128,
+                "num_layers": 5,
+                "num_single_layers": 20,
+                "attention_head_dim": 128,
+                "num_attention_heads": 24,
+                "joint_attention_dim": 7680,
+                "timestep_guidance_channels": 256,
+                "mlp_ratio": 3.0,
+                "axes_dims_rope": (32, 32, 32, 32),
+                "rope_theta": 2000,
+                "eps": 1e-6,
+                "guidance_embeds": False,
+            },
+        }
+        rename_dict = FLUX2_TRANSFORMER_KEYS_RENAME_DICT
+        special_keys_remap = TRANSFORMER_SPECIAL_KEYS_REMAP
+
+    elif model_type == "klein-9b":
+        config = {
+            "model_id": "diffusers-internal-dev/dummy0115",
+            "diffusers_config": {
+                "patch_size": 1,
+                "in_channels": 128,
+                "num_layers": 8,
+                "num_single_layers": 24,
+                "attention_head_dim": 128,
+                "num_attention_heads": 32,
+                "joint_attention_dim": 12288,
+                "timestep_guidance_channels": 256,
+                "mlp_ratio": 3.0,
+                "axes_dims_rope": (32, 32, 32, 32),
+                "rope_theta": 2000,
+                "eps": 1e-6,
+                "guidance_embeds": False,
+            },
+        }
+        rename_dict = FLUX2_TRANSFORMER_KEYS_RENAME_DICT
+        special_keys_remap = TRANSFORMER_SPECIAL_KEYS_REMAP
+
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}. Choose from: flux2-dev, klein-4b, klein-9b")
+
     return config, rename_dict, special_keys_remap
 
 
@@ -447,7 +494,14 @@ def main(args):
 
     if args.dit:
         original_dit_ckpt = load_original_checkpoint(args, filename=args.dit_filename)
-        transformer = convert_flux2_transformer_to_diffusers(original_dit_ckpt, "test")
+
+        if "klein-4b" in args.dit_filename:
+            model_type = "klein-4b"
+        elif "klein-9b" in args.dit_filename:
+            model_type = "klein-9b"
+        else:
+            model_type = "flux2-dev"
+        transformer = convert_flux2_transformer_to_diffusers(original_dit_ckpt, model_type)
         if not args.full_pipe:
             dit_dtype = torch.bfloat16 if args.dit_dtype == "bf16" else torch.float32
             transformer.to(dit_dtype).save_pretrained(f"{args.output_path}/transformer")
@@ -465,8 +519,15 @@ def main(args):
             "black-forest-labs/FLUX.1-dev", subfolder="scheduler"
         )
 
+        if_distilled = "base" not in args.dit_filename
+
         pipe = Flux2Pipeline(
-            vae=vae, transformer=transformer, text_encoder=text_encoder, tokenizer=tokenizer, scheduler=scheduler
+            vae=vae,
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            scheduler=scheduler,
+            if_distilled=if_distilled,
         )
         pipe.save_pretrained(args.output_path)
 

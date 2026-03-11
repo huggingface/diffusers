@@ -104,7 +104,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.37.0.dev0")
+check_min_version("0.38.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -127,7 +127,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# Flux DreamBooth LoRA - {repo_id}
+# Flux.2 DreamBooth LoRA - {repo_id}
 
 <Gallery />
 

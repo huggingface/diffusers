@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import numpy as np
 import PIL
@@ -63,9 +63,9 @@ UPSAMPLING_MAX_IMAGE_SIZE = 768**2
 # Adapted from
 # https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/text_encoder.py#L68
 def format_input(
-    prompts: List[str],
+    prompts: list[str],
     system_message: str = SYSTEM_MESSAGE,
-    images: Optional[Union[List[PIL.Image.Image], List[List[PIL.Image.Image]]]] = None,
+    images: list[PIL.Image.Image, list[list[PIL.Image.Image]]] | None = None,
 ):
     """
     Format a batch of text prompts into the conversation format expected by apply_chat_template. Optionally, add images
@@ -130,10 +130,10 @@ def format_input(
 # Adapted from
 # https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/text_encoder.py#L49C5-L66C19
 def _validate_and_process_images(
-    images: List[List[PIL.Image.Image]] | List[PIL.Image.Image],
+    images: list[list[PIL.Image.Image]] | list[PIL.Image.Image],
     image_processor: Flux2ImageProcessor,
     upsampling_max_image_size: int,
-) -> List[List[PIL.Image.Image]]:
+) -> list[list[PIL.Image.Image]]:
     # Simple validation: ensure it's a list of PIL images or list of lists of PIL images
     if not images:
         return []
@@ -177,10 +177,10 @@ def compute_empirical_mu(image_seq_len: int, num_steps: int) -> float:
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -195,15 +195,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -236,7 +236,7 @@ def retrieve_timesteps(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -304,12 +304,12 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     def _get_mistral_3_small_prompt_embeds(
         text_encoder: Mistral3ForConditionalGeneration,
         tokenizer: AutoProcessor,
-        prompt: Union[str, List[str]],
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
         max_sequence_length: int = 512,
         system_message: str = SYSTEM_MESSAGE,
-        hidden_states_layers: List[int] = (10, 20, 30),
+        hidden_states_layers: list[int] = (10, 20, 30),
     ):
         dtype = text_encoder.dtype if dtype is None else dtype
         device = text_encoder.device if device is None else device
@@ -355,7 +355,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     @staticmethod
     def _prepare_text_ids(
         x: torch.Tensor,  # (B, L, D) or (L, D)
-        t_coord: Optional[torch.Tensor] = None,
+        t_coord: torch.Tensor | None = None,
     ):
         B, L, _ = x.shape
         out_ids = []
@@ -405,7 +405,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
     @staticmethod
     def _prepare_image_ids(
-        image_latents: List[torch.Tensor],  # [(1, C, H, W), (1, C, H, W), ...]
+        image_latents: list[torch.Tensor],  # [(1, C, H, W), (1, C, H, W), ...]
         scale: int = 10,
     ):
         r"""
@@ -415,7 +415,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         dimensions.
 
         Args:
-            image_latents (List[torch.Tensor]):
+            image_latents (list[torch.Tensor]):
                 A list of image latent feature tensors, typically of shape (C, H, W).
             scale (int, optional):
                 A factor used to define the time separation (T-coordinate) between latents. T-coordinate for the i-th
@@ -508,11 +508,11 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
     def upsample_prompt(
         self,
-        prompt: Union[str, List[str]],
-        images: Union[List[PIL.Image.Image], List[List[PIL.Image.Image]]] = None,
+        prompt: str | list[str],
+        images: list[PIL.Image.Image, list[list[PIL.Image.Image]]] = None,
         temperature: float = 0.15,
         device: torch.device = None,
-    ) -> List[str]:
+    ) -> list[str]:
         prompt = [prompt] if isinstance(prompt, str) else prompt
         device = self.text_encoder.device if device is None else device
 
@@ -570,12 +570,12 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
         max_sequence_length: int = 512,
-        text_encoder_out_layers: Tuple[int] = (10, 20, 30),
+        text_encoder_out_layers: tuple[int] = (10, 20, 30),
     ):
         device = device or self._execution_device
 
@@ -625,7 +625,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         dtype,
         device,
         generator: torch.Generator,
-        latents: Optional[torch.Tensor] = None,
+        latents: torch.Tensor | None = None,
     ):
         # VAE applies 8x compression on images but we must also account for packing which requires
         # latent height and width to be divisible by 2.
@@ -651,7 +651,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
     def prepare_image_latents(
         self,
-        images: List[torch.Tensor],
+        images: list[torch.Tensor],
         batch_size,
         generator: torch.Generator,
         device,
@@ -725,8 +725,8 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return self._guidance_scale
 
     @property
-    def joint_attention_kwargs(self):
-        return self._joint_attention_kwargs
+    def attention_kwargs(self):
+        return self._attention_kwargs
 
     @property
     def num_timesteps(self):
@@ -744,37 +744,37 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Optional[Union[List[PIL.Image.Image], PIL.Image.Image]] = None,
-        prompt: Union[str, List[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        image: list[PIL.Image.Image, PIL.Image.Image] | None = None,
+        prompt: str | list[str] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 50,
-        sigmas: Optional[List[float]] = None,
-        guidance_scale: Optional[float] = 4.0,
+        sigmas: list[float] | None = None,
+        guidance_scale: float | None = 4.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-        text_encoder_out_layers: Tuple[int] = (10, 20, 30),
+        text_encoder_out_layers: tuple[int] = (10, 20, 30),
         caption_upsample_temperature: float = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
                 numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
                 or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
                 latents as `image`, but if passing latents directly it is not encoded again.
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             guidance_scale (`float`, *optional*, defaults to 1.0):
@@ -790,13 +790,13 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            sigmas (`List[float]`, *optional*):
+            sigmas (`list[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -825,7 +825,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
-            text_encoder_out_layers (`Tuple[int]`):
+            text_encoder_out_layers (`tuple[int]`):
                 Layer indices to use in the `text_encoder` to derive the final prompt embeddings.
             caption_upsample_temperature (`float`):
                 When specified, we will try to perform caption upsampling for potentially improved outputs. We
@@ -975,7 +975,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,  # B, text_seq_len, 4
                     img_ids=latent_image_ids,  # B, image_seq_len, 4
-                    joint_attention_kwargs=self._attention_kwargs,
+                    joint_attention_kwargs=self.attention_kwargs,
                     return_dict=False,
                 )[0]
 

@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -47,7 +47,7 @@ class RePaintSchedulerOutput(BaseOutput):
 def betas_for_alpha_bar(
     num_diffusion_timesteps: int,
     max_beta: float = 0.999,
-    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
+    alpha_transform_type: Literal["cosine", "exp", "laplace"] = "cosine",
 ) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -61,8 +61,8 @@ def betas_for_alpha_bar(
             The number of betas to produce.
         max_beta (`float`, defaults to `0.999`):
             The maximum beta to use; use values lower than 1 to avoid numerical instability.
-        alpha_transform_type (`"cosine"` or `"exp"`, defaults to `"cosine"`):
-            The type of noise schedule for `alpha_bar`. Choose from `cosine` or `exp`.
+        alpha_transform_type (`str`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine`, `exp`, or `laplace`.
 
     Returns:
         `torch.Tensor`:
@@ -133,7 +133,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         eta: float = 0.0,
-        trained_betas: Optional[np.ndarray] = None,
+        trained_betas: np.ndarray | None = None,
         clip_sample: bool = True,
     ):
         if trained_betas is not None:
@@ -168,7 +168,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
 
         self.eta = eta
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -190,7 +190,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: int,
         jump_length: int = 10,
         jump_n_sample: int = 10,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -258,9 +258,9 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         original_image: torch.Tensor,
         mask: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[RePaintSchedulerOutput, Tuple]:
+    ) -> RePaintSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

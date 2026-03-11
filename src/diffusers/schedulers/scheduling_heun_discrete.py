@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -44,14 +44,14 @@ class HeunDiscreteSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(
     num_diffusion_timesteps: int,
     max_beta: float = 0.999,
-    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
+    alpha_transform_type: Literal["cosine", "exp", "laplace"] = "cosine",
 ) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
@@ -65,8 +65,8 @@ def betas_for_alpha_bar(
             The number of betas to produce.
         max_beta (`float`, defaults to `0.999`):
             The maximum beta to use; use values lower than 1 to avoid numerical instability.
-        alpha_transform_type (`"cosine"` or `"exp"`, defaults to `"cosine"`):
-            The type of noise schedule for `alpha_bar`. Choose from `cosine` or `exp`.
+        alpha_transform_type (`str`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine`, `exp`, or `laplace`.
 
     Returns:
         `torch.Tensor`:
@@ -151,13 +151,13 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         beta_start: float = 0.00085,  # sensible defaults
         beta_end: float = 0.012,
-        beta_schedule: Literal["linear", "scaled_linear", "squaredcos_cap_v2", "exp"] = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
-        prediction_type: Literal["epsilon", "sample", "v_prediction"] = "epsilon",
-        use_karras_sigmas: Optional[bool] = False,
-        use_exponential_sigmas: Optional[bool] = False,
-        use_beta_sigmas: Optional[bool] = False,
-        clip_sample: Optional[bool] = False,
+        beta_schedule: str = "linear",
+        trained_betas: np.ndarray | list[float] | None = None,
+        prediction_type: str = "epsilon",
+        use_karras_sigmas: bool = False,
+        use_exponential_sigmas: bool = False,
+        use_beta_sigmas: bool = False,
+        clip_sample: bool = False,
         clip_sample_range: float = 1.0,
         timestep_spacing: Literal["linspace", "leading", "trailing"] = "linspace",
         steps_offset: int = 0,
@@ -196,7 +196,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(
-        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
     ) -> int:
         """
         Find the index of a given timestep in the timestep schedule.
@@ -261,7 +261,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def scale_model_input(
         self,
         sample: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
     ) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -286,11 +286,11 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
-        num_train_timesteps: Optional[int] = None,
-        timesteps: Optional[List[int]] = None,
-    ) -> None:
+        num_inference_steps: int | None = None,
+        device: str | torch.device = None,
+        num_train_timesteps: int | None = None,
+        timesteps: list[int] | None = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -302,7 +302,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             num_train_timesteps (`int`, *optional*, defaults to `None`):
                 The number of diffusion steps used when training the model. If `None`, the default
                 `num_train_timesteps` attribute is used.
-            timesteps (`List[int]`, *optional*, defaults to `None`):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, timesteps will be
                 generated based on the `timestep_spacing` attribute. If `timesteps` is passed, `num_inference_steps`
                 must be `None`, and `timestep_spacing` attribute will be ignored.
@@ -540,7 +540,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return self.dt is None
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
         """
         Initialize the step index for the scheduler based on the given timestep.
 
@@ -557,11 +557,11 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: Union[torch.Tensor, np.ndarray],
-        timestep: Union[float, torch.Tensor],
-        sample: Union[torch.Tensor, np.ndarray],
+        model_output: torch.Tensor | np.ndarray,
+        timestep: float | torch.Tensor,
+        sample: torch.Tensor | np.ndarray,
         return_dict: bool = True,
-    ) -> Union[HeunDiscreteSchedulerOutput, Tuple]:
+    ) -> HeunDiscreteSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

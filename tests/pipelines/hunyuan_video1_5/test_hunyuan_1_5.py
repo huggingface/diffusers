@@ -15,7 +15,14 @@
 import unittest
 
 import torch
-from transformers import ByT5Tokenizer, Qwen2_5_VLTextConfig, Qwen2_5_VLTextModel, Qwen2Tokenizer, T5EncoderModel
+from transformers import (
+    AutoConfig,
+    ByT5Tokenizer,
+    Qwen2_5_VLTextConfig,
+    Qwen2_5_VLTextModel,
+    Qwen2Tokenizer,
+    T5EncoderModel,
+)
 
 from diffusers import (
     AutoencoderKLHunyuanVideo15,
@@ -114,7 +121,8 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
         torch.manual_seed(0)
-        text_encoder_2 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder_2 = T5EncoderModel(config)
         tokenizer_2 = ByT5Tokenizer()
 
         guider = ClassifierFreeGuidance(guidance_scale=1.0)

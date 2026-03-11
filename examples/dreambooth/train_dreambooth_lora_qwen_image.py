@@ -93,7 +93,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.37.0.dev0")
+check_min_version("0.38.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1467,7 +1467,8 @@ def main(args):
                 else:
                     num_repeat_elements = len(prompts)
                     prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
-                    prompt_embeds_mask = prompt_embeds_mask.repeat(num_repeat_elements, 1)
+                    if prompt_embeds_mask is not None:
+                        prompt_embeds_mask = prompt_embeds_mask.repeat(num_repeat_elements, 1)
                 # Convert images to latent space
                 if args.cache_latents:
                     model_input = latents_cache[step].sample()

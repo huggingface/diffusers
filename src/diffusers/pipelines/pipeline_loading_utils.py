@@ -17,7 +17,7 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable
 
 import httpx
 import requests
@@ -210,7 +210,7 @@ def filter_with_regex(filenames, pattern_re):
     return {f for f in filenames if pattern_re.match(f.split("/")[-1]) is not None}
 
 
-def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> Union[List[os.PathLike], str]:
+def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> list[os.PathLike] | str:
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
@@ -525,12 +525,12 @@ def _get_pipeline_class(
 def _load_empty_model(
     library_name: str,
     class_name: str,
-    importable_classes: List[Any],
+    importable_classes: list[Any],
     pipelines: Any,
     is_pipeline_module: bool,
     name: str,
-    torch_dtype: Union[str, torch.dtype],
-    cached_folder: Union[str, os.PathLike],
+    torch_dtype: str | torch.dtype,
+    cached_folder: str | os.PathLike,
     **kwargs,
 ):
     # retrieve class objects.
@@ -607,7 +607,7 @@ def _load_empty_model(
 
 
 def _assign_components_to_devices(
-    module_sizes: Dict[str, float], device_memory: Dict[str, float], device_mapping_strategy: str = "balanced"
+    module_sizes: dict[str, float], device_memory: dict[str, float], device_mapping_strategy: str = "balanced"
 ):
     device_ids = list(device_memory.keys())
     device_cycle = device_ids + device_ids[::-1]
@@ -738,27 +738,28 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
 def load_sub_model(
     library_name: str,
     class_name: str,
-    importable_classes: List[Any],
+    importable_classes: list[Any],
     pipelines: Any,
     is_pipeline_module: bool,
     pipeline_class: Any,
     torch_dtype: torch.dtype,
     provider: Any,
     sess_options: Any,
-    device_map: Optional[Union[Dict[str, torch.device], str]],
-    max_memory: Optional[Dict[Union[int, str], Union[int, str]]],
-    offload_folder: Optional[Union[str, os.PathLike]],
+    device_map: dict[str, torch.device] | str | None,
+    max_memory: dict[int | str, int | str] | None,
+    offload_folder: str | os.PathLike | None,
     offload_state_dict: bool,
-    model_variants: Dict[str, str],
+    model_variants: dict[str, str],
     name: str,
     from_flax: bool,
     variant: str,
     low_cpu_mem_usage: bool,
-    cached_folder: Union[str, os.PathLike],
+    cached_folder: str | os.PathLike,
     use_safetensors: bool,
-    dduf_entries: Optional[Dict[str, DDUFEntry]],
+    dduf_entries: dict[str, DDUFEntry] | None,
     provider_options: Any,
-    quantization_config: Optional[Any] = None,
+    disable_mmap: bool,
+    quantization_config: Any | None = None,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     from ..quantizers import PipelineQuantizationConfig
@@ -858,6 +859,9 @@ def load_sub_model(
             loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
         else:
             loading_kwargs["low_cpu_mem_usage"] = False
+
+    if is_diffusers_model:
+        loading_kwargs["disable_mmap"] = disable_mmap
 
     if is_transformers_model and is_transformers_version(">=", "4.57.0"):
         loading_kwargs.pop("offload_state_dict")
@@ -1046,10 +1050,10 @@ def _update_init_kwargs_with_connected_pipeline(
 
 def _get_custom_components_and_folders(
     pretrained_model_name: str,
-    config_dict: Dict[str, Any],
-    filenames: Optional[List[str]] = None,
-    variant_filenames: Optional[List[str]] = None,
-    variant: Optional[str] = None,
+    config_dict: dict[str, Any],
+    filenames: list[str] | None = None,
+    variant_filenames: list[str] | None = None,
+    variant: str | None = None,
 ):
     config_dict = config_dict.copy()
 
@@ -1082,15 +1086,15 @@ def _get_custom_components_and_folders(
 
 def _get_ignore_patterns(
     passed_components,
-    model_folder_names: List[str],
-    model_filenames: List[str],
+    model_folder_names: list[str],
+    model_filenames: list[str],
     use_safetensors: bool,
     from_flax: bool,
     allow_pickle: bool,
     use_onnx: bool,
     is_onnx: bool,
-    variant: Optional[str] = None,
-) -> List[str]:
+    variant: str | None = None,
+) -> list[str]:
     if (
         use_safetensors
         and not allow_pickle
