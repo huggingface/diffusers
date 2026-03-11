@@ -38,6 +38,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [ControlNet with Hunyuan-DiT](controlnet_hunyuandit) | text2image |
 | [ControlNet with Stable Diffusion 3](controlnet_sd3) | text2image |
 | [ControlNet with Stable Diffusion XL](controlnet_sdxl) | text2image |
+| [Cosmos](cosmos) | text2video, video2video |
 | [DDIM](ddim) | unconditional image generation |
 | [DDPM](ddpm) | unconditional image generation |
 | [DeepFloyd IF](deepfloyd_if) | text2image, image2image, inpainting, super-resolution |
