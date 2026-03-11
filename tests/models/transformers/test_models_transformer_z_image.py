@@ -19,7 +19,7 @@ import torch
 
 from diffusers import ZImageTransformer2DModel
 
-from ...testing_utils import IS_GITHUB_ACTIONS, torch_device
+from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
@@ -40,10 +40,9 @@ if hasattr(torch.backends, "cuda"):
     torch.backends.cuda.matmul.allow_tf32 = False
 
 
-pytestmark = pytest.mark.skipif(
-    IS_GITHUB_ACTIONS,
-    reason="Skipping test-suite inside the CI because the model has `torch.empty()` inside of it during init and we don't have a clear way to override it in the modeling tests.",
-)
+def _concat_list_output(output):
+    """Model output `sample` is a list of tensors. Concatenate them for comparison."""
+    return torch.cat([t.flatten() for t in output])
 
 
 class ZImageTransformerTesterConfig(BaseModelTesterConfig):
@@ -109,9 +108,114 @@ class ZImageTransformerTesterConfig(BaseModelTesterConfig):
 class TestZImageTransformer(ZImageTransformerTesterConfig, ModelTesterMixin):
     """Core model tests for Z-Image Transformer."""
 
-    @pytest.mark.skip("Test is not supported for handling main inputs that are lists.")
+    @torch.no_grad()
+    def test_determinism(self, atol=1e-5, rtol=0):
+        model = self.model_class(**self.get_init_dict())
+        model.to(torch_device)
+        model.eval()
+
+        inputs_dict = self.get_dummy_inputs()
+        first = _concat_list_output(model(**inputs_dict, return_dict=False)[0])
+        second = _concat_list_output(model(**inputs_dict, return_dict=False)[0])
+
+        mask = ~(torch.isnan(first) | torch.isnan(second))
+        assert_tensors_close(
+            first[mask], second[mask], atol=atol, rtol=rtol, msg="Model outputs are not deterministic"
+        )
+
+    def test_from_save_pretrained(self, tmp_path, atol=5e-5, rtol=5e-5):
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict())
+        model.to(torch_device)
+        model.eval()
+
+        model.save_pretrained(tmp_path)
+        new_model = self.model_class.from_pretrained(tmp_path)
+        new_model.to(torch_device)
+
+        for param_name in model.state_dict().keys():
+            param_1 = model.state_dict()[param_name]
+            param_2 = new_model.state_dict()[param_name]
+            assert param_1.shape == param_2.shape
+
+        inputs_dict = self.get_dummy_inputs()
+        image = _concat_list_output(model(**inputs_dict, return_dict=False)[0])
+        new_image = _concat_list_output(new_model(**inputs_dict, return_dict=False)[0])
+
+        assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
+
+    @torch.no_grad()
+    def test_from_save_pretrained_variant(self, tmp_path, atol=5e-5, rtol=0):
+        model = self.model_class(**self.get_init_dict())
+        model.to(torch_device)
+        model.eval()
+
+        model.save_pretrained(tmp_path, variant="fp16")
+        new_model = self.model_class.from_pretrained(tmp_path, variant="fp16")
+
+        with pytest.raises(OSError) as exc_info:
+            self.model_class.from_pretrained(tmp_path)
+
+        assert "Error no file named diffusion_pytorch_model.bin found in directory" in str(exc_info.value)
+
+        new_model.to(torch_device)
+
+        inputs_dict = self.get_dummy_inputs()
+        image = _concat_list_output(model(**inputs_dict, return_dict=False)[0])
+        new_image = _concat_list_output(new_model(**inputs_dict, return_dict=False)[0])
+
+        assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
+
+    @pytest.mark.skip("Model output `sample` is a list of tensors, not a single tensor.")
     def test_outputs_equivalence(self, atol=1e-5, rtol=0):
         pass
+
+    def test_sharded_checkpoints_with_parallel_loading(self, tmp_path, atol=1e-5, rtol=0):
+        from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, constants
+
+        from ..testing_utils.common import calculate_expected_num_shards, compute_module_persistent_sizes
+
+        torch.manual_seed(0)
+        config = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        model = self.model_class(**config).eval()
+        model = model.to(torch_device)
+
+        base_output = _concat_list_output(model(**inputs_dict, return_dict=False)[0])
+
+        model_size = compute_module_persistent_sizes(model)[""]
+        max_shard_size = int((model_size * 0.75) / (2**10))
+
+        original_parallel_loading = constants.HF_ENABLE_PARALLEL_LOADING
+        original_parallel_workers = getattr(constants, "HF_PARALLEL_WORKERS", None)
+
+        try:
+            model.cpu().save_pretrained(tmp_path, max_shard_size=f"{max_shard_size}KB")
+            assert os.path.exists(os.path.join(tmp_path, SAFE_WEIGHTS_INDEX_NAME))
+
+            expected_num_shards = calculate_expected_num_shards(os.path.join(tmp_path, SAFE_WEIGHTS_INDEX_NAME))
+            actual_num_shards = len([file for file in os.listdir(tmp_path) if file.endswith(".safetensors")])
+            assert actual_num_shards == expected_num_shards
+
+            constants.HF_ENABLE_PARALLEL_LOADING = False
+            self.model_class.from_pretrained(tmp_path).eval().to(torch_device)
+
+            constants.HF_ENABLE_PARALLEL_LOADING = True
+            constants.DEFAULT_HF_PARALLEL_LOADING_WORKERS = 2
+
+            torch.manual_seed(0)
+            model_parallel = self.model_class.from_pretrained(tmp_path).eval()
+            model_parallel = model_parallel.to(torch_device)
+
+            output_parallel = _concat_list_output(model_parallel(**inputs_dict, return_dict=False)[0])
+
+            assert_tensors_close(
+                base_output, output_parallel, atol=atol, rtol=rtol, msg="Output should match with parallel loading"
+            )
+        finally:
+            constants.HF_ENABLE_PARALLEL_LOADING = original_parallel_loading
+            if original_parallel_workers is not None:
+                constants.HF_PARALLEL_WORKERS = original_parallel_workers
 
 
 class TestZImageTransformerMemory(ZImageTransformerTesterConfig, MemoryTesterMixin):
