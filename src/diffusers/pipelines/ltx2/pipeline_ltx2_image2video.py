@@ -175,13 +175,12 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-# Copied from diffusers.pipelines.ltx2.pipeline_ltx2.rescale_noise_cfg_delta
-def rescale_noise_cfg_delta(noise_cfg, noise_pred_text, guidance_rescale=0.0):
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
+def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     r"""
     Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
     Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
-    Flawed](https://huggingface.co/papers/2305.08891). Returns a delta value with respect to noise_pred_text, which is
-    useful when there are multiple guidance terms.
+    Flawed](https://huggingface.co/papers/2305.08891).
 
     Args:
         noise_cfg (`torch.Tensor`):
@@ -200,9 +199,7 @@ def rescale_noise_cfg_delta(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
     # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
     noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
-    # Return as a delta with respect to noise_pred_text
-    rescale_delta = noise_cfg - noise_pred_text
-    return rescale_delta
+    return noise_cfg
 
 
 class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
@@ -1229,19 +1226,6 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                         noise_pred_audio - noise_pred_audio_uncond_text
                     )
 
-                    if self.guidance_rescale > 0:
-                        # Based on 3.4. in https://huggingface.co/papers/2305.08891
-                        video_cfg_delta = rescale_noise_cfg_delta(
-                            noise_cfg=noise_pred_video + video_cfg_delta,
-                            noise_pred_text=noise_pred_video,
-                            guidance_rescale=self.guidance_rescale,
-                        )
-                        audio_cfg_delta = rescale_noise_cfg_delta(
-                            noise_cfg=noise_pred_audio + audio_cfg_delta,
-                            noise_pred_text=noise_pred_audio,
-                            guidance_rescale=self.audio_guidance_rescale,
-                        )
-
                     # Get positive values from merged CFG inputs in case we need to do other DiT forward passes
                     if self.do_spatio_temporal_guidance or self.do_modality_isolation_guidance:
                         if i == 0:
@@ -1343,8 +1327,27 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                     video_modality_delta = audio_modality_delta = 0
 
                 # Now apply all guidance terms
-                noise_pred_video = noise_pred_video + video_cfg_delta + video_stg_delta + video_modality_delta
-                noise_pred_audio = noise_pred_audio + audio_cfg_delta + audio_stg_delta + audio_modality_delta
+                noise_pred_video_g = noise_pred_video + video_cfg_delta + video_stg_delta + video_modality_delta
+                noise_pred_audio_g = noise_pred_audio + audio_cfg_delta + audio_stg_delta + audio_modality_delta
+
+                # Apply LTX-2.X guidance rescaling
+                if self.guidance_rescale > 0:
+                    video_rescale = self.guidance_rescale
+                    cond_std = noise_pred_video.std(dim=list(range(1, noise_pred_video.ndim)), keepdim=True)
+                    guided_std = noise_pred_video_g.std(dim=list(range(1, noise_pred_video_g.ndim)), keepdim=True)
+                    rescale_factor = video_rescale * (cond_std / guided_std) + (1 - video_rescale)
+                    noise_pred_video = noise_pred_video_g * rescale_factor
+                else:
+                    noise_pred_video = noise_pred_video_g
+
+                if self.audio_guidance_rescale > 0:
+                    audio_rescale = self.audio_guidance_rescale
+                    cond_std = noise_pred_audio.std(dim=list(range(1, noise_pred_audio.ndim)), keepdim=True)
+                    guided_std = noise_pred_audio_g.std(dim=list(range(1, noise_pred_audio_g.ndim)), keepdim=True)
+                    rescale_factor = audio_rescale * (cond_std / guided_std) + (1 - audio_rescale)
+                    noise_pred_audio = noise_pred_audio_g * rescale_factor
+                else:
+                    noise_pred_audio = noise_pred_audio_g
 
                 # compute the previous noisy sample x_t -> x_t-1
                 noise_pred_video = self._unpack_latents(
