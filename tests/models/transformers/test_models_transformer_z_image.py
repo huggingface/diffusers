@@ -23,6 +23,7 @@ from diffusers.utils.torch_utils import randn_tensor
 from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -250,6 +251,24 @@ class TestZImageTransformerTraining(ZImageTransformerTesterConfig, TrainingTeste
     @pytest.mark.skip("Test is not supported for handling main inputs that are lists.")
     def test_gradient_checkpointing_equivalence(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip=None):
         pass
+
+
+class TestZImageTransformerLoRA(ZImageTransformerTesterConfig, LoraTesterMixin):
+    """LoRA adapter tests for Z-Image Transformer."""
+
+    @pytest.mark.skip("Model output `sample` is a list of tensors, not a single tensor.")
+    def test_save_load_lora_adapter(self, tmp_path, rank=4, lora_alpha=4, use_dora=False, atol=1e-4, rtol=1e-4):
+        pass
+
+
+# TODO: Add pretrained_model_name_or_path once a tiny Z-Image model is available on the Hub
+# class TestZImageTransformerBitsAndBytes(ZImageTransformerTesterConfig, BitsAndBytesTesterMixin):
+#     """BitsAndBytes quantization tests for Z-Image Transformer."""
+
+
+# TODO: Add pretrained_model_name_or_path once a tiny Z-Image model is available on the Hub
+# class TestZImageTransformerTorchAo(ZImageTransformerTesterConfig, TorchAoTesterMixin):
+#     """TorchAo quantization tests for Z-Image Transformer."""
 
 
 class TestZImageTransformerCompile(ZImageTransformerTesterConfig, TorchCompileTesterMixin):
