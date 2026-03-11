@@ -184,10 +184,10 @@ class KVAECachedGroupNorm(nn.Module):
     """
     def __init__(self, in_channels: int):  
           super().__init__()  
-          self.norm = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True) 
+          self.norm_layer = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True) 
 
     def forward(self, x: torch.Tensor, cache: Dict = None) -> torch.Tensor:
-        out = self.norm(x)
+        out = self.norm_layer(x)
         if cache is not None and cache.get('mean') is None and cache.get('var') is None:
             cache['mean'] = 1
             cache['var'] = 1
@@ -272,18 +272,19 @@ class KVAECachedResnetBlock3D(nn.Module):
         self.use_conv_shortcut = conv_shortcut
 
         if zq_ch is None:
-            self.norm1 = KVAECachedSpatialNorm3D(in_channels, zq_ch, add_conv=add_conv)
-        else:
             self.norm1 = KVAECachedGroupNorm(in_channels)
+        else:
+            self.norm1 = KVAECachedSpatialNorm3D(in_channels, zq_ch, add_conv=add_conv)
+
         self.conv1 = KVAECachedCausalConv3d(chan_in=in_channels, chan_out=out_channels, kernel_size=3)
 
         if temb_channels > 0:
             self.temb_proj = nn.Linear(temb_channels, out_channels)
 
         if zq_ch is None:
-            self.norm2 = KVAECachedSpatialNorm3D(out_channels, zq_ch, add_conv=add_conv)
-        else:
             self.norm2 = KVAECachedGroupNorm(out_channels)
+        else:
+            self.norm2 = KVAECachedSpatialNorm3D(out_channels, zq_ch, add_conv=add_conv)
 
         self.conv2 = KVAECachedCausalConv3d(chan_in=out_channels, chan_out=out_channels, kernel_size=3)
 
