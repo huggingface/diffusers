@@ -95,6 +95,7 @@ from .pag import (
     StableDiffusionXLPAGPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+from .prx import PRXPipeline
 from .qwenimage import (
     QwenImageControlNetPipeline,
     QwenImageEditInpaintPipeline,
@@ -185,6 +186,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("z-image-controlnet-inpaint", ZImageControlNetInpaintPipeline),
         ("z-image-omni", ZImageOmniPipeline),
         ("ovis", OvisImagePipeline),
+        ("prx", PRXPipeline),
     ]
 )
 
