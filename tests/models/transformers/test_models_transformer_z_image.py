@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,16 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import os
-import unittest
 
+import pytest
 import torch
 
 from diffusers import ZImageTransformer2DModel
 
 from ...testing_utils import IS_GITHUB_ACTIONS, torch_device
-from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TorchCompileTesterMixin,
+    TrainingTesterMixin,
+)
 
 
 # Z-Image requires torch.use_deterministic_algorithms(False) due to complex64 RoPE operations
@@ -36,44 +40,39 @@ if hasattr(torch.backends, "cuda"):
     torch.backends.cuda.matmul.allow_tf32 = False
 
 
-@unittest.skipIf(
+pytestmark = pytest.mark.skipif(
     IS_GITHUB_ACTIONS,
     reason="Skipping test-suite inside the CI because the model has `torch.empty()` inside of it during init and we don't have a clear way to override it in the modeling tests.",
 )
-class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = ZImageTransformer2DModel
-    main_input_name = "x"
-    # We override the items here because the transformer under consideration is small.
-    model_split_percents = [0.9, 0.9, 0.9]
 
-    def prepare_dummy_input(self, height=16, width=16):
-        batch_size = 1
-        num_channels = 16
-        embedding_dim = 16
-        sequence_length = 16
 
-        hidden_states = [torch.randn((num_channels, 1, height, width)).to(torch_device) for _ in range(batch_size)]
-        encoder_hidden_states = [
-            torch.randn((sequence_length, embedding_dim)).to(torch_device) for _ in range(batch_size)
-        ]
-        timestep = torch.tensor([0.0]).to(torch_device)
-
-        return {"x": hidden_states, "cap_feats": encoder_hidden_states, "t": timestep}
+class ZImageTransformerTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return ZImageTransformer2DModel
 
     @property
-    def dummy_input(self):
-        return self.prepare_dummy_input()
-
-    @property
-    def input_shape(self):
+    def output_shape(self) -> tuple[int, ...]:
         return (4, 32, 32)
 
     @property
-    def output_shape(self):
+    def input_shape(self) -> tuple[int, ...]:
         return (4, 32, 32)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    @property
+    def model_split_percents(self) -> list:
+        return [0.9, 0.9, 0.9]
+
+    @property
+    def main_input_name(self) -> str:
+        return "x"
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict[str, int | list[int] | tuple | str | bool | float]:
+        return {
             "all_patch_size": (2,),
             "all_f_patch_size": (1,),
             "in_channels": 16,
@@ -89,83 +88,100 @@ class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
             "axes_dims": [8, 4, 4],
             "axes_lens": [256, 32, 32],
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
-    def setUp(self):
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor | list]:
+        batch_size = 1
+        num_channels = 16
+        embedding_dim = 16
+        sequence_length = 16
+        height = 16
+        width = 16
 
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
+        hidden_states = [torch.randn((num_channels, 1, height, width)).to(torch_device) for _ in range(batch_size)]
+        encoder_hidden_states = [
+            torch.randn((sequence_length, embedding_dim)).to(torch_device) for _ in range(batch_size)
+        ]
+        timestep = torch.tensor([0.0]).to(torch_device)
 
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"ZImageTransformer2DModel"}
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+        return {"x": hidden_states, "cap_feats": encoder_hidden_states, "t": timestep}
 
-    @unittest.skip("Test is not supported for handling main inputs that are lists.")
-    def test_training(self):
-        super().test_training()
 
-    @unittest.skip("Test is not supported for handling main inputs that are lists.")
-    def test_ema_training(self):
-        super().test_ema_training()
+class TestZImageTransformer(ZImageTransformerTesterConfig, ModelTesterMixin):
+    """Core model tests for Z-Image Transformer."""
 
-    @unittest.skip("Test is not supported for handling main inputs that are lists.")
-    def test_effective_gradient_checkpointing(self):
-        super().test_effective_gradient_checkpointing()
+    @pytest.mark.skip("Test is not supported for handling main inputs that are lists.")
+    def test_outputs_equivalence(self, atol=1e-5, rtol=0):
+        pass
 
-    @unittest.skip(
-        "Test needs to be revisited. But we need to ensure `x_pad_token` and `cap_pad_token` are cast to the same dtype as the destination tensor before they are assigned to the padding indices."
+
+class TestZImageTransformerMemory(ZImageTransformerTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for Z-Image Transformer."""
+
+    @pytest.mark.skip("Test will pass if we change to deterministic values instead of empty in the DiT.")
+    def test_group_offloading(self, record_stream, atol=1e-5, rtol=0):
+        pass
+
+    @pytest.mark.skip("Test will pass if we change to deterministic values instead of empty in the DiT.")
+    def test_group_offloading_with_disk(self, tmp_path, record_stream, offload_type, atol=1e-5, rtol=0):
+        pass
+
+    @pytest.mark.skip(
+        "Test needs to be revisited. Ensure `x_pad_token` and `cap_pad_token` are cast to the same dtype as the destination tensor before they are assigned to the padding indices."
     )
     def test_layerwise_casting_training(self):
-        super().test_layerwise_casting_training()
-
-    @unittest.skip("Test is not supported for handling main inputs that are lists.")
-    def test_outputs_equivalence(self):
-        super().test_outputs_equivalence()
-
-    @unittest.skip("Test will pass if we change to deterministic values instead of empty in the DiT.")
-    def test_group_offloading(self):
-        super().test_group_offloading()
-
-    @unittest.skip("Test will pass if we change to deterministic values instead of empty in the DiT.")
-    def test_group_offloading_with_disk(self):
-        super().test_group_offloading_with_disk()
+        pass
 
 
-class ZImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = ZImageTransformer2DModel
-    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
+class TestZImageTransformerTraining(ZImageTransformerTesterConfig, TrainingTesterMixin):
+    """Training tests for Z-Image Transformer."""
 
-    def prepare_init_args_and_inputs_for_common(self):
-        return ZImageTransformerTests().prepare_init_args_and_inputs_for_common()
+    def test_gradient_checkpointing_is_applied(self):
+        super().test_gradient_checkpointing_is_applied(expected_set={"ZImageTransformer2DModel"})
 
-    def prepare_dummy_input(self, height, width):
-        return ZImageTransformerTests().prepare_dummy_input(height=height, width=width)
+    @pytest.mark.skip("Test is not supported for handling main inputs that are lists.")
+    def test_training(self):
+        pass
 
-    @unittest.skip(
-        "The repeated block in this model is ZImageTransformerBlock, which is used for noise_refiner, context_refiner, and layers. As a consequence of this, the inputs recorded for the block would vary during compilation and full compilation with fullgraph=True would trigger recompilation at least thrice."
+    @pytest.mark.skip("Test is not supported for handling main inputs that are lists.")
+    def test_training_with_ema(self):
+        pass
+
+    @pytest.mark.skip("Test is not supported for handling main inputs that are lists.")
+    def test_gradient_checkpointing_equivalence(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip=None):
+        pass
+
+
+class TestZImageTransformerCompile(ZImageTransformerTesterConfig, TorchCompileTesterMixin):
+    """Torch compile tests for Z-Image Transformer."""
+
+    @property
+    def different_shapes_for_compilation(self):
+        return [(4, 4), (4, 8), (8, 8)]
+
+    def get_dummy_inputs(self, height: int = 16, width: int = 16) -> dict[str, torch.Tensor | list]:
+        batch_size = 1
+        num_channels = 16
+        embedding_dim = 16
+        sequence_length = 16
+
+        hidden_states = [torch.randn((num_channels, 1, height, width)).to(torch_device) for _ in range(batch_size)]
+        encoder_hidden_states = [
+            torch.randn((sequence_length, embedding_dim)).to(torch_device) for _ in range(batch_size)
+        ]
+        timestep = torch.tensor([0.0]).to(torch_device)
+
+        return {"x": hidden_states, "cap_feats": encoder_hidden_states, "t": timestep}
+
+    @pytest.mark.skip(
+        "The repeated block in this model is ZImageTransformerBlock, which is used for noise_refiner, context_refiner, and layers. The inputs recorded for the block would vary during compilation and full compilation with fullgraph=True would trigger recompilation at least thrice."
     )
     def test_torch_compile_recompilation_and_graph_break(self):
-        super().test_torch_compile_recompilation_and_graph_break()
+        pass
 
-    @unittest.skip("Fullgraph AoT is broken")
-    def test_compile_works_with_aot(self):
-        super().test_compile_works_with_aot()
+    @pytest.mark.skip("Fullgraph AoT is broken")
+    def test_compile_works_with_aot(self, tmp_path):
+        pass
 
-    @unittest.skip("Fullgraph is broken")
+    @pytest.mark.skip("Fullgraph is broken")
     def test_compile_on_different_shapes(self):
-        super().test_compile_on_different_shapes()
+        pass
