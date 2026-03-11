@@ -9,16 +9,13 @@ import yaml
 from huggingface_hub import HfApi, hf_hub_download
 
 from diffusers import AutoencoderRAE, FlowMatchEulerDiscreteScheduler, RAEDiTPipeline
-from diffusers.models.model_loading_utils import load_state_dict
 from diffusers.models.transformers.transformer_rae_dit import RAEDiT2DModel
 from diffusers.utils import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
-from diffusers.utils.hub_utils import _get_model_file
 
 
 DEFAULT_NUM_TRAIN_TIMESTEPS = 1000
 DEFAULT_SHIFT_BASE = 4096
 DEFAULT_TRANSFORMER_SUBFOLDER = "transformer"
-DEFAULT_GUIDANCE_SUBFOLDER = "guidance_transformer"
 DEFAULT_SCHEDULER_SUBFOLDER = "scheduler"
 
 
@@ -309,35 +306,6 @@ def write_metadata(output_path: Path, metadata: dict[str, Any]) -> None:
         json.dump(metadata, handle, indent=2)
 
 
-def load_autoencoder_rae(model_name_or_path: str, cache_dir: str | None = None) -> AutoencoderRAE:
-    config = AutoencoderRAE.load_config(model_name_or_path, cache_dir=cache_dir)
-    model = AutoencoderRAE.from_config(config)
-
-    try:
-        model_file = _get_model_file(
-            model_name_or_path,
-            weights_name=SAFETENSORS_WEIGHTS_NAME,
-            cache_dir=cache_dir,
-        )
-    except EnvironmentError:
-        model_file = _get_model_file(
-            model_name_or_path,
-            weights_name=WEIGHTS_NAME,
-            cache_dir=cache_dir,
-        )
-
-    state_dict = load_state_dict(model_file)
-    load_result = model.load_state_dict(state_dict, strict=False, assign=True)
-
-    unexpected_keys = set(load_result.unexpected_keys) - {"decoder.decoder_pos_embed"}
-    if len(load_result.missing_keys) > 0 or len(unexpected_keys) > 0:
-        raise RuntimeError(
-            "Error(s) in loading state_dict for AutoencoderRAE: "
-            f"missing_keys={load_result.missing_keys}, unexpected_keys={sorted(unexpected_keys)}"
-        )
-    return model
-
-
 def resolve_input_path(accessor: RepoAccessor, path: str) -> Path:
     candidates = [path]
     if path.startswith("models/"):
@@ -400,18 +368,6 @@ def convert(args: argparse.Namespace) -> None:
     scheduler, scheduler_metadata = build_scheduler_config(config)
     sampler = _resolve_section(config, "sampler")
 
-    guidance_config = guidance.get("guidance_model")
-    guidance_checkpoint_path = None
-    guidance_transformer_config = None
-    if guidance_config is not None and not args.skip_guidance_model:
-        guidance_transformer_config = build_transformer_config(guidance_config["params"], misc)
-        guidance_checkpoint_path = resolve_checkpoint_path(
-            weights_accessor,
-            configured_path=guidance_config.get("ckpt"),
-            override_path=args.guidance_checkpoint_path,
-            description="Guidance checkpoint",
-        )
-
     metadata = {
         "source": {
             "weights_repo_or_path": args.repo_or_path,
@@ -444,16 +400,12 @@ def convert(args: argparse.Namespace) -> None:
             "Warning: upstream sampler is not the public ODE/Euler path. The saved scheduler still uses "
             "FlowMatchEulerDiscreteScheduler for diffusers V1 compatibility."
         )
-    if guidance_checkpoint_path is not None:
-        print(f"Using guidance checkpoint: {guidance_checkpoint_path}")
-    elif guidance_config is not None:
-        print("Guidance model found in config but not converting it (missing checkpoint or `--skip_guidance_model`).")
+    if guidance.get("guidance_model") is not None:
+        print("Note: upstream `guidance.guidance_model` is ignored in this diffusers V1 converter.")
 
     if args.dry_run:
         print(json.dumps(metadata, indent=2))
         print(json.dumps({"transformer_config": transformer_config}, indent=2))
-        if guidance_transformer_config is not None:
-            print(json.dumps({"guidance_transformer_config": guidance_transformer_config}, indent=2))
         return
 
     output_path = Path(args.output_path)
@@ -471,28 +423,12 @@ def convert(args: argparse.Namespace) -> None:
         component_name="transformer",
     )
 
-    if guidance_checkpoint_path is not None and guidance_transformer_config is not None:
-        guidance_output_dir = output_path / args.guidance_subfolder
-        metadata["guidance_transformer"] = convert_transformer_state_dict(
-            transformer_config=guidance_transformer_config,
-            checkpoint_path=guidance_checkpoint_path,
-            checkpoint_key=args.guidance_checkpoint_key,
-            prefer_ema=not args.disable_ema,
-            output_dir=guidance_output_dir,
-            safe_serialization=args.safe_serialization,
-            verify_load=args.verify_load,
-            component_name="guidance_transformer",
-        )
-
     scheduler_output_dir = output_path / args.scheduler_subfolder
     scheduler.save_pretrained(scheduler_output_dir)
 
     if args.vae_model_name_or_path is not None:
-        vae = load_autoencoder_rae(args.vae_model_name_or_path, cache_dir=args.cache_dir)
+        vae = AutoencoderRAE.from_pretrained(args.vae_model_name_or_path, cache_dir=args.cache_dir)
         transformer = RAEDiT2DModel.from_pretrained(transformer_output_dir, low_cpu_mem_usage=False)
-        guidance_transformer = None
-        if "guidance_transformer" in metadata:
-            guidance_transformer = RAEDiT2DModel.from_pretrained(guidance_output_dir, low_cpu_mem_usage=False)
         scheduler_for_pipe = FlowMatchEulerDiscreteScheduler.from_pretrained(scheduler_output_dir)
 
         id2label = None
@@ -502,7 +438,6 @@ def convert(args: argparse.Namespace) -> None:
 
         pipe = RAEDiTPipeline(
             transformer=transformer,
-            guidance_transformer=guidance_transformer,
             vae=vae,
             scheduler=scheduler_for_pipe,
             id2label=id2label,
@@ -514,8 +449,6 @@ def convert(args: argparse.Namespace) -> None:
 
     print(f"Saved transformer to:      {transformer_output_dir}")
     print(f"Saved scheduler to:        {scheduler_output_dir}")
-    if "guidance_transformer" in metadata:
-        print(f"Saved guidance model to:   {output_path / args.guidance_subfolder}")
     if "pipeline" in metadata:
         print(f"Saved pipeline to:         {output_path}")
     print(f"Saved metadata to:         {output_path / 'conversion_metadata.json'}")
@@ -561,34 +494,16 @@ def parse_args() -> argparse.Namespace:
         help="Optional Stage-2 checkpoint override. Interpreted relative to `repo_or_path` unless it is already local.",
     )
     parser.add_argument(
-        "--guidance_checkpoint_path",
-        type=str,
-        default=None,
-        help="Optional autoguidance checkpoint override.",
-    )
-    parser.add_argument(
         "--checkpoint_key",
         type=str,
         default=None,
         help="Optional dotted key path inside the Stage-2 checkpoint payload. By default the converter auto-prefers `ema` then `model`.",
     )
     parser.add_argument(
-        "--guidance_checkpoint_key",
-        type=str,
-        default=None,
-        help="Optional dotted key path inside the guidance checkpoint payload.",
-    )
-    parser.add_argument(
         "--transformer_subfolder",
         type=str,
         default=DEFAULT_TRANSFORMER_SUBFOLDER,
         help="Subfolder name used for the converted primary transformer.",
-    )
-    parser.add_argument(
-        "--guidance_subfolder",
-        type=str,
-        default=DEFAULT_GUIDANCE_SUBFOLDER,
-        help="Subfolder name used for the converted autoguidance transformer.",
     )
     parser.add_argument(
         "--scheduler_subfolder",
@@ -601,11 +516,6 @@ def parse_args() -> argparse.Namespace:
         "--disable_ema",
         action="store_true",
         help="Do not prefer `ema` when the checkpoint stores both `ema` and `model` weights.",
-    )
-    parser.add_argument(
-        "--skip_guidance_model",
-        action="store_true",
-        help="Do not convert `guidance.guidance_model` even if it is present in the config.",
     )
     parser.add_argument(
         "--safe_serialization",

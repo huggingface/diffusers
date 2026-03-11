@@ -19,7 +19,6 @@ import torch
 
 from diffusers import AutoencoderRAE
 from scripts.convert_rae_stage2_to_diffusers import (
-    load_autoencoder_rae,
     translate_transformer_state_dict,
     unwrap_state_dict,
 )
@@ -79,7 +78,7 @@ def test_translate_transformer_state_dict_maps_gelu_keys():
     assert torch.equal(translated["blocks.0.mlp.net.2.weight"], fc2_weight)
 
 
-def test_load_autoencoder_rae_loads_local_checkpoint_without_from_pretrained():
+def test_autoencoder_rae_from_pretrained_loads_local_checkpoint():
     model = AutoencoderRAE(
         encoder_type="mae",
         encoder_hidden_size=64,
@@ -102,7 +101,7 @@ def test_load_autoencoder_rae_loads_local_checkpoint_without_from_pretrained():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         model.save_pretrained(tmpdir, safe_serialization=False)
-        loaded = load_autoencoder_rae(tmpdir)
+        loaded = AutoencoderRAE.from_pretrained(tmpdir)
 
     assert isinstance(loaded, AutoencoderRAE)
     assert loaded.config.image_size == 16
