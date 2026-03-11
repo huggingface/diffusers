@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+import os
 from dataclasses import dataclass
 from math import sqrt
 from typing import Any
@@ -19,9 +21,19 @@ from typing import Any
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from huggingface_hub.utils import validate_hf_hub_args
 
+from ... import __version__
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput, logging
+from ...utils import (
+    SAFETENSORS_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+    BaseOutput,
+    _add_variant,
+    _get_checkpoint_shard_files,
+    _get_model_file,
+    logging,
+)
 from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.import_utils import is_transformers_available
 from ...utils.torch_utils import randn_tensor
@@ -41,6 +53,7 @@ from ..activations import get_activation
 from ..attention import AttentionMixin
 from ..attention_processor import Attention
 from ..embeddings import get_2d_sincos_pos_embed
+from ..model_loading_utils import _fetch_index_file, _fetch_index_file_legacy, load_state_dict
 from ..modeling_utils import ModelMixin
 from .vae import AutoencoderMixin, DecoderOutput, EncoderOutput
 
@@ -576,6 +589,237 @@ class AutoencoderRAE(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
 
         # Slicing support (batch dimension) similar to other diffusers autoencoders
         self.use_slicing = False
+
+    @classmethod
+    @validate_hf_hub_args
+    def from_pretrained(cls, pretrained_model_name_or_path: str | os.PathLike | None, **kwargs):
+        cache_dir = kwargs.pop("cache_dir", None)
+        ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
+        force_download = kwargs.pop("force_download", False)
+        from_flax = kwargs.pop("from_flax", False)
+        proxies = kwargs.pop("proxies", None)
+        output_loading_info = kwargs.pop("output_loading_info", False)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+        subfolder = kwargs.pop("subfolder", None)
+        device_map = kwargs.pop("device_map", None)
+        max_memory = kwargs.pop("max_memory", None)
+        offload_folder = kwargs.pop("offload_folder", None)
+        offload_state_dict = kwargs.pop("offload_state_dict", None)
+        kwargs.pop("low_cpu_mem_usage", None)
+        variant = kwargs.pop("variant", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        quantization_config = kwargs.pop("quantization_config", None)
+        dduf_entries = kwargs.pop("dduf_entries", None)
+        disable_mmap = kwargs.pop("disable_mmap", False)
+        parallel_config = kwargs.pop("parallel_config", None)
+
+        target_device = None
+
+        if from_flax:
+            raise NotImplementedError("`AutoencoderRAE.from_pretrained(..., from_flax=True)` is not supported.")
+
+        if isinstance(device_map, dict):
+            if set(device_map.keys()) != {""}:
+                raise NotImplementedError("AutoencoderRAE only supports whole-model `device_map` placement.")
+            device_map = device_map[""]
+
+        if isinstance(device_map, torch.device):
+            target_device = device_map
+        elif isinstance(device_map, str):
+            if device_map in ["auto", "balanced", "balanced_low_0", "sequential"]:
+                raise NotImplementedError("AutoencoderRAE does not support accelerator-computed `device_map` values.")
+            target_device = torch.device(device_map)
+        elif isinstance(device_map, int):
+            if device_map < 0:
+                raise ValueError("Negative integer `device_map` values are not supported.")
+            target_device = torch.device(f"cuda:{device_map}")
+        elif device_map is not None:
+            raise NotImplementedError("`AutoencoderRAE.from_pretrained(..., device_map=...)` is not supported.")
+
+        if max_memory is not None or offload_folder is not None or offload_state_dict is not None:
+            raise NotImplementedError("AutoencoderRAE does not support offloaded loading in `from_pretrained()`.")
+        if quantization_config is not None:
+            raise NotImplementedError("`AutoencoderRAE.from_pretrained(..., quantization_config=...)` is not supported.")
+        if parallel_config is not None:
+            raise NotImplementedError("`AutoencoderRAE.from_pretrained(..., parallel_config=...)` is not supported.")
+
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
+            torch_dtype = torch.float32
+            logger.warning(
+                f"Passed `torch_dtype` {torch_dtype} is not a `torch.dtype`. Defaulting to `torch.float32`."
+            )
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {
+            "diffusers": __version__,
+            "file_type": "model",
+            "framework": "pytorch",
+        }
+
+        config, unused_kwargs, _ = cls.load_config(
+            pretrained_model_name_or_path,
+            cache_dir=cache_dir,
+            return_unused_kwargs=True,
+            return_commit_hash=True,
+            force_download=force_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            dduf_entries=dduf_entries,
+            **kwargs,
+        )
+        config = copy.deepcopy(config)
+
+        dtype_orig = None
+        if torch_dtype is not None:
+            dtype_orig = cls._set_default_torch_dtype(torch_dtype)
+
+        model = cls.from_config(config, **unused_kwargs)
+
+        if dtype_orig is not None:
+            torch.set_default_dtype(dtype_orig)
+
+        is_local = os.path.isdir(pretrained_model_name_or_path)
+        resolved_model_file = None
+        sharded_metadata = None
+        index_file_kwargs = {
+            "is_local": is_local,
+            "pretrained_model_name_or_path": pretrained_model_name_or_path,
+            "subfolder": subfolder or "",
+            "use_safetensors": use_safetensors,
+            "cache_dir": cache_dir,
+            "variant": variant,
+            "force_download": force_download,
+            "proxies": proxies,
+            "local_files_only": local_files_only,
+            "token": token,
+            "revision": revision,
+            "user_agent": user_agent,
+            "commit_hash": None,
+            "dduf_entries": dduf_entries,
+        }
+        index_file = _fetch_index_file(**index_file_kwargs)
+        if variant is not None and (index_file is None or not os.path.exists(index_file)):
+            index_file = _fetch_index_file_legacy(**index_file_kwargs)
+
+        is_sharded = index_file is not None and (dduf_entries or index_file.is_file())
+        if is_sharded:
+            resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
+                pretrained_model_name_or_path,
+                index_file,
+                cache_dir=cache_dir,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                user_agent=user_agent,
+                revision=revision,
+                subfolder=subfolder or "",
+                dduf_entries=dduf_entries,
+            )
+
+        if not is_sharded:
+            if use_safetensors:
+                try:
+                    resolved_model_file = _get_model_file(
+                        pretrained_model_name_or_path,
+                        weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        token=token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        user_agent=user_agent,
+                        dduf_entries=dduf_entries,
+                    )
+                except IOError as error:
+                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {error}")
+                    if not allow_pickle:
+                        raise
+                    logger.warning(
+                        "Defaulting to unsafe serialization. Pass `use_safetensors=True` to raise an error instead."
+                    )
+
+            if resolved_model_file is None:
+                resolved_model_file = _get_model_file(
+                    pretrained_model_name_or_path,
+                    weights_name=_add_variant(WEIGHTS_NAME, variant),
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                    dduf_entries=dduf_entries,
+                )
+
+        state_dict = None
+        if not is_sharded:
+            state_dict = load_state_dict(resolved_model_file, disable_mmap=disable_mmap, dduf_entries=dduf_entries)
+            model._fix_state_dict_keys_on_load(state_dict)
+            loaded_keys = list(state_dict.keys())
+            resolved_model_files = [resolved_model_file]
+        else:
+            loaded_keys = sharded_metadata["all_checkpoint_keys"]
+            resolved_model_files = resolved_model_file
+
+        (
+            model,
+            missing_keys,
+            unexpected_keys,
+            mismatched_keys,
+            _,
+            error_msgs,
+        ) = cls._load_pretrained_model(
+            model,
+            state_dict,
+            resolved_model_files,
+            pretrained_model_name_or_path,
+            loaded_keys,
+            ignore_mismatched_sizes=ignore_mismatched_sizes,
+            low_cpu_mem_usage=False,
+            device_map=None,
+            offload_folder=None,
+            offload_state_dict=None,
+            dtype=torch_dtype,
+            hf_quantizer=None,
+            keep_in_fp32_modules=[],
+            dduf_entries=dduf_entries,
+            is_parallel_loading_enabled=False,
+            disable_mmap=disable_mmap,
+        )
+
+        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+
+        if torch_dtype is not None:
+            model = model.to(dtype=torch_dtype)
+        if target_device is not None:
+            model = model.to(target_device)
+
+        model.eval()
+
+        if output_loading_info:
+            return model, {
+                "missing_keys": missing_keys,
+                "unexpected_keys": unexpected_keys,
+                "mismatched_keys": mismatched_keys,
+                "error_msgs": error_msgs,
+            }
+
+        return model
 
     def _noising(self, x: torch.Tensor, generator: torch.Generator | None = None) -> torch.Tensor:
         # Per-sample random sigma in [0, noise_tau]

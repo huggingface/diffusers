@@ -37,7 +37,6 @@ from train_rae_dit import (  # noqa: E402
     build_transforms,
     collate_fn,
     compute_resume_offsets,
-    load_autoencoder_rae,
     maybe_load_resumed_scheduler,
     should_skip_resumed_batch,
 )
@@ -162,10 +161,10 @@ class RAEDiT(ExamplesTestsAccelerate):
                 image.save(os.path.join(class_dir, f"sample_{image_idx}.png"))
         return dataset_dir
 
-    def test_load_autoencoder_rae_loads_local_checkpoint(self):
+    def test_autoencoder_rae_from_pretrained_loads_local_checkpoint(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             rae_dir = self._create_tiny_rae(tmpdir)
-            model = load_autoencoder_rae(rae_dir)
+            model = AutoencoderRAE.from_pretrained(rae_dir)
 
         self.assertIsInstance(model, AutoencoderRAE)
         self.assertEqual(model.config.image_size, 16)
