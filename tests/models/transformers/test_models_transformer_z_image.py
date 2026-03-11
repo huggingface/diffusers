@@ -18,6 +18,7 @@ import pytest
 import torch
 
 from diffusers import ZImageTransformer2DModel
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
@@ -70,7 +71,7 @@ class ZImageTransformerTesterConfig(BaseModelTesterConfig):
     def generator(self):
         return torch.Generator("cpu").manual_seed(0)
 
-    def get_init_dict(self) -> dict[str, int | list[int] | tuple | str | bool | float]:
+    def get_init_dict(self):
         return {
             "all_patch_size": (2,),
             "all_f_patch_size": (1,),
@@ -96,9 +97,13 @@ class ZImageTransformerTesterConfig(BaseModelTesterConfig):
         height = 16
         width = 16
 
-        hidden_states = [torch.randn((num_channels, 1, height, width)).to(torch_device) for _ in range(batch_size)]
+        hidden_states = [
+            randn_tensor((num_channels, 1, height, width), generator=self.generator, device=torch_device)
+            for _ in range(batch_size)
+        ]
         encoder_hidden_states = [
-            torch.randn((sequence_length, embedding_dim)).to(torch_device) for _ in range(batch_size)
+            randn_tensor((sequence_length, embedding_dim), generator=self.generator, device=torch_device)
+            for _ in range(batch_size)
         ]
         timestep = torch.tensor([0.0]).to(torch_device)
 
@@ -221,16 +226,8 @@ class TestZImageTransformer(ZImageTransformerTesterConfig, ModelTesterMixin):
 class TestZImageTransformerMemory(ZImageTransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for Z-Image Transformer."""
 
-    @pytest.mark.skip("Test will pass if we change to deterministic values instead of empty in the DiT.")
-    def test_group_offloading(self, record_stream, atol=1e-5, rtol=0):
-        pass
-
-    @pytest.mark.skip("Test will pass if we change to deterministic values instead of empty in the DiT.")
-    def test_group_offloading_with_disk(self, tmp_path, record_stream, offload_type, atol=1e-5, rtol=0):
-        pass
-
     @pytest.mark.skip(
-        "Test needs to be revisited. Ensure `x_pad_token` and `cap_pad_token` are cast to the same dtype as the destination tensor before they are assigned to the padding indices."
+        "Ensure `x_pad_token` and `cap_pad_token` are cast to the same dtype as the destination tensor before they are assigned to the padding indices."
     )
     def test_layerwise_casting_training(self):
         pass
@@ -268,9 +265,13 @@ class TestZImageTransformerCompile(ZImageTransformerTesterConfig, TorchCompileTe
         embedding_dim = 16
         sequence_length = 16
 
-        hidden_states = [torch.randn((num_channels, 1, height, width)).to(torch_device) for _ in range(batch_size)]
+        hidden_states = [
+            randn_tensor((num_channels, 1, height, width), generator=self.generator, device=torch_device)
+            for _ in range(batch_size)
+        ]
         encoder_hidden_states = [
-            torch.randn((sequence_length, embedding_dim)).to(torch_device) for _ in range(batch_size)
+            randn_tensor((sequence_length, embedding_dim), generator=self.generator, device=torch_device)
+            for _ in range(batch_size)
         ]
         timestep = torch.tensor([0.0]).to(torch_device)
 
