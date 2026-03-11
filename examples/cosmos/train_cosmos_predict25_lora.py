@@ -18,6 +18,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict, set_peft_model_state_dict
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 
@@ -25,9 +26,12 @@ import diffusers
 from diffusers import Cosmos2_5_PredictBasePipeline
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import cast_training_params
+from diffusers.utils.torch_utils import is_compiled_module
 from diffusers.utils import (
+    convert_state_dict_to_diffusers,
     is_wandb_available,
     load_video,
+    export_to_video,
 )
 from diffusers.video_processor import VideoProcessor
 
@@ -39,8 +43,21 @@ if is_wandb_available():
 logger = get_logger(__name__, log_level="INFO")
 
 
+class MockSafetyChecker:
+    def to(self, *args, **kwargs):
+        return self
+
+    def check_text_safety(self, *args, **kwargs):
+        return True
+
+    def check_video_safety(self, video):
+        return video
 
 
+def arch_invariant_rand(shape, dtype, device, seed=None):
+    rng = np.random.RandomState(seed)
+    random_array = rng.standard_normal(shape).astype(np.float32)
+    return torch.from_numpy(random_array).to(dtype=dtype, device=device)
 
 
 def parse_args():
@@ -124,7 +141,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="sd-model-finetuned-lora",
+        default="finetuned-lora",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -137,7 +154,7 @@ def parse_args():
     parser.add_argument(
         "--train_batch_size", type=int, default=1, help="Batch size (per device) for the training dataloader."
     )
-    parser.add_argument("--num_train_epochs", type=int, default=100)
+    parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument(
         "--max_train_steps",
         type=int,
@@ -358,7 +375,7 @@ class VideoDataset(Dataset):
 
         # randomly sample a consecutive window of frames
         max_start_idx = total_frames - self.num_frames
-        start_frame = np.random.randint(0, max_start_idx)
+        start_frame = np.random.randint(0, max_start_idx+1)
         return frames[start_frame : start_frame + self.num_frames]
 
     def _setup_caption_format(self) -> None:
@@ -508,6 +525,7 @@ def sample_train_sigma_t(batch_size, distribution, device, dtype=torch.float32, 
 
 def main():
     args = parse_args()
+
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
@@ -554,12 +572,18 @@ def main():
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
+        print('-'*100)
+        print(args)
+        print('-'*100)
+
     # Initialize models
     pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         revision=f"diffusers/base/{args.revision}",
         torch_dtype=torch.bfloat16,
         text_encoder_attn_implementation=args.text_encoder_attn_implementation,
+        safety_checker=MockSafetyChecker(),
+        device_map=str(accelerator.device),
     )
 
     dit = pipe.transformer
@@ -572,11 +596,11 @@ def main():
 
     # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora dit) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
-    weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
+    # weight_dtype = torch.float32
+    # if accelerator.mixed_precision == "fp16":
+    #     weight_dtype = torch.float16
+    # elif accelerator.mixed_precision == "bf16":
+    #     weight_dtype = torch.bfloat16
 
     target_modules_list = ['to_q', 'to_k', 'to_v', 'to_out.0', 'ff.net.0.proj', 'ff.net.2']
     dit_lora_config = LoraConfig(
@@ -592,14 +616,14 @@ def main():
 
     # Move dit, vae and text_encoder to device and cast to weight_dtype
     device = accelerator.device
-    dit.to(device, dtype=weight_dtype)
-    vae.to(device, dtype=weight_dtype)
-    text_encoder.to(device, dtype=weight_dtype)
+    # dit.to(device, dtype=weight_dtype)
+    # vae.to(device, dtype=weight_dtype)
+    # text_encoder.to(device, dtype=weight_dtype)
 
     # Add adapter and make sure the trainable params are in float32.
     dit.add_adapter(dit_lora_config)
 
-    if args.mixed_precision in ["fp16", "bf16"]:
+    if accelerator.mixed_precision in ["fp16", "bf16"]:
         # only upcast trainable parameters (LoRA) into fp32
         cast_training_params(dit, dtype=torch.float32)
 
@@ -632,7 +656,7 @@ def main():
     if accelerator.is_main_process:
         accelerator.init_trackers("diffusers-lora", config=vars(args))
 
-    # Train
+
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
@@ -667,9 +691,9 @@ def main():
 
     latents_mean = pipe.latents_mean.float().to(device)
     latents_std = pipe.latents_std.float().to(device) # 1/σ
-
+    #'''
     # Start training
-    torch.set_grad_enabled(True)  # disabled by Cosmos2_5_PredictBasePipeline
+    torch.set_grad_enabled(True)  # re-enable grad disabled by Cosmos2_5_PredictBasePipeline
     for epoch in range(first_epoch, args.num_train_epochs):
         dit.train()
         train_loss = 0.0
@@ -768,10 +792,44 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
-    # TODO: Save the lora layers
+    #'''
+    
+    accelerator.wait_for_everyone()
+    if accelerator.is_main_process:
+        # Save the lora layers
+        unwrapped_dit = accelerator.unwrap_model(dit)
+        dit_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_dit))
+        Cosmos2_5_PredictBasePipeline.save_lora_weights(
+            save_directory=args.output_dir,
+            transformer_lora_layers=dit_lora_state_dict,
+            safe_serialization=True,
+        )
+        # Final eval
+        # pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(
+        #     args.pretrained_model_name_or_path,
+        #     revision=f"diffusers/base/{args.revision}",
+        #     torch_dtype=torch.bfloat16,
+        #     safety_checker=MockSafetyChecker(),
+        #     device_map=str(accelerator.device),
+        # )
+        # pipe.load_lora_weights(args.output_dir)
+        noises = arch_invariant_rand((1, *latent_shape), dtype=torch.float32, device=device, seed=args.seed)
+        inputs = next(iter(train_dataloader))
+
+        pipe.transformer.eval()
+        with torch.inference_mode():
+            frames = pipe(
+                image=None,
+                video=inputs['video'],
+                prompt=inputs["caption"],
+                num_frames=args.num_frames,
+                num_inference_steps=36,
+                latents=noises, # optional argument to ensure architecture invariant generation
+            ).frames[0]
+        
+        export_to_video(frames, os.path.join(args.output_dir, "eval_output.mp4"), fps=16)
 
     accelerator.end_training()
-
 
 if __name__ == "__main__":
     main()
