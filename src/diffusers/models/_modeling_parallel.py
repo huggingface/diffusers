@@ -60,6 +60,16 @@ class ContextParallelConfig:
         rotate_method (`str`, *optional*, defaults to `"allgather"`):
             Method to use for rotating key/value states across devices in ring attention. Currently, only `"allgather"`
             is supported.
+        ulysses_anything (`bool`, *optional*, defaults to `False`):
+            Whether to enable "Ulysses Anything" mode, which supports arbitrary sequence lengths and head counts that
+            are not evenly divisible by `ulysses_degree`. When enabled, `ulysses_degree` must be greater than 1 and
+            `ring_degree` must be 1.
+        mesh (`torch.distributed.device_mesh.DeviceMesh`, *optional*):
+            A custom device mesh to use for context parallelism. If provided, this mesh will be used instead of
+            creating a new one. This is useful when combining context parallelism with other parallelism strategies
+            (e.g., FSDP, tensor parallelism) that share the same device mesh. The mesh must have both "ring" and
+            "ulysses" dimensions. Use size 1 for dimensions not being used (e.g., `mesh_shape=(2, 1, 4)` with
+            `mesh_dim_names=("ring", "ulysses", "fsdp")` for ring attention only with FSDP).
 
     """
 
@@ -68,6 +78,7 @@ class ContextParallelConfig:
     convert_to_fp32: bool = True
     # TODO: support alltoall
     rotate_method: Literal["allgather", "alltoall"] = "allgather"
+    mesh: torch.distributed.device_mesh.DeviceMesh | None = None
     # Whether to enable ulysses anything attention to support
     # any sequence lengths and any head numbers.
     ulysses_anything: bool = False
@@ -124,7 +135,7 @@ class ContextParallelConfig:
                 f"The product of `ring_degree` ({self.ring_degree}) and `ulysses_degree` ({self.ulysses_degree}) must not exceed the world size ({world_size})."
             )
 
-        self._flattened_mesh = self._mesh._flatten()
+        self._flattened_mesh = self._mesh["ring", "ulysses"]._flatten()
         self._ring_mesh = self._mesh["ring"]
         self._ulysses_mesh = self._mesh["ulysses"]
         self._ring_local_rank = self._ring_mesh.get_local_rank()
