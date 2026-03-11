@@ -761,10 +761,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         stg_scale: float = 0.0,
         modality_scale: float = 1.0,
         guidance_rescale: float = 0.0,
-        audio_guidance_scale: float = 4.0,
-        audio_stg_scale: float = 0.0,
-        audio_modality_scale: float = 1.0,
-        audio_guidance_rescale: float = 0.0,
+        audio_guidance_scale: float | None = None,
+        audio_stg_scale: float | None = None,
+        audio_modality_scale: float | None = None,
+        audio_guidance_rescale: float | None = None,
         spatio_temporal_guidance_blocks: list[int] | None = None,
         noise_scale: float = 0.0,
         num_videos_per_prompt: int = 1,
@@ -835,20 +835,23 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://huggingface.co/papers/2305.08891). Guidance rescale factor should fix overexposure when
                 using zero terminal SNR. Used for the video modality.
-            audio_guidance_scale (`float`, *optional* defaults to `4.0`):
+            audio_guidance_scale (`float`, *optional* defaults to `None`):
                 Audio guidance scale for CFG with respect to the negative prompt. The CFG update rule is the same for
                 video and audio, but they can use different values for the guidance scale. The LTX-2.X authors suggest
                 that the `audio_guidance_scale` should be higher relative to the video `guidance_scale` (e.g. for
-                LTX-2.3 they suggest 3.0 for video and 7.0 for audio).
-            audio_stg_scale (`float`, *optional*, defaults to `0.0`):
+                LTX-2.3 they suggest 3.0 for video and 7.0 for audio). If `None`, defaults to the video value
+                `guidance_scale`.
+            audio_stg_scale (`float`, *optional*, defaults to `None`):
                 Audio guidance scale for STG. As with CFG, the STG update rule is otherwise the same for video and
-                audio. For LTX-2.3, a value of 1.0 is suggested for both video and audio.
-            audio_modality_scale (`float`, *optional*, defaults to `1.0`):
+                audio. For LTX-2.3, a value of 1.0 is suggested for both video and audio. If `None`, defaults to the
+                video value `stg_scale`.
+            audio_modality_scale (`float`, *optional*, defaults to `None`):
                 Audio guidance scale for LTX-2.X modality isolation guidance. As with CFG, the modality guidance rule
                 is otherwise the same for video and audio. For LTX-2.3, a value of 3.0 is suggested for both video and
-                audio.
-            audio_guidance_rescale (`float`, *optional*, defaults to `0.0`):
-                A separate guidance rescale factor for the audio modality.
+                audio. If `None`, defaults to the video value `modality_scale`.
+            audio_guidance_rescale (`float`, *optional*, defaults to `None`):
+                A separate guidance rescale factor for the audio modality. If `None`, defaults to the video value
+                `guidance_rescale`.
             spatio_temporal_guidance_blocks (`list[int]`, *optional*, defaults to `None`):
                 The zero-indexed transformer block indices at which to apply STG. Must be supplied if STG is used
                 (`stg_scale` or `audio_stg_scale` is greater than `0`). A value of `[29]` is recommended for LTX-2.0
@@ -914,6 +917,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+
+        audio_guidance_scale = audio_guidance_scale or guidance_scale
+        audio_stg_scale = audio_stg_scale or stg_scale
+        audio_modality_scale = audio_modality_scale or modality_scale
+        audio_guidance_rescale = audio_guidance_rescale or guidance_rescale
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
