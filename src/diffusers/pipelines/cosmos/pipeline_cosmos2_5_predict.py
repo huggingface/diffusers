@@ -744,17 +744,20 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                     f"num_latent_conditional_frames must be 1 or 2, but got {num_latent_conditional_frames}"
                 )
 
-            frames_to_extract = 4 * (num_latent_conditional_frames - 1) + 1
-            total_input_frames = len(video)
+            # List of num_frames images -> tensor of shape [B, C, T, H, W]
+            needs_preprocessing = not (isinstance(video, torch.Tensor) and video.ndim == 5 and video.shape[1] == 3)
+            if needs_preprocessing:
+                video = self.video_processor.preprocess_video(video, height, width)
 
+            # For Video2World: extract last frames_to_extract frames from input, then pad
+            frames_to_extract = 4 * (num_latent_conditional_frames - 1) + 1
+            total_input_frames = video.shape[2]
             if total_input_frames < frames_to_extract:
                 raise ValueError(
                     f"Input video has only {total_input_frames} frames but Video2World requires at least "
                     f"{frames_to_extract} frames for conditioning."
-                )
-
-            video = self.video_processor.preprocess_video(video, height, width)
-            # For Video2World: extract last frames_to_extract frames from input, then pad
+                ) 
+            
             video = video[:, :, -frames_to_extract:, :, :]
             if video.shape[2] < num_frames:
                 n_pad_frames = num_frames - video.shape[2]
