@@ -212,6 +212,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
         safety_checker: CosmosSafetyChecker = None,
+        autocast_fp32: bool = True,
     ):
         super().__init__()
 
@@ -227,33 +228,29 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             safety_checker=safety_checker,
         )
 
+        if transformer is not None:
+            transformer.set_autocast_fp32(autocast_fp32)
+
         self.vae_scale_factor_temporal = 2 ** sum(self.vae.temperal_downsample) if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample='bilinear')
 
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).float()
-            if getattr(self.vae.config, "latents_mean", None) is not None
-            else None
-        )
-        latents_std = (
-            torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).float()
-            if getattr(self.vae.config, "latents_std", None) is not None
-            else None
-        )
+        assert getattr(self.vae.config, "latents_mean", None), "VAE configuration must define `latents_mean`."
+        assert getattr(self.vae.config, "latents_std", None), "VAE configuration must define `latents_std`."
+        
+        latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1).float()
+        latents_std = torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).float()
         self.latents_mean = latents_mean
         self.latents_std = 1.0 / latents_std
 
-        if self.latents_mean is None or self.latents_std is None:
-            raise ValueError("VAE configuration must define both `latents_mean` and `latents_std`.")
-
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        text_encoder_attn_implementation = kwargs.pop("text_encoder_attn_implementation", None)
-        if text_encoder_attn_implementation is not None and "text_encoder" not in kwargs:
+        text_encoder_attn_implementation = kwargs.pop("text_encoder_attn_implementation", "flash_attention_2")
+        if "text_encoder" not in kwargs:
             load_kwargs = kwargs.copy()
             load_kwargs['attn_implementation'] = text_encoder_attn_implementation
             load_kwargs.pop('safety_checker', None)
+            load_kwargs.pop('autocast_fp32', None)
             
             if os.path.isdir(pretrained_model_name_or_path):
                 text_encoder_path = os.path.join(pretrained_model_name_or_path, "text_encoder")
@@ -483,7 +480,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             if needs_preprocessing:
                 video = self.video_processor.preprocess_video(video, height, width)
 
-            video = video.to(device=device, dtype=self.vae.dtype)
             if isinstance(generator, list):
                 cond_latents = [
                     retrieve_latents(self.vae.encode(video[i].unsqueeze(0)), generator=generator[i], sample_mode="argmax")
@@ -720,13 +716,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
         )
 
-        is_video = video is not None
-        is_image = image is not None
-        assert is_image or is_video, "Either `image` or `video` must be provided as input"
-        assert is_image != is_video, "Only one of `image` or `video` can be provided as input"
-
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
+        is_video = video is not None
+        is_image = image is not None
 
         if is_image:
             image = torchvision.transforms.functional.to_tensor(image).unsqueeze(0)
@@ -744,17 +737,20 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                     f"num_latent_conditional_frames must be 1 or 2, but got {num_latent_conditional_frames}"
                 )
 
-            frames_to_extract = 4 * (num_latent_conditional_frames - 1) + 1
-            total_input_frames = len(video)
+            # List of num_frames images -> tensor of shape [B, C, T, H, W]
+            needs_preprocessing = not (isinstance(video, torch.Tensor) and video.ndim == 5 and video.shape[1] == 3)
+            if needs_preprocessing:
+                video = self.video_processor.preprocess_video(video, height, width)
 
+            # For Video2World: extract last frames_to_extract frames from input, then pad
+            frames_to_extract = 4 * (num_latent_conditional_frames - 1) + 1
+            total_input_frames = video.shape[2]
             if total_input_frames < frames_to_extract:
                 raise ValueError(
                     f"Input video has only {total_input_frames} frames but Video2World requires at least "
                     f"{frames_to_extract} frames for conditioning."
-                )
-
-            video = self.video_processor.preprocess_video(video, height, width)
-            # For Video2World: extract last frames_to_extract frames from input, then pad
+                ) 
+            
             video = video[:, :, -frames_to_extract:, :, :]
             if video.shape[2] < num_frames:
                 n_pad_frames = num_frames - video.shape[2]
@@ -762,6 +758,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 pad_frames = last_frame.repeat(1, 1, n_pad_frames, 1, 1)  # [B, C, T, H, W]
                 video = torch.cat((video, pad_frames), dim=2)
             num_frames_in = frames_to_extract
+
+        else:
+            video = torch.zeros(batch_size, num_frames, 3, height, width, dtype=torch.uint8)
+            num_frames_in = 0
 
         video = video.to(device=device, dtype=vae_dtype)
 
@@ -798,11 +798,14 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                     continue
 
                 self._current_timestep = t.cpu().item()
-                # Scale timestep t to [0, 1]
-                sigma_t = (t.float() / self.scheduler.config.num_train_timesteps).expand(latents.shape[0]).to(device)
+                
+                # NOTE: assumes sigma(t) \in [0, 1]
+                sigma_t = self.scheduler.sigmas[i].expand(batch_size).to(device=device, dtype=torch.float32)
+                #sigma_t_ = (t.float() / self.scheduler.config.num_train_timesteps).expand(latents.shape[0]).to(device)
+                
+                in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                 in_latents = in_latents.to(transformer_dtype)
-                in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
 
                 x = torch.load(f'outputs/net_io/robot_pouring/net_step_{i:04d}_cond.pt', weights_only=False)
                 cosmos_out = x['net_out'].cuda()
@@ -810,10 +813,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 in_latents_copy = x['net_in_x_B_C_T_H_W'].to(device)
                 timesteps_copy = 0.001*x['net_in_timesteps_B_T'][None, :, :, None, None].to(device)
                 noise_pred = self.transformer(
-                    hidden_states=in_latents_copy,
+                    hidden_states=in_latents,
                     condition_mask=cond_mask,
-                    timestep=timesteps_copy,
-                    encoder_hidden_states=x['net_in_crossattn_emb'].to(device),
+                    timestep=in_timestep,
+                    encoder_hidden_states=prompt_embeds,
                     padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
@@ -829,9 +832,9 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
 
                 if self.do_classifier_free_guidance:
                     noise_pred_neg = self.transformer(
-                        hidden_states=in_latents_copy,
+                        hidden_states=in_latents,
                         condition_mask=cond_mask,
-                        timestep=timesteps_copy,
+                        timestep=in_timestep,
                         encoder_hidden_states=negative_prompt_embeds,
                         padding_mask=padding_mask,
                         return_dict=False,

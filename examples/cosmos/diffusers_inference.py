@@ -122,6 +122,11 @@ class Args(pydantic.BaseModel):
     Output width in pixels (must be divisible by 16).
     """
 
+    lora_dir: Path | None = None
+    """
+    Path to a directory containing LoRA weights to load before inference.
+    """
+
 def load_inputs(args: Args):
     prompt = None
     negative_prompt = None
@@ -219,6 +224,9 @@ def main(args: Args):
         autocast_fp32=True, # optinal
         safety_checker=MockSafetyChecker(),
     )
+    if args.lora_dir is not None:
+        pipe.load_lora_weights(args.lora_dir)
+        print(f"Loaded LoRA weights from {args.lora_dir}")
 
     latent_shape = pipe.get_latent_shape_cthw(args.height, args.width, args.num_output_frames)
     noises = arch_invariant_rand((1, *latent_shape), dtype=torch.float32, device=args.device, seed=args.seed)
