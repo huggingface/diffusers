@@ -2325,24 +2325,6 @@ class CosmosLoraLoaderMixin(FluxLoraLoaderMixin):
         }
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        has_param_with_expanded_shape = False
-        if len(transformer_lora_state_dict) > 0:
-            has_param_with_expanded_shape = self._maybe_expand_transformer_param_shape_or_error_(
-                transformer, transformer_lora_state_dict, transformer_norm_state_dict
-            )
-
-        if has_param_with_expanded_shape:
-            logger.info(
-                "The LoRA weights contain parameters that have different shapes that expected by the transformer. "
-                "As a result, the state_dict of the transformer has been expanded to match the LoRA parameter shapes. "
-                "To get a comprehensive list of parameter names that were modified, enable debug logging."
-            )
-        if len(transformer_lora_state_dict) > 0:
-            transformer_lora_state_dict = self._maybe_expand_lora_state_dict(
-                transformer=transformer, lora_state_dict=transformer_lora_state_dict
-            )
-            for k in transformer_lora_state_dict:
-                state_dict.update({k: transformer_lora_state_dict[k]})
 
         self.load_lora_into_transformer(
             state_dict,
