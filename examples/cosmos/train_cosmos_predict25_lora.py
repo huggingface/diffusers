@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
@@ -320,6 +321,15 @@ def parse_args():
         type=float,
         default=0.2,
         help="Probability of dropping text or video conditioning per sample for CFG training.",
+    )
+    parser.add_argument(
+        "--conditional_frames_probs",
+        type=json.loads,
+        default={1: 0.5, 2: 0.5},
+        help=(
+            "JSON dict mapping number of conditional frames to sampling probability. "
+            "Default {1: 0.5, 2: 0.5} trains Image2World and Video2World equally."
+        ),
     )
 
     args = parser.parse_args()
@@ -660,6 +670,7 @@ def main():
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataloader.dataset)}")
+    logger.info(f"  Video shape = {(args.height, args.width, args.num_frames)}")
     logger.info(f"  Total Trainable Parameters: {num_trainable_params / 10**9:.2f}B")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
@@ -679,12 +690,7 @@ def main():
     )
 
     padding_mask = torch.zeros(1, 1, args.height, args.width, dtype=dit_dtype, device=device)
-    # Create indicator and mask to make the first few frames of x_t be the ground truth frames
     latent_shape = pipe.get_latent_shape_cthw(args.height, args.width, args.num_frames)
-    cond_indicator, cond_mask = pipe.create_condition_mask(
-        (1, *latent_shape), device=device, dtype=torch.float32, num_cond_latent_frames=2
-    )
-
     latents_mean = pipe.latents_mean.float().to(device)
     latents_std = pipe.latents_std.float().to(device) # 1/σ
     # Start training
@@ -713,6 +719,14 @@ def main():
                 bsz = clean_latent.shape[0]
                 is_drop = torch.rand(bsz, device=device) < args.cfg_dropout_prob
                 prompt_embeds[is_drop] = 0.0
+
+                # Create indicator and mask to make the first few frames of x_t be the ground truth frames
+                frames_options = list(args.conditional_frames_probs.keys())
+                weights = list(args.conditional_frames_probs.values())
+                num_conditional_frames = random.choices(frames_options, weights=weights, k=bsz)
+                cond_indicator, cond_mask = pipe.create_condition_mask(
+                    (bsz, *latent_shape), device=device, dtype=torch.float32, num_cond_latent_frames=num_conditional_frames
+                )
 
                 # Sample a random timestep
                 sigma_t = sample_train_sigma_t(bsz, distribution='logitnormal', device=device)
