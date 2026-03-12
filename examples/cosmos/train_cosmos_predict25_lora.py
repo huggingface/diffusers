@@ -313,6 +313,12 @@ def parse_args():
         action="store_true",
         help="Whether or not to use DoRA (Weight-Decomposed Low-Rank Adaptation).",
     )
+    parser.add_argument(
+        "--num_inference_steps",
+        type=int,
+        default=36,
+        help="Number of denoising steps during final eval inference.",
+    )
     parser.add_argument("--height", type=int, default=704, help="Height of the training videos in pixels.")
     parser.add_argument("--width", type=int, default=1280, help="Width of the training videos in pixels.")
     parser.add_argument("--num_frames", type=int, default=93, help="Number of frames per training video.")
@@ -330,6 +336,53 @@ def parse_args():
             "JSON dict mapping number of conditional frames to sampling probability. "
             "Default {1: 0.5, 2: 0.5} trains Image2World and Video2World equally."
         ),
+    )
+    parser.add_argument(
+        "--optimizer_lr",
+        type=float,
+        default=2 ** (-14.5),
+        help="Learning rate for the AdamW optimizer used in build_optimizer_and_scheduler.",
+    )
+    parser.add_argument(
+        "--optimizer_weight_decay",
+        type=float,
+        default=0.001,
+        help="Weight decay for the AdamW optimizer used in build_optimizer_and_scheduler.",
+    )
+    parser.add_argument(
+        "--scheduler_warm_up_steps",
+        type=int,
+        nargs="+",
+        default=[1000],
+        help="Warm-up steps per cycle for the LambdaLinearScheduler.",
+    )
+    parser.add_argument(
+        "--scheduler_cycle_lengths",
+        type=int,
+        nargs="+",
+        default=[100000],
+        help="Cycle lengths for the LambdaLinearScheduler.",
+    )
+    parser.add_argument(
+        "--scheduler_f_start",
+        type=float,
+        nargs="+",
+        default=[1e-6],
+        help="LR multiplier at the start of each warm-up cycle.",
+    )
+    parser.add_argument(
+        "--scheduler_f_max",
+        type=float,
+        nargs="+",
+        default=[0.5],
+        help="Maximum LR multiplier reached after warm-up.",
+    )
+    parser.add_argument(
+        "--scheduler_f_min",
+        type=float,
+        nargs="+",
+        default=[0.2],
+        help="Minimum LR multiplier at the end of each cycle.",
     )
 
     args = parser.parse_args()
@@ -652,7 +705,16 @@ def main():
         )
 
     from optimizer_utils import build_optimizer_and_scheduler
-    optimizer, lr_scheduler = build_optimizer_and_scheduler(lora_params) # TODO: input args
+    optimizer, lr_scheduler = build_optimizer_and_scheduler(
+        lora_params,
+        lr=args.optimizer_lr,
+        weight_decay=args.optimizer_weight_decay,
+        warm_up_steps=args.scheduler_warm_up_steps,
+        cycle_lengths=args.scheduler_cycle_lengths,
+        f_start=args.scheduler_f_start,
+        f_max=args.scheduler_f_max,
+        f_min=args.scheduler_f_min,
+    )
 
     train_dataloader = build_dataloader(args)
 
@@ -831,8 +893,10 @@ def main():
                 video=inputs["video"].unsqueeze(0).to(device),
                 prompt=inputs["caption"],
                 num_frames=args.num_frames,
-                num_inference_steps=36,
+                num_inference_steps=args.num_inference_steps,
                 latents=noises, # optional argument to ensure architecture invariant generation
+                height=args.height,
+                width=args.width,
             ).frames[0]
         
         export_to_video(frames, os.path.join(args.output_dir, "eval_output.mp4"), fps=16)

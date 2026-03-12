@@ -238,6 +238,8 @@ def main(args: Args):
         num_frames=args.num_output_frames,
         num_inference_steps=args.num_steps,
         generator=torch.Generator().manual_seed(args.seed) if args.seed is not None else None,
+        height=args.height,
+        width=args.width,
         latents=noises, # optional argument to ensure architecture invariant generation
     ).frames[0]  # NOTE: batch_size == 1
 

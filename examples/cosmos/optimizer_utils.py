@@ -88,18 +88,27 @@ def get_base_scheduler(
     )
 
 
-def build_optimizer_and_scheduler(trainable_params):
+def build_optimizer_and_scheduler(
+    trainable_params,
+    lr=2 ** (-14.5),
+    weight_decay=0.001,
+    warm_up_steps=[2000],
+    cycle_lengths=[100000],
+    f_start=[1e-6],
+    f_max=[0.5],
+    f_min=[0.2],
+):
     optimizer_cfg = dict(
-        lr=2 ** (-14.5),
-        weight_decay=0.001,
+        lr=lr,
+        weight_decay=weight_decay,
     )
 
     scheduler_cfg = dict(
-        warm_up_steps=[2000],
-        cycle_lengths=[100000],
-        f_start=[1e-6],
-        f_max=[0.5],
-        f_min=[0.2],
+        warm_up_steps=warm_up_steps,
+        cycle_lengths=cycle_lengths,
+        f_start=f_start,
+        f_max=f_max,
+        f_min=f_min,
     )
 
     optimizer = torch.optim.AdamW(trainable_params, **optimizer_cfg)
