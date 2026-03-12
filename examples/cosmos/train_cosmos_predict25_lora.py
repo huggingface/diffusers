@@ -273,19 +273,13 @@ def parse_args():
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
-        "--checkpointing_steps",
+        "--checkpointing_epochs",
         type=int,
-        default=500,
+        default=20,
         help=(
-            "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
+            "Save a checkpoint of the training state every X epochs. These checkpoints are only suitable for resuming"
             " training using `--resume_from_checkpoint`."
         ),
-    )
-    parser.add_argument(
-        "--checkpoints_total_limit",
-        type=int,
-        default=None,
-        help=("Max number of checkpoints to store."),
     )
     parser.add_argument(
         "--resume_from_checkpoint",
@@ -723,6 +717,19 @@ def main():
         dit, optimizer, train_dataloader, lr_scheduler
     )
 
+    def save_model_hook(models, weights, output_dir):
+        if accelerator.is_main_process:
+            assert len(models) == 1, f"Expected only one model to save, got {len(models)}"
+            dit_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(models[0]))
+            weights.pop()
+            Cosmos2_5_PredictBasePipeline.save_lora_weights(
+                save_directory=output_dir,
+                transformer_lora_layers=dit_lora_state_dict,
+                safe_serialization=True,
+            )
+            
+    accelerator.register_save_state_pre_hook(save_model_hook)
+
     if accelerator.is_main_process:
         accelerator.init_trackers("diffusers-lora", config=vars(args))
 
@@ -831,39 +838,19 @@ def main():
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
-                if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
-                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                        if args.checkpoints_total_limit is not None:
-                            checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
-
-                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                            if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
-                                removing_checkpoints = checkpoints[0:num_to_remove]
-
-                                logger.info(
-                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                                )
-                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
-
-                                for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
-                                    shutil.rmtree(removing_checkpoint)
-
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-
-                        logger.info(f"Saved state to {save_path}")
-
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step >= max_train_steps:
                 break
 
+        if (epoch+1) % args.checkpointing_epochs == 0 and (epoch+1) < args.num_train_epochs:
+            if accelerator.is_main_process:
+                save_path = os.path.join(args.output_dir, f"checkpoint-{epoch}")
+                accelerator.save_state(save_path)
+                logger.info(f"Saved state to {save_path}")
+
+    # After Training
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         # Save the lora layers
@@ -894,7 +881,7 @@ def main():
                 prompt=inputs["caption"],
                 num_frames=args.num_frames,
                 num_inference_steps=args.num_inference_steps,
-                latents=noises, # optional argument to ensure architecture invariant generation
+                latents=noises, # ensure architecture invariant generation
                 height=args.height,
                 width=args.width,
             ).frames[0]
