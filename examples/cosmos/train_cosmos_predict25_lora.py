@@ -101,43 +101,10 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--dataset_config_name",
-        type=str,
-        default=None,
-        help="The config of the Dataset, leave as None if there's only one config.",
-    )
-    parser.add_argument(
         "--train_data_dir",
         type=str,
         default="datasets/cosmos_nemo_assets",
         help=("A folder containing the training data."),
-    )
-    parser.add_argument(
-        "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
-    )
-    parser.add_argument(
-        "--num_validation_images",
-        type=int,
-        default=4,
-        help="Number of images that should be generated during validation with `validation_prompt`.",
-    )
-    parser.add_argument(
-        "--validation_epochs",
-        type=int,
-        default=1,
-        help=(
-            "Run fine-tuning validation every X epochs. The validation process consists of running the prompt"
-            " `args.validation_prompt` multiple times: `args.num_validation_images`."
-        ),
-    )
-    parser.add_argument(
-        "--max_train_samples",
-        type=int,
-        default=None,
-        help=(
-            "For debugging purposes or quicker training, truncate the number of training examples to this "
-            "value if set."
-        ),
     )
     parser.add_argument(
         "--output_dir",
@@ -165,12 +132,6 @@ def parse_args():
     )
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument(
-        "--max_train_steps",
-        type=int,
-        default=1000,
-        help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
-    )
-    parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
         default=1,
@@ -182,44 +143,10 @@ def parse_args():
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     parser.add_argument(
-        "--learning_rate",
-        type=float,
-        default=1e-4,
-        help="Initial learning rate (after the potential warmup period) to use.",
-    )
-    parser.add_argument(
-        "--scale_lr",
-        action="store_true",
-        default=False,
-        help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
-    )
-    parser.add_argument(
-        "--lr_scheduler",
-        type=str,
-        default="constant",
-        help=(
-            'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
-            ' "constant", "constant_with_warmup"]'
-        ),
-    )
-    parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
-    )
-    parser.add_argument(
         "--conditional_frame_timestep",
         type=float,
         default=0.0001,
         help="0.0001 for post-trained model. Set to < 0 to disable.",
-    )
-    parser.add_argument(
-        "--snr_gamma",
-        type=float,
-        default=None,
-        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://huggingface.co/papers/2303.09556.",
-    )
-    parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument(
         "--allow_tf32",
@@ -229,19 +156,8 @@ def parse_args():
             " https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices"
         ),
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
-    parser.add_argument(
-        "--hub_model_id",
-        type=str,
-        default=None,
-        help="The name of the repository to keep in sync with the local `output_dir`.",
-    )
     parser.add_argument(
         "--logging_dir",
         type=str,
@@ -276,19 +192,7 @@ def parse_args():
         "--checkpointing_epochs",
         type=int,
         default=20,
-        help=(
-            "Save a checkpoint of the training state every X epochs. These checkpoints are only suitable for resuming"
-            " training using `--resume_from_checkpoint`."
-        ),
-    )
-    parser.add_argument(
-        "--resume_from_checkpoint",
-        type=str,
-        default=None,
-        help=(
-            "Whether training should be resumed from a previous checkpoint. Use a path saved by"
-            ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
-        ),
+        help="Save a checkpoint of the training state every X epochs.",
     )
     parser.add_argument(
         "--lora_rank",
@@ -332,13 +236,13 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--optimizer_lr",
+        "--learning_rate",
         type=float,
         default=2 ** (-14.5),
         help="Learning rate for the AdamW optimizer used in build_optimizer_and_scheduler.",
     )
     parser.add_argument(
-        "--optimizer_weight_decay",
+        "--weight_decay",
         type=float,
         default=0.001,
         help="Weight decay for the AdamW optimizer used in build_optimizer_and_scheduler.",
@@ -693,16 +597,11 @@ def main():
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
 
-    if args.scale_lr:
-        args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
-        )
-
     from optimizer_utils import build_optimizer_and_scheduler
     optimizer, lr_scheduler = build_optimizer_and_scheduler(
         lora_params,
-        lr=args.optimizer_lr,
-        weight_decay=args.optimizer_weight_decay,
+        lr=args.learning_rate,
+        weight_decay=args.weight_decay,
         warm_up_steps=args.scheduler_warm_up_steps,
         cycle_lengths=args.scheduler_cycle_lengths,
         f_start=args.scheduler_f_start,

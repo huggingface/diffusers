@@ -11,7 +11,6 @@ accelerate launch --mixed_precision="bf16" train_cosmos_predict25_lora.py \
   --num_train_epochs=100 --checkpointing_epochs=10 \
   --seed=0 \
   --output_dir="outputs/gr1_ep100" \
-  --validation_prompt="" \
   --report_to=wandb \
   --height 432 --width 768 \
   --allow_tf32 --gradient_checkpointing \
