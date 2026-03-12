@@ -156,9 +156,9 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     r"""
     The Flux2 Klein KV pipeline for text-to-image generation with KV-cached reference image conditioning.
 
-    On the first denoising step, reference image tokens are included in the forward pass and their attention
-    K/V projections are cached. On subsequent steps, the cached K/V are reused without recomputing,
-    providing faster inference when using reference images.
+    On the first denoising step, reference image tokens are included in the forward pass and their attention K/V
+    projections are cached. On subsequent steps, the cached K/V are reused without recomputing, providing faster
+    inference when using reference images.
 
     Reference:
     [https://bfl.ai/blog/flux2-klein-towards-interactive-visual-intelligence](https://bfl.ai/blog/flux2-klein-towards-interactive-visual-intelligence)
@@ -631,9 +631,9 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         Args:
             image (`PIL.Image.Image` or `List[PIL.Image.Image]`, *optional*):
-                Reference image(s) for conditioning. On the first denoising step, reference tokens are included
-                in the forward pass and their attention K/V are cached. On subsequent steps, the cached K/V are
-                reused without recomputing.
+                Reference image(s) for conditioning. On the first denoising step, reference tokens are included in the
+                forward pass and their attention K/V are cached. On subsequent steps, the cached K/V are reused without
+                recomputing.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation.
             height (`int`, *optional*):

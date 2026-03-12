@@ -43,8 +43,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class Flux2KVLayerCache:
     """Per-layer KV cache for reference image tokens in the Flux2 Klein KV model.
 
-    Stores the K and V projections (post-RoPE) for reference tokens extracted during the first denoising step.
-    Tensor format: (batch_size, num_ref_tokens, num_heads, head_dim).
+    Stores the K and V projections (post-RoPE) for reference tokens extracted during the first denoising step. Tensor
+    format: (batch_size, num_ref_tokens, num_heads, head_dim).
     """
 
     def __init__(self):
@@ -105,9 +105,9 @@ def _flux2_kv_causal_attention(
 
     All tensors use the diffusers convention: (batch_size, seq_len, num_heads, head_dim).
 
-    Without cache (extract mode): sequence layout is [txt, ref, img]. txt+img tokens attend to all tokens,
-    ref tokens only attend to themselves.
-    With cache (cached mode): sequence layout is [txt, img]. Cached ref K/V are injected between txt and img.
+    Without cache (extract mode): sequence layout is [txt, ref, img]. txt+img tokens attend to all tokens, ref tokens
+    only attend to themselves. With cache (cached mode): sequence layout is [txt, img]. Cached ref K/V are injected
+    between txt and img.
     """
     # No ref tokens and no cache — standard full attention
     if num_ref_tokens == 0 and kv_cache is None:
@@ -182,8 +182,8 @@ def _blend_double_block_mods(
 ) -> torch.Tensor:
     """Blend double-block image-stream modulations for a [ref, img] sequence layout.
 
-    Takes raw modulation tensors (before `Flux2Modulation.split`) and returns a blended raw tensor that is
-    compatible with `Flux2Modulation.split(mod, 2)`.
+    Takes raw modulation tensors (before `Flux2Modulation.split`) and returns a blended raw tensor that is compatible
+    with `Flux2Modulation.split(mod, 2)`.
     """
     img_mods = Flux2Modulation.split(img_mod, 2)
     ref_mods = Flux2Modulation.split(ref_mod, 2)
@@ -204,8 +204,7 @@ def _blend_single_block_mods(
 ) -> torch.Tensor:
     """Blend single-block modulations for a [txt, ref, img] sequence layout.
 
-    Takes raw modulation tensors and returns a blended raw tensor compatible with
-    `Flux2Modulation.split(mod, 1)`.
+    Takes raw modulation tensors and returns a blended raw tensor compatible with `Flux2Modulation.split(mod, 1)`.
     """
     img_params = Flux2Modulation.split(single_mod, 1)[0]
     ref_params = Flux2Modulation.split(ref_mod, 1)[0]
@@ -372,10 +371,9 @@ class Flux2KVAttnProcessor:
     """
     Attention processor for Flux2 double-stream blocks with KV caching support for reference image tokens.
 
-    When `kv_cache_mode` is "extract", reference token K/V are stored in the cache after RoPE and causal
-    attention is used (ref tokens self-attend only, txt+img attend to all).
-    When `kv_cache_mode` is "cached", cached ref K/V are injected during attention.
-    When no KV args are provided, behaves identically to `Flux2AttnProcessor`.
+    When `kv_cache_mode` is "extract", reference token K/V are stored in the cache after RoPE and causal attention is
+    used (ref tokens self-attend only, txt+img attend to all). When `kv_cache_mode` is "cached", cached ref K/V are
+    injected during attention. When no KV args are provided, behaves identically to `Flux2AttnProcessor`.
     """
 
     _attention_backend = None
@@ -442,8 +440,12 @@ class Flux2KVAttnProcessor:
             )
         else:
             hidden_states = dispatch_attention_fn(
-                query, key, value, attn_mask=attention_mask,
-                backend=self._attention_backend, parallel_config=self._parallel_config,
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
             )
 
         hidden_states = hidden_states.flatten(2, 3)
@@ -599,9 +601,9 @@ class Flux2KVParallelSelfAttnProcessor:
     """
     Attention processor for Flux2 single-stream blocks with KV caching support for reference image tokens.
 
-    When `kv_cache_mode` is "extract", reference token K/V are stored and causal attention is used.
-    When `kv_cache_mode` is "cached", cached ref K/V are injected during attention.
-    When no KV args are provided, behaves identically to `Flux2ParallelSelfAttnProcessor`.
+    When `kv_cache_mode` is "extract", reference token K/V are stored and causal attention is used. When
+    `kv_cache_mode` is "cached", cached ref K/V are injected during attention. When no KV args are provided, behaves
+    identically to `Flux2ParallelSelfAttnProcessor`.
     """
 
     _attention_backend = None
@@ -658,8 +660,12 @@ class Flux2KVParallelSelfAttnProcessor:
             )
         else:
             attn_output = dispatch_attention_fn(
-                query, key, value, attn_mask=attention_mask,
-                backend=self._attention_backend, parallel_config=self._parallel_config,
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
             )
 
         attn_output = attn_output.flatten(2, 3)
@@ -1179,11 +1185,11 @@ class Flux2Transformer2DModel(
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
             kv_cache (`Flux2KVCache`, *optional*):
-                KV cache for reference image tokens. When `kv_cache_mode` is "extract", a new cache is created
-                and returned. When "cached", the provided cache is used to inject ref K/V during attention.
+                KV cache for reference image tokens. When `kv_cache_mode` is "extract", a new cache is created and
+                returned. When "cached", the provided cache is used to inject ref K/V during attention.
             kv_cache_mode (`str`, *optional*):
-                One of "extract" (first step with ref tokens) or "cached" (subsequent steps using cached ref K/V).
-                When `None`, standard forward pass without KV caching.
+                One of "extract" (first step with ref tokens) or "cached" (subsequent steps using cached ref K/V). When
+                `None`, standard forward pass without KV caching.
             num_ref_tokens (`int`, defaults to `0`):
                 Number of reference image tokens prepended to `hidden_states` (only used when
                 `kv_cache_mode="extract"`).
