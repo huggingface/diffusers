@@ -254,10 +254,12 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
         text_encoder_attn_implementation = kwargs.pop("text_encoder_attn_implementation", "flash_attention_2")
         if "text_encoder" not in kwargs:
-            load_kwargs = kwargs.copy()
-            load_kwargs['attn_implementation'] = text_encoder_attn_implementation
-            load_kwargs.pop('safety_checker', None)
-            load_kwargs.pop('autocast_fp32', None)
+            load_kwargs = {
+                "revision": kwargs.get("revision", None),
+                "device_map": kwargs.get("device_map", None),
+                "torch_dtype": kwargs.get("torch_dtype", None),
+                "attn_implementation": text_encoder_attn_implementation,
+            }
             
             if os.path.isdir(pretrained_model_name_or_path):
                 text_encoder_path = os.path.join(pretrained_model_name_or_path, "text_encoder")
@@ -280,7 +282,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
     def create_condition_mask(self, latent_shape, device, dtype, num_cond_latent_frames):
         bsz, C, T, H, W = latent_shape
         cond_indicator = torch.zeros(bsz, 1, T, 1, 1, dtype=dtype, device=device)
-        cond_indicator[:, :, 0:num_cond_latent_frames] = 1.0
+        if isinstance(num_cond_latent_frames, int):
+            num_cond_latent_frames = [num_cond_latent_frames] * bsz
+        for idx in range(bsz):
+            cond_indicator[idx, :, :num_cond_latent_frames[idx], :, :] = 1.0
         cond_mask = cond_indicator.expand(-1, -1, -1, H, W)
         return cond_indicator, cond_mask
 
@@ -794,8 +799,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         timesteps = self.scheduler.timesteps
         self._num_timesteps = len(timesteps)
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-
-        cond_timestep = torch.ones_like(cond_indicator) * conditional_frame_timestep
         cond_mask = cond_mask.to(transformer_dtype)
         gt_velocity = (latents - cond_latent) * cond_mask
 
@@ -808,8 +811,10 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
                 
                 # NOTE: assumes sigma(t) \in [0, 1]
                 sigma_t = self.scheduler.sigmas[i].expand(batch_size).to(device=device, dtype=torch.float32)
-                
-                in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
+                if conditional_frame_timestep >= 0:
+                    in_timestep = cond_indicator * conditional_frame_timestep + (1 - cond_indicator) * sigma_t
+                else:
+                    in_timestep = sigma_t
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                 in_latents = in_latents.to(transformer_dtype)
 
