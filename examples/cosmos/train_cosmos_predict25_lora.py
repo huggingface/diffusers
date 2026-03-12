@@ -91,16 +91,6 @@ def parse_args():
         help="The attention implementation to use for the text encoder (Qwen2.5 VL).",
     )
     parser.add_argument(
-        "--dataset_name",
-        type=str,
-        default=None,
-        help=(
-            "The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,"
-            " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
-            " or to a folder containing files that 🤗 Datasets can understand."
-        ),
-    )
-    parser.add_argument(
         "--train_data_dir",
         type=str,
         default="datasets/cosmos_nemo_assets",
@@ -282,15 +272,19 @@ def parse_args():
         default=[0.2],
         help="Minimum LR multiplier at the end of each cycle.",
     )
+    parser.add_argument(
+        "--do_final_eval",
+        action="store_true",
+        help="Whether to run inference on a training sample after training completes.",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
-    # Sanity checks
-    if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError("Need either a dataset name or a training folder.")
+    if args.use_dora:
+        args.output_dir = args.output_dir + "-dora"
 
     return args
 
@@ -760,32 +754,25 @@ def main():
             transformer_lora_layers=dit_lora_state_dict,
             safe_serialization=True,
         )
-        # Final eval
-        # pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(
-        #     args.pretrained_model_name_or_path,
-        #     revision=f"diffusers/base/{args.revision}",
-        #     torch_dtype=torch.bfloat16,
-        #     safety_checker=MockSafetyChecker(),
-        #     device_map=str(accelerator.device),
-        # )
-        # pipe.load_lora_weights(args.output_dir)
-        noises = arch_invariant_rand((1, *latent_shape), dtype=torch.float32, device=device, seed=args.seed)
-        inputs = train_dataloader.dataset[0]
 
-        pipe.transformer.eval()
-        with torch.inference_mode():
-            frames = pipe(
-                image=None,
-                video=inputs["video"].unsqueeze(0).to(device),
-                prompt=inputs["caption"],
-                num_frames=args.num_frames,
-                num_inference_steps=args.num_inference_steps,
-                latents=noises, # ensure architecture invariant generation
-                height=args.height,
-                width=args.width,
-            ).frames[0]
-        
-        export_to_video(frames, os.path.join(args.output_dir, "eval_output.mp4"), fps=16)
+        if args.do_final_eval:
+            noises = arch_invariant_rand((1, *latent_shape), dtype=torch.float32, device=device, seed=args.seed)
+            inputs = train_dataloader.dataset[0]
+            
+            pipe.transformer.eval()
+            with torch.inference_mode():
+                frames = pipe(
+                    image=None,
+                    video=inputs["video"].unsqueeze(0).to(device),
+                    prompt=inputs["caption"],
+                    num_frames=args.num_frames,
+                    num_inference_steps=args.num_inference_steps,
+                    latents=noises, # ensure architecture invariant generation
+                    height=args.height,
+                    width=args.width,
+                ).frames[0]
+            
+            export_to_video(frames, os.path.join(args.output_dir, "eval_output.mp4"), fps=16)
 
     accelerator.end_training()
 
