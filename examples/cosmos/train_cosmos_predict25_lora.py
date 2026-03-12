@@ -154,6 +154,14 @@ def parse_args():
     parser.add_argument(
         "--train_batch_size", type=int, default=1, help="Batch size (per device) for the training dataloader."
     )
+    parser.add_argument(
+        "--dataloader_num_workers",
+        type=int,
+        default=4,
+        help=(
+            "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
+        ),
+    )
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument(
         "--max_train_steps",
@@ -353,7 +361,7 @@ class VideoDataset(Dataset):
             self.video_paths = sorted(self.video_paths)
         else:
             self.video_paths = video_paths
-        print(f"{len(self.video_paths)} videos in total")
+        logger.info(f"{len(self.video_paths)} videos in total", main_process_only=True)
 
         self.video_size = video_size
         self.video_processor = VideoProcessor(vae_scale_factor=8, resample='bilinear')
@@ -491,10 +499,10 @@ def build_dataloader(args):
 
     dataloader = DataLoader(
         dataset=dataset,
-        sampler=None,
+        shuffle=True,
         batch_size=args.train_batch_size,
-        drop_last=True,
-        num_workers=4,
+        drop_last=False,
+        num_workers=args.dataloader_num_workers,
         pin_memory=True,
     )
     return dataloader
@@ -518,9 +526,8 @@ def sample_train_sigma_t(batch_size, distribution, device, dtype=torch.float32, 
         t = torch.sigmoid(torch.randn((batch_size,))).to(device=device, dtype=dtype)
     else:
         raise NotImplementedError(f"Time distribution {distribution} is not implemented.")
-    sigma_t = shift * t / (1 + (shift - 1) * t)
-    assert 0.0 <= sigma_t <= 1.0
-    return sigma_t.unsqueeze(1)
+    sigma_t = shift * t / (1 + (shift - 1) * t) # 0.0 <= sigma_t <= 1.0
+    return sigma_t.view(batch_size, 1, 1, 1, 1)
 
 
 def main():
@@ -583,7 +590,6 @@ def main():
         torch_dtype=torch.bfloat16,
         text_encoder_attn_implementation=args.text_encoder_attn_implementation,
         safety_checker=MockSafetyChecker(),
-        device_map=str(accelerator.device),
     )
 
     dit = pipe.transformer
@@ -593,14 +599,6 @@ def main():
     dit.requires_grad_(False)
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
-
-    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora dit) to half-precision
-    # as these weights are only used for inference, keeping weights in full precision is not required.
-    # weight_dtype = torch.float32
-    # if accelerator.mixed_precision == "fp16":
-    #     weight_dtype = torch.float16
-    # elif accelerator.mixed_precision == "bf16":
-    #     weight_dtype = torch.bfloat16
 
     target_modules_list = ['to_q', 'to_k', 'to_v', 'to_out.0', 'ff.net.0.proj', 'ff.net.2']
     dit_lora_config = LoraConfig(
@@ -614,11 +612,11 @@ def main():
         f"Add LoRA: rank={args.lora_rank}, alpha={args.lora_alpha}, targets={target_modules_list}, use_dora={args.use_dora}"
     )
 
-    # Move dit, vae and text_encoder to device and cast to weight_dtype
     device = accelerator.device
-    # dit.to(device, dtype=weight_dtype)
-    # vae.to(device, dtype=weight_dtype)
-    # text_encoder.to(device, dtype=weight_dtype)
+    dit.to(device)
+    vae.to(device)
+    text_encoder.to(device)
+    dit_dtype = dit.dtype
 
     # Add adapter and make sure the trainable params are in float32.
     dit.add_adapter(dit_lora_config)
@@ -656,8 +654,9 @@ def main():
     if accelerator.is_main_process:
         accelerator.init_trackers("diffusers-lora", config=vars(args))
 
-
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataloader.dataset)}")
@@ -667,22 +666,19 @@ def main():
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Gradient Checkpointing = {args.gradient_checkpointing}, allow_tf32 = {args.allow_tf32}")
-    logger.info(f"  Total optimization steps = {args.max_train_steps}")
+    logger.info(f"  Total optimization steps = {max_train_steps}")
     global_step = 0
     first_epoch = 0
     initial_global_step = 0
     progress_bar = tqdm(
-        range(0, args.max_train_steps),
+        range(0, max_train_steps),
         initial=initial_global_step,
         desc="Steps",
         # Only show the progress bar once on each machine.
         disable=not accelerator.is_local_main_process,
     )
 
-    transformer_dtype = dit.dtype
-    noise_scheduler = pipe.scheduler
-    noise_scheduler.set_timesteps(1000, device=device) # TODO: add args
-    padding_mask = torch.zeros(1, 1, args.height, args.width, dtype=transformer_dtype, device=device)
+    padding_mask = torch.zeros(1, 1, args.height, args.width, dtype=dit_dtype, device=device)
     # Create indicator and mask to make the first few frames of x_t be the ground truth frames
     latent_shape = pipe.get_latent_shape_cthw(args.height, args.width, args.num_frames)
     cond_indicator, cond_mask = pipe.create_condition_mask(
@@ -691,7 +687,6 @@ def main():
 
     latents_mean = pipe.latents_mean.float().to(device)
     latents_std = pipe.latents_std.float().to(device) # 1/σ
-    #'''
     # Start training
     torch.set_grad_enabled(True)  # re-enable grad disabled by Cosmos2_5_PredictBasePipeline
     for epoch in range(first_epoch, args.num_train_epochs):
@@ -790,10 +785,9 @@ def main():
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
-            if global_step >= args.max_train_steps:
+            if global_step >= max_train_steps:
                 break
-    #'''
-    
+
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         # Save the lora layers
@@ -814,13 +808,13 @@ def main():
         # )
         # pipe.load_lora_weights(args.output_dir)
         noises = arch_invariant_rand((1, *latent_shape), dtype=torch.float32, device=device, seed=args.seed)
-        inputs = next(iter(train_dataloader))
+        inputs = train_dataloader.dataset[0]
 
         pipe.transformer.eval()
         with torch.inference_mode():
             frames = pipe(
                 image=None,
-                video=inputs['video'],
+                video=inputs["video"].unsqueeze(0).to(device),
                 prompt=inputs["caption"],
                 num_frames=args.num_frames,
                 num_inference_steps=36,
