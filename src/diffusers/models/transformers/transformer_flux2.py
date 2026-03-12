@@ -185,8 +185,13 @@ def _blend_double_block_mods(
     Takes raw modulation tensors (before `Flux2Modulation.split`) and returns a blended raw tensor that is compatible
     with `Flux2Modulation.split(mod, 2)`.
     """
-    img_mods = Flux2Modulation.split(img_mod, 2)
-    ref_mods = Flux2Modulation.split(ref_mod, 2)
+    if img_mod.ndim == 2:
+        img_mod = img_mod.unsqueeze(1)
+        ref_mod = ref_mod.unsqueeze(1)
+    img_chunks = torch.chunk(img_mod, 6, dim=-1)
+    ref_chunks = torch.chunk(ref_mod, 6, dim=-1)
+    img_mods = (img_chunks[0:3], img_chunks[3:6])
+    ref_mods = (ref_chunks[0:3], ref_chunks[3:6])
 
     all_params = []
     for img_set, ref_set in zip(img_mods, ref_mods):
@@ -206,8 +211,11 @@ def _blend_single_block_mods(
 
     Takes raw modulation tensors and returns a blended raw tensor compatible with `Flux2Modulation.split(mod, 1)`.
     """
-    img_params = Flux2Modulation.split(single_mod, 1)[0]
-    ref_params = Flux2Modulation.split(ref_mod, 1)[0]
+    if single_mod.ndim == 2:
+        single_mod = single_mod.unsqueeze(1)
+        ref_mod = ref_mod.unsqueeze(1)
+    img_params = torch.chunk(single_mod, 3, dim=-1)
+    ref_params = torch.chunk(ref_mod, 3, dim=-1)
 
     blended = []
     for im, rm in zip(img_params, ref_params):

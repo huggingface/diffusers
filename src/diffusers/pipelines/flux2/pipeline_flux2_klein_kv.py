@@ -528,8 +528,8 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latents = []
         for image in images:
             image = image.to(device=device, dtype=dtype)
-            imagge_latent = self._encode_vae_image(image=image, generator=generator)
-            image_latents.append(imagge_latent)  # (1, 128, 32, 32)
+            image_latent = self._encode_vae_image(image=image, generator=generator)
+            image_latents.append(image_latent)  # (1, 128, 32, 32)
 
         image_latent_ids = self._prepare_image_ids(image_latents)
 
