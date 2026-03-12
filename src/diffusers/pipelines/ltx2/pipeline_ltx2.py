@@ -775,6 +775,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         negative_prompt_attention_mask: torch.Tensor | None = None,
         decode_timestep: float | list[float] = 0.0,
         decode_noise_scale: float | list[float] | None = None,
+        use_cross_timestep: bool = False,
         output_type: str = "pil",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
@@ -884,6 +885,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 The timestep at which generated video is decoded.
             decode_noise_scale (`float`, defaults to `None`):
                 The interpolation factor between random noise and denoised latents at the decode timestep.
+            use_cross_timestep (`bool` *optional*, defaults to `False`):
+                Whether to use the cross modality (audio is the cross modality of video, and vice versa) sigma when
+                calculating the cross attention modulation parameters. `True` is the newer (e.g. LTX-2.3) behavior;
+                `False` is the legacy LTX-2.0 behavior.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -1145,6 +1150,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                         isolate_modalities=False,
                         spatio_temporal_guidance_blocks=None,
                         perturbation_mask=None,
+                        use_cross_timestep=use_cross_timestep,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )
@@ -1208,6 +1214,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                             # Use STG at given blocks to perturb model
                             spatio_temporal_guidance_blocks=spatio_temporal_guidance_blocks,
                             perturbation_mask=None,
+                            use_cross_timestep=use_cross_timestep,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )
@@ -1243,6 +1250,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                             isolate_modalities=True,
                             spatio_temporal_guidance_blocks=None,
                             perturbation_mask=None,
+                            use_cross_timestep=use_cross_timestep,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )

@@ -1343,6 +1343,7 @@ class LTX2VideoTransformer3DModel(
         isolate_modalities: bool = False,
         spatio_temporal_guidance_blocks: list[int] | None = None,
         perturbation_mask: torch.Tensor | None = None,
+        use_cross_timestep: bool = False,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
@@ -1405,6 +1406,10 @@ class LTX2VideoTransformer3DModel(
                 Perturbation mask for STG of shape `(batch_size,)` or `(batch_size, 1, 1)`. Should be 0 at batch
                 elements where STG should be applied and 1 elsewhere. If STG is being used but `peturbation_mask` is
                 not supplied, will default to applying STG (perturbing) all batch elements.
+            use_cross_timestep (`bool` *optional*, defaults to `False`):
+                Whether to use the cross modality (audio is the cross modality of video, and vice versa) sigma when
+                calculating the cross attention modulation parameters. `True` is the newer (e.g. LTX-2.3) behavior;
+                `False` is the legacy LTX-2.0 behavior.
             attention_kwargs (`dict[str, Any]`, *optional*):
                 Optional dict of keyword args to be passed to the attention processor.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -1444,15 +1449,15 @@ class LTX2VideoTransformer3DModel(
         if audio_self_attention_mask is not None and audio_self_attention_mask.ndim == 3:
             # Convert to additive attention mask in log-space where 0 (masked) values get mapped to a large negative
             # number and positive values are mapped to their logarithm.
-            dtype_finfo = torch.finfo(hidden_states.dtype)
+            dtype_finfo = torch.finfo(audio_hidden_states.dtype)
             additive_self_attn_mask = torch.full_like(
-                audio_self_attention_mask, dtype_finfo.min, dtype=hidden_states.dtype
+                audio_self_attention_mask, dtype_finfo.min, dtype=audio_hidden_states.dtype
             )
             unmasked_entries = audio_self_attention_mask > 0
             if torch.any(unmasked_entries):
                 additive_self_attn_mask[unmasked_entries] = torch.log(
                     audio_self_attention_mask[unmasked_entries].clamp(min=dtype_finfo.tiny)
-                ).to(hidden_states.dtype)
+                ).to(audio_hidden_states.dtype)
             audio_self_attention_mask = additive_self_attn_mask.unsqueeze(1)  # [batch_size, 1, seq_len, seq_len]
 
         batch_size = hidden_states.size(0)
@@ -1517,13 +1522,14 @@ class LTX2VideoTransformer3DModel(
             temb_prompt = temb_prompt_audio = None
 
         # 3.2. Prepare global modality cross attention modulation parameters
+        video_ca_timestep = audio_sigma.flatten() if use_cross_timestep else timestep.flatten()
         video_cross_attn_scale_shift, _ = self.av_cross_attn_video_scale_shift(
-            timestep.flatten(),
+            video_ca_timestep,
             batch_size=batch_size,
             hidden_dtype=hidden_states.dtype,
         )
         video_cross_attn_a2v_gate, _ = self.av_cross_attn_video_a2v_gate(
-            timestep.flatten() * timestep_cross_attn_gate_scale_factor,
+            video_ca_timestep * timestep_cross_attn_gate_scale_factor,
             batch_size=batch_size,
             hidden_dtype=hidden_states.dtype,
         )
@@ -1532,13 +1538,14 @@ class LTX2VideoTransformer3DModel(
         )
         video_cross_attn_a2v_gate = video_cross_attn_a2v_gate.view(batch_size, -1, video_cross_attn_a2v_gate.shape[-1])
 
+        audio_ca_timestep = sigma.flatten() if use_cross_timestep else audio_timestep.flatten()
         audio_cross_attn_scale_shift, _ = self.av_cross_attn_audio_scale_shift(
-            audio_timestep.flatten(),
+            audio_ca_timestep,
             batch_size=batch_size,
             hidden_dtype=audio_hidden_states.dtype,
         )
         audio_cross_attn_v2a_gate, _ = self.av_cross_attn_audio_v2a_gate(
-            audio_timestep.flatten() * timestep_cross_attn_gate_scale_factor,
+            audio_ca_timestep * timestep_cross_attn_gate_scale_factor,
             batch_size=batch_size,
             hidden_dtype=audio_hidden_states.dtype,
         )
