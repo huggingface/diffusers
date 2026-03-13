@@ -16,6 +16,7 @@
 from argparse import ArgumentParser
 
 from .custom_blocks import CustomBlocksCommand
+from .daggr_app import DaggrCommand
 from .env import EnvironmentCommand
 from .fp16_safetensors import FP16SafetensorsCommand
 
@@ -28,6 +29,7 @@ def main():
     EnvironmentCommand.register_subcommand(commands_parser)
     FP16SafetensorsCommand.register_subcommand(commands_parser)
     CustomBlocksCommand.register_subcommand(commands_parser)
+    DaggrCommand.register_subcommand(commands_parser)
 
     # Let's go
     args = parser.parse_args()
