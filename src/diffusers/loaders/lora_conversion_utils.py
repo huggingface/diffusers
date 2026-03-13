@@ -2156,6 +2156,9 @@ def _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict, non_diffusers_pref
             "scale_shift_table_a2v_ca_audio": "audio_a2v_cross_attn_scale_shift_table",
             "q_norm": "norm_q",
             "k_norm": "norm_k",
+            # LTX-2.3
+            "audio_prompt_adaln_single": "audio_prompt_adaln",
+            "prompt_adaln_single": "prompt_adaln",
         }
     else:
         rename_dict = {"aggregate_embed": "text_proj_in"}
