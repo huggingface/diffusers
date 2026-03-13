@@ -793,7 +793,7 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                     latent_model_input = torch.cat([image_latents, latents], dim=1).to(self.transformer.dtype)
                     latent_image_ids = torch.cat([image_latent_ids, latent_ids], dim=1)
 
-                    output, kv_cache = self.transformer(
+                    noise_pred, kv_cache = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep / 1000,
                         guidance=None,
@@ -805,7 +805,6 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                         kv_cache_mode="extract",
                         num_ref_tokens=image_latents.shape[1],
                     )
-                    noise_pred = output[0]
 
                 elif kv_cache is not None:
                     # Steps 1+: use cached ref KV, no ref tokens in input

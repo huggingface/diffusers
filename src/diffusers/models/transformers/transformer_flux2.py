@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+from dataclasses import dataclass
 from typing import Any
 
 import torch
@@ -21,7 +22,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import apply_lora_scale, logging
+from ...utils import BaseOutput, apply_lora_scale, logging
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -32,12 +33,27 @@ from ..embeddings import (
     apply_rotary_emb,
     get_1d_rotary_pos_embed,
 )
-from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@dataclass
+class Flux2Transformer2DModelOutput(BaseOutput):
+    """
+    The output of [`Flux2Transformer2DModel`].
+
+    Args:
+        sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)`):
+            The hidden states output conditioned on the `encoder_hidden_states` input.
+        kv_cache (`Flux2KVCache`, *optional*):
+            The populated KV cache for reference image tokens. Only returned when `kv_cache_mode="extract"`.
+    """
+
+    sample: "torch.Tensor"  # noqa: F821
+    kv_cache: "Flux2KVCache | None" = None
 
 
 class Flux2KVLayerCache:
@@ -1174,7 +1190,7 @@ class Flux2Transformer2DModel(
         kv_cache_mode: str | None = None,
         num_ref_tokens: int = 0,
         ref_fixed_timestep: float = 0.0,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> torch.Tensor | Flux2Transformer2DModelOutput:
         """
         The [`Flux2Transformer2DModel`] forward method.
 
@@ -1356,10 +1372,10 @@ class Flux2Transformer2DModel(
 
         if kv_cache_mode == "extract":
             if not return_dict:
-                return (output,), kv_cache
-            return Transformer2DModelOutput(sample=output), kv_cache
+                return (output, kv_cache)
+            return Flux2Transformer2DModelOutput(sample=output, kv_cache=kv_cache)
 
         if not return_dict:
             return (output,)
 
-        return Transformer2DModelOutput(sample=output)
+        return Flux2Transformer2DModelOutput(sample=output)
