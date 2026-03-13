@@ -36,7 +36,7 @@ from typing import Any, Callable
 
 from packaging import version
 
-from ..utils import is_torch_available, is_torchao_available, is_torchao_version, logging
+from ..utils import deprecate, is_torch_available, is_torchao_available, is_torchao_version, logging
 
 
 if is_torch_available():
@@ -844,6 +844,8 @@ class QuantoConfig(QuantizationConfigMixin):
         modules_to_not_convert: list[str] | None = None,
         **kwargs,
     ):
+        deprecation_message = "`QuantoConfig` is deprecated and will be removed in version 1.0.0."
+        deprecate("QuantoConfig", "1.0.0", deprecation_message)
         self.quant_method = QuantizationMethod.QUANTO
         self.weights_dtype = weights_dtype
         self.modules_to_not_convert = modules_to_not_convert

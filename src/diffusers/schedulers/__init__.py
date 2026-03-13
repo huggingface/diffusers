@@ -61,6 +61,8 @@ else:
     _import_structure["scheduling_flow_match_euler_discrete"] = ["FlowMatchEulerDiscreteScheduler"]
     _import_structure["scheduling_flow_match_heun_discrete"] = ["FlowMatchHeunDiscreteScheduler"]
     _import_structure["scheduling_flow_match_lcm"] = ["FlowMatchLCMScheduler"]
+    _import_structure["scheduling_helios"] = ["HeliosScheduler"]
+    _import_structure["scheduling_helios_dmd"] = ["HeliosDMDScheduler"]
     _import_structure["scheduling_heun_discrete"] = ["HeunDiscreteScheduler"]
     _import_structure["scheduling_ipndm"] = ["IPNDMScheduler"]
     _import_structure["scheduling_k_dpm_2_ancestral_discrete"] = ["KDPM2AncestralDiscreteScheduler"]
@@ -164,6 +166,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
         from .scheduling_flow_match_heun_discrete import FlowMatchHeunDiscreteScheduler
         from .scheduling_flow_match_lcm import FlowMatchLCMScheduler
+        from .scheduling_helios import HeliosScheduler
+        from .scheduling_helios_dmd import HeliosDMDScheduler
         from .scheduling_heun_discrete import HeunDiscreteScheduler
         from .scheduling_ipndm import IPNDMScheduler
         from .scheduling_k_dpm_2_ancestral_discrete import KDPM2AncestralDiscreteScheduler

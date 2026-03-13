@@ -153,25 +153,24 @@ class TestModularCustomBlocks:
         output_prompt = output.values["output_prompt"]
         assert output_prompt.startswith("Modular diffusers + ")
 
-    def test_custom_block_saving_loading(self):
+    def test_custom_block_saving_loading(self, tmp_path):
         custom_block = DummyCustomBlockSimple()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            custom_block.save_pretrained(tmpdir)
-            assert any("modular_config.json" in k for k in os.listdir(tmpdir))
+        custom_block.save_pretrained(tmp_path)
+        assert any("modular_config.json" in k for k in os.listdir(tmp_path))
 
-            with open(os.path.join(tmpdir, "modular_config.json"), "r") as f:
-                config = json.load(f)
-            auto_map = config["auto_map"]
-            assert auto_map == {"ModularPipelineBlocks": "test_modular_pipelines_custom_blocks.DummyCustomBlockSimple"}
+        with open(os.path.join(tmp_path, "modular_config.json"), "r") as f:
+            config = json.load(f)
+        auto_map = config["auto_map"]
+        assert auto_map == {"ModularPipelineBlocks": "test_modular_pipelines_custom_blocks.DummyCustomBlockSimple"}
 
-            # For now, the Python script that implements the custom block has to be manually pushed to the Hub.
-            # This is why, we have to separately save the Python script here.
-            code_path = os.path.join(tmpdir, "test_modular_pipelines_custom_blocks.py")
-            with open(code_path, "w") as f:
-                f.write(CODE_STR)
+        # For now, the Python script that implements the custom block has to be manually pushed to the Hub.
+        # This is why, we have to separately save the Python script here.
+        code_path = os.path.join(tmp_path, "test_modular_pipelines_custom_blocks.py")
+        with open(code_path, "w") as f:
+            f.write(CODE_STR)
 
-            loaded_custom_block = ModularPipelineBlocks.from_pretrained(tmpdir, trust_remote_code=True)
+        loaded_custom_block = ModularPipelineBlocks.from_pretrained(tmp_path, trust_remote_code=True)
 
         pipe = loaded_custom_block.init_pipeline()
         prompt = "Diffusers is nice"
