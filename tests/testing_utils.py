@@ -185,6 +185,10 @@ def assert_tensors_close(
 
 
 def numpy_cosine_similarity_distance(a, b):
+    if isinstance(a, torch.Tensor):
+        a = a.detach().cpu().float().numpy()
+    if isinstance(b, torch.Tensor):
+        b = b.detach().cpu().float().numpy()
     similarity = np.dot(a, b) / (norm(a) * norm(b))
     distance = 1.0 - similarity.mean()
 
