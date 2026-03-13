@@ -1750,8 +1750,8 @@ def main(args):
                     if args.train_text_encoder:
                         prompt_embeds, pooled_prompt_embeds = encode_prompt(
                             text_encoders=[text_encoder_one, text_encoder_two, text_encoder_three],
-                            tokenizers=[None, None, tokenizer_three],
-                            prompt=args.instance_prompt,
+                            tokenizers=[None, None, None],
+                            prompt=prompts,
                             max_sequence_length=args.max_sequence_length,
                             text_input_ids_list=[tokens_one, tokens_two, tokens_three],
                         )
