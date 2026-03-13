@@ -456,6 +456,8 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         # the output will be non-deterministic and may produce incorrect results in CP context.
         if generator is None:
             generator = torch.Generator(device=device)
+        elif isinstance(generator, list):
+            generator = generator[0]
 
         gamma = self.scheduler.config.gamma
         _, ph, pw = patch_size
@@ -470,7 +472,8 @@ class HeliosPyramidPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
 
         L = torch.linalg.cholesky(cov)
         block_number = batch_size * channel * num_frames * (height // ph) * (width // pw)
-        z = torch.randn(block_number, block_size, device=device, generator=generator)
+        z = torch.randn(block_number, block_size, generator=generator, device=generator.device)
+        z = z.to(device=device)
         noise = z @ L.T
 
         noise = noise.view(batch_size, channel, num_frames, height // ph, width // pw, ph, pw)

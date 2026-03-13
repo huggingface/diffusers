@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any
 from diffusers.utils.import_utils import is_optimum_quanto_version
 
 from ...utils import (
+    deprecate,
     get_module_from_name,
     is_accelerate_available,
     is_accelerate_version,
@@ -42,6 +43,9 @@ class QuantoQuantizer(DiffusersQuantizer):
         super().__init__(quantization_config, **kwargs)
 
     def validate_environment(self, *args, **kwargs):
+        deprecation_message = "The Quanto quantizer is deprecated and will be removed in version 1.0.0."
+        deprecate("QuantoQuantizer", "1.0.0", deprecation_message)
+
         if not is_optimum_quanto_available():
             raise ImportError(
                 "Loading an optimum-quanto quantized model requires optimum-quanto library (`pip install optimum-quanto`)"
