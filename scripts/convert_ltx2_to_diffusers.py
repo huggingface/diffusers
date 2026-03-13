@@ -840,6 +840,18 @@ def get_ltx2_spatial_latent_upsampler_config(version: str):
             "spatial_upsample": True,
             "temporal_upsample": False,
             "rational_spatial_scale": 2.0,
+            "use_rational_resampler": True,
+        }
+    elif version == "2.3":
+        config = {
+            "in_channels": 128,
+            "mid_channels": 1024,
+            "num_blocks_per_stage": 4,
+            "dims": 3,
+            "spatial_upsample": True,
+            "temporal_upsample": False,
+            "rational_spatial_scale": 2.0,
+            "use_rational_resampler": False,
         }
     else:
         raise ValueError(f"Unsupported version: {version}")
@@ -1006,6 +1018,12 @@ def get_args():
     parser.add_argument("--text_encoder_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
 
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
+    parser.add_argument(
+        "--upsample_output_path",
+        type=str,
+        default=None,
+        help="Path where converted upsampling pipeline should be saved",
+    )
 
     return parser.parse_args()
 
@@ -1141,10 +1159,12 @@ def main(args):
     if args.upsample_pipeline:
         pipe = LTX2LatentUpsamplePipeline(vae=vae, latent_upsampler=latent_upsampler)
 
-        # Put latent upsampling pipeline in its own subdirectory so it doesn't mess with the full pipeline
-        pipe.save_pretrained(
-            os.path.join(args.output_path, "upsample_pipeline"), safe_serialization=True, max_shard_size="5GB"
-        )
+        # As two diffusers pipelines cannot be in the same directory, save the upsampling pipeline to its own directory
+        if args.upsample_output_path:
+            upsample_output_path = args.upsample_output_path
+        else:
+            upsample_output_path = args.output_path
+        pipe.save_pretrained(upsample_output_path, safe_serialization=True, max_shard_size="5GB")
 
 
 if __name__ == "__main__":
