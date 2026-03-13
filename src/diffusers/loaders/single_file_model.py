@@ -30,6 +30,7 @@ from .single_file_utils import (
     convert_animatediff_checkpoint_to_diffusers,
     convert_auraflow_transformer_checkpoint_to_diffusers,
     convert_autoencoder_dc_checkpoint_to_diffusers,
+    convert_chroma_radiance_transformer_checkpoint_to_diffusers,
     convert_chroma_transformer_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_cosmos_transformer_checkpoint_to_diffusers,
@@ -112,6 +113,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "ChromaTransformer2DModel": {
         "checkpoint_mapping_fn": convert_chroma_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "ChromaRadianceTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_chroma_radiance_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "LTXVideoTransformer3DModel": {
