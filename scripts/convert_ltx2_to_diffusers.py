@@ -1134,14 +1134,26 @@ def main(args):
             latent_upsampler.save_pretrained(os.path.join(args.output_path, "latent_upsampler"))
 
     if args.full_pipeline:
-        scheduler = FlowMatchEulerDiscreteScheduler(
-            use_dynamic_shifting=True,
-            base_shift=0.95,
-            max_shift=2.05,
-            base_image_seq_len=1024,
-            max_image_seq_len=4096,
-            shift_terminal=0.1,
-        )
+        is_distilled_ckpt = "distilled" in args.combined_filename
+        if is_distilled_ckpt:
+            # Disable dynamic shifting and terminal shift so that distilled sigmas are used as-is
+            scheduler = FlowMatchEulerDiscreteScheduler(
+                use_dynamic_shifting=False,
+                base_shift=0.95,
+                max_shift=2.05,
+                base_image_seq_len=1024,
+                max_image_seq_len=4096,
+                shift_terminal=None,
+            )
+        else:
+            scheduler = FlowMatchEulerDiscreteScheduler(
+                use_dynamic_shifting=True,
+                base_shift=0.95,
+                max_shift=2.05,
+                base_image_seq_len=1024,
+                max_image_seq_len=4096,
+                shift_terminal=0.1,
+            )
 
         pipe = LTX2Pipeline(
             scheduler=scheduler,
