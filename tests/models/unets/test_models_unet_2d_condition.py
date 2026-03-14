@@ -20,6 +20,7 @@ import tempfile
 import unittest
 from collections import OrderedDict
 
+import pytest
 import torch
 from huggingface_hub import snapshot_download
 from parameterized import parameterized
@@ -52,17 +53,24 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import (
+from ..test_modeling_common import UNetTesterMixin
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    IPAdapterTesterMixin,
     LoraHotSwappingForModelTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
-    UNetTesterMixin,
+    TrainingTesterMixin,
 )
 
 
 if is_peft_available():
     from peft import LoraConfig
-    from peft.tuners.tuners_utils import BaseTunerLayer
+
+    from ..testing_utils.lora import check_if_lora_correctly_set
 
 
 logger = logging.get_logger(__name__)
@@ -80,16 +88,6 @@ def get_unet_lora_config():
         use_dora=False,
     )
     return unet_lora_config
-
-
-def check_if_lora_correctly_set(model) -> bool:
-    """
-    Checks if the LoRA layers are correctly set with peft
-    """
-    for module in model.modules():
-        if isinstance(module, BaseTunerLayer):
-            return True
-    return False
 
 
 def create_ip_adapter_state_dict(model):
@@ -354,34 +352,28 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
     return custom_diffusion_attn_procs
 
 
-class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
-    model_class = UNet2DConditionModel
-    main_input_name = "sample"
-    # We override the items here because the unet under consideration is small.
-    model_split_percents = [0.5, 0.34, 0.4]
+class UNet2DConditionTesterConfig(BaseModelTesterConfig):
+    """Base configuration for UNet2DConditionModel testing."""
 
     @property
-    def dummy_input(self):
-        batch_size = 4
-        num_channels = 4
-        sizes = (16, 16)
-
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 8)).to(torch_device)
-
-        return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
+    def model_class(self):
+        return UNet2DConditionModel
 
     @property
-    def input_shape(self):
+    def output_shape(self) -> tuple[int, int, int]:
         return (4, 16, 16)
 
     @property
-    def output_shape(self):
-        return (4, 16, 16)
+    def model_split_percents(self) -> list[float]:
+        return [0.5, 0.34, 0.4]
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    def get_init_dict(self) -> dict:
+        """Return UNet2D model initialization arguments."""
+        return {
             "block_out_channels": (4, 8),
             "norm_num_groups": 4,
             "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
@@ -393,26 +385,24 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             "layers_per_block": 1,
             "sample_size": 16,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_enable_works(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        """Return dummy inputs for UNet2D model."""
+        batch_size = 4
+        num_channels = 4
+        sizes = (16, 16)
 
-        model.enable_xformers_memory_efficient_attention()
+        return {
+            "sample": floats_tensor((batch_size, num_channels) + sizes).to(torch_device),
+            "timestep": torch.tensor([10]).to(torch_device),
+            "encoder_hidden_states": floats_tensor((batch_size, 4, 8)).to(torch_device),
+        }
 
-        assert (
-            model.mid_block.attentions[0].transformer_blocks[0].attn1.processor.__class__.__name__
-            == "XFormersAttnProcessor"
-        ), "xformers is not enabled"
 
+class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTesterMixin):
     def test_model_with_attention_head_dim_tuple(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
@@ -427,12 +417,13 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     def test_model_with_use_linear_projection(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["use_linear_projection"] = True
 
@@ -446,12 +437,13 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     def test_model_with_cross_attention_dim_tuple(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["cross_attention_dim"] = (8, 8)
 
@@ -465,12 +457,13 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     def test_model_with_simple_projection(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         batch_size, _, _, sample_size = inputs_dict["sample"].shape
 
@@ -489,12 +482,13 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     def test_model_with_class_embeddings_concat(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         batch_size, _, _, sample_size = inputs_dict["sample"].shape
 
@@ -514,12 +508,287 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             if isinstance(output, dict):
                 output = output.sample
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
+
+    # see diffusers.models.attention_processor::Attention#prepare_attention_mask
+    # note: we may not need to fix mask padding to work for stable-diffusion cross-attn masks.
+    # since the use-case (somebody passes in a too-short cross-attn mask) is pretty small,
+    # maybe it's fine that this only works for the unclip use-case.
+    @mark.skip(
+        reason="we currently pad mask by target_length tokens (what unclip needs), whereas stable-diffusion's cross-attn needs to instead pad by remaining_length."
+    )
+    def test_model_xattn_padding(self):
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+
+        model = self.model_class(**{**init_dict, "attention_head_dim": (8, 16)})
+        model.to(torch_device)
+        model.eval()
+
+        cond = inputs_dict["encoder_hidden_states"]
+        with torch.no_grad():
+            full_cond_out = model(**inputs_dict).sample
+            assert full_cond_out is not None
+
+            batch, tokens, _ = cond.shape
+            keeplast_mask = (torch.arange(tokens) == tokens - 1).expand(batch, -1).to(cond.device, torch.bool)
+            keeplast_out = model(**{**inputs_dict, "encoder_attention_mask": keeplast_mask}).sample
+            assert not keeplast_out.allclose(full_cond_out), "a 'keep last token' mask should change the result"
+
+            trunc_mask = torch.zeros(batch, tokens - 1, device=cond.device, dtype=torch.bool)
+            trunc_mask_out = model(**{**inputs_dict, "encoder_attention_mask": trunc_mask}).sample
+            assert trunc_mask_out.allclose(keeplast_out), (
+                "a mask with fewer tokens than condition, will be padded with 'keep' tokens. a 'discard-all' mask missing the final token is thus equivalent to a 'keep last' mask."
+            )
+
+    def test_pickle(self):
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+
+        init_dict["block_out_channels"] = (16, 32)
+        init_dict["attention_head_dim"] = (8, 16)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        with torch.no_grad():
+            sample = model(**inputs_dict).sample
+
+        sample_copy = copy.copy(sample)
+
+        assert (sample - sample_copy).abs().max() < 1e-4
+
+    def test_asymmetrical_unet(self):
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        # Add asymmetry to configs
+        init_dict["transformer_layers_per_block"] = [[3, 2], 1]
+        init_dict["reverse_transformer_layers_per_block"] = [[3, 4], 1]
+
+        torch.manual_seed(0)
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        output = model(**inputs_dict).sample
+        expected_shape = inputs_dict["sample"].shape
+
+        # Check if input and output shapes are the same
+        assert output.shape == expected_shape, "Input and output shapes do not match"
+
+
+class TestUNet2DConditionHubLoading(UNet2DConditionTesterConfig):
+    """Hub checkpoint loading tests for UNet2DConditionModel."""
+
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
+        ]
+    )
+    @require_torch_accelerator
+    def test_load_sharded_checkpoint_from_hub(self, repo_id, variant):
+        inputs_dict = self.get_dummy_inputs()
+        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant)
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
+        ]
+    )
+    @require_torch_accelerator
+    def test_load_sharded_checkpoint_from_hub_subfolder(self, repo_id, variant):
+        inputs_dict = self.get_dummy_inputs()
+        loaded_model = self.model_class.from_pretrained(repo_id, subfolder="unet", variant=variant)
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_accelerator
+    def test_load_sharded_checkpoint_from_hub_local(self):
+        inputs_dict = self.get_dummy_inputs()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
+        loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True)
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_accelerator
+    def test_load_sharded_checkpoint_from_hub_local_subfolder(self):
+        inputs_dict = self.get_dummy_inputs()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy-subfolder")
+        loaded_model = self.model_class.from_pretrained(ckpt_path, subfolder="unet", local_files_only=True)
+        loaded_model = loaded_model.to(torch_device)
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_accelerator
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
+        ]
+    )
+    def test_load_sharded_checkpoint_device_map_from_hub(self, repo_id, variant):
+        inputs_dict = self.get_dummy_inputs()
+        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant, device_map="auto")
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_accelerator
+    @parameterized.expand(
+        [
+            ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
+            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
+        ]
+    )
+    def test_load_sharded_checkpoint_device_map_from_hub_subfolder(self, repo_id, variant):
+        inputs_dict = self.get_dummy_inputs()
+        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant, subfolder="unet", device_map="auto")
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_accelerator
+    def test_load_sharded_checkpoint_device_map_from_hub_local(self):
+        inputs_dict = self.get_dummy_inputs()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
+        loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True, device_map="auto")
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+    @require_torch_accelerator
+    def test_load_sharded_checkpoint_device_map_from_hub_local_subfolder(self):
+        inputs_dict = self.get_dummy_inputs()
+        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy-subfolder")
+        loaded_model = self.model_class.from_pretrained(
+            ckpt_path, local_files_only=True, subfolder="unet", device_map="auto"
+        )
+        new_output = loaded_model(**inputs_dict)
+
+        assert loaded_model
+        assert new_output.sample.shape == (4, 4, 16, 16)
+
+
+class TestUNet2DConditionLoRA(UNet2DConditionTesterConfig, LoraTesterMixin):
+    """LoRA adapter tests for UNet2DConditionModel."""
+
+    @require_peft_backend
+    def test_load_attn_procs_raise_warning(self):
+        """Test that deprecated load_attn_procs method raises FutureWarning."""
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        # forward pass without LoRA
+        with torch.no_grad():
+            non_lora_sample = model(**inputs_dict).sample
+
+        unet_lora_config = get_unet_lora_config()
+        model.add_adapter(unet_lora_config)
+
+        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+        # forward pass with LoRA
+        with torch.no_grad():
+            lora_sample_1 = model(**inputs_dict).sample
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_attn_procs(tmpdirname)
+            model.unload_lora()
+
+            with pytest.warns(FutureWarning, match="Using the `load_attn_procs\\(\\)` method has been deprecated"):
+                model.load_attn_procs(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+            # import to still check for the rest of the stuff.
+            assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+            with torch.no_grad():
+                lora_sample_2 = model(**inputs_dict).sample
+
+        assert not torch.allclose(non_lora_sample, lora_sample_1, atol=1e-4, rtol=1e-4), (
+            "LoRA injected UNet should produce different results."
+        )
+        assert torch.allclose(lora_sample_1, lora_sample_2, atol=1e-4, rtol=1e-4), (
+            "Loading from a saved checkpoint should produce identical results."
+        )
+
+    @require_peft_backend
+    def test_save_attn_procs_raise_warning(self):
+        """Test that deprecated save_attn_procs method raises FutureWarning."""
+        init_dict = self.get_init_dict()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        unet_lora_config = get_unet_lora_config()
+        model.add_adapter(unet_lora_config)
+
+        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with pytest.warns(FutureWarning, match="Using the `save_attn_procs\\(\\)` method has been deprecated"):
+                model.save_attn_procs(os.path.join(tmpdirname))
+
+
+class TestUNet2DConditionMemory(UNet2DConditionTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for UNet2DConditionModel."""
+
+
+class TestUNet2DConditionTraining(UNet2DConditionTesterConfig, TrainingTesterMixin):
+    """Training tests for UNet2DConditionModel."""
+
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {
+            "CrossAttnUpBlock2D",
+            "CrossAttnDownBlock2D",
+            "UNetMidBlock2DCrossAttn",
+            "UpBlock2D",
+            "Transformer2DModel",
+            "DownBlock2D",
+        }
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestUNet2DConditionAttention(UNet2DConditionTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for UNet2DConditionModel."""
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_enable_works(self):
+        init_dict = self.get_init_dict()
+        model = self.model_class(**init_dict)
+
+        model.enable_xformers_memory_efficient_attention()
+
+        assert (
+            model.mid_block.attentions[0].transformer_blocks[0].attn1.processor.__class__.__name__
+            == "XFormersAttnProcessor"
+        ), "xformers is not enabled"
 
     def test_model_attention_slicing(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
@@ -544,7 +813,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert output is not None
 
     def test_model_sliceable_head_dim(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
@@ -561,21 +830,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # retrieve number of attention layers
         for module in model.children():
             check_sliceable_dim_attr(module)
-
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {
-            "CrossAttnUpBlock2D",
-            "CrossAttnDownBlock2D",
-            "UNetMidBlock2DCrossAttn",
-            "UpBlock2D",
-            "Transformer2DModel",
-            "DownBlock2D",
-        }
-        attention_head_dim = (8, 16)
-        block_out_channels = (16, 32)
-        super().test_gradient_checkpointing_is_applied(
-            expected_set=expected_set, attention_head_dim=attention_head_dim, block_out_channels=block_out_channels
-        )
 
     def test_special_attn_proc(self):
         class AttnEasyProc(torch.nn.Module):
@@ -618,7 +872,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
                 return hidden_states
 
         # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
@@ -645,7 +900,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         ]
     )
     def test_model_xattn_mask(self, mask_dtype):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         model = self.model_class(**{**init_dict, "attention_head_dim": (8, 16), "block_out_channels": (16, 32)})
         model.to(torch_device)
@@ -675,39 +931,13 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
                 "masking the last token from our cond should be equivalent to truncating that token out of the condition"
             )
 
-    # see diffusers.models.attention_processor::Attention#prepare_attention_mask
-    # note: we may not need to fix mask padding to work for stable-diffusion cross-attn masks.
-    # since the use-case (somebody passes in a too-short cross-attn mask) is pretty esoteric.
-    # maybe it's fine that this only works for the unclip use-case.
-    @mark.skip(
-        reason="we currently pad mask by target_length tokens (what unclip needs), whereas stable-diffusion's cross-attn needs to instead pad by remaining_length."
-    )
-    def test_model_xattn_padding(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        model = self.model_class(**{**init_dict, "attention_head_dim": (8, 16)})
-        model.to(torch_device)
-        model.eval()
-
-        cond = inputs_dict["encoder_hidden_states"]
-        with torch.no_grad():
-            full_cond_out = model(**inputs_dict).sample
-            assert full_cond_out is not None
-
-            batch, tokens, _ = cond.shape
-            keeplast_mask = (torch.arange(tokens) == tokens - 1).expand(batch, -1).to(cond.device, torch.bool)
-            keeplast_out = model(**{**inputs_dict, "encoder_attention_mask": keeplast_mask}).sample
-            assert not keeplast_out.allclose(full_cond_out), "a 'keep last token' mask should change the result"
-
-            trunc_mask = torch.zeros(batch, tokens - 1, device=cond.device, dtype=torch.bool)
-            trunc_mask_out = model(**{**inputs_dict, "encoder_attention_mask": trunc_mask}).sample
-            assert trunc_mask_out.allclose(keeplast_out), (
-                "a mask with fewer tokens than condition, will be padded with 'keep' tokens. a 'discard-all' mask missing the final token is thus equivalent to a 'keep last' mask."
-            )
+class TestUNet2DConditionCustomDiffusion(UNet2DConditionTesterConfig):
+    """Custom Diffusion processor tests for UNet2DConditionModel."""
 
     def test_custom_diffusion_processors(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
@@ -733,8 +963,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert (sample1 - sample2).abs().max() < 3e-3
 
     def test_custom_diffusion_save_load(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
@@ -754,7 +984,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname, safe_serialization=False)
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_custom_diffusion_weights.bin")))
+            assert os.path.isfile(os.path.join(tmpdirname, "pytorch_custom_diffusion_weights.bin"))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.load_attn_procs(tmpdirname, weight_name="pytorch_custom_diffusion_weights.bin")
@@ -773,8 +1003,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
     def test_custom_diffusion_xformers_on_off(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
@@ -798,41 +1028,28 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert (sample - on_sample).abs().max() < 1e-4
         assert (sample - off_sample).abs().max() < 1e-4
 
-    def test_pickle(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["block_out_channels"] = (16, 32)
-        init_dict["attention_head_dim"] = (8, 16)
+class TestUNet2DConditionIPAdapter(UNet2DConditionTesterConfig, IPAdapterTesterMixin):
+    """IP Adapter tests for UNet2DConditionModel."""
 
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
+    @property
+    def ip_adapter_processor_cls(self):
+        return (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)
 
-        with torch.no_grad():
-            sample = model(**inputs_dict).sample
+    def create_ip_adapter_state_dict(self, model):
+        return create_ip_adapter_state_dict(model)
 
-        sample_copy = copy.copy(sample)
-
-        assert (sample - sample_copy).abs().max() < 1e-4
-
-    def test_asymmetrical_unet(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        # Add asymmetry to configs
-        init_dict["transformer_layers_per_block"] = [[3, 2], 1]
-        init_dict["reverse_transformer_layers_per_block"] = [[3, 4], 1]
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        output = model(**inputs_dict).sample
-        expected_shape = inputs_dict["sample"].shape
-
-        # Check if input and output shapes are the same
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+    def modify_inputs_for_ip_adapter(self, model, inputs_dict):
+        batch_size = inputs_dict["encoder_hidden_states"].shape[0]
+        # for ip-adapter image_embeds has shape [batch_size, num_image, embed_dim]
+        cross_attention_dim = getattr(model.config, "cross_attention_dim", 8)
+        image_embeds = floats_tensor((batch_size, 1, cross_attention_dim)).to(torch_device)
+        inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
+        return inputs_dict
 
     def test_ip_adapter(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
@@ -905,7 +1122,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
 
     def test_ip_adapter_plus(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
 
         init_dict["block_out_channels"] = (16, 32)
         init_dict["attention_head_dim"] = (8, 16)
@@ -977,185 +1195,16 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
 
-    @parameterized.expand(
-        [
-            ("hf-internal-testing/unet2d-sharded-dummy", None),
-            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
-        ]
-    )
-    @require_torch_accelerator
-    def test_load_sharded_checkpoint_from_hub(self, repo_id, variant):
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant)
-        loaded_model = loaded_model.to(torch_device)
-        new_output = loaded_model(**inputs_dict)
 
-        assert loaded_model
-        assert new_output.sample.shape == (4, 4, 16, 16)
+class TestUNet2DConditionModelCompile(UNet2DConditionTesterConfig, TorchCompileTesterMixin):
+    """Torch compile tests for UNet2DConditionModel."""
 
-    @parameterized.expand(
-        [
-            ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
-            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
-        ]
-    )
-    @require_torch_accelerator
-    def test_load_sharded_checkpoint_from_hub_subfolder(self, repo_id, variant):
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained(repo_id, subfolder="unet", variant=variant)
-        loaded_model = loaded_model.to(torch_device)
-        new_output = loaded_model(**inputs_dict)
-
-        assert loaded_model
-        assert new_output.sample.shape == (4, 4, 16, 16)
-
-    @require_torch_accelerator
-    def test_load_sharded_checkpoint_from_hub_local(self):
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
-        loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True)
-        loaded_model = loaded_model.to(torch_device)
-        new_output = loaded_model(**inputs_dict)
-
-        assert loaded_model
-        assert new_output.sample.shape == (4, 4, 16, 16)
-
-    @require_torch_accelerator
-    def test_load_sharded_checkpoint_from_hub_local_subfolder(self):
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy-subfolder")
-        loaded_model = self.model_class.from_pretrained(ckpt_path, subfolder="unet", local_files_only=True)
-        loaded_model = loaded_model.to(torch_device)
-        new_output = loaded_model(**inputs_dict)
-
-        assert loaded_model
-        assert new_output.sample.shape == (4, 4, 16, 16)
-
-    @require_torch_accelerator
-    @parameterized.expand(
-        [
-            ("hf-internal-testing/unet2d-sharded-dummy", None),
-            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format", "fp16"),
-        ]
-    )
-    def test_load_sharded_checkpoint_device_map_from_hub(self, repo_id, variant):
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant, device_map="auto")
-        new_output = loaded_model(**inputs_dict)
-
-        assert loaded_model
-        assert new_output.sample.shape == (4, 4, 16, 16)
-
-    @require_torch_accelerator
-    @parameterized.expand(
-        [
-            ("hf-internal-testing/unet2d-sharded-dummy-subfolder", None),
-            ("hf-internal-testing/tiny-sd-unet-sharded-latest-format-subfolder", "fp16"),
-        ]
-    )
-    def test_load_sharded_checkpoint_device_map_from_hub_subfolder(self, repo_id, variant):
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        loaded_model = self.model_class.from_pretrained(repo_id, variant=variant, subfolder="unet", device_map="auto")
-        new_output = loaded_model(**inputs_dict)
-
-        assert loaded_model
-        assert new_output.sample.shape == (4, 4, 16, 16)
-
-    @require_torch_accelerator
-    def test_load_sharded_checkpoint_device_map_from_hub_local(self):
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy")
-        loaded_model = self.model_class.from_pretrained(ckpt_path, local_files_only=True, device_map="auto")
-        new_output = loaded_model(**inputs_dict)
-
-        assert loaded_model
-        assert new_output.sample.shape == (4, 4, 16, 16)
-
-    @require_torch_accelerator
-    def test_load_sharded_checkpoint_device_map_from_hub_local_subfolder(self):
-        _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        ckpt_path = snapshot_download("hf-internal-testing/unet2d-sharded-dummy-subfolder")
-        loaded_model = self.model_class.from_pretrained(
-            ckpt_path, local_files_only=True, subfolder="unet", device_map="auto"
-        )
-        new_output = loaded_model(**inputs_dict)
-
-        assert loaded_model
-        assert new_output.sample.shape == (4, 4, 16, 16)
-
-    @require_peft_backend
-    def test_load_attn_procs_raise_warning(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        # forward pass without LoRA
-        with torch.no_grad():
-            non_lora_sample = model(**inputs_dict).sample
-
-        unet_lora_config = get_unet_lora_config()
-        model.add_adapter(unet_lora_config)
-
-        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
-
-        # forward pass with LoRA
-        with torch.no_grad():
-            lora_sample_1 = model(**inputs_dict).sample
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname)
-            model.unload_lora()
-
-            with self.assertWarns(FutureWarning) as warning:
-                model.load_attn_procs(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
-
-            warning_message = str(warning.warnings[0].message)
-            assert "Using the `load_attn_procs()` method has been deprecated" in warning_message
-
-            # import to still check for the rest of the stuff.
-            assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
-
-            with torch.no_grad():
-                lora_sample_2 = model(**inputs_dict).sample
-
-        assert not torch.allclose(non_lora_sample, lora_sample_1, atol=1e-4, rtol=1e-4), (
-            "LoRA injected UNet should produce different results."
-        )
-        assert torch.allclose(lora_sample_1, lora_sample_2, atol=1e-4, rtol=1e-4), (
-            "Loading from a saved checkpoint should produce identical results."
-        )
-
-    @require_peft_backend
-    def test_save_attn_procs_raise_warning(self):
-        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        unet_lora_config = get_unet_lora_config()
-        model.add_adapter(unet_lora_config)
-
-        assert check_if_lora_correctly_set(model), "Lora not correctly set in UNet."
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            with self.assertWarns(FutureWarning) as warning:
-                model.save_attn_procs(tmpdirname)
-
-        warning_message = str(warning.warnings[0].message)
-        assert "Using the `save_attn_procs()` method has been deprecated" in warning_message
+    def test_torch_compile_repeated_blocks(self):
+        return super().test_torch_compile_repeated_blocks(recompile_limit=2)
 
 
-class UNet2DConditionModelCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = UNet2DConditionModel
-
-    def prepare_init_args_and_inputs_for_common(self):
-        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
-
-
-class UNet2DConditionModelLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
-    model_class = UNet2DConditionModel
-
-    def prepare_init_args_and_inputs_for_common(self):
-        return UNet2DConditionModelTests().prepare_init_args_and_inputs_for_common()
+class TestUNet2DConditionModelLoRAHotSwap(UNet2DConditionTesterConfig, LoraHotSwappingForModelTesterMixin):
+    """LoRA hot-swapping tests for UNet2DConditionModel."""
 
 
 @slow
