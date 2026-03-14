@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -92,9 +91,9 @@ class ZSingleStreamAttnProcessor:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        freqs_cis: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        freqs_cis: torch.Tensor | None = None,
     ) -> torch.Tensor:
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
@@ -229,10 +228,10 @@ class ZImageTransformerBlock(nn.Module):
         x: torch.Tensor,
         attn_mask: torch.Tensor,
         freqs_cis: torch.Tensor,
-        adaln_input: Optional[torch.Tensor] = None,
-        noise_mask: Optional[torch.Tensor] = None,
-        adaln_noisy: Optional[torch.Tensor] = None,
-        adaln_clean: Optional[torch.Tensor] = None,
+        adaln_input: torch.Tensor | None = None,
+        noise_mask: torch.Tensor | None = None,
+        adaln_noisy: torch.Tensor | None = None,
+        adaln_clean: torch.Tensor | None = None,
     ):
         if self.modulation:
             seq_len = x.shape[1]
@@ -315,8 +314,8 @@ class RopeEmbedder:
     def __init__(
         self,
         theta: float = 256.0,
-        axes_dims: List[int] = (16, 56, 56),
-        axes_lens: List[int] = (64, 128, 128),
+        axes_dims: list[int] = (16, 56, 56),
+        axes_lens: list[int] = (64, 128, 128),
     ):
         self.theta = theta
         self.axes_dims = axes_dims
@@ -325,7 +324,7 @@ class RopeEmbedder:
         self.freqs_cis = None
 
     @staticmethod
-    def precompute_freqs_cis(dim: List[int], end: List[int], theta: float = 256.0):
+    def precompute_freqs_cis(dim: list[int], end: list[int], theta: float = 256.0):
         with torch.device("cpu"):
             freqs_cis = []
             for i, (d, e) in enumerate(zip(dim, end)):
@@ -482,12 +481,12 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
     def unpatchify(
         self,
-        x: List[torch.Tensor],
-        size: List[Tuple],
+        x: list[torch.Tensor],
+        size: list[tuple],
         patch_size,
         f_patch_size,
-        x_pos_offsets: Optional[List[Tuple[int, int]]] = None,
-    ) -> List[torch.Tensor]:
+        x_pos_offsets: list[tuple[int, int]] | None = None,
+    ) -> list[torch.Tensor]:
         pH = pW = patch_size
         pF = f_patch_size
         bsz = len(x)
@@ -552,10 +551,10 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
     def _pad_with_ids(
         self,
         feat: torch.Tensor,
-        pos_grid_size: Tuple,
-        pos_start: Tuple,
+        pos_grid_size: tuple,
+        pos_start: tuple,
         device: torch.device,
-        noise_mask_val: Optional[int] = None,
+        noise_mask_val: int | None = None,
     ):
         """Pad feature to SEQ_MULTI_OF, create position IDs and pad mask."""
         ori_len = len(feat)
@@ -587,7 +586,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         return padded_feat, pos_ids, pad_mask, total_len, noise_mask
 
     def patchify_and_embed(
-        self, all_image: List[torch.Tensor], all_cap_feats: List[torch.Tensor], patch_size: int, f_patch_size: int
+        self, all_image: list[torch.Tensor], all_cap_feats: list[torch.Tensor], patch_size: int, f_patch_size: int
     ):
         """Patchify for basic mode: single image per batch item."""
         device = all_image[0].device
@@ -625,12 +624,12 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
     def patchify_and_embed_omni(
         self,
-        all_x: List[List[torch.Tensor]],
-        all_cap_feats: List[List[torch.Tensor]],
-        all_siglip_feats: List[List[torch.Tensor]],
+        all_x: list[list[torch.Tensor]],
+        all_cap_feats: list[list[torch.Tensor]],
+        all_siglip_feats: list[list[torch.Tensor]],
         patch_size: int,
         f_patch_size: int,
-        images_noise_mask: List[List[int]],
+        images_noise_mask: list[list[int]],
     ):
         """Patchify for omni mode: multiple images per batch item with noise masks."""
         bsz = len(all_x)
@@ -764,11 +763,11 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
     def _prepare_sequence(
         self,
-        feats: List[torch.Tensor],
-        pos_ids: List[torch.Tensor],
-        inner_pad_mask: List[torch.Tensor],
+        feats: list[torch.Tensor],
+        pos_ids: list[torch.Tensor],
+        inner_pad_mask: list[torch.Tensor],
         pad_token: torch.nn.Parameter,
-        noise_mask: Optional[List[List[int]]] = None,
+        noise_mask: list[list[int]] | None = None,
         device: torch.device = None,
     ):
         """Prepare sequence: apply pad token, RoPE embed, pad to batch, create attention mask."""
@@ -808,16 +807,16 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         self,
         x: torch.Tensor,
         x_freqs: torch.Tensor,
-        x_seqlens: List[int],
-        x_noise_mask: Optional[List[List[int]]],
+        x_seqlens: list[int],
+        x_noise_mask: list[list[int]] | None,
         cap: torch.Tensor,
         cap_freqs: torch.Tensor,
-        cap_seqlens: List[int],
-        cap_noise_mask: Optional[List[List[int]]],
-        siglip: Optional[torch.Tensor],
-        siglip_freqs: Optional[torch.Tensor],
-        siglip_seqlens: Optional[List[int]],
-        siglip_noise_mask: Optional[List[List[int]]],
+        cap_seqlens: list[int],
+        cap_noise_mask: list[list[int]] | None,
+        siglip: torch.Tensor | None,
+        siglip_freqs: torch.Tensor | None,
+        siglip_seqlens: list[int] | None,
+        siglip_noise_mask: list[list[int]] | None,
         omni_mode: bool,
         device: torch.device,
     ):
@@ -887,13 +886,13 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
     def forward(
         self,
-        x: Union[List[torch.Tensor], List[List[torch.Tensor]]],
+        x: list[torch.Tensor, list[list[torch.Tensor]]],
         t,
-        cap_feats: Union[List[torch.Tensor], List[List[torch.Tensor]]],
+        cap_feats: list[torch.Tensor, list[list[torch.Tensor]]],
         return_dict: bool = True,
-        controlnet_block_samples: Optional[Dict[int, torch.Tensor]] = None,
-        siglip_feats: Optional[List[List[torch.Tensor]]] = None,
-        image_noise_mask: Optional[List[List[int]]] = None,
+        controlnet_block_samples: dict[int, torch.Tensor] | None = None,
+        siglip_feats: list[list[torch.Tensor]] | None = None,
+        image_noise_mask: list[list[int]] | None = None,
         patch_size: int = 2,
         f_patch_size: int = 1,
     ):

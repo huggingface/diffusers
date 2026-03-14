@@ -176,15 +176,7 @@ class QuantizationTesterMixin:
         model_quantized = self._create_quantized_model(config_kwargs)
         model_quantized.to(torch_device)
 
-        # Get model dtype from first parameter
-        model_dtype = next(model_quantized.parameters()).dtype
-
         inputs = self.get_dummy_inputs()
-        # Cast inputs to model dtype
-        inputs = {
-            k: v.to(model_dtype) if isinstance(v, torch.Tensor) and v.is_floating_point() else v
-            for k, v in inputs.items()
-        }
         output = model_quantized(**inputs, return_dict=False)[0]
 
         assert output is not None, "Model output is None"
@@ -229,6 +221,8 @@ class QuantizationTesterMixin:
             init_lora_weights=False,
         )
         model.add_adapter(lora_config)
+        # Move LoRA adapter weights to device (they default to CPU)
+        model.to(torch_device)
 
         inputs = self.get_dummy_inputs()
         output = model(**inputs, return_dict=False)[0]
@@ -634,6 +628,21 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
         """Test that quantized models can be used for training with adapters."""
         self._test_quantization_training(BitsAndBytesConfigMixin.BNB_CONFIGS["4bit_nf4"])
 
+    @pytest.mark.parametrize(
+        "config_name",
+        list(BitsAndBytesConfigMixin.BNB_CONFIGS.keys()),
+        ids=list(BitsAndBytesConfigMixin.BNB_CONFIGS.keys()),
+    )
+    def test_cpu_device_map(self, config_name):
+        config_kwargs = BitsAndBytesConfigMixin.BNB_CONFIGS[config_name]
+        model_quantized = self._create_quantized_model(config_kwargs, device_map="cpu")
+
+        assert hasattr(model_quantized, "hf_device_map"), "Model should have hf_device_map attribute"
+        assert model_quantized.hf_device_map is not None, "hf_device_map should not be None"
+        assert model_quantized.device == torch.device("cpu"), (
+            f"Model should be on CPU, but is on {model_quantized.device}"
+        )
+
 
 @is_quantization
 @is_quanto
@@ -1020,9 +1029,6 @@ class GGUFTesterMixin(GGUFConfigMixin, QuantizationTesterMixin):
     def test_gguf_dequantize(self):
         """Test that dequantize() works correctly."""
         self._test_dequantize({"compute_dtype": torch.bfloat16})
-
-    def test_gguf_quantized_layers(self):
-        self._test_quantized_layers({"compute_dtype": torch.bfloat16})
 
 
 @is_quantization

@@ -24,7 +24,8 @@ from diffusers import (
     LTX2ImageToVideoPipeline,
     LTX2VideoTransformer3DModel,
 )
-from diffusers.pipelines.ltx2 import LTX2TextConnectors
+from diffusers.pipelines.ltx2 import LTX2LatentUpsamplePipeline, LTX2TextConnectors
+from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 
 from ...testing_utils import enable_full_determinism
@@ -174,6 +175,15 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         return components
 
+    def get_dummy_upsample_component(self, in_channels=4, mid_channels=32, num_blocks_per_stage=1):
+        upsampler = LTX2LatentUpsamplerModel(
+            in_channels=in_channels,
+            mid_channels=mid_channels,
+            num_blocks_per_stage=num_blocks_per_stage,
+        )
+
+        return upsampler
+
     def get_dummy_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -275,6 +285,61 @@ class LTX2ImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_audio_slice = torch.tensor(
             [
                 0.0273, 0.0490, 0.1253, 0.1129, 0.1655, 0.1057, 0.1707, 0.0943, 0.0672, -0.0069, 0.0688, 0.0097, 0.0808, 0.1231, 0.0986, 0.0739
+            ]
+        )
+        # fmt: on
+
+        video = video.flatten()
+        audio = audio.flatten()
+        generated_video_slice = torch.cat([video[:8], video[-8:]])
+        generated_audio_slice = torch.cat([audio[:8], audio[-8:]])
+
+        assert torch.allclose(expected_video_slice, generated_video_slice, atol=1e-4, rtol=1e-4)
+        assert torch.allclose(expected_audio_slice, generated_audio_slice, atol=1e-4, rtol=1e-4)
+
+    def test_two_stages_inference_with_upsampler(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["output_type"] = "latent"
+        first_stage_output = pipe(**inputs)
+        video_latent = first_stage_output.frames
+        audio_latent = first_stage_output.audio
+
+        self.assertEqual(video_latent.shape, (1, 4, 3, 16, 16))
+        self.assertEqual(audio_latent.shape, (1, 2, 5, 2))
+        self.assertEqual(audio_latent.shape[1], components["vocoder"].config.out_channels)
+
+        upsampler = self.get_dummy_upsample_component(in_channels=video_latent.shape[1])
+        upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=upsampler)
+        upscaled_video_latent = upsample_pipe(latents=video_latent, output_type="latent", return_dict=False)[0]
+        self.assertEqual(upscaled_video_latent.shape, (1, 4, 3, 32, 32))
+
+        inputs["latents"] = upscaled_video_latent
+        inputs["audio_latents"] = audio_latent
+        inputs["output_type"] = "pt"
+        second_stage_output = pipe(**inputs)
+        video = second_stage_output.frames
+        audio = second_stage_output.audio
+
+        self.assertEqual(video.shape, (1, 5, 3, 64, 64))
+        self.assertEqual(audio.shape[0], 1)
+        self.assertEqual(audio.shape[1], components["vocoder"].config.out_channels)
+
+        # fmt: off
+        expected_video_slice = torch.tensor(
+            [
+                0.4497, 0.6757, 0.4219, 0.7686, 0.4525, 0.6483, 0.3969, 0.7404, 0.3541, 0.3039, 0.4592, 0.3521, 0.3665, 0.2785, 0.3336, 0.3079
+            ]
+        )
+        expected_audio_slice = torch.tensor(
+            [
+                0.0271, 0.0492, 0.1249, 0.1126, 0.1661, 0.1060, 0.1717, 0.0944, 0.0672, -0.0069, 0.0688, 0.0097, 0.0808, 0.1231, 0.0986, 0.0739
             ]
         )
         # fmt: on

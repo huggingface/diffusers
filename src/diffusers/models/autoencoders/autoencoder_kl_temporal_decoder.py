@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -32,7 +31,7 @@ class TemporalDecoder(nn.Module):
         self,
         in_channels: int = 4,
         out_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        block_out_channels: tuple[int] = (128, 256, 512, 512),
         layers_per_block: int = 2,
     ):
         super().__init__()
@@ -146,10 +145,10 @@ class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, AutoencoderMixin,
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
-            Tuple of downsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of block output channels.
+        down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+            tuple of downsample block types.
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
+            tuple of block output channels.
         layers_per_block: (`int`, *optional*, defaults to 1): Number of layers per block.
         latent_channels (`int`, *optional*, defaults to 4): Number of channels in the latent space.
         sample_size (`int`, *optional*, defaults to `32`): Sample input size.
@@ -173,8 +172,8 @@ class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, AutoencoderMixin,
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
-        block_out_channels: Tuple[int, ...] = (64,),
+        down_block_types: tuple[str] = ("DownEncoderBlock2D",),
+        block_out_channels: tuple[int] = (64,),
         layers_per_block: int = 1,
         latent_channels: int = 4,
         sample_size: int = 32,
@@ -219,7 +218,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, AutoencoderMixin,
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -249,7 +248,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, AutoencoderMixin,
         z: torch.Tensor,
         num_frames: int,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         """
         Decode a batch of images.
 
@@ -278,9 +277,9 @@ class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, AutoencoderMixin,
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         num_frames: int = 1,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

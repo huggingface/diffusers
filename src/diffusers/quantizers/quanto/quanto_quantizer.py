@@ -1,8 +1,9 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any
 
 from diffusers.utils.import_utils import is_optimum_quanto_version
 
 from ...utils import (
+    deprecate,
     get_module_from_name,
     is_accelerate_available,
     is_accelerate_version,
@@ -42,6 +43,9 @@ class QuantoQuantizer(DiffusersQuantizer):
         super().__init__(quantization_config, **kwargs)
 
     def validate_environment(self, *args, **kwargs):
+        deprecation_message = "The Quanto quantizer is deprecated and will be removed in version 1.0.0."
+        deprecate("QuantoQuantizer", "1.0.0", deprecation_message)
+
         if not is_optimum_quanto_available():
             raise ImportError(
                 "Loading an optimum-quanto quantized model requires optimum-quanto library (`pip install optimum-quanto`)"
@@ -68,7 +72,7 @@ class QuantoQuantizer(DiffusersQuantizer):
         model: "ModelMixin",
         param_value: "torch.Tensor",
         param_name: str,
-        state_dict: Dict[str, Any],
+        state_dict: dict[str, Any],
         **kwargs,
     ):
         # Quanto imports diffusers internally. This is here to prevent circular imports
@@ -105,7 +109,7 @@ class QuantoQuantizer(DiffusersQuantizer):
             module.freeze()
             module.weight.requires_grad = False
 
-    def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
 
@@ -127,7 +131,7 @@ class QuantoQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float32
         return torch_dtype
 
-    def update_missing_keys(self, model, missing_keys: List[str], prefix: str) -> List[str]:
+    def update_missing_keys(self, model, missing_keys: list[str], prefix: str) -> list[str]:
         # Quanto imports diffusers internally. This is here to prevent circular imports
         from optimum.quanto import QModuleMixin
 
@@ -147,7 +151,7 @@ class QuantoQuantizer(DiffusersQuantizer):
         self,
         model: "ModelMixin",
         device_map,
-        keep_in_fp32_modules: List[str] = [],
+        keep_in_fp32_modules: list[str] = [],
         **kwargs,
     ):
         self.modules_to_not_convert = self.quantization_config.modules_to_not_convert

@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional
-
 import torch
 from torch import nn
 
@@ -98,7 +96,7 @@ class HunyuanDiTBlock(nn.Module):
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-6,
         final_dropout: bool = False,
-        ff_inner_dim: Optional[int] = None,
+        ff_inner_dim: int | None = None,
         ff_bias: bool = True,
         skip: bool = False,
         qk_norm: bool = True,
@@ -158,7 +156,7 @@ class HunyuanDiTBlock(nn.Module):
         self._chunk_dim = 0
 
     # Copied from diffusers.models.attention.BasicTransformerBlock.set_chunk_feed_forward
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
+    def set_chunk_feed_forward(self, chunk_size: int | None, dim: int = 0):
         # Sets chunk feed-forward
         self._chunk_size = chunk_size
         self._chunk_dim = dim
@@ -166,8 +164,8 @@ class HunyuanDiTBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
         image_rotary_emb=None,
         skip=None,
     ) -> torch.Tensor:
@@ -252,8 +250,8 @@ class HunyuanDiT2DModel(ModelMixin, AttentionMixin, ConfigMixin):
         self,
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
-        in_channels: Optional[int] = None,
-        patch_size: Optional[int] = None,
+        in_channels: int | None = None,
+        patch_size: int | None = None,
         activation_fn: str = "gelu-approximate",
         sample_size=32,
         hidden_size=1152,
@@ -469,7 +467,7 @@ class HunyuanDiT2DModel(ModelMixin, AttentionMixin, ConfigMixin):
         return Transformer2DModelOutput(sample=output)
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(self, chunk_size: int | None = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).

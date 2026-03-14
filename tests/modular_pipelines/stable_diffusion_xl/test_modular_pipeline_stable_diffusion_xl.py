@@ -267,6 +267,60 @@ class SDXLModularControlNetTesterMixin:
         assert max_diff > 1e-2, "Output with CFG must be different from normal inference"
 
 
+TEXT2IMAGE_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLPrepareAdditionalConditioningStep"),
+        ("denoise.denoise", "StableDiffusionXLDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "controlnet_text2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "controlnet_union_text2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetUnionInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "ip_adapter_text2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLPrepareAdditionalConditioningStep"),
+        ("denoise.denoise", "StableDiffusionXLDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "ip_adapter_controlnet_text2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+}
+
+
 class TestSDXLModularPipelineFast(
     SDXLModularTesterMixin,
     SDXLModularIPAdapterTesterMixin,
@@ -291,6 +345,8 @@ class TestSDXLModularPipelineFast(
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_image_output_shape = (1, 3, 64, 64)
 
+    expected_workflow_blocks = TEXT2IMAGE_WORKFLOWS
+
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
         inputs = {
@@ -312,6 +368,65 @@ class TestSDXLModularPipelineFast(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+
+IMAGE2IMAGE_WORKFLOWS = {
+    "image2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLVaeEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise.denoise", "StableDiffusionXLDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "controlnet_image2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLVaeEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "controlnet_union_image2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLVaeEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetUnionInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "ip_adapter_image2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("vae_encoder", "StableDiffusionXLVaeEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise.denoise", "StableDiffusionXLDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "ip_adapter_controlnet_image2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("vae_encoder", "StableDiffusionXLVaeEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+}
 
 
 class TestSDXLImg2ImgModularPipelineFast(
@@ -338,6 +453,7 @@ class TestSDXLImg2ImgModularPipelineFast(
     )
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
     expected_image_output_shape = (1, 3, 64, 64)
+    expected_workflow_blocks = IMAGE2IMAGE_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
         generator = self.get_generator(seed)
@@ -367,6 +483,65 @@ class TestSDXLImg2ImgModularPipelineFast(
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
+INPAINTING_WORKFLOWS = {
+    "inpainting": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLInpaintVaeEncoderStep"),
+        ("input", "StableDiffusionXLInputStep"),
+        ("set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("prepare_latents", "StableDiffusionXLInpaintPrepareLatentsStep"),
+        ("prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise", "StableDiffusionXLInpaintDenoiseStep"),
+        ("decode", "StableDiffusionXLInpaintDecodeStep"),
+    ],
+    "controlnet_inpainting": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLInpaintVaeEncoderStep"),
+        ("input", "StableDiffusionXLInputStep"),
+        ("set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("prepare_latents", "StableDiffusionXLInpaintPrepareLatentsStep"),
+        ("prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise", "StableDiffusionXLInpaintControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLInpaintDecodeStep"),
+    ],
+    "controlnet_union_inpainting": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLInpaintVaeEncoderStep"),
+        ("input", "StableDiffusionXLInputStep"),
+        ("set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("prepare_latents", "StableDiffusionXLInpaintPrepareLatentsStep"),
+        ("prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("controlnet_input", "StableDiffusionXLControlNetUnionInputStep"),
+        ("denoise", "StableDiffusionXLInpaintControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLInpaintDecodeStep"),
+    ],
+    "ip_adapter_inpainting": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("vae_encoder", "StableDiffusionXLInpaintVaeEncoderStep"),
+        ("input", "StableDiffusionXLInputStep"),
+        ("set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("prepare_latents", "StableDiffusionXLInpaintPrepareLatentsStep"),
+        ("prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise", "StableDiffusionXLInpaintDenoiseStep"),
+        ("decode", "StableDiffusionXLInpaintDecodeStep"),
+    ],
+    "ip_adapter_controlnet_inpainting": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("vae_encoder", "StableDiffusionXLInpaintVaeEncoderStep"),
+        ("input", "StableDiffusionXLInputStep"),
+        ("set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("prepare_latents", "StableDiffusionXLInpaintPrepareLatentsStep"),
+        ("prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise", "StableDiffusionXLInpaintControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLInpaintDecodeStep"),
+    ],
+}
+
+
 class SDXLInpaintingModularPipelineFastTests(
     SDXLModularTesterMixin,
     SDXLModularIPAdapterTesterMixin,
@@ -392,6 +567,7 @@ class SDXLInpaintingModularPipelineFastTests(
     )
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_image_output_shape = (1, 3, 64, 64)
+    expected_workflow_blocks = INPAINTING_WORKFLOWS
 
     def get_dummy_inputs(self, device, seed=0):
         generator = self.get_generator(seed)

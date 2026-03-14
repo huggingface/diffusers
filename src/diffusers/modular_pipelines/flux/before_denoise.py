@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Optional, Union
 
 import numpy as np
 import torch
@@ -33,10 +32,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -51,15 +50,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -106,7 +105,7 @@ def calculate_shift(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -156,7 +155,7 @@ class FluxSetTimestepsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
 
     @property
@@ -164,7 +163,7 @@ class FluxSetTimestepsStep(ModularPipelineBlocks):
         return "Step that sets the scheduler's timesteps for inference"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_inference_steps", default=50),
             InputParam("timesteps"),
@@ -183,7 +182,7 @@ class FluxSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
             OutputParam(
@@ -232,7 +231,7 @@ class FluxImg2ImgSetTimestepsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
 
     @property
@@ -240,7 +239,7 @@ class FluxImg2ImgSetTimestepsStep(ModularPipelineBlocks):
         return "Step that sets the scheduler's timesteps for inference"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_inference_steps", default=50),
             InputParam("timesteps"),
@@ -259,7 +258,7 @@ class FluxImg2ImgSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
             OutputParam(
@@ -322,7 +321,7 @@ class FluxPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return []
 
     @property
@@ -330,11 +329,11 @@ class FluxPrepareLatentsStep(ModularPipelineBlocks):
         return "Prepare latents step that prepares the latents for the text-to-image generation process"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("height", type_hint=int),
             InputParam("width", type_hint=int),
-            InputParam("latents", type_hint=Optional[torch.Tensor]),
+            InputParam("latents", type_hint=torch.Tensor | None),
             InputParam("num_images_per_prompt", type_hint=int, default=1),
             InputParam("generator"),
             InputParam(
@@ -347,7 +346,7 @@ class FluxPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
@@ -431,11 +430,11 @@ class FluxImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
         " `prepare_latents`. Both noise and image latents should already be patchified."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 name="latents",
@@ -458,7 +457,7 @@ class FluxImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="initial_noise",
@@ -507,7 +506,7 @@ class FluxRoPEInputsStep(ModularPipelineBlocks):
         return "Step that prepares the RoPE inputs for the denoising process. Should be placed after text encoder and latent preparation steps."
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
@@ -515,18 +514,18 @@ class FluxRoPEInputsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="txt_ids",
                 kwargs_type="denoiser_input_fields",
-                type_hint=List[int],
+                type_hint=list[int],
                 description="The sequence lengths of the prompt embeds, used for RoPE calculation.",
             ),
             OutputParam(
                 name="img_ids",
                 kwargs_type="denoiser_input_fields",
-                type_hint=List[int],
+                type_hint=list[int],
                 description="The sequence lengths of the image latents, used for RoPE calculation.",
             ),
         ]
@@ -557,7 +556,7 @@ class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
         return "Step that prepares the RoPE inputs for the denoising process of Flux Kontext. Should be placed after text encoder and latent preparation steps."
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="image_height"),
             InputParam(name="image_width"),
@@ -567,18 +566,18 @@ class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 name="txt_ids",
                 kwargs_type="denoiser_input_fields",
-                type_hint=List[int],
+                type_hint=list[int],
                 description="The sequence lengths of the prompt embeds, used for RoPE calculation.",
             ),
             OutputParam(
                 name="img_ids",
                 kwargs_type="denoiser_input_fields",
-                type_hint=List[int],
+                type_hint=list[int],
                 description="The sequence lengths of the image latents, used for RoPE calculation.",
             ),
         ]

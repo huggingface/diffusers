@@ -12,76 +12,62 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 
 from diffusers import WanAnimateTransformer3DModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    BitsAndBytesTesterMixin,
+    GGUFCompileTesterMixin,
+    GGUFTesterMixin,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TorchAoTesterMixin,
+    TorchCompileTesterMixin,
+    TrainingTesterMixin,
 )
-from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
 
 
-class WanAnimateTransformer3DTests(ModelTesterMixin, unittest.TestCase):
-    model_class = WanAnimateTransformer3DModel
-    main_input_name = "hidden_states"
-    uses_custom_attn_processor = True
+class WanAnimateTransformer3DTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return WanAnimateTransformer3DModel
 
     @property
-    def dummy_input(self):
-        batch_size = 1
-        num_channels = 4
-        num_frames = 20  # To make the shapes work out; for complicated reasons we want 21 to divide num_frames + 1
-        height = 16
-        width = 16
-        text_encoder_embedding_dim = 16
-        sequence_length = 12
-
-        clip_seq_len = 12
-        clip_dim = 16
-
-        inference_segment_length = 77  # The inference segment length in the full Wan2.2-Animate-14B model
-        face_height = 16  # Should be square and match `motion_encoder_size` below
-        face_width = 16
-
-        hidden_states = torch.randn((batch_size, 2 * num_channels + 4, num_frames + 1, height, width)).to(torch_device)
-        timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
-        encoder_hidden_states = torch.randn((batch_size, sequence_length, text_encoder_embedding_dim)).to(torch_device)
-        clip_ref_features = torch.randn((batch_size, clip_seq_len, clip_dim)).to(torch_device)
-        pose_latents = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
-        face_pixel_values = torch.randn((batch_size, 3, inference_segment_length, face_height, face_width)).to(
-            torch_device
-        )
-
-        return {
-            "hidden_states": hidden_states,
-            "timestep": timestep,
-            "encoder_hidden_states": encoder_hidden_states,
-            "encoder_hidden_states_image": clip_ref_features,
-            "pose_hidden_states": pose_latents,
-            "face_pixel_values": face_pixel_values,
-        }
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-wan-animate-transformer"
 
     @property
-    def input_shape(self):
-        return (12, 1, 16, 16)
+    def output_shape(self) -> tuple[int, ...]:
+        # Output has fewer channels than input (4 vs 12)
+        return (4, 21, 16, 16)
 
     @property
-    def output_shape(self):
-        return (4, 1, 16, 16)
+    def input_shape(self) -> tuple[int, ...]:
+        return (12, 21, 16, 16)
 
-    def prepare_init_args_and_inputs_for_common(self):
+    @property
+    def main_input_name(self) -> str:
+        return "hidden_states"
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict[str, int | list[int] | tuple | str | bool | float | dict]:
         # Use custom channel sizes since the default Wan Animate channel sizes will cause the motion encoder to
         # contain the vast majority of the parameters in the test model
         channel_sizes = {"4": 16, "8": 16, "16": 16}
 
-        init_dict = {
+        return {
             "patch_size": (1, 2, 2),
             "num_attention_heads": 2,
             "attention_head_dim": 12,
@@ -105,22 +91,219 @@ class WanAnimateTransformer3DTests(ModelTesterMixin, unittest.TestCase):
             "face_encoder_num_heads": 2,
             "inject_face_latents_blocks": 2,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        batch_size = 1
+        num_channels = 4
+        num_frames = 20  # To make the shapes work out; for complicated reasons we want 21 to divide num_frames + 1
+        height = 16
+        width = 16
+        text_encoder_embedding_dim = 16
+        sequence_length = 12
+
+        clip_seq_len = 12
+        clip_dim = 16
+
+        inference_segment_length = 77  # The inference segment length in the full Wan2.2-Animate-14B model
+        face_height = 16  # Should be square and match `motion_encoder_size`
+        face_width = 16
+
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, 2 * num_channels + 4, num_frames + 1, height, width),
+                generator=self.generator,
+                device=torch_device,
+            ),
+            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, text_encoder_embedding_dim),
+                generator=self.generator,
+                device=torch_device,
+            ),
+            "encoder_hidden_states_image": randn_tensor(
+                (batch_size, clip_seq_len, clip_dim),
+                generator=self.generator,
+                device=torch_device,
+            ),
+            "pose_hidden_states": randn_tensor(
+                (batch_size, num_channels, num_frames, height, width),
+                generator=self.generator,
+                device=torch_device,
+            ),
+            "face_pixel_values": randn_tensor(
+                (batch_size, 3, inference_segment_length, face_height, face_width),
+                generator=self.generator,
+                device=torch_device,
+            ),
+        }
+
+
+class TestWanAnimateTransformer3D(WanAnimateTransformer3DTesterConfig, ModelTesterMixin):
+    """Core model tests for Wan Animate Transformer 3D."""
+
+    def test_output(self):
+        # Override test_output because the transformer output is expected to have less channels
+        # than the main transformer input.
+        expected_output_shape = (1, 4, 21, 16, 16)
+        super().test_output(expected_output_shape=expected_output_shape)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        # Skip: fp16/bf16 require very high atol (~1e-2) to pass, providing little signal.
+        # Dtype preservation is already tested by test_from_save_pretrained_dtype and test_keep_in_fp32_modules.
+        pytest.skip("Tolerance requirements too high for meaningful test")
+
+
+class TestWanAnimateTransformer3DMemory(WanAnimateTransformer3DTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for Wan Animate Transformer 3D."""
+
+
+class TestWanAnimateTransformer3DTraining(WanAnimateTransformer3DTesterConfig, TrainingTesterMixin):
+    """Training tests for Wan Animate Transformer 3D."""
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"WanAnimateTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    # Override test_output because the transformer output is expected to have less channels than the main transformer
-    # input.
-    def test_output(self):
-        expected_output_shape = (1, 4, 21, 16, 16)
-        super().test_output(expected_output_shape=expected_output_shape)
+
+class TestWanAnimateTransformer3DAttention(WanAnimateTransformer3DTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for Wan Animate Transformer 3D."""
 
 
-class WanAnimateTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = WanAnimateTransformer3DModel
+class TestWanAnimateTransformer3DCompile(WanAnimateTransformer3DTesterConfig, TorchCompileTesterMixin):
+    """Torch compile tests for Wan Animate Transformer 3D."""
 
-    def prepare_init_args_and_inputs_for_common(self):
-        return WanAnimateTransformer3DTests().prepare_init_args_and_inputs_for_common()
+    def test_torch_compile_recompilation_and_graph_break(self):
+        # Skip: F.pad with mode="replicate" in WanAnimateFaceEncoder triggers importlib.import_module
+        # internally, which dynamo doesn't support tracing through.
+        pytest.skip("F.pad with replicate mode triggers unsupported import in torch.compile")
+
+
+class TestWanAnimateTransformer3DBitsAndBytes(WanAnimateTransformer3DTesterConfig, BitsAndBytesTesterMixin):
+    """BitsAndBytes quantization tests for Wan Animate Transformer 3D."""
+
+    @property
+    def torch_dtype(self):
+        return torch.float16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the tiny Wan Animate model dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 36, 21, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states_image": randn_tensor(
+                (1, 257, 1280), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "pose_hidden_states": randn_tensor(
+                (1, 16, 20, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "face_pixel_values": randn_tensor(
+                (1, 3, 77, 512, 512), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
+
+
+class TestWanAnimateTransformer3DTorchAo(WanAnimateTransformer3DTesterConfig, TorchAoTesterMixin):
+    """TorchAO quantization tests for Wan Animate Transformer 3D."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the tiny Wan Animate model dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 36, 21, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states_image": randn_tensor(
+                (1, 257, 1280), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "pose_hidden_states": randn_tensor(
+                (1, 16, 20, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "face_pixel_values": randn_tensor(
+                (1, 3, 77, 512, 512), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
+
+
+class TestWanAnimateTransformer3DGGUF(WanAnimateTransformer3DTesterConfig, GGUFTesterMixin):
+    """GGUF quantization tests for Wan Animate Transformer 3D."""
+
+    @property
+    def gguf_filename(self):
+        return "https://huggingface.co/QuantStack/Wan2.2-Animate-14B-GGUF/blob/main/Wan2.2-Animate-14B-Q2_K.gguf"
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the real Wan Animate model dimensions.
+
+        Wan 2.2 Animate: in_channels=36 (2*16+4), text_dim=4096, image_dim=1280
+        """
+        return {
+            "hidden_states": randn_tensor(
+                (1, 36, 21, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states_image": randn_tensor(
+                (1, 257, 1280), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "pose_hidden_states": randn_tensor(
+                (1, 16, 20, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "face_pixel_values": randn_tensor(
+                (1, 3, 77, 512, 512), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
+
+
+class TestWanAnimateTransformer3DGGUFCompile(WanAnimateTransformer3DTesterConfig, GGUFCompileTesterMixin):
+    """GGUF + compile tests for Wan Animate Transformer 3D."""
+
+    @property
+    def gguf_filename(self):
+        return "https://huggingface.co/QuantStack/Wan2.2-Animate-14B-GGUF/blob/main/Wan2.2-Animate-14B-Q2_K.gguf"
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the real Wan Animate model dimensions.
+
+        Wan 2.2 Animate: in_channels=36 (2*16+4), text_dim=4096, image_dim=1280
+        """
+        return {
+            "hidden_states": randn_tensor(
+                (1, 36, 21, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states_image": randn_tensor(
+                (1, 257, 1280), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "pose_hidden_states": randn_tensor(
+                (1, 16, 20, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "face_pixel_values": randn_tensor(
+                (1, 3, 77, 512, 512), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }

@@ -1,5 +1,3 @@
-from typing import List
-
 import PIL.Image
 import PIL.ImageOps
 from packaging import version
@@ -50,7 +48,7 @@ def numpy_to_pil(images):
     return pil_images
 
 
-def make_image_grid(images: List[PIL.Image.Image], rows: int, cols: int, resize: int = None) -> PIL.Image.Image:
+def make_image_grid(images: list[PIL.Image.Image], rows: int, cols: int, resize: int = None) -> PIL.Image.Image:
     """
     Prepares a single grid of images. Useful for visualization purposes.
     """

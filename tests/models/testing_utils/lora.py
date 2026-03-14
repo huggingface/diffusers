@@ -375,7 +375,7 @@ class LoraHotSwappingForModelTesterMixin:
             # additionally check if dynamic compilation works.
             if different_shapes is not None:
                 for height, width in different_shapes:
-                    new_inputs_dict = self.prepare_dummy_input(height=height, width=width)
+                    new_inputs_dict = self.get_dummy_inputs(height=height, width=width)
                     _ = model(**new_inputs_dict)
             else:
                 output0_after = model(**inputs_dict)["sample"]
@@ -390,7 +390,7 @@ class LoraHotSwappingForModelTesterMixin:
         with torch.inference_mode():
             if different_shapes is not None:
                 for height, width in different_shapes:
-                    new_inputs_dict = self.prepare_dummy_input(height=height, width=width)
+                    new_inputs_dict = self.get_dummy_inputs(height=height, width=width)
                     _ = model(**new_inputs_dict)
             else:
                 output1_after = model(**inputs_dict)["sample"]

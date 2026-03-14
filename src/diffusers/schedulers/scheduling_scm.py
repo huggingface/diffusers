@@ -16,7 +16,6 @@
 # and https://github.com/hojonathanho/diffusion
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -46,7 +45,7 @@ class SCMSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 class SCMScheduler(SchedulerMixin, ConfigMixin):
@@ -118,7 +117,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_inference_steps: int,
         timesteps: torch.Tensor = None,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
         max_timesteps: float = 1.57080,
         intermediate_timesteps: float = 1.3,
     ):
@@ -173,7 +172,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
         """
         Initialize the step index for the scheduler based on the given timestep.
 
@@ -190,7 +189,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(
-        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
     ) -> int:
         """
         Find the index of a given timestep in the timestep schedule.
@@ -226,7 +225,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
         generator: torch.Generator = None,
         return_dict: bool = True,
-    ) -> Union[SCMSchedulerOutput, Tuple]:
+    ) -> SCMSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
