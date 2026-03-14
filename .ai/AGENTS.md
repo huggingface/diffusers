@@ -1,8 +1,8 @@
 # Diffusers — Agent Guide
 
-### Philosophy
+## Coding style
 
-Write code as simple and explicit as possible.
+Strive to write code as simple and explicit as possible.
 
 - Minimize small helper/utility functions — inline the logic instead. A reader should be able to follow the full flow without jumping between functions.
 - No defensive code or unused code paths — do not add fallback paths, safety checks, or configuration options "just in case". When porting from a research repo, delete training-time code paths, experimental flags, and ablation branches entirely — only keep the inference path you are actually integrating.
@@ -14,7 +14,7 @@ Write code as simple and explicit as possible.
 - No new mandatory dependency without discussion (e.g. `einops`)
 - Optional deps guarded with `is_X_available()` and a dummy in `utils/dummy_*.py`
 
-### Code Style
+## Code formatting
 - `make style` and `make fix-copies` should be run as the final step before opening a PR
 
 ### Copied Code
@@ -24,6 +24,7 @@ Write code as simple and explicit as possible.
 
 ### Models
 - All layer calls should be visible directly in `forward` — avoid helper functions that hide `nn.Module` calls.
+- Try to not introduce graph breaks as much as possible for better compatibility with `torch.compile`. For example, DO NOT arbitrarily insert operations from NumPy in the forward implementations.
 - Attention must follow the diffusers pattern: both the `Attention` class and its processor are defined in the model file. The processor's `__call__` handles the actual compute and must use `dispatch_attention_fn` rather than calling `F.scaled_dot_product_attention` directly. The attention class inherits `AttentionModuleMixin` and declares `_default_processor_cls` and `_available_processors`.
 
 ```python
@@ -64,8 +65,13 @@ class MyModelAttention(nn.Module, AttentionModuleMixin):
         return self.processor(self, hidden_states, attention_mask, **kwargs)
 ```
 
+Consult the implementations in `src/diffusers/models/transformers/` if you need further references.
+
 ### Pipeline
-- All pipelines must inherit from `DiffusionPipeline`
+- All pipelines must inherit from `DiffusionPipeline`. Consult implementations in `src/diffusers/pipelines` in case you need references.
+- DO NOT use an existing pipeline class (e.g., `FluxPipeline`) to override another pipeline (e.g., `FluxImg2ImgPipeline` which will be a part of the core codebase (`src`).
+
 
 ### Tests
 - Slow tests gated with `@slow` and `RUN_SLOW=1`
+- All model-level tests must use the `BaseModelTesterConfig`, `ModelTesterMixin`, `MemoryTesterMixin`, `AttentionTesterMixin`, `LoraTesterMixin`, and `TrainingTesterMixin` classes initially to write the tests. Any additional tests should be added after discussions with the maintainers. Use `tests/models/transformers/test_models_transformer_flux.py` as a reference.
