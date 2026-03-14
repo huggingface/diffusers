@@ -7,7 +7,7 @@ import safetensors.torch
 import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
-from transformers import AutoTokenizer, Gemma3ForConditionalGeneration
+from transformers import AutoTokenizer, Gemma3ForConditionalGeneration, Gemma3Processor
 
 from diffusers import (
     AutoencoderKLLTX2Audio,
@@ -17,7 +17,7 @@ from diffusers import (
     LTX2Pipeline,
     LTX2VideoTransformer3DModel,
 )
-from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel, LTX2TextConnectors, LTX2Vocoder
+from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel, LTX2TextConnectors, LTX2Vocoder, LTX2VocoderWithBWE
 from diffusers.utils.import_utils import is_accelerate_available
 
 
@@ -42,6 +42,12 @@ LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT = {
     # Attention QK Norms
     "q_norm": "norm_q",
     "k_norm": "norm_k",
+}
+
+LTX_2_3_TRANSFORMER_KEYS_RENAME_DICT = {
+    **LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT,
+    "audio_prompt_adaln_single": "audio_prompt_adaln",
+    "prompt_adaln_single": "prompt_adaln",
 }
 
 LTX_2_0_VIDEO_VAE_RENAME_DICT = {
@@ -72,6 +78,13 @@ LTX_2_0_VIDEO_VAE_RENAME_DICT = {
     "per_channel_statistics.std-of-means": "latents_std",
 }
 
+LTX_2_3_VIDEO_VAE_RENAME_DICT = {
+    **LTX_2_0_VIDEO_VAE_RENAME_DICT,
+    # Decoder extra blocks
+    "up_blocks.7": "up_blocks.3.upsamplers.0",
+    "up_blocks.8": "up_blocks.3",
+}
+
 LTX_2_0_AUDIO_VAE_RENAME_DICT = {
     "per_channel_statistics.mean-of-means": "latents_mean",
     "per_channel_statistics.std-of-means": "latents_std",
@@ -84,10 +97,34 @@ LTX_2_0_VOCODER_RENAME_DICT = {
     "conv_post": "conv_out",
 }
 
-LTX_2_0_TEXT_ENCODER_RENAME_DICT = {
+LTX_2_3_VOCODER_RENAME_DICT = {
+    # Handle upsamplers ("ups" --> "upsamplers") due to name clash
+    "resblocks": "resnets",
+    "conv_pre": "conv_in",
+    "conv_post": "conv_out",
+    "act_post": "act_out",
+    "downsample.lowpass": "downsample",
+}
+
+LTX_2_0_CONNECTORS_KEYS_RENAME_DICT = {
+    "connectors.": "",
     "video_embeddings_connector": "video_connector",
     "audio_embeddings_connector": "audio_connector",
     "transformer_1d_blocks": "transformer_blocks",
+    "text_embedding_projection.aggregate_embed": "text_proj_in",
+    # Attention QK Norms
+    "q_norm": "norm_q",
+    "k_norm": "norm_k",
+}
+
+LTX_2_3_CONNECTORS_KEYS_RENAME_DICT = {
+    "connectors.": "",
+    "video_embeddings_connector": "video_connector",
+    "audio_embeddings_connector": "audio_connector",
+    "transformer_1d_blocks": "transformer_blocks",
+    # LTX-2.3 uses per-modality embedding projections
+    "text_embedding_projection.audio_aggregate_embed": "audio_text_proj_in",
+    "text_embedding_projection.video_aggregate_embed": "video_text_proj_in",
     # Attention QK Norms
     "q_norm": "norm_q",
     "k_norm": "norm_k",
@@ -129,21 +166,22 @@ def convert_ltx2_audio_vae_per_channel_statistics(key: str, state_dict: dict[str
     return
 
 
+def convert_ltx2_3_vocoder_upsamplers(key: str, state_dict: dict[str, Any]) -> None:
+    # Skip if not a weight, bias
+    if ".weight" not in key and ".bias" not in key:
+        return
+
+    if ".ups." in key:
+        new_key = key.replace(".ups.", ".upsamplers.")
+        param = state_dict.pop(key)
+        state_dict[new_key] = param
+    return
+
+
 LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "video_embeddings_connector": remove_keys_inplace,
     "audio_embeddings_connector": remove_keys_inplace,
     "adaln_single": convert_ltx2_transformer_adaln_single,
-}
-
-LTX_2_0_CONNECTORS_KEYS_RENAME_DICT = {
-    "connectors.": "",
-    "video_embeddings_connector": "video_connector",
-    "audio_embeddings_connector": "audio_connector",
-    "transformer_1d_blocks": "transformer_blocks",
-    "text_embedding_projection.aggregate_embed": "text_proj_in",
-    # Attention QK Norms
-    "q_norm": "norm_q",
-    "k_norm": "norm_k",
 }
 
 LTX_2_0_VAE_SPECIAL_KEYS_REMAP = {
@@ -155,13 +193,19 @@ LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP = {}
 
 LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP = {}
 
+LTX_2_3_VOCODER_SPECIAL_KEYS_REMAP = {
+    ".ups.": convert_ltx2_3_vocoder_upsamplers,
+}
+
+LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP = {}
+
 
 def split_transformer_and_connector_state_dict(state_dict: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     connector_prefixes = (
         "video_embeddings_connector",
         "audio_embeddings_connector",
         "transformer_1d_blocks",
-        "text_embedding_projection.aggregate_embed",
+        "text_embedding_projection",
         "connectors.",
         "video_connector",
         "audio_connector",
@@ -225,7 +269,7 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
         special_keys_remap = LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP
     elif version == "2.0":
         config = {
-            "model_id": "diffusers-internal-dev/new-ltx-model",
+            "model_id": "Lightricks/LTX-2",
             "diffusers_config": {
                 "in_channels": 128,
                 "out_channels": 128,
@@ -238,6 +282,8 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
                 "pos_embed_max_pos": 20,
                 "base_height": 2048,
                 "base_width": 2048,
+                "gated_attn": False,
+                "cross_attn_mod": False,
                 "audio_in_channels": 128,
                 "audio_out_channels": 128,
                 "audio_patch_size": 1,
@@ -249,6 +295,8 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
                 "audio_pos_embed_max_pos": 20,
                 "audio_sampling_rate": 16000,
                 "audio_hop_length": 160,
+                "audio_gated_attn": False,
+                "audio_cross_attn_mod": False,
                 "num_layers": 48,
                 "activation_fn": "gelu-approximate",
                 "qk_norm": "rms_norm_across_heads",
@@ -263,9 +311,61 @@ def get_ltx2_transformer_config(version: str) -> tuple[dict[str, Any], dict[str,
                 "timestep_scale_multiplier": 1000,
                 "cross_attn_timestep_scale_multiplier": 1000,
                 "rope_type": "split",
+                "use_prompt_embeddings": True,
+                "perturbed_attn": False,
             },
         }
         rename_dict = LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT
+        special_keys_remap = LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif version == "2.3":
+        config = {
+            "model_id": "Lightricks/LTX-2.3",
+            "diffusers_config": {
+                "in_channels": 128,
+                "out_channels": 128,
+                "patch_size": 1,
+                "patch_size_t": 1,
+                "num_attention_heads": 32,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "vae_scale_factors": (8, 32, 32),
+                "pos_embed_max_pos": 20,
+                "base_height": 2048,
+                "base_width": 2048,
+                "gated_attn": True,
+                "cross_attn_mod": True,
+                "audio_in_channels": 128,
+                "audio_out_channels": 128,
+                "audio_patch_size": 1,
+                "audio_patch_size_t": 1,
+                "audio_num_attention_heads": 32,
+                "audio_attention_head_dim": 64,
+                "audio_cross_attention_dim": 2048,
+                "audio_scale_factor": 4,
+                "audio_pos_embed_max_pos": 20,
+                "audio_sampling_rate": 16000,
+                "audio_hop_length": 160,
+                "audio_gated_attn": True,
+                "audio_cross_attn_mod": True,
+                "num_layers": 48,
+                "activation_fn": "gelu-approximate",
+                "qk_norm": "rms_norm_across_heads",
+                "norm_elementwise_affine": False,
+                "norm_eps": 1e-6,
+                "caption_channels": 3840,
+                "attention_bias": True,
+                "attention_out_bias": True,
+                "rope_theta": 10000.0,
+                "rope_double_precision": True,
+                "causal_offset": 1,
+                "timestep_scale_multiplier": 1000,
+                "cross_attn_timestep_scale_multiplier": 1000,
+                "rope_type": "split",
+                "use_prompt_embeddings": False,
+                "perturbed_attn": True,
+            },
+        }
+        rename_dict = LTX_2_3_TRANSFORMER_KEYS_RENAME_DICT
         special_keys_remap = LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
@@ -293,7 +393,7 @@ def get_ltx2_connectors_config(version: str) -> tuple[dict[str, Any], dict[str, 
         }
     elif version == "2.0":
         config = {
-            "model_id": "diffusers-internal-dev/new-ltx-model",
+            "model_id": "Lightricks/LTX-2",
             "diffusers_config": {
                 "caption_channels": 3840,
                 "text_proj_in_factor": 49,
@@ -301,20 +401,52 @@ def get_ltx2_connectors_config(version: str) -> tuple[dict[str, Any], dict[str, 
                 "video_connector_attention_head_dim": 128,
                 "video_connector_num_layers": 2,
                 "video_connector_num_learnable_registers": 128,
+                "video_gated_attn": False,
                 "audio_connector_num_attention_heads": 30,
                 "audio_connector_attention_head_dim": 128,
                 "audio_connector_num_layers": 2,
                 "audio_connector_num_learnable_registers": 128,
+                "audio_gated_attn": False,
                 "connector_rope_base_seq_len": 4096,
                 "rope_theta": 10000.0,
                 "rope_double_precision": True,
                 "causal_temporal_positioning": False,
                 "rope_type": "split",
+                "per_modality_projections": False,
+                "proj_bias": False,
             },
         }
-
-    rename_dict = LTX_2_0_CONNECTORS_KEYS_RENAME_DICT
-    special_keys_remap = {}
+        rename_dict = LTX_2_0_CONNECTORS_KEYS_RENAME_DICT
+        special_keys_remap = LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP
+    elif version == "2.3":
+        config = {
+            "model_id": "Lightricks/LTX-2.3",
+            "diffusers_config": {
+                "caption_channels": 3840,
+                "text_proj_in_factor": 49,
+                "video_connector_num_attention_heads": 32,
+                "video_connector_attention_head_dim": 128,
+                "video_connector_num_layers": 8,
+                "video_connector_num_learnable_registers": 128,
+                "video_gated_attn": True,
+                "audio_connector_num_attention_heads": 32,
+                "audio_connector_attention_head_dim": 64,
+                "audio_connector_num_layers": 8,
+                "audio_connector_num_learnable_registers": 128,
+                "audio_gated_attn": True,
+                "connector_rope_base_seq_len": 4096,
+                "rope_theta": 10000.0,
+                "rope_double_precision": True,
+                "causal_temporal_positioning": False,
+                "rope_type": "split",
+                "per_modality_projections": True,
+                "video_hidden_dim": 4096,
+                "audio_hidden_dim": 2048,
+                "proj_bias": True,
+            },
+        }
+        rename_dict = LTX_2_3_CONNECTORS_KEYS_RENAME_DICT
+        special_keys_remap = LTX_2_0_CONNECTORS_SPECIAL_KEYS_REMAP
 
     return config, rename_dict, special_keys_remap
 
@@ -416,7 +548,7 @@ def get_ltx2_video_vae_config(
         special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
     elif version == "2.0":
         config = {
-            "model_id": "diffusers-internal-dev/dummy-ltx2",
+            "model_id": "Lightricks/LTX-2",
             "diffusers_config": {
                 "in_channels": 3,
                 "out_channels": 3,
@@ -435,6 +567,7 @@ def get_ltx2_video_vae_config(
                 "decoder_spatio_temporal_scaling": (True, True, True),
                 "decoder_inject_noise": (False, False, False, False),
                 "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+                "upsample_type": ("spatiotemporal", "spatiotemporal", "spatiotemporal"),
                 "upsample_residual": (True, True, True),
                 "upsample_factor": (2, 2, 2),
                 "timestep_conditioning": timestep_conditioning,
@@ -450,6 +583,44 @@ def get_ltx2_video_vae_config(
             },
         }
         rename_dict = LTX_2_0_VIDEO_VAE_RENAME_DICT
+        special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
+    elif version == "2.3":
+        config = {
+            "model_id": "Lightricks/LTX-2.3",
+            "diffusers_config": {
+                "in_channels": 3,
+                "out_channels": 3,
+                "latent_channels": 128,
+                "block_out_channels": (256, 512, 1024, 1024),
+                "down_block_types": (
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                ),
+                "decoder_block_out_channels": (256, 512, 512, 1024),
+                "layers_per_block": (4, 6, 4, 2, 2),
+                "decoder_layers_per_block": (4, 6, 4, 2, 2),
+                "spatio_temporal_scaling": (True, True, True, True),
+                "decoder_spatio_temporal_scaling": (True, True, True, True),
+                "decoder_inject_noise": (False, False, False, False, False),
+                "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+                "upsample_type": ("spatiotemporal", "spatiotemporal", "temporal", "spatial"),
+                "upsample_residual": (False, False, False, False),
+                "upsample_factor": (2, 2, 1, 2),
+                "timestep_conditioning": timestep_conditioning,
+                "patch_size": 4,
+                "patch_size_t": 1,
+                "resnet_norm_eps": 1e-6,
+                "encoder_causal": True,
+                "decoder_causal": False,
+                "encoder_spatial_padding_mode": "zeros",
+                "decoder_spatial_padding_mode": "zeros",
+                "spatial_compression_ratio": 32,
+                "temporal_compression_ratio": 8,
+            },
+        }
+        rename_dict = LTX_2_3_VIDEO_VAE_RENAME_DICT
         special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
@@ -485,7 +656,7 @@ def convert_ltx2_video_vae(
 def get_ltx2_audio_vae_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "2.0":
         config = {
-            "model_id": "diffusers-internal-dev/new-ltx-model",
+            "model_id": "Lightricks/LTX-2",
             "diffusers_config": {
                 "base_channels": 128,
                 "output_channels": 2,
@@ -505,6 +676,31 @@ def get_ltx2_audio_vae_config(version: str) -> tuple[dict[str, Any], dict[str, A
                 "mel_bins": 64,
                 "double_z": True,
             },
+        }
+        rename_dict = LTX_2_0_AUDIO_VAE_RENAME_DICT
+        special_keys_remap = LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP
+    elif version == "2.3":
+        config = {
+            "model_id": "Lightricks/LTX-2.3",
+            "diffusers_config": {
+                "base_channels": 128,
+                "output_channels": 2,
+                "ch_mult": (1, 2, 4),
+                "num_res_blocks": 2,
+                "attn_resolutions": None,
+                "in_channels": 2,
+                "resolution": 256,
+                "latent_channels": 8,
+                "norm_type": "pixel",
+                "causality_axis": "height",
+                "dropout": 0.0,
+                "mid_block_add_attention": False,
+                "sample_rate": 16000,
+                "mel_hop_length": 160,
+                "is_causal": True,
+                "mel_bins": 64,
+                "double_z": True,
+            },  # Same config as LTX-2.0
         }
         rename_dict = LTX_2_0_AUDIO_VAE_RENAME_DICT
         special_keys_remap = LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP
@@ -540,7 +736,7 @@ def convert_ltx2_audio_vae(original_state_dict: dict[str, Any], version: str) ->
 def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if version == "2.0":
         config = {
-            "model_id": "diffusers-internal-dev/new-ltx-model",
+            "model_id": "Lightricks/LTX-2",
             "diffusers_config": {
                 "in_channels": 128,
                 "hidden_channels": 1024,
@@ -549,21 +745,71 @@ def get_ltx2_vocoder_config(version: str) -> tuple[dict[str, Any], dict[str, Any
                 "upsample_factors": [6, 5, 2, 2, 2],
                 "resnet_kernel_sizes": [3, 7, 11],
                 "resnet_dilations": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                "act_fn": "leaky_relu",
                 "leaky_relu_negative_slope": 0.1,
+                "antialias": False,
+                "final_act_fn": "tanh",
+                "final_bias": True,
                 "output_sampling_rate": 24000,
             },
         }
         rename_dict = LTX_2_0_VOCODER_RENAME_DICT
         special_keys_remap = LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP
+    elif version == "2.3":
+        config = {
+            "model_id": "Lightricks/LTX-2.3",
+            "diffusers_config": {
+                "in_channels": 128,
+                "hidden_channels": 1536,
+                "out_channels": 2,
+                "upsample_kernel_sizes": [11, 4, 4, 4, 4, 4],
+                "upsample_factors": [5, 2, 2, 2, 2, 2],
+                "resnet_kernel_sizes": [3, 7, 11],
+                "resnet_dilations": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                "act_fn": "snakebeta",
+                "leaky_relu_negative_slope": 0.1,
+                "antialias": True,
+                "antialias_ratio": 2,
+                "antialias_kernel_size": 12,
+                "final_act_fn": None,
+                "final_bias": False,
+                "bwe_in_channels": 128,
+                "bwe_hidden_channels": 512,
+                "bwe_out_channels": 2,
+                "bwe_upsample_kernel_sizes": [12, 11, 4, 4, 4],
+                "bwe_upsample_factors": [6, 5, 2, 2, 2],
+                "bwe_resnet_kernel_sizes": [3, 7, 11],
+                "bwe_resnet_dilations": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                "bwe_act_fn": "snakebeta",
+                "bwe_leaky_relu_negative_slope": 0.1,
+                "bwe_antialias": True,
+                "bwe_antialias_ratio": 2,
+                "bwe_antialias_kernel_size": 12,
+                "bwe_final_act_fn": None,
+                "bwe_final_bias": False,
+                "filter_length": 512,
+                "hop_length": 80,
+                "window_length": 512,
+                "num_mel_channels": 64,
+                "input_sampling_rate": 16000,
+                "output_sampling_rate": 48000,
+            },
+        }
+        rename_dict = LTX_2_3_VOCODER_RENAME_DICT
+        special_keys_remap = LTX_2_3_VOCODER_SPECIAL_KEYS_REMAP
     return config, rename_dict, special_keys_remap
 
 
 def convert_ltx2_vocoder(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_vocoder_config(version)
     diffusers_config = config["diffusers_config"]
+    if version == "2.3":
+        vocoder_cls = LTX2VocoderWithBWE
+    else:
+        vocoder_cls = LTX2Vocoder
 
     with init_empty_weights():
-        vocoder = LTX2Vocoder.from_config(diffusers_config)
+        vocoder = vocoder_cls.from_config(diffusers_config)
 
     # Handle official code --> diffusers key remapping via the remap dict
     for key in list(original_state_dict.keys()):
@@ -594,6 +840,18 @@ def get_ltx2_spatial_latent_upsampler_config(version: str):
             "spatial_upsample": True,
             "temporal_upsample": False,
             "rational_spatial_scale": 2.0,
+            "use_rational_resampler": True,
+        }
+    elif version == "2.3":
+        config = {
+            "in_channels": 128,
+            "mid_channels": 1024,
+            "num_blocks_per_stage": 4,
+            "dims": 3,
+            "spatial_upsample": True,
+            "temporal_upsample": False,
+            "rational_spatial_scale": 2.0,
+            "use_rational_resampler": False,
         }
     else:
         raise ValueError(f"Unsupported version: {version}")
@@ -651,13 +909,17 @@ def get_model_state_dict_from_combined_ckpt(combined_ckpt: dict[str, Any], prefi
     model_state_dict = {}
     for param_name, param in combined_ckpt.items():
         if param_name.startswith(prefix):
-            model_state_dict[param_name.replace(prefix, "")] = param
+            model_state_dict[param_name.removeprefix(prefix)] = param
 
     if prefix == "model.diffusion_model.":
         # Some checkpoints store the text connector projection outside the diffusion model prefix.
-        connector_key = "text_embedding_projection.aggregate_embed.weight"
-        if connector_key in combined_ckpt and connector_key not in model_state_dict:
-            model_state_dict[connector_key] = combined_ckpt[connector_key]
+        connector_prefixes = ["text_embedding_projection"]
+        for param_name, param in combined_ckpt.items():
+            for prefix in connector_prefixes:
+                if param_name.startswith(prefix):
+                    # Check to make sure we're not overwriting an existing key
+                    if param_name not in model_state_dict:
+                        model_state_dict[param_name] = combined_ckpt[param_name]
 
     return model_state_dict
 
@@ -686,7 +948,7 @@ def get_args():
         "--version",
         type=str,
         default="2.0",
-        choices=["test", "2.0"],
+        choices=["test", "2.0", "2.3"],
         help="Version of the LTX 2.0 model",
     )
 
@@ -748,6 +1010,11 @@ def get_args():
         action="store_true",
         help="Whether to save a latent upsampling pipeline",
     )
+    parser.add_argument(
+        "--add_processor",
+        action="store_true",
+        help="Whether to add a Gemma3Processor to the pipeline for prompt enhancement.",
+    )
 
     parser.add_argument("--vae_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
     parser.add_argument("--audio_vae_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
@@ -756,6 +1023,12 @@ def get_args():
     parser.add_argument("--text_encoder_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
 
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
+    parser.add_argument(
+        "--upsample_output_path",
+        type=str,
+        default=None,
+        help="Path where converted upsampling pipeline should be saved",
+    )
 
     return parser.parse_args()
 
@@ -787,7 +1060,7 @@ def main(args):
             args.audio_vae,
             args.dit,
             args.vocoder,
-            args.text_encoder,
+            args.connectors,
             args.full_pipeline,
             args.upsample_pipeline,
         ]
@@ -852,7 +1125,12 @@ def main(args):
         if not args.full_pipeline:
             tokenizer.save_pretrained(os.path.join(args.output_path, "tokenizer"))
 
-    if args.latent_upsampler or args.full_pipeline or args.upsample_pipeline:
+        if args.add_processor:
+            processor = Gemma3Processor.from_pretrained(args.text_encoder_model_id)
+            if not args.full_pipeline:
+                processor.save_pretrained(os.path.join(args.output_path, "processor"))
+
+    if args.latent_upsampler or args.upsample_pipeline:
         original_latent_upsampler_ckpt = load_hub_or_local_checkpoint(
             repo_id=args.original_state_dict_repo_id, filename=args.latent_upsampler_filename
         )
@@ -866,14 +1144,26 @@ def main(args):
             latent_upsampler.save_pretrained(os.path.join(args.output_path, "latent_upsampler"))
 
     if args.full_pipeline:
-        scheduler = FlowMatchEulerDiscreteScheduler(
-            use_dynamic_shifting=True,
-            base_shift=0.95,
-            max_shift=2.05,
-            base_image_seq_len=1024,
-            max_image_seq_len=4096,
-            shift_terminal=0.1,
-        )
+        is_distilled_ckpt = "distilled" in args.combined_filename
+        if is_distilled_ckpt:
+            # Disable dynamic shifting and terminal shift so that distilled sigmas are used as-is
+            scheduler = FlowMatchEulerDiscreteScheduler(
+                use_dynamic_shifting=False,
+                base_shift=0.95,
+                max_shift=2.05,
+                base_image_seq_len=1024,
+                max_image_seq_len=4096,
+                shift_terminal=None,
+            )
+        else:
+            scheduler = FlowMatchEulerDiscreteScheduler(
+                use_dynamic_shifting=True,
+                base_shift=0.95,
+                max_shift=2.05,
+                base_image_seq_len=1024,
+                max_image_seq_len=4096,
+                shift_terminal=0.1,
+            )
 
         pipe = LTX2Pipeline(
             scheduler=scheduler,
@@ -891,10 +1181,12 @@ def main(args):
     if args.upsample_pipeline:
         pipe = LTX2LatentUpsamplePipeline(vae=vae, latent_upsampler=latent_upsampler)
 
-        # Put latent upsampling pipeline in its own subdirectory so it doesn't mess with the full pipeline
-        pipe.save_pretrained(
-            os.path.join(args.output_path, "upsample_pipeline"), safe_serialization=True, max_shard_size="5GB"
-        )
+        # As two diffusers pipelines cannot be in the same directory, save the upsampling pipeline to its own directory
+        if args.upsample_output_path:
+            upsample_output_path = args.upsample_output_path
+        else:
+            upsample_output_path = args.output_path
+        pipe.save_pretrained(upsample_output_path, safe_serialization=True, max_shard_size="5GB")
 
 
 if __name__ == "__main__":
