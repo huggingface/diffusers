@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import numpy as np
 import torch
-from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
+from transformers import Gemma3ForConditionalGeneration, Gemma3Processor, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
@@ -212,7 +212,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
     """
 
     model_cpu_offload_seq = "text_encoder->connectors->transformer->vae->audio_vae->vocoder"
-    _optional_components = []
+    _optional_components = ["processor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -222,6 +222,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         audio_vae: AutoencoderKLLTX2Audio,
         text_encoder: Gemma3ForConditionalGeneration,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
+        processor: Gemma3Processor,
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
         vocoder: LTX2Vocoder | LTX2VocoderWithBWE,
@@ -233,6 +234,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
             audio_vae=audio_vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
+            processor=processor,
             connectors=connectors,
             transformer=transformer,
             vocoder=vocoder,
@@ -422,6 +424,53 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
             )
 
         return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
+
+    @torch.no_grad()
+    def enhance_prompt(
+        self,
+        image: PipelineImageInput,
+        prompt: str,
+        system_prompt: str,
+        max_new_tokens: int = 512,
+        seed: int = 10,
+        generation_kwargs: dict[str, Any] | None = None,
+        device: str | torch.device | None = None,
+    ):
+        """
+        Enhances the supplied `prompt` by generating a new prompt using the current text encoder (default is a
+        `transformers.Gemma3ForConditionalGeneration` model) from it and a system prompt.
+        """
+        device = device or self._execution_device
+        if generation_kwargs is None:
+            # Set to default generation kwargs
+            generation_kwargs = {"do_sample": True, "temperature": 0.7}
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": f"User Raw Input Prompt: {prompt}."},
+                ],
+            },
+        ]
+        template = self.processor.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        model_inputs = self.processor(text=template, images=image, return_tensors="pt").to(device)
+        self.text_encoder.to(device)
+
+        # `transformers.GenerationMixin.generate` does not support using a `torch.Generator` to control randomness,
+        # so manually apply a seed for reproducible generation.
+        torch.manual_seed(seed)
+        generated_sequences = self.text_encoder.generate(
+            **model_inputs,
+            max_new_tokens=max_new_tokens,
+            **generation_kwargs,
+        )  # tensor of shape [batch_size, seq_len]
+
+        generated_ids = [seq[len(model_inputs.input_ids[i]) :] for i, seq in enumerate(generated_sequences)]
+        enhanced_prompt = self.processor.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        return enhanced_prompt
 
     # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline.check_inputs
     def check_inputs(
@@ -830,6 +879,10 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         decode_timestep: float | list[float] = 0.0,
         decode_noise_scale: float | list[float] | None = None,
         use_cross_timestep: bool = False,
+        system_prompt: str | None = None,
+        prompt_max_new_tokens: int = 512,
+        prompt_enhancement_kwargs: dict[str, Any] | None = None,
+        prompt_enhancement_seed: int = 10,
         output_type: str = "pil",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
@@ -945,6 +998,20 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                 Whether to use the cross modality (audio is the cross modality of video, and vice versa) sigma when
                 calculating the cross attention modulation parameters. `True` is the newer (e.g. LTX-2.3) behavior;
                 `False` is the legacy LTX-2.0 behavior.
+            system_prompt (`str`, *optional*, defaults to `None`):
+                Optional system prompt to use for prompt enhancement. The system prompt will be used by the current
+                text encoder (by default, a `Gemma3ForConditionalGeneration` model) to generate an enhanced prompt from
+                the original `prompt` to condition generation. If not supplied, prompt enhancement will not be
+                performed.
+            prompt_max_new_tokens (`int`, *optional*, defaults to `512`):
+                The maximum number of new tokens to generate when performing prompt enhancement.
+            prompt_enhancement_kwargs (`dict[str, Any]`, *optional*, defaults to `None`):
+                Keyword arguments for `self.text_encoder.generate`. If not supplied, default arguments of
+                `do_sample=True` and `temperature=0.7` will be used. See
+                https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationMixin.generate
+                for more details.
+            prompt_enhancement_seed (`int`, *optional*, default to `10`):
+                Random seed for any random operations during prompt enhancement.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -1022,6 +1089,17 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         device = self._execution_device
 
         # 3. Prepare text embeddings
+        if system_prompt is not None and prompt is not None:
+            prompt = self.enhance_prompt(
+                image=image,
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_new_tokens=prompt_max_new_tokens,
+                seed=prompt_enhancement_seed,
+                generation_kwargs=prompt_enhancement_kwargs,
+                device=device,
+            )
+
         (
             prompt_embeds,
             prompt_attention_mask,

@@ -7,7 +7,7 @@ import safetensors.torch
 import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
-from transformers import AutoTokenizer, Gemma3ForConditionalGeneration
+from transformers import AutoTokenizer, Gemma3ForConditionalGeneration, Gemma3Processor
 
 from diffusers import (
     AutoencoderKLLTX2Audio,
@@ -1010,6 +1010,11 @@ def get_args():
         action="store_true",
         help="Whether to save a latent upsampling pipeline",
     )
+    parser.add_argument(
+        "--add_processor",
+        action="store_true",
+        help="Whether to add a Gemma3Processor to the pipeline for prompt enhancement.",
+    )
 
     parser.add_argument("--vae_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
     parser.add_argument("--audio_vae_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
@@ -1119,6 +1124,11 @@ def main(args):
         tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_id)
         if not args.full_pipeline:
             tokenizer.save_pretrained(os.path.join(args.output_path, "tokenizer"))
+
+        if args.add_processor:
+            processor = Gemma3Processor.from_pretrained(args.text_encoder_model_id)
+            if not args.full_pipeline:
+                processor.save_pretrained(os.path.join(args.output_path, "processor"))
 
     if args.latent_upsampler or args.upsample_pipeline:
         original_latent_upsampler_ckpt = load_hub_or_local_checkpoint(
