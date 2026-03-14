@@ -606,7 +606,7 @@ def get_ltx2_video_vae_config(
                 "decoder_inject_noise": (False, False, False, False, False),
                 "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
                 "upsample_type": ("spatiotemporal", "spatiotemporal", "temporal", "spatial"),
-                "upsample_residual": (True, True, True, True),
+                "upsample_residual": (False, False, False, False),
                 "upsample_factor": (2, 2, 1, 2),
                 "timestep_conditioning": timestep_conditioning,
                 "patch_size": 4,
