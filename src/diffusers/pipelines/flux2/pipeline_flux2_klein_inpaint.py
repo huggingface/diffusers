@@ -626,34 +626,22 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     def prepare_mask_latents(
         self,
         mask,
-        masked_image,
         batch_size,
-        num_channels_latents,
         num_images_per_prompt,
         height,
         width,
         dtype,
         device,
-        generator,
     ):
-        # VAE applies 8x compression on images but we must also account for packing which requires
-        # latent height and width to be divisible by 2.
-        height = 2 * (int(height) // (self.vae_scale_factor * 2))
-        width = 2 * (int(width) // (self.vae_scale_factor * 2))
-        
-        # Interpolate to VAE latent size
-        mask = torch.nn.functional.interpolate(mask, size=(height, width))
+        # Interpolate the mask directly to the final packed spatial size.
+        target_h = int(height) // (self.vae_scale_factor * 2)
+        target_w = int(width) // (self.vae_scale_factor * 2)
+        mask = torch.nn.functional.interpolate(mask, size=(target_h, target_w), mode="bilinear")
         mask = mask.to(device=device, dtype=dtype)
 
         batch_size = batch_size * num_images_per_prompt
 
-        masked_image = masked_image.to(device=device, dtype=dtype)
-        if masked_image.shape[1] != self.latent_channels:
-            masked_image_latents = self._encode_vae_image(image=masked_image, generator=generator)
-        else:
-            masked_image_latents = masked_image
-
-        # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
+        # duplicate mask for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
             if not batch_size % mask.shape[0] == 0:
                 raise ValueError(
@@ -662,24 +650,11 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                     " of masks that you pass is divisible by the total requested batch size."
                 )
             mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
-        if masked_image_latents.shape[0] < batch_size:
-            if not batch_size % masked_image_latents.shape[0] == 0:
-                raise ValueError(
-                    "The passed images and the required batch size don't match. Images are supposed to be duplicated"
-                    f" to a total batch size of {batch_size}, but {masked_image_latents.shape[0]} images were passed."
-                    " Make sure the number of images that you pass is divisible by the total requested batch size."
-                )
-            masked_image_latents = masked_image_latents.repeat(batch_size // masked_image_latents.shape[0], 1, 1, 1)
 
-        # aligning device to prevent device errors when concating it with the latent model input
-        masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
-        masked_image_latents = self._pack_latents(masked_image_latents)
+        # Pack to (B, seq_len, 1), will broadcast against (B, seq_len, C) latents
+        mask = self._pack_latents(mask)
 
-        mask = mask.repeat(1, self.latent_channels, 1, 1)  # Repeat to 128 channels
-        mask = self._patchify_latents(mask)  # Patchify: 128 -> 512 channels, spatial 64->32
-        mask = self._pack_latents(mask)  # Pack to (B, seq_len, 512)
-
-        return mask, masked_image_latents
+        return mask
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
@@ -1065,6 +1040,14 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             latents,
         )
 
+        clean_source_latents, clean_source_latent_ids = self.prepare_image_latents(
+            [init_image],
+            batch_size * num_images_per_prompt,
+            generator,
+            device,
+            self.vae.dtype,
+        )
+
         image_reference_latents = None
         image_reference_ids = None
         if processed_image_reference is not None:
@@ -1082,31 +1065,23 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
         )
 
-        if masked_image_latents is None:
-            masked_image = init_image * (mask_condition < 0.5)
-        else:
-            masked_image = masked_image_latents
-
-        mask, masked_image_latents = self.prepare_mask_latents(
+        mask = self.prepare_mask_latents(
             mask_condition,
-            masked_image,
             batch_size,
-            num_channels_latents,
             num_images_per_prompt,
             height,
             width,
             prompt_embeds.dtype,
             device,
-            generator,
         )
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
+        # Always include the clean-source position IDs and append reference IDs when present.
+        combined_image_ids = torch.cat([latent_image_ids, clean_source_latent_ids], dim=1)
         if image_reference_ids is not None:
-            combined_image_ids = torch.cat([latent_image_ids, image_reference_ids], dim=1)
-        else:
-            combined_image_ids = latent_image_ids
+            combined_image_ids = torch.cat([combined_image_ids, image_reference_ids], dim=1)
 
         # 7. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1117,13 +1092,12 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                latent_model_input = latents
-                img_ids = latent_image_ids
+                latent_model_input = torch.cat([latents, clean_source_latents], dim=1)
+                img_ids = combined_image_ids
 
                 # Concatenate reference image latents and IDs if provided
                 if image_reference_latents is not None:
                     latent_model_input = torch.cat([latent_model_input, image_reference_latents], dim=1)
-                    img_ids = combined_image_ids
 
                 latent_model_input = latent_model_input.to(self.transformer.dtype)
 
