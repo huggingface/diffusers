@@ -219,10 +219,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         audio_vae: AutoencoderKLLTX2Audio,
         text_encoder: Gemma3ForConditionalGeneration,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
-        processor: Gemma3Processor,
         connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
         vocoder: LTX2Vocoder | LTX2VocoderWithBWE,
+        processor: Gemma3Processor | None = None,
     ):
         super().__init__()
 
@@ -231,11 +231,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             audio_vae=audio_vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            processor=processor,
             connectors=connectors,
             transformer=transformer,
             vocoder=vocoder,
             scheduler=scheduler,
+            processor=processor,
         )
 
         self.vae_spatial_compression_ratio = (
