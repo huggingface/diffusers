@@ -38,7 +38,7 @@ class SDCascadeLayerNorm(nn.LayerNorm):
 
 
 class SDCascadeTimestepBlock(nn.Module):
-    def __init__(self, c, c_timestep, conds=[]):
+    def __init__(self, c, c_timestep, conds=()):
         super().__init__()
 
         self.mapper = nn.Linear(c_timestep, c * 2)
