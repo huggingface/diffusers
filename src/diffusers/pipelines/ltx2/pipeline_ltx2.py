@@ -629,7 +629,13 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         width = width // self.vae_spatial_compression_ratio
         num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
 
-        shape = (batch_size, num_channels_latents, num_frames, height, width)
+        # NOTE: The reference implementation generates noise directly in packed [B, S, D] shape
+        # (patchifies before noise generation). We match this to produce identical noise for a
+        # given seed — different shape means different RNG draws.
+        p = self.transformer_spatial_patch_size
+        p_t = self.transformer_temporal_patch_size
+        seq_len = (num_frames // p_t) * (height // p) * (width // p)
+        num_features = num_channels_latents * p_t * p * p
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -637,10 +643,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
+        shape = (batch_size, seq_len, num_features)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self._pack_latents(
-            latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
-        )
         return latents
 
     def prepare_audio_latents(
@@ -667,10 +671,13 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             latents = self._create_noised_state(latents, noise_scale, generator)
             return latents.to(device=device, dtype=dtype)
 
-        # TODO: confirm whether this logic is correct
         latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
 
-        shape = (batch_size, num_channels_latents, audio_latent_length, latent_mel_bins)
+        # NOTE: The reference implementation generates noise directly in packed [B, S, D] shape.
+        # We match this to produce identical noise for a given seed.
+        # For audio with default (implicit) packing: S = L, D = C * M
+        seq_len = audio_latent_length
+        num_features = num_channels_latents * latent_mel_bins
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -678,8 +685,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
+        shape = (batch_size, seq_len, num_features)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self._pack_audio_latents(latents)
         return latents
 
     @property
@@ -1023,7 +1030,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             width,
             num_frames,
             noise_scale,
-            torch.float32,
+            self.transformer.dtype,
             device,
             generator,
             latents,
@@ -1061,7 +1068,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             audio_latent_length=audio_num_frames,
             num_mel_bins=num_mel_bins,
             noise_scale=noise_scale,
-            dtype=torch.float32,
+            dtype=self.transformer.dtype,
             device=device,
             generator=generator,
             latents=audio_latents,
@@ -1070,7 +1077,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         mu = calculate_shift(
-            video_sequence_length,
+            self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_image_seq_len", 1024),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.95),
@@ -1305,6 +1312,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 else:
                     noise_pred_audio = noise_pred_audio_g
 
+                # NOTE: To match reference 1:1, guidance can be done in x0 space (bf16) instead of
+                # velocity space (f32), and latents/velocity can be cast to model dtype after each step.
+                # This is algebraically equivalent but produces slightly different bf16 rounding.
+                # See: x0-space guidance, to_velocity bf16 cast, latent bf16 cast after Euler step.
+
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred_video, t, latents, return_dict=False)[0]
                 # NOTE: for now duplicate scheduler for audio latents in case self.scheduler sets internal state in
@@ -1335,6 +1347,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             self.transformer_spatial_patch_size,
             self.transformer_temporal_patch_size,
         )
+        # NOTE: you should denormalize after adding noise to match the reference implementation
         latents = self._denormalize_latents(
             latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
         )
@@ -1345,6 +1358,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         audio_latents = self._unpack_audio_latents(audio_latents, audio_num_frames, num_mel_bins=latent_mel_bins)
 
         if output_type == "latent":
+            # NOTE: add noise before denormalization to match the reference implementation
+            # latents = self._denormalize_latents(
+            #     latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            # )
             video = latents
             audio = audio_latents
         else:
@@ -1366,6 +1383,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                     :, None, None, None, None
                 ]
                 latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
+
+            # # NOTE: Denormalize AFTER adding noise to match the reference implementation
+            # latents = self._denormalize_latents(
+            #     latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            # )
 
             latents = latents.to(self.vae.dtype)
             video = self.vae.decode(latents, timestep, return_dict=False)[0]
