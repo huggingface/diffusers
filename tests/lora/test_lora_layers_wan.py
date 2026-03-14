@@ -18,18 +18,9 @@ import unittest
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import (
-    AutoencoderKLWan,
-    FlowMatchEulerDiscreteScheduler,
-    WanPipeline,
-    WanTransformer3DModel,
-)
+from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanPipeline, WanTransformer3DModel
 
-from ..testing_utils import (
-    floats_tensor,
-    require_peft_backend,
-    skip_mps,
-)
+from ..testing_utils import floats_tensor, require_peft_backend, skip_mps
 
 
 sys.path.append(".")

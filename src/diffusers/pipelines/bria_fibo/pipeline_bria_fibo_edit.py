@@ -274,8 +274,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         prompt: Union[str, List[str]],
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 2048,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -359,14 +359,14 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
         guidance_scale: float = 5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         max_sequence_length: int = 3000,
-        lora_scale: Optional[float] = None,
+        lora_scale: bool | None = None,
     ):
         r"""
         Args:
@@ -620,19 +620,19 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         prompt: Union[str, List[str]] = None,
         image: Optional[PipelineImageInput] = None,
         mask: Optional[PipelineMaskInput] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_inference_steps: int = 30,
         timesteps: List[int] = None,
-        seed: Optional[int] = None,
+        seed: int | None = None,
         guidance_scale: float = 5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
@@ -1019,7 +1019,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         width: int,
         dtype: torch.dtype,
         device: torch.device,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
     ):
         image = image.to(device=device, dtype=dtype)
 

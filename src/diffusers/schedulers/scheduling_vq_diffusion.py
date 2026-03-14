@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -59,7 +58,7 @@ def index_to_log_onehot(x: torch.LongTensor, num_classes: int) -> torch.Tensor:
     return log_x
 
 
-def gumbel_noised(logits: torch.Tensor, generator: Optional[torch.Generator]) -> torch.Tensor:
+def gumbel_noised(logits: torch.Tensor, generator: torch.Generator | None) -> torch.Tensor:
     """
     Apply gumbel noise to `logits`
     """
@@ -175,7 +174,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -202,9 +201,9 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: torch.long,
         sample: torch.LongTensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[VQDiffusionSchedulerOutput, Tuple]:
+    ) -> VQDiffusionSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by the reverse transition distribution. See
         [`~VQDiffusionScheduler.q_posterior`] for more details about how the distribution is computer.

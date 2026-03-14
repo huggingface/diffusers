@@ -23,7 +23,6 @@ Reference implementation (ComfyUI):
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
 
 import torch
 
@@ -84,18 +83,18 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         s_noise: float = 1.0,
     ):
         # Note: num_train_timesteps is kept only for config compatibility.
-        self.num_inference_steps: Optional[int] = None
-        self.sigmas: Optional[torch.Tensor] = None
-        self.timesteps: Optional[torch.Tensor] = None
-        self._step_index: Optional[int] = None
-        self._begin_index: Optional[int] = None
+        self.num_inference_steps: int = None
+        self.sigmas: torch.Tensor | None = None
+        self.timesteps: torch.Tensor | None = None
+        self._step_index: int = None
+        self._begin_index: int = None
 
     @property
-    def step_index(self) -> Optional[int]:
+    def step_index(self) -> int:
         return self._step_index
 
     @property
-    def begin_index(self) -> Optional[int]:
+    def begin_index(self) -> int:
         """
         The index for the first timestep. It can be set from a pipeline with `set_begin_index` to support
         image-to-image like workflows that start denoising part-way through the schedule.
@@ -110,7 +109,7 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = begin_index
 
     def index_for_timestep(
-        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
     ) -> int:
         """
         Map a (continuous) `timestep` value to an index into `self.timesteps`.
@@ -142,7 +141,7 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
 
         return indices[pos].item()
 
-    def _init_step_index(self, timestep: Union[float, torch.Tensor]):
+    def _init_step_index(self, timestep: float | torch.Tensor):
         """
         Initialize the internal step index based on a given timestep.
         """
@@ -158,11 +157,11 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device, None] = None,
-        sigmas: Optional[Union[List[float], torch.Tensor]] = None,
-        timesteps: Optional[Union[List[float], torch.Tensor]] = None,
-        mu: Optional[float] = None,
+        num_inference_steps: int | None = None,
+        device: str | torch.device | None = None,
+        sigmas: list[float] | torch.Tensor | None = None,
+        timesteps: list[float] | torch.Tensor | None = None,
+        mu: float | None = None,
         **kwargs,
     ):
         """
@@ -179,9 +178,9 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
                 to be consistent and are otherwise ignored with a warning.
             device (`str` or `torch.device`, *optional*):
                 Device to move the internal tensors to.
-            sigmas (`List[float]` or `torch.Tensor`, *optional*):
+            sigmas (`list[float]` or `torch.Tensor`, *optional*):
                 Explicit sigma schedule, e.g. `[1.0, 0.99, ..., 0.0]`.
-            timesteps (`List[float]` or `torch.Tensor`, *optional*):
+            timesteps (`list[float]` or `torch.Tensor`, *optional*):
                 Optional alias for `sigmas`. If `sigmas` is None and `timesteps` is provided, timesteps are treated as
                 sigmas.
             mu (`float`, *optional*):
@@ -278,11 +277,11 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.FloatTensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
         sample: torch.FloatTensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[LTXEulerAncestralRFSchedulerOutput, Tuple[torch.FloatTensor]]:
+    ) -> LTXEulerAncestralRFSchedulerOutput | tuple[torch.FloatTensor]:
         """
         Perform a single Euler-Ancestral RF update step.
 

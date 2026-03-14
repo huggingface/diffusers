@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import re
-from typing import List
 
 import torch
 
@@ -857,7 +856,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                 )
             state_dict = {k: v for k, v in state_dict.items() if not k.startswith("text_encoders.t5xxl.transformer.")}
 
-        has_diffb = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_")) for k in state_dict)
+        has_diffb = any("diff_b" in k and k.startswith(("lora_unet_", "lora_te_", "lora_te1_")) for k in state_dict)
         if has_diffb:
             zero_status_diff_b = state_dict_all_zero(state_dict, ".diff_b")
             if zero_status_diff_b:
@@ -896,7 +895,7 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
         state_dict = {
             _custom_replace(k, limit_substrings): v
             for k, v in state_dict.items()
-            if k.startswith(("lora_unet_", "lora_te_"))
+            if k.startswith(("lora_unet_", "lora_te_", "lora_te1_"))
         }
 
         if any("text_projection" in k for k in state_dict):
@@ -1021,7 +1020,7 @@ def _convert_xlabs_flux_lora_to_diffusers(old_state_dict):
     return new_state_dict
 
 
-def _custom_replace(key: str, substrings: List[str]) -> str:
+def _custom_replace(key: str, substrings: list[str]) -> str:
     # Replaces the "."s with "_"s upto the `substrings`.
     # Example:
     # lora_unet.foo.bar.lora_A.weight -> lora_unet_foo_bar.lora_A.weight
@@ -2321,8 +2320,22 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
     prefix = "diffusion_model."
     original_state_dict = {k[len(prefix) :]: v for k, v in state_dict.items()}
 
-    num_double_layers = 8
-    num_single_layers = 48
+    has_lora_down_up = any("lora_down" in k or "lora_up" in k for k in original_state_dict.keys())
+    if has_lora_down_up:
+        temp_state_dict = {}
+        for k, v in original_state_dict.items():
+            new_key = k.replace("lora_down", "lora_A").replace("lora_up", "lora_B")
+            temp_state_dict[new_key] = v
+        original_state_dict = temp_state_dict
+
+    num_double_layers = 0
+    num_single_layers = 0
+    for key in original_state_dict.keys():
+        if key.startswith("single_blocks."):
+            num_single_layers = max(num_single_layers, int(key.split(".")[1]) + 1)
+        elif key.startswith("double_blocks."):
+            num_double_layers = max(num_double_layers, int(key.split(".")[1]) + 1)
+
     lora_keys = ("lora_A", "lora_B")
     attn_types = ("img_attn", "txt_attn")
 
@@ -2331,13 +2344,15 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
         attn_prefix = f"single_transformer_blocks.{sl}.attn"
 
         for lora_key in lora_keys:
-            converted_state_dict[f"{attn_prefix}.to_qkv_mlp_proj.{lora_key}.weight"] = original_state_dict.pop(
-                f"{single_block_prefix}.linear1.{lora_key}.weight"
-            )
+            linear1_key = f"{single_block_prefix}.linear1.{lora_key}.weight"
+            if linear1_key in original_state_dict:
+                converted_state_dict[f"{attn_prefix}.to_qkv_mlp_proj.{lora_key}.weight"] = original_state_dict.pop(
+                    linear1_key
+                )
 
-            converted_state_dict[f"{attn_prefix}.to_out.{lora_key}.weight"] = original_state_dict.pop(
-                f"{single_block_prefix}.linear2.{lora_key}.weight"
-            )
+            linear2_key = f"{single_block_prefix}.linear2.{lora_key}.weight"
+            if linear2_key in original_state_dict:
+                converted_state_dict[f"{attn_prefix}.to_out.{lora_key}.weight"] = original_state_dict.pop(linear2_key)
 
     for dl in range(num_double_layers):
         transformer_block_prefix = f"transformer_blocks.{dl}"
@@ -2346,6 +2361,10 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
             for attn_type in attn_types:
                 attn_prefix = f"{transformer_block_prefix}.attn"
                 qkv_key = f"double_blocks.{dl}.{attn_type}.qkv.{lora_key}.weight"
+
+                if qkv_key not in original_state_dict:
+                    continue
+
                 fused_qkv_weight = original_state_dict.pop(qkv_key)
 
                 if lora_key == "lora_A":
@@ -2377,8 +2396,9 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
         for org_proj, diff_proj in proj_mappings:
             for lora_key in lora_keys:
                 original_key = f"double_blocks.{dl}.{org_proj}.{lora_key}.weight"
-                diffusers_key = f"{transformer_block_prefix}.{diff_proj}.{lora_key}.weight"
-                converted_state_dict[diffusers_key] = original_state_dict.pop(original_key)
+                if original_key in original_state_dict:
+                    diffusers_key = f"{transformer_block_prefix}.{diff_proj}.{lora_key}.weight"
+                    converted_state_dict[diffusers_key] = original_state_dict.pop(original_key)
 
         mlp_mappings = [
             ("img_mlp.0", "ff.linear_in"),
@@ -2389,8 +2409,27 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
         for org_mlp, diff_mlp in mlp_mappings:
             for lora_key in lora_keys:
                 original_key = f"double_blocks.{dl}.{org_mlp}.{lora_key}.weight"
-                diffusers_key = f"{transformer_block_prefix}.{diff_mlp}.{lora_key}.weight"
-                converted_state_dict[diffusers_key] = original_state_dict.pop(original_key)
+                if original_key in original_state_dict:
+                    diffusers_key = f"{transformer_block_prefix}.{diff_mlp}.{lora_key}.weight"
+                    converted_state_dict[diffusers_key] = original_state_dict.pop(original_key)
+
+    extra_mappings = {
+        "img_in": "x_embedder",
+        "txt_in": "context_embedder",
+        "time_in.in_layer": "time_guidance_embed.timestep_embedder.linear_1",
+        "time_in.out_layer": "time_guidance_embed.timestep_embedder.linear_2",
+        "final_layer.linear": "proj_out",
+        "final_layer.adaLN_modulation.1": "norm_out.linear",
+        "single_stream_modulation.lin": "single_stream_modulation.linear",
+        "double_stream_modulation_img.lin": "double_stream_modulation_img.linear",
+        "double_stream_modulation_txt.lin": "double_stream_modulation_txt.linear",
+    }
+
+    for org_key, diff_key in extra_mappings.items():
+        for lora_key in lora_keys:
+            original_key = f"{org_key}.{lora_key}.weight"
+            if original_key in original_state_dict:
+                converted_state_dict[f"{diff_key}.{lora_key}.weight"] = original_state_dict.pop(original_key)
 
     if len(original_state_dict) > 0:
         raise ValueError(f"`original_state_dict` should be empty at this point but has {original_state_dict.keys()=}.")
@@ -2480,6 +2519,13 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
     if has_default:
         state_dict = {k.replace("default.", ""): v for k, v in state_dict.items()}
 
+    # Normalize ZImage-specific dot-separated module names to underscore form so they
+    # match the diffusers model parameter names (context_refiner, noise_refiner).
+    state_dict = {
+        k.replace("context.refiner.", "context_refiner.").replace("noise.refiner.", "noise_refiner."): v
+        for k, v in state_dict.items()
+    }
+
     converted_state_dict = {}
     all_keys = list(state_dict.keys())
     down_key = ".lora_down.weight"
@@ -2490,19 +2536,22 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
     has_non_diffusers_lora_id = any(down_key in k or up_key in k for k in all_keys)
     has_diffusers_lora_id = any(a_key in k or b_key in k for k in all_keys)
 
+    def get_alpha_scales(down_weight, alpha_key):
+        rank = down_weight.shape[0]
+        alpha_tensor = state_dict.pop(alpha_key, None)
+        if alpha_tensor is None:
+            return 1.0, 1.0
+        scale = (
+            alpha_tensor.item() / rank
+        )  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+        return scale_down, scale_up
+
     if has_non_diffusers_lora_id:
-
-        def get_alpha_scales(down_weight, alpha_key):
-            rank = down_weight.shape[0]
-            alpha = state_dict.pop(alpha_key).item()
-            scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
-            scale_down = scale
-            scale_up = 1.0
-            while scale_down * 2 < scale_up:
-                scale_down *= 2
-                scale_up /= 2
-            return scale_down, scale_up
-
         for k in all_keys:
             if k.endswith(down_key):
                 diffusers_down_key = k.replace(down_key, ".lora_A.weight")
@@ -2515,13 +2564,69 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
                 converted_state_dict[diffusers_down_key] = down_weight * scale_down
                 converted_state_dict[diffusers_up_key] = up_weight * scale_up
 
-    # Already in diffusers format (lora_A/lora_B), just pop
+    # Already in diffusers format (lora_A/lora_B), apply alpha scaling and pop.
     elif has_diffusers_lora_id:
         for k in all_keys:
-            if a_key in k or b_key in k:
-                converted_state_dict[k] = state_dict.pop(k)
-            elif ".alpha" in k:
+            if k.endswith(a_key):
+                diffusers_up_key = k.replace(a_key, b_key)
+                alpha_key = k.replace(a_key, ".alpha")
+
+                down_weight = state_dict.pop(k)
+                up_weight = state_dict.pop(diffusers_up_key)
+                scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+                converted_state_dict[k] = down_weight * scale_down
+                converted_state_dict[diffusers_up_key] = up_weight * scale_up
+
+    # Handle dot-format LoRA keys: ".lora.down.weight" / ".lora.up.weight".
+    # Some external ZImage trainers (e.g. Anime-Z) use dots instead of underscores in
+    # lora weight names and also include redundant keys:
+    #   - "qkv.lora.*"    duplicates individual "to.q/k/v.lora.*" keys → skip qkv
+    #   - "out.lora.*"    duplicates "to_out.0.lora.*" keys → skip bare out
+    #   - "to.q/k/v.lora.*" → normalise to "to_q/k/v.lora_A/B.weight"
+    lora_dot_down_key = ".lora.down.weight"
+    lora_dot_up_key = ".lora.up.weight"
+    has_lora_dot_format = any(lora_dot_down_key in k for k in state_dict)
+
+    if has_lora_dot_format:
+        dot_keys = list(state_dict.keys())
+        for k in dot_keys:
+            if lora_dot_down_key not in k:
+                continue
+            if k not in state_dict:
+                continue  # already popped by a prior iteration
+
+            base = k[: -len(lora_dot_down_key)]
+
+            # Skip combined "qkv" projection — individual to.q/k/v keys are also present.
+            if base.endswith(".qkv"):
                 state_dict.pop(k)
+                state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
+                state_dict.pop(base + ".alpha", None)
+                continue
+
+            # Skip bare "out.lora.*" — "to_out.0.lora.*" covers the same projection.
+            if re.search(r"\.out$", base) and ".to_out" not in base:
+                state_dict.pop(k)
+                state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
+                continue
+
+            # Normalise "to.q/k/v" → "to_q/k/v" for the diffusers output key.
+            norm_k = re.sub(
+                r"\.to\.([qkv])" + re.escape(lora_dot_down_key) + r"$",
+                r".to_\1" + lora_dot_down_key,
+                k,
+            )
+            norm_base = norm_k[: -len(lora_dot_down_key)]
+            alpha_key = norm_base + ".alpha"
+
+            diffusers_down = norm_k.replace(lora_dot_down_key, ".lora_A.weight")
+            diffusers_up = norm_k.replace(lora_dot_down_key, ".lora_B.weight")
+
+            down_weight = state_dict.pop(k)
+            up_weight = state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key))
+            scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+            converted_state_dict[diffusers_down] = down_weight * scale_down
+            converted_state_dict[diffusers_up] = up_weight * scale_up
 
     if len(state_dict) > 0:
         raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")

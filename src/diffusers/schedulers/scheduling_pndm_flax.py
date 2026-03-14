@@ -15,13 +15,13 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import flax
 import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -29,6 +29,9 @@ from .scheduling_utils_flax import (
     FlaxSchedulerOutput,
     add_noise_common,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -39,15 +42,15 @@ class PNDMSchedulerState:
     # setable values
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
-    num_inference_steps: Optional[int] = None
-    prk_timesteps: Optional[jnp.ndarray] = None
-    plms_timesteps: Optional[jnp.ndarray] = None
+    num_inference_steps: int = None
+    prk_timesteps: jnp.ndarray | None = None
+    plms_timesteps: jnp.ndarray | None = None
 
     # running values
-    cur_model_output: Optional[jnp.ndarray] = None
-    counter: Optional[jnp.int32] = None
-    cur_sample: Optional[jnp.ndarray] = None
-    ets: Optional[jnp.ndarray] = None
+    cur_model_output: jnp.ndarray | None = None
+    counter: jnp.int32 | None = None
+    cur_sample: jnp.ndarray | None = None
+    ets: jnp.ndarray | None = None
 
     @classmethod
     def create(
@@ -124,13 +127,17 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         skip_prk_steps: bool = False,
         set_alpha_to_one: bool = False,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
         dtype: jnp.dtype = jnp.float32,
     ):
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         self.dtype = dtype
 
         # For now we only support F-PNDM, i.e. the runge-kutta method
@@ -138,7 +145,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # mainly at formula (9), (12), (13) and the Algorithm 2.
         self.pndm_order = 4
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> PNDMSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> PNDMSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 
@@ -162,7 +169,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             timesteps=timesteps,
         )
 
-    def set_timesteps(self, state: PNDMSchedulerState, num_inference_steps: int, shape: Tuple) -> PNDMSchedulerState:
+    def set_timesteps(self, state: PNDMSchedulerState, num_inference_steps: int, shape: tuple) -> PNDMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -171,7 +178,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
                 the `FlaxPNDMScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
-            shape (`Tuple`):
+            shape (`tuple`):
                 the shape of the samples to be generated.
         """
 
@@ -190,7 +197,10 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         else:
             prk_timesteps = _timesteps[-self.pndm_order :].repeat(2) + jnp.tile(
-                jnp.array([0, self.config.num_train_timesteps // num_inference_steps // 2], dtype=jnp.int32),
+                jnp.array(
+                    [0, self.config.num_train_timesteps // num_inference_steps // 2],
+                    dtype=jnp.int32,
+                ),
                 self.pndm_order,
             )
 
@@ -218,7 +228,10 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
 
     def scale_model_input(
-        self, state: PNDMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+        self,
+        state: PNDMSchedulerState,
+        sample: jnp.ndarray,
+        timestep: int | None = None,
     ) -> jnp.ndarray:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -241,7 +254,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[FlaxPNDMSchedulerOutput, Tuple]:
+    ) -> FlaxPNDMSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -295,7 +308,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-    ) -> Union[FlaxPNDMSchedulerOutput, Tuple]:
+    ) -> FlaxPNDMSchedulerOutput | tuple:
         """
         Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
         solution to the differential equation.
@@ -320,7 +333,9 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             )
 
         diff_to_prev = jnp.where(
-            state.counter % 2, 0, self.config.num_train_timesteps // state.num_inference_steps // 2
+            state.counter % 2,
+            0,
+            self.config.num_train_timesteps // state.num_inference_steps // 2,
         )
         prev_timestep = timestep - diff_to_prev
         timestep = state.prk_timesteps[state.counter // 4 * 4]
@@ -363,7 +378,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-    ) -> Union[FlaxPNDMSchedulerOutput, Tuple]:
+    ) -> FlaxPNDMSchedulerOutput | tuple:
         """
         Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple
         times to approximate the solution.
@@ -401,7 +416,9 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         prev_timestep = jnp.where(state.counter == 1, timestep, prev_timestep)
         timestep = jnp.where(
-            state.counter == 1, timestep + self.config.num_train_timesteps // state.num_inference_steps, timestep
+            state.counter == 1,
+            timestep + self.config.num_train_timesteps // state.num_inference_steps,
+            timestep,
         )
 
         # Reference:
@@ -466,7 +483,9 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # prev_sample -> x_(t−δ)
         alpha_prod_t = state.common.alphas_cumprod[timestep]
         alpha_prod_t_prev = jnp.where(
-            prev_timestep >= 0, state.common.alphas_cumprod[prev_timestep], state.final_alpha_cumprod
+            prev_timestep >= 0,
+            state.common.alphas_cumprod[prev_timestep],
+            state.final_alpha_cumprod,
         )
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
