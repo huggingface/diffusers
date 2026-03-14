@@ -178,6 +178,36 @@ class Flux2KleinPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # fmt: on
         assert np.allclose(expected_slice, generated_slice, atol=1e-4, rtol=1e-4)
 
+    def test_image_input_tensor(self):
+        """Issue #13177: pipeline should accept torch.Tensor images."""
+        device = "cpu"
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(device)
+        inputs = self.get_dummy_inputs(device)
+
+        inputs["image"] = torch.rand(3, 64, 64)
+        image = pipe(**inputs).images
+        assert image is not None and image.shape[-1] == 3
+
+    def test_image_input_numpy(self):
+        """Issue #13177: pipeline should accept np.ndarray images."""
+        device = "cpu"
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(device)
+        inputs = self.get_dummy_inputs(device)
+
+        inputs["image"] = np.random.rand(64, 64, 3).astype(np.float32)
+        image = pipe(**inputs).images
+        assert image is not None and image.shape[-1] == 3
+
+    def test_image_input_tensor_list(self):
+        """Issue #13177: pipeline should accept list of tensors."""
+        device = "cpu"
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(device)
+        inputs = self.get_dummy_inputs(device)
+
+        inputs["image"] = [torch.rand(3, 64, 64), torch.rand(3, 64, 64)]
+        image = pipe(**inputs).images
+        assert image is not None and image.shape[-1] == 3
+
     @unittest.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):
         pass

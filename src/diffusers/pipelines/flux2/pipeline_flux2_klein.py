@@ -25,6 +25,7 @@ from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
+from ...image_processor import PipelineImageInput
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import Flux2ImageProcessor
 from .pipeline_output import Flux2PipelineOutput
@@ -608,7 +609,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: list[PIL.Image.Image] | PIL.Image.Image | None = None,
+        image: PipelineImageInput | None = None,
         prompt: str | list[str] = None,
         height: int | None = None,
         width: int | None = None,
@@ -758,8 +759,8 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         condition_images = None
         if image is not None:
-            for img in image:
-                self.image_processor.check_image_input(img)
+            # Convert each image to PIL (handles tensor/numpy/PIL uniformly)
+            image = [self.image_processor.check_image_input(img) for img in image]
 
             condition_images = []
             for img in image:

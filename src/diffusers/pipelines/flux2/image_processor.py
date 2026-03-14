@@ -14,7 +14,9 @@
 
 import math
 
+import numpy as np
 import PIL.Image
+import torch
 
 from ...configuration_utils import register_to_config
 from ...image_processor import VaeImageProcessor
@@ -57,26 +59,56 @@ class Flux2ImageProcessor(VaeImageProcessor):
         )
 
     @staticmethod
+    def to_pil(image) -> PIL.Image.Image:
+        """Convert torch.Tensor or np.ndarray to PIL.Image.Image.
+
+        Accepts:
+            - PIL.Image.Image  → returned as-is
+            - torch.Tensor     → shape (C, H, W) or (B, C, H, W), values in [0, 1]
+            - np.ndarray       → shape (H, W, C) or (B, H, W, C), values in [0, 1]
+        """
+        if isinstance(image, PIL.Image.Image):
+            return image
+
+        if isinstance(image, torch.Tensor):
+            image = image.detach().cpu().float()
+            if image.ndim == 4:
+                image = image[0]
+            image = image.permute(1, 2, 0).numpy()
+        elif isinstance(image, np.ndarray):
+            if image.ndim == 4:
+                image = image[0]
+        else:
+            raise ValueError(
+                f"Expected PIL.Image.Image, torch.Tensor, or np.ndarray, got {type(image)}"
+            )
+
+        if image.dtype != np.uint8:
+            image = (np.clip(image, 0, 1) * 255).astype(np.uint8)
+
+        return PIL.Image.fromarray(image)
+
+    @staticmethod
     def check_image_input(
-        image: PIL.Image.Image, max_aspect_ratio: int = 8, min_side_length: int = 64, max_area: int = 1024 * 1024
+        image, max_aspect_ratio: int = 8, min_side_length: int = 64, max_area: int = 1024 * 1024
     ) -> PIL.Image.Image:
         """
         Check if image meets minimum size and aspect ratio requirements.
+        Accepts PIL.Image.Image, torch.Tensor, or np.ndarray and converts to PIL.
 
         Args:
-            image: PIL Image to validate
+            image: Image to validate (PIL, tensor, or numpy array)
             max_aspect_ratio: Maximum allowed aspect ratio (width/height or height/width)
             min_side_length: Minimum pixels required for width and height
             max_area: Maximum allowed area in pixels²
 
         Returns:
-            The input image if valid
+            The image as PIL.Image.Image
 
         Raises:
             ValueError: If image is too small or aspect ratio is too extreme
         """
-        if not isinstance(image, PIL.Image.Image):
-            raise ValueError(f"Image must be a PIL.Image.Image, got {type(image)}")
+        image = Flux2ImageProcessor.to_pil(image)
 
         width, height = image.size
 
