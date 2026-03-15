@@ -55,7 +55,7 @@ LLaDA2.1 models support two modes:
 | Quality | 0.7 | 0.5 | 16 |
 | Speed | 0.5 | 0.0 | 16 |
 
-For LLaDA2.0 models, omit `editing_threshold` and `max_post_steps` (editing is a LLaDA2.1 feature).
+For LLaDA2.0 models, disable editing by passing `editing_threshold=None`.
 
 For all models: `block_length=32`, `temperature=0.0`, `steps=32`.
 

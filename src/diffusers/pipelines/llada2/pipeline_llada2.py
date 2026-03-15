@@ -79,7 +79,7 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
         top_k: Optional[int] = None,
         sampling_method: str = "multinomial",
         threshold: float = 0.7,
-        editing_threshold: Optional[float] = None,
+        editing_threshold: Optional[float] = 0.5,
         max_post_steps: int = 16,
         minimal_topk: int = 1,
         eos_early_stop: bool = True,
