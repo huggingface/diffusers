@@ -75,7 +75,7 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--use_dummy_data", action="store_true", help="Use random-token data instead of downloading.")
     parser.add_argument("--num_dummy_samples", type=int, default=2048)
 
-    parser.add_argument("--output_dir", type=str, default="qwen-block-refinement-output")
+    parser.add_argument("--output_dir", type=str, default="block-refinement-output")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max_train_steps", type=int, default=1000)
     parser.add_argument("--checkpointing_steps", type=int, default=500)
@@ -191,7 +191,7 @@ def main():
 
     load_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
     model = AutoModelForCausalLM.from_pretrained(
-        cfg.model_name_or_path, cache_dir=cfg.cache_dir, torch_dtype=load_dtype
+        cfg.model_name_or_path, cache_dir=cfg.cache_dir, dtype=load_dtype
     )
     model.resize_token_embeddings(len(tokenizer))
     if load_dtype == torch.float32:
