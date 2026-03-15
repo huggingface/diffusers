@@ -151,6 +151,12 @@ def main():
         choices=["group", "sequential"],
         help="Memory offloading strategy: 'group' for group offloading (faster), 'sequential' for sequential CPU offload (slower but lower memory).",
     )
+    parser.add_argument(
+        "--revision",
+        type=str,
+        default=None,
+        help="Model revision (branch, tag, or commit hash) to load from the Hub.",
+    )
 
     args = parser.parse_args()
 
@@ -163,7 +169,7 @@ def main():
     torch_dtype = dtype_map[args.dtype]
 
     print(f"Loading model: {args.model_id}")
-    tokenizer = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_id, trust_remote_code=True, revision=args.revision)
 
     # Load model with appropriate memory settings based on offload strategy
     if args.offload == "group":
@@ -172,8 +178,9 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             args.model_id,
             trust_remote_code=True,
-            torch_dtype=torch_dtype,
+            dtype=torch_dtype,
             low_cpu_mem_usage=True,
+            revision=args.revision,
         )
         # Apply group offloading with CUDA streams for better performance
         onload_device = torch.device(args.device)
@@ -191,8 +198,9 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             args.model_id,
             trust_remote_code=True,
-            torch_dtype=torch_dtype,
+            dtype=torch_dtype,
             low_cpu_mem_usage=True,
+            revision=args.revision,
         )
         # Sequential offloading will be applied via pipeline
     else:
@@ -200,9 +208,10 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             args.model_id,
             trust_remote_code=True,
-            torch_dtype=torch_dtype,
+            dtype=torch_dtype,
             device_map="auto",
             low_cpu_mem_usage=True,
+            revision=args.revision,
         )
     model.eval()
 
