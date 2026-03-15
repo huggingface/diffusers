@@ -6,7 +6,7 @@ description: >
   Trigger: adding a new model, converting to modular pipeline, setting up file structure.
 ---
 
-## Part 1: Standard Pipeline Integration
+## Standard Pipeline Integration
 
 ### File structure for a new model
 
@@ -41,7 +41,61 @@ docs/source/en/api/
 - [ ] Write unit tests (model, pipeline, LoRA)
 - [ ] Write docs
 - [ ] Run `make style` and `make quality`
-- [ ] Test parity with reference implementation (see Part 3)
+- [ ] Test parity with reference implementation (see `parity-testing` skill)
+
+### Attention pattern
+
+Attention must follow the diffusers pattern: both the `Attention` class and its processor are defined in the model file. The processor's `__call__` handles the actual compute and must use `dispatch_attention_fn` rather than calling `F.scaled_dot_product_attention` directly. The attention class inherits `AttentionModuleMixin` and declares `_default_processor_cls` and `_available_processors`.
+
+```python
+# transformer_mymodel.py
+
+class MyModelAttnProcessor:
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(self, attn, hidden_states, attention_mask=None, ...):
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+        # reshape, apply rope, etc.
+        hidden_states = dispatch_attention_fn(
+            query, key, value,
+            attn_mask=attention_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3)
+        return attn.to_out[0](hidden_states)
+
+
+class MyModelAttention(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = MyModelAttnProcessor
+    _available_processors = [MyModelAttnProcessor]
+
+    def __init__(self, query_dim, heads=8, dim_head=64, ...):
+        super().__init__()
+        self.to_q = nn.Linear(query_dim, heads * dim_head, bias=False)
+        self.to_k = nn.Linear(query_dim, heads * dim_head, bias=False)
+        self.to_v = nn.Linear(query_dim, heads * dim_head, bias=False)
+        self.to_out = nn.ModuleList([nn.Linear(heads * dim_head, query_dim), nn.Dropout(0.0)])
+        self.set_processor(MyModelAttnProcessor())
+
+    def forward(self, hidden_states, attention_mask=None, **kwargs):
+        return self.processor(self, hidden_states, attention_mask, **kwargs)
+```
+
+Consult the implementations in `src/diffusers/models/transformers/` if you need further references.
+
+### Pipeline rules
+
+- All pipelines must inherit from `DiffusionPipeline`. Consult implementations in `src/diffusers/pipelines` in case you need references.
+- DO NOT use an existing pipeline class (e.g., `FluxPipeline`) to override another pipeline (e.g., `FluxImg2ImgPipeline` which will be a part of the core codebase (`src`).
+
+### Test setup
+
+- Slow tests gated with `@slow` and `RUN_SLOW=1`
+- All model-level tests must use the `BaseModelTesterConfig`, `ModelTesterMixin`, `MemoryTesterMixin`, `AttentionTesterMixin`, `LoraTesterMixin`, and `TrainingTesterMixin` classes initially to write the tests. Any additional tests should be added after discussions with the maintainers. Use `tests/models/transformers/test_models_transformer_flux.py` as a reference.
 
 ### Common diffusers conventions
 
@@ -55,7 +109,7 @@ docs/source/en/api/
 
 ---
 
-## Part 2: Modular Pipeline Conversion
+## Modular Pipeline Conversion
 
 ### When to use
 
@@ -207,7 +261,7 @@ ComponentSpec("guider", ClassifierFreeGuidance,
 
 ---
 
-## Part 2.5: Weight Conversion Tips
+## Weight Conversion Tips
 
 <!-- TODO: Add concrete examples as we encounter them. Common patterns to watch for:
   - Fused QKV weights that need splitting into separate Q, K, V

@@ -7,11 +7,11 @@ description: >
   Trigger: debugging parity, writing conversion tests, investigating divergence.
 ---
 
-## Part 3: Testing Pipeline Parity
+## Testing Pipeline Parity
 
 Applies to any conversion: research repo -> diffusers, standard -> modular, or research repo -> modular.
 
-### Principles
+## Principles
 
 1. **Don't combine structural changes with behavioral changes.** For research repo -> diffusers, you must restructure code to fit diffusers APIs (ModelMixin, ConfigMixin, etc.) -- that's unavoidable. But don't also "improve" the algorithm, refactor computation order, or rename internal variables for aesthetics. Keep numerical logic as close to the reference as possible, even if it looks ugly. For standard -> modular, this is stricter: copy loop logic verbatim and only restructure into blocks. In both cases, clean up in a separate commit after parity is confirmed.
 
@@ -19,9 +19,9 @@ Applies to any conversion: research repo -> diffusers, standard -> modular, or r
 
 3. **Test from the start.** Have component tests ready BEFORE writing conversion code. Test bottom-up: components first, then pipeline stages, then e2e.
 
-### Test strategy
+## Test strategy
 
-**Step 1: Component parity (CPU/float32) -- always run, as you build.**
+**Component parity (CPU/float32) -- always run, as you build.**
 Test each component before assembling the pipeline. This is the foundation -- if individual pieces are wrong, the pipeline can't be right. Each component in isolation, strict max_diff < 1e-3. Two modes:
 - **Fresh**: convert from checkpoint weights, compare against reference (catches conversion bugs)
 - **Saved**: load from saved model on disk, compare against reference (catches stale saves)
@@ -58,17 +58,17 @@ def test_my_component(mode="fresh", model_path=None):
 ```
 Key points: (a) both sides in one script -- never split into separate scripts that save/load intermediates, (b) deterministic input via seeded generator, (c) load one model at a time to fit in CPU RAM, (d) `.clone()` the reference output before deleting the model.
 
-**Step 2: E2E visual (GPU/bfloat16) -- once the pipeline is assembled.**
+**E2E visual (GPU/bfloat16) -- once the pipeline is assembled.**
 Both pipelines generate independently with identical seeds/params. Save outputs and compare visually. If outputs look identical, you're done -- no need for deeper testing.
 
-**Step 3: Pipeline stage tests -- only if E2E fails and you need to isolate the bug.**
+**Pipeline stage tests -- only if E2E fails and you need to isolate the bug.**
 For small models, run on CPU/float32 for strict comparison. For large models (e.g. 22B params), CPU/float32 is impractical -- use GPU/bfloat16 with `enable_model_cpu_offload()` and relax tolerances (max_diff < 1e-1 for bfloat16 is typical for passing tests; cosine similarity > 0.9999 is a good secondary check).
 
 Test encode and decode stages first -- they're simpler and bugs there are easier to fix. Only debug the denoising loop if encode and decode both pass.
 
 The challenge: pipelines are monolithic `__call__` methods -- you can't just call "the encode part". The solution is a checkpoint mechanism that lets you stop, save, or inject tensors at named locations inside the pipeline.
 
-**Step 1: Add a `_checkpoints` argument to both pipelines.**
+**Add a `_checkpoints` argument to both pipelines.**
 
 The Checkpoint class is minimal:
 ```python
@@ -139,7 +139,7 @@ def _maybe_checkpoint(checkpoints, name, data):
         raise PipelineStop  # caught at __call__ level, returns None
 ```
 
-**Step 2: Write stage tests using checkpoints.**
+**Write stage tests using checkpoints.**
 
 Three stages, tested in this order -- **encode, decode, then denoise**:
 
@@ -181,7 +181,7 @@ The key insight: the checkpoint dict is passed into the pipeline and mutated in-
 
 **E2E-injected visual test**: Once you've identified a suspected root cause using stage tests, confirm it with an e2e-injected run -- inject the known-good tensor from reference and generate a full video. If the output looks identical to reference, you've confirmed the root cause. Fix it, then re-run the standard E2E test to verify.
 
-### Debugging technique: Injection for root-cause isolation
+## Debugging technique: Injection for root-cause isolation
 
 When stage tests show divergence, you need to narrow down *which input* is causing it. The general technique: **inject a known-good tensor from one pipeline into the other** to test whether the remaining code is correct.
 
@@ -216,7 +216,7 @@ For large models, free the source pipeline's GPU memory before loading the targe
 
 **Per-step accumulation tracing**: When injection confirms the loop is correct but you want to understand *how* a small initial difference compounds, capture `after_step_{i}` for every step and plot the max_diff curve. A healthy curve stays bounded; an exponential blowup in later steps points to an amplification mechanism (see Pitfall #13).
 
-### Debugging technique: Visual comparison via frame extraction
+## Debugging technique: Visual comparison via frame extraction
 
 For video pipelines, numerical metrics alone can be misleading (max_diff=0.25 might look identical, or max_diff=0.05 might be visibly wrong in specific regions). Extract and view individual frames programmatically:
 
@@ -238,7 +238,7 @@ extract_frames(diff_video, [0, 60, 120])
 
 This is especially useful for: (a) confirming a fix works before running expensive full-pipeline tests, (b) diagnosing *what kind* of visual artifact a numerical divergence produces (washed out? color shift? spatial distortion?), (c) e2e-injected tests where you want visual proof that the loop is correct when given identical inputs.
 
-### Testing rules
+## Testing rules
 
 1. **Never use reference code in the diffusers test path.** Each side must use only its own code. Using reference helper functions inside the diffusers path defeats the purpose -- you're no longer testing the diffusers implementation.
 2. **Never monkey-patch model internals in tests.** Do not replace `model.forward` or patch internal methods. A passing test with a patched forward proves nothing about the actual model.
@@ -250,7 +250,7 @@ This is especially useful for: (a) confirming a fix works before running expensi
 8. **Test decode before denoise.** Always verify the decoder works correctly before spending time on the denoising loop. Feed identical post-loop latents from the reference through both decoders and compare outputs -- both numerically AND visually. Decoder config bugs (e.g. wrong `upsample_residual`) cause severe pixelation or artifacts that are trivial to fix once found, but look like denoising bugs from the E2E output. A decoder bug found after days of denoise debugging is wasted time.
 9. **Compare ALL loop inputs in the encode test.** The preloop checkpoint must capture every single tensor the transformer forward() will receive: latents, sigmas/timesteps, prompt embeddings, attention masks, positional coordinates, connector outputs, and any conditioning tensors. If you only compare latents and sigmas, you'll miss divergent conditioning inputs and waste time debugging the loop for a bug that's actually upstream.
 
-### Comparison utilities
+## Comparison utilities
 
 ```python
 def compare_tensors(name: str, a: torch.Tensor, b: torch.Tensor, tol: float = 1e-3) -> bool:
@@ -269,7 +269,7 @@ def compare_tensors(name: str, a: torch.Tensor, b: torch.Tensor, tol: float = 1e
 ```
 Cosine similarity is especially useful for GPU/bfloat16 tests where max_diff can be noisy -- `cos > 0.9999` is a strong signal even when max_diff exceeds tolerance.
 
-## Part 4: Common Pitfalls
+## Common Pitfalls
 
 ### 1. Global CPU RNG
 `MultivariateNormal.sample()` uses the global CPU RNG, not `torch.Generator`. Must call `torch.manual_seed(seed)` before each pipeline run. A `generator=` kwarg won't help.
