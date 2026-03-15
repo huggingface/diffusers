@@ -2534,13 +2534,6 @@ class DiscreteDiffusionPipelineMixin:
 
         chat_template_kwargs = chat_template_kwargs or {}
 
-        def _extract_input_ids(encoded):
-            if isinstance(encoded, dict) and "input_ids" in encoded:
-                return encoded["input_ids"]
-            if hasattr(encoded, "input_ids"):
-                return encoded.input_ids
-            return encoded
-
         if messages is not None:
             encoded = self.tokenizer.apply_chat_template(
                 messages,
@@ -2550,7 +2543,7 @@ class DiscreteDiffusionPipelineMixin:
                 return_dict=True,
                 **chat_template_kwargs,
             )
-            return _extract_input_ids(encoded)
+            return encoded["input_ids"]
 
         if use_chat_template and getattr(self.tokenizer, "chat_template", None):
             if isinstance(prompt, list):
@@ -2563,7 +2556,7 @@ class DiscreteDiffusionPipelineMixin:
                 return_dict=True,
                 **chat_template_kwargs,
             )
-            return _extract_input_ids(encoded)
+            return encoded["input_ids"]
 
         encoded = self.tokenizer(prompt, return_tensors="pt", padding=isinstance(prompt, list))
-        return _extract_input_ids(encoded)
+        return encoded["input_ids"]
