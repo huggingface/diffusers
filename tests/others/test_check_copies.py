@@ -41,7 +41,7 @@ REFERENCE_CODE = """    \"""
     \"""
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 """
 
 

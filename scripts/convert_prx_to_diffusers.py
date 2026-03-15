@@ -86,7 +86,7 @@ def create_parameter_mapping(depth: int) -> dict:
     return mapping
 
 
-def convert_checkpoint_parameters(old_state_dict: Dict[str, torch.Tensor], depth: int) -> Dict[str, torch.Tensor]:
+def convert_checkpoint_parameters(old_state_dict: Dict[str, torch.Tensor], depth: int) -> dict[str, torch.Tensor]:
     """Convert old checkpoint parameters to new diffusers format."""
 
     print("Converting checkpoint parameters...")

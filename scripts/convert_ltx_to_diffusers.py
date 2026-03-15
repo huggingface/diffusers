@@ -116,7 +116,7 @@ VAE_SPECIAL_KEYS_REMAP = {
 }
 
 
-def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
+def get_state_dict(saved_dict: Dict[str, Any]) -> dict[str, Any]:
     state_dict = saved_dict
     if "model" in saved_dict.keys():
         state_dict = state_dict["model"]
@@ -127,7 +127,7 @@ def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
     return state_dict
 
 
-def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
+def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key: str) -> dict[str, Any]:
     state_dict[new_key] = state_dict.pop(old_key)
 
 
@@ -192,7 +192,7 @@ def convert_spatial_latent_upsampler(ckpt_path: str, config, dtype: torch.dtype)
     return latent_upsampler
 
 
-def get_transformer_config(version: str) -> Dict[str, Any]:
+def get_transformer_config(version: str) -> dict[str, Any]:
     if version == "0.9.7":
         config = {
             "in_channels": 128,
@@ -232,7 +232,7 @@ def get_transformer_config(version: str) -> Dict[str, Any]:
     return config
 
 
-def get_vae_config(version: str) -> Dict[str, Any]:
+def get_vae_config(version: str) -> dict[str, Any]:
     if version in ["0.9.0"]:
         config = {
             "in_channels": 3,
@@ -359,7 +359,7 @@ def get_vae_config(version: str) -> Dict[str, Any]:
     return config
 
 
-def get_spatial_latent_upsampler_config(version: str) -> Dict[str, Any]:
+def get_spatial_latent_upsampler_config(version: str) -> dict[str, Any]:
     if version == "0.9.7":
         config = {
             "in_channels": 128,

@@ -1,4 +1,4 @@
-.PHONY: deps_table_update modified_only_fixup extra_style_checks quality style fixup fix-copies test test-examples
+.PHONY: deps_table_update modified_only_fixup extra_style_checks quality style fixup fix-copies test test-examples codex claude clean-ai
 
 # make sure to test the local checkout in scripts and not the pre-installed one (don't use quotes!)
 export PYTHONPATH = src
@@ -70,6 +70,10 @@ fix-copies:
 	python utils/check_copies.py --fix_and_overwrite
 	python utils/check_dummies.py --fix_and_overwrite
 
+# Auto docstrings in modular blocks
+modular-autodoctrings:
+	python utils/modular_auto_docstring.py
+
 # Run tests for the library
 
 test:
@@ -94,3 +98,14 @@ post-release:
 
 post-patch:
 	python utils/release.py --post_release --patch
+
+# AI agent symlinks
+
+codex:
+	ln -snf .ai/AGENTS.md AGENTS.md
+
+claude:
+	ln -snf .ai/AGENTS.md CLAUDE.md
+
+clean-ai:
+	rm -f AGENTS.md CLAUDE.md
