@@ -47,6 +47,7 @@ else:
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
     ]
+    _import_structure["block_refinement"] = ["BlockRefinementPipeline", "BlockRefinementPipelineOutput"]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["dance_diffusion"] = ["DanceDiffusionPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
@@ -285,6 +286,7 @@ else:
         ]
     )
     _import_structure["latte"] = ["LattePipeline"]
+    _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
     _import_structure["ltx"] = [
         "LTXPipeline",
         "LTXImageToVideoPipeline",
@@ -542,6 +544,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForInpainting,
             AutoPipelineForText2Image,
         )
+        from .block_refinement import BlockRefinementPipeline, BlockRefinementPipelineOutput
         from .consistency_models import ConsistencyModelPipeline
         from .dance_diffusion import DanceDiffusionPipeline
         from .ddim import DDIMPipeline
@@ -728,6 +731,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
+        from .llada2 import LLaDA2Pipeline, LLaDA2PipelineOutput
         from .longcat_image import LongCatImageEditPipeline, LongCatImagePipeline
         from .ltx import (
             LTXConditionPipeline,

@@ -34,6 +34,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [AudioLDM2](audioldm2) | text2audio |
 | [AuraFlow](aura_flow) | text2image |
 | [BLIP Diffusion](blip_diffusion) | text2image |
+| [Block Refinement](block_refinement) | text2text |
 | [Bria 3.2](bria_3_2) | text2image |
 | [CogVideoX](cogvideox) | text2video |
 | [Consistency Models](consistency_models) | unconditional image generation |
@@ -63,6 +64,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Latent Diffusion](latent_diffusion) | text2image, super-resolution |
 | [Latte](latte) | text2image |
 | [LEDITS++](ledits_pp) | image editing |
+| [LLaDA2](llada2) | text2text |
 | [Lumina-T2X](lumina) | text2image |
 | [Marigold](marigold) | depth-estimation, normals-estimation, intrinsic-decomposition |
 | [MultiDiffusion](panorama) | text2image |
