@@ -25,7 +25,7 @@ enable_full_determinism()
 
 class Flux2KleinInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = Flux2KleinInpaintPipeline
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds"])
+    params = frozenset(["prompt", "image", "mask_image", "height", "width", "guidance_scale", "prompt_embeds"])
     batch_params = frozenset(["prompt"])
 
     test_xformers_attention = False
@@ -171,6 +171,26 @@ class Flux2KleinInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         # Outputs should be different with different strength values
         assert max_diff > 1e-6
+
+    def test_flux2_klein_inpaint_image_reference(self):
+        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        
+        # Add a reference image to the inputs
+        ref_image = floats_tensor((1, 3, 32, 32), rng=random.Random(1)).to(torch_device)
+        inputs["image_reference"] = ref_image
+        
+        image = pipe(**inputs).images[0]
+        
+        expected_height = inputs["height"] - inputs["height"] % (pipe.vae_scale_factor * 2)
+        expected_width = inputs["width"] - inputs["width"] % (pipe.vae_scale_factor * 2)
+        
+        output_height, output_width, _ = image.shape
+        self.assertEqual(
+            (output_height, output_width),
+            (expected_height, expected_width),
+            f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)} when conditioned on a reference image.",
+        )
 
     @unittest.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):
