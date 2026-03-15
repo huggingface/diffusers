@@ -1,7 +1,6 @@
 import math
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -51,12 +50,12 @@ class TaylorSeerCacheConfig:
             Data type used for storing and computing Taylor series factors. Lower precision reduces memory but may
             affect stability; higher precision improves accuracy at the cost of more memory.
 
-        skip_predict_identifiers (`List[str]`, *optional*, defaults to `None`):
+        skip_predict_identifiers (`list[str]`, *optional*, defaults to `None`):
             Regex patterns (using `re.fullmatch`) for module names to place as "skip" in "cache" mode. In this mode,
             the module computes fully during initial or refresh steps but returns a zero tensor (matching recorded
             shape) during prediction steps to skip computation cheaply.
 
-        cache_identifiers (`List[str]`, *optional*, defaults to `None`):
+        cache_identifiers (`list[str]`, *optional*, defaults to `None`):
             Regex patterns (using `re.fullmatch`) for module names to place in Taylor-series caching mode, where
             outputs are approximated and cached for reuse.
 
@@ -82,11 +81,11 @@ class TaylorSeerCacheConfig:
 
     cache_interval: int = 5
     disable_cache_before_step: int = 3
-    disable_cache_after_step: Optional[int] = None
+    disable_cache_after_step: int | None = None
     max_order: int = 1
-    taylor_factors_dtype: Optional[torch.dtype] = torch.bfloat16
-    skip_predict_identifiers: Optional[List[str]] = None
-    cache_identifiers: Optional[List[str]] = None
+    taylor_factors_dtype: torch.dtype | None = torch.bfloat16
+    skip_predict_identifiers: list[str] | None = None
+    cache_identifiers: list[str] | None = None
     use_lite_mode: bool = False
 
     def __repr__(self) -> str:
@@ -106,7 +105,7 @@ class TaylorSeerCacheConfig:
 class TaylorSeerState:
     def __init__(
         self,
-        taylor_factors_dtype: Optional[torch.dtype] = torch.bfloat16,
+        taylor_factors_dtype: torch.dtype | None = torch.bfloat16,
         max_order: int = 1,
         is_inactive: bool = False,
     ):
@@ -114,11 +113,11 @@ class TaylorSeerState:
         self.max_order = max_order
         self.is_inactive = is_inactive
 
-        self.module_dtypes: Tuple[torch.dtype, ...] = ()
-        self.last_update_step: Optional[int] = None
-        self.taylor_factors: Dict[int, Dict[int, torch.Tensor]] = {}
-        self.inactive_shapes: Optional[Tuple[Tuple[int, ...], ...]] = None
-        self.device: Optional[torch.device] = None
+        self.module_dtypes: tuple[torch.dtype, ...] = ()
+        self.last_update_step: int | None = None
+        self.taylor_factors: dict[int, dict[int, torch.Tensor]] = {}
+        self.inactive_shapes: tuple[tuple[int, ...], ...] | None = None
+        self.device: torch.device | None = None
         self.current_step: int = -1
 
     def reset(self) -> None:
@@ -130,7 +129,7 @@ class TaylorSeerState:
 
     def update(
         self,
-        outputs: Tuple[torch.Tensor, ...],
+        outputs: tuple[torch.Tensor, ...],
     ) -> None:
         self.module_dtypes = tuple(output.dtype for output in outputs)
         self.device = outputs[0].device
@@ -139,7 +138,7 @@ class TaylorSeerState:
             self.inactive_shapes = tuple(output.shape for output in outputs)
         else:
             for i, features in enumerate(outputs):
-                new_factors: Dict[int, torch.Tensor] = {0: features}
+                new_factors: dict[int, torch.Tensor] = {0: features}
                 is_first_update = self.last_update_step is None
                 if not is_first_update:
                     delta_step = self.current_step - self.last_update_step
@@ -160,7 +159,7 @@ class TaylorSeerState:
         self.last_update_step = self.current_step
 
     @torch.compiler.disable
-    def predict(self) -> List[torch.Tensor]:
+    def predict(self) -> list[torch.Tensor]:
         if self.last_update_step is None:
             raise ValueError("Cannot predict without prior initialization/update.")
 
@@ -204,7 +203,7 @@ class TaylorSeerCacheHook(ModelHook):
         disable_cache_before_step: int,
         taylor_factors_dtype: torch.dtype,
         state_manager: StateManager,
-        disable_cache_after_step: Optional[int] = None,
+        disable_cache_after_step: int | None = None,
     ):
         super().__init__()
         self.cache_interval = cache_interval
@@ -245,7 +244,7 @@ class TaylorSeerCacheHook(ModelHook):
         return outputs_list[0] if len(outputs_list) == 1 else tuple(outputs_list)
 
 
-def _resolve_patterns(config: TaylorSeerCacheConfig) -> Tuple[List[str], List[str]]:
+def _resolve_patterns(config: TaylorSeerCacheConfig) -> tuple[list[str], list[str]]:
     """
     Resolve effective inactive and active pattern lists from config + templates.
     """

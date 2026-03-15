@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import re
-from typing import Dict, List
 
 import numpy as np
 import torch
@@ -132,8 +131,8 @@ class OmniGenMultiModalProcessor:
 
     def __call__(
         self,
-        instructions: List[str],
-        input_images: List[List[str]] = None,
+        instructions: list[str],
+        input_images: list[list[str]] = None,
         height: int = 1024,
         width: int = 1024,
         negative_prompt: str = "low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers.",
@@ -141,7 +140,7 @@ class OmniGenMultiModalProcessor:
         separate_cfg_input: bool = False,
         use_input_image_size_as_output: bool = False,
         num_images_per_prompt: int = 1,
-    ) -> Dict:
+    ) -> dict:
         if isinstance(instructions, str):
             instructions = [instructions]
             input_images = [input_images]

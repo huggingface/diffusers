@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -46,7 +46,7 @@ class LCMSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    denoised: Optional[torch.Tensor] = None
+    denoised: torch.Tensor | None = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -207,7 +207,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.00085,
         beta_end: float = 0.012,
         beta_schedule: str = "scaled_linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        trained_betas: np.ndarray | list[float] | None = None,
         original_inference_steps: int = 50,
         clip_sample: bool = False,
         clip_sample_range: float = 1.0,
@@ -260,7 +260,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(
-        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
     ) -> int:
         """
         Find the index of a given timestep in the timestep schedule.
@@ -290,7 +290,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
         """
         Initialize the step index for the scheduler based on the given timestep.
 
@@ -327,7 +327,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -389,10 +389,10 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
-        original_inference_steps: Optional[int] = None,
-        timesteps: Optional[List[int]] = None,
+        num_inference_steps: int | None = None,
+        device: str | torch.device = None,
+        original_inference_steps: int | None = None,
+        timesteps: list[int] | None = None,
         strength: int = 1.0,
     ):
         """
@@ -409,7 +409,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                 schedule (which is different from the standard `diffusers` implementation). We will then take
                 `num_inference_steps` timesteps from this schedule, evenly spaced in terms of indices, and use that as
                 our final timestep schedule. If not set, this will default to the `original_inference_steps` attribute.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps on the training/distillation timestep
                 schedule is used. If `timesteps` is passed, `num_inference_steps` must be `None`.
@@ -540,9 +540,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: int,
         sample: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[LCMSchedulerOutput, Tuple]:
+    ) -> LCMSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -722,7 +722,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                 The current timestep.
 
         Returns:
-            `int`:
+            `int` or `torch.Tensor`:
                 The previous timestep.
         """
         if self.custom_timesteps or self.num_inference_steps:
