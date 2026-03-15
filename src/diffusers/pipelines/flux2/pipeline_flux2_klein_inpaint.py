@@ -1040,26 +1040,18 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             latents,
         )
 
-        clean_source_latents, clean_source_latent_ids = self.prepare_image_latents(
-            [init_image],
+        ref_images = [init_image[i : i + 1] for i in range(init_image.shape[0])]
+        if processed_image_reference is not None:
+            # Convert preprocessed reference image to list format
+            ref_images += [processed_image_reference[i : i + 1] for i in range(processed_image_reference.shape[0])]
+
+        condition_image_latents, condition_image_ids = self.prepare_image_latents(
+            ref_images,
             batch_size * num_images_per_prompt,
             generator,
             device,
             self.vae.dtype,
         )
-
-        image_reference_latents = None
-        image_reference_ids = None
-        if processed_image_reference is not None:
-            # Convert preprocessed reference image to list format expected by prepare_image_latents
-            ref_images = [processed_image_reference[i : i + 1] for i in range(processed_image_reference.shape[0])]
-            image_reference_latents, image_reference_ids = self.prepare_image_latents(
-                ref_images,
-                batch_size * num_images_per_prompt,
-                generator,
-                device,
-                self.vae.dtype,
-            )
 
         mask_condition = self.mask_processor.preprocess(
             mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
@@ -1078,10 +1070,8 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        # Always include the clean-source position IDs and append reference IDs when present.
-        combined_image_ids = torch.cat([latent_image_ids, clean_source_latent_ids], dim=1)
-        if image_reference_ids is not None:
-            combined_image_ids = torch.cat([combined_image_ids, image_reference_ids], dim=1)
+        # Combine base latent position IDs with condition image position IDs.
+        combined_image_ids = torch.cat([latent_image_ids, condition_image_ids], dim=1)
 
         # 7. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1092,12 +1082,8 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                latent_model_input = torch.cat([latents, clean_source_latents], dim=1)
+                latent_model_input = torch.cat([latents, condition_image_latents], dim=1)
                 img_ids = combined_image_ids
-
-                # Concatenate reference image latents and IDs if provided
-                if image_reference_latents is not None:
-                    latent_model_input = torch.cat([latent_model_input, image_reference_latents], dim=1)
 
                 latent_model_input = latent_model_input.to(self.transformer.dtype)
 
