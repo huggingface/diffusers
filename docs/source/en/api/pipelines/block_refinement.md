@@ -12,31 +12,39 @@ specific language governing permissions and limitations under the License.
 
 # Block Refinement
 
-`BlockRefinementPipeline` performs block-wise iterative refinement over a masked token template, sampling and
-committing tokens based on confidence.
+`BlockRefinementPipeline` generates text through block-wise iterative refinement. It starts with a fully masked
+sequence and processes it in fixed-size blocks. Within each block, the model predicts all tokens simultaneously,
+commits the most confident ones, and re-masks the rest for further refinement. This is the core pipeline behind
+[`LLaDA2Pipeline`].
 
-## Config defaults
-
-You can set default sampling parameters when creating the pipeline. Passing `None` for a parameter in `__call__`
-falls back to `pipe.config`.
+## Usage
 
 ```py
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from diffusers import BlockRefinementPipeline, BlockRefinementScheduler
 
+model_id = "inclusionAI/LLaDA2.1-mini"
+model = AutoModelForCausalLM.from_pretrained(model_id, trust_remote_code=True, dtype=torch.bfloat16, device_map="auto")
+tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
 scheduler = BlockRefinementScheduler()
-pipe = BlockRefinementPipeline(
-    model=model,
-    scheduler=scheduler,
-    tokenizer=tokenizer,
-)
 
-out = pipe(prompt="Explain gradient descent.", gen_length=256, block_length=32, steps=16, temperature=0.8)
+pipe = BlockRefinementPipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
+out = pipe(
+    prompt="Explain gradient descent.",
+    gen_length=256,
+    block_length=32,
+    steps=32,
+    temperature=0.0,
+    mask_token_id=tokenizer.mask_token_id,
+)
 print(out.texts[0])
 ```
 
 ## Callbacks
 
-Callbacks run after each refinement step and can inspect or override the current tokens.
+Callbacks run after each refinement step and can inspect or modify the current tokens.
 
 ```py
 def on_step_end(pipe, step, timestep, callback_kwargs):

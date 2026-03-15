@@ -12,7 +12,52 @@ specific language governing permissions and limitations under the License.
 
 # LLaDA2
 
-`LLaDA2Pipeline` adapts block refinement sampling for LLaDA2-style token diffusion models.
+[LLaDA2](https://huggingface.co/collections/inclusionAI/llada21) is a family of discrete diffusion language models
+that generate text through block-wise iterative refinement. Instead of autoregressive token-by-token generation,
+LLaDA2 starts with a fully masked sequence and progressively unmasks tokens by confidence over multiple refinement
+steps.
+
+`LLaDA2Pipeline` wraps [`BlockRefinementPipeline`] with LLaDA2-specific defaults including chat template support.
+
+## Usage
+
+```py
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from diffusers import BlockRefinementScheduler, LLaDA2Pipeline
+
+model_id = "inclusionAI/LLaDA2.1-mini"
+model = AutoModelForCausalLM.from_pretrained(model_id, trust_remote_code=True, dtype=torch.bfloat16, device_map="auto")
+tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+scheduler = BlockRefinementScheduler()
+
+pipe = LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
+output = pipe(
+    prompt="Write a short poem about the ocean.",
+    gen_length=256,
+    block_length=32,
+    steps=32,
+    threshold=0.7,
+    editing_threshold=0.5,
+    max_post_steps=16,
+    temperature=0.0,
+)
+print(output.texts[0])
+```
+
+## Recommended parameters
+
+LLaDA2.1 models support two modes:
+
+| Mode | `threshold` | `editing_threshold` | `max_post_steps` |
+|------|-------------|---------------------|------------------|
+| Quality | 0.7 | 0.5 | 16 |
+| Speed | 0.5 | 0.0 | 16 |
+
+For LLaDA2.0 models, omit `editing_threshold` and `max_post_steps` (editing is a LLaDA2.1 feature).
+
+For all models: `block_length=32`, `temperature=0.0`, `steps=32`.
 
 ## LLaDA2Pipeline
 [[autodoc]] LLaDA2Pipeline
