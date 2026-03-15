@@ -134,5 +134,4 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
         return LLaDA2PipelineOutput(sequences=output.sequences, texts=output.texts)
 
 
-
 __all__ = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]

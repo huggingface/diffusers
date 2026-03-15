@@ -2438,8 +2438,8 @@ class DiscreteDiffusionPipelineMixin:
     ) -> "tuple[torch.LongTensor, torch.Tensor]":
         """Sample tokens from logits with temperature scaling, top-k, and top-p.
 
-        Follows the official LLaDA2 ordering: temperature scaling is applied before top-k/top-p filtering
-        so that filtering operates on the scaled logit distribution.
+        Follows the official LLaDA2 ordering: temperature scaling is applied before top-k/top-p filtering so that
+        filtering operates on the scaled logit distribution.
         """
         if temperature < 0:
             raise ValueError(f"`temperature` must be >= 0, got {temperature}.")
