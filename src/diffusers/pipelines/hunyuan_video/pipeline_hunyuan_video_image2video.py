@@ -353,6 +353,15 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
             text_crop_start = crop_start - 1 + image_emb_len
             batch_indices, last_double_return_token_indices = torch.where(text_input_ids == double_return_token_id)
 
+            # Fallback for newer transformers versions where double newline is not tokenized as a separate token
+            # In this case, use the last <|end_header_id|> token position + 1 as the assistant section marker
+            if last_double_return_token_indices.numel() == 0:
+                end_header_token_id = self.tokenizer.convert_tokens_to_ids("<|end_header_id|>")
+                _, end_header_indices = torch.where(text_input_ids == end_header_token_id)
+                # Use the last end_header_id position + 1 (which is right after assistant's <|end_header_id|>)
+                last_double_return_token_indices = end_header_indices[-1:] + 1
+                batch_indices = torch.zeros(1, dtype=torch.long)
+
             if last_double_return_token_indices.shape[0] == 3:
                 # in case the prompt is too long
                 last_double_return_token_indices = torch.cat(
