@@ -31,14 +31,13 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import torch
         >>> from transformers import AutoModelForCausalLM, AutoTokenizer
-        >>> from diffusers import LLaDA2Pipeline
+        >>> from diffusers import BlockRefinementScheduler, LLaDA2Pipeline
 
-        >>> from diffusers import BlockRefinementScheduler
-
-        >>> model_id = "inclusionAI/LLaDA2.0-mini"
-        >>> model = AutoModelForCausalLM.from_pretrained(model_id, trust_remote_code=True, torch_dtype=torch.bfloat16)
+        >>> model_id = "inclusionAI/LLaDA2.1-mini"
+        >>> model = AutoModelForCausalLM.from_pretrained(
+        ...     model_id, trust_remote_code=True, dtype=torch.bfloat16, device_map="auto"
+        ... )
         >>> tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-        >>> model = model.to("cuda")
         >>> scheduler = BlockRefinementScheduler()
 
         >>> pipe = LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
