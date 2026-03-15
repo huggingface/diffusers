@@ -190,9 +190,7 @@ def main():
         tokenizer.add_special_tokens({"mask_token": "[MASK]"})
 
     load_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg.model_name_or_path, cache_dir=cfg.cache_dir, dtype=load_dtype
-    )
+    model = AutoModelForCausalLM.from_pretrained(cfg.model_name_or_path, cache_dir=cfg.cache_dir, dtype=load_dtype)
     model.resize_token_embeddings(len(tokenizer))
     if load_dtype == torch.float32:
         model.to(dtype=torch.float32)
