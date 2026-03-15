@@ -556,14 +556,21 @@ class HeliosTransformer3DModel(
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["HeliosTransformerBlock"]
     _cp_plan = {
-        "blocks.0": {
+        # Input split at attn level and ffn level.
+        "blocks.*.attn1": {
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-        },
-        "blocks.*": {
-            "temb": ContextParallelInput(split_dim=1, expected_dims=4, split_output=False),
             "rotary_emb": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
-        "blocks.39": ContextParallelOutput(gather_dim=1, expected_dims=3),
+        "blocks.*.attn2": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+        },
+        "blocks.*.ffn": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+        },
+        # Output gather at attn level and ffn level.
+        **{f"blocks.{i}.attn1": ContextParallelOutput(gather_dim=1, expected_dims=3) for i in range(40)},
+        **{f"blocks.{i}.attn2": ContextParallelOutput(gather_dim=1, expected_dims=3) for i in range(40)},
+        **{f"blocks.{i}.ffn": ContextParallelOutput(gather_dim=1, expected_dims=3) for i in range(40)},
     }
 
     @register_to_config

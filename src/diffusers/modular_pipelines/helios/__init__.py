@@ -11,8 +11,7 @@ from ...utils import (
 
 
 _dummy_objects = {}
-_additional_imports = {}
-_import_structure = {"pipeline_output": ["Flux2PipelineOutput"]}
+_import_structure = {}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -22,9 +21,15 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_flux2"] = ["Flux2Pipeline"]
-    _import_structure["pipeline_flux2_klein"] = ["Flux2KleinPipeline"]
-    _import_structure["pipeline_flux2_klein_kv"] = ["Flux2KleinKVPipeline"]
+    _import_structure["modular_blocks_helios"] = ["HeliosAutoBlocks"]
+    _import_structure["modular_blocks_helios_pyramid"] = ["HeliosPyramidAutoBlocks"]
+    _import_structure["modular_blocks_helios_pyramid_distilled"] = ["HeliosPyramidDistilledAutoBlocks"]
+    _import_structure["modular_pipeline"] = [
+        "HeliosModularPipeline",
+        "HeliosPyramidDistilledModularPipeline",
+        "HeliosPyramidModularPipeline",
+    ]
+
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -32,9 +37,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .pipeline_flux2 import Flux2Pipeline
-        from .pipeline_flux2_klein import Flux2KleinPipeline
-        from .pipeline_flux2_klein_kv import Flux2KleinKVPipeline
+        from .modular_blocks_helios import HeliosAutoBlocks
+        from .modular_blocks_helios_pyramid import HeliosPyramidAutoBlocks
+        from .modular_blocks_helios_pyramid_distilled import HeliosPyramidDistilledAutoBlocks
+        from .modular_pipeline import (
+            HeliosModularPipeline,
+            HeliosPyramidDistilledModularPipeline,
+            HeliosPyramidModularPipeline,
+        )
 else:
     import sys
 
@@ -46,6 +56,4 @@ else:
     )
 
     for name, value in _dummy_objects.items():
-        setattr(sys.modules[__name__], name, value)
-    for name, value in _additional_imports.items():
         setattr(sys.modules[__name__], name, value)
