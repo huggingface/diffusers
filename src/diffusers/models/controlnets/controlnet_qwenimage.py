@@ -1,4 +1,5 @@
-# Copyright 2025 Black Forest Labs, The HuggingFace Team and The InstantX Team. All rights reserved.
+# Copyright 2025 Black Forest Labs, The HuggingFace Team, The InstantX Team and The DiffSynth Team.
+# All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,6 +44,29 @@ from ..transformers.transformer_qwenimage import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+class BlockWiseControlBlock(nn.Module):
+    """A control block that fuses base hidden states with control features via RMSNorm + MLP.
+
+    Used by the DiffSynth blockwise ControlNet variant. Unlike the linear projection used by InstantX,
+    this block normalizes both inputs separately before fusing them through a gated linear projection.
+    """
+
+    def __init__(self, dim: int = 3072):
+        super().__init__()
+        self.x_rms = RMSNorm(dim, eps=1e-6)
+        self.y_rms = RMSNorm(dim, eps=1e-6)
+        self.input_proj = nn.Linear(dim, dim)
+        self.act = nn.GELU()
+        self.output_proj = zero_module(nn.Linear(dim, dim))
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        x, y = self.x_rms(x), self.y_rms(y)
+        x = self.input_proj(x + y)
+        x = self.act(x)
+        x = self.output_proj(x)
+        return x
+
+
 @dataclass
 class QwenImageControlNetOutput(BaseOutput):
     controlnet_block_samples: tuple[torch.Tensor]
@@ -65,6 +89,7 @@ class QwenImageControlNetModel(
         joint_attention_dim: int = 3584,
         axes_dims_rope: tuple[int, int, int] = (16, 56, 56),
         extra_condition_channels: int = 0,  # for controlnet-inpainting
+        controlnet_block_type: str = "linear",
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -92,8 +117,12 @@ class QwenImageControlNetModel(
 
         # controlnet_blocks
         self.controlnet_blocks = nn.ModuleList([])
-        for _ in range(len(self.transformer_blocks)):
-            self.controlnet_blocks.append(zero_module(nn.Linear(self.inner_dim, self.inner_dim)))
+        if controlnet_block_type == "blockwise":
+            for _ in range(len(self.transformer_blocks)):
+                self.controlnet_blocks.append(BlockWiseControlBlock(self.inner_dim))
+        else:
+            for _ in range(len(self.transformer_blocks)):
+                self.controlnet_blocks.append(zero_module(nn.Linear(self.inner_dim, self.inner_dim)))
         self.controlnet_x_embedder = zero_module(
             torch.nn.Linear(in_channels + extra_condition_channels, self.inner_dim)
         )
@@ -109,12 +138,14 @@ class QwenImageControlNetModel(
         num_attention_heads: int = 24,
         load_weights_from_transformer=True,
         extra_condition_channels: int = 0,
+        controlnet_block_type: str = "linear",
     ):
         config = dict(transformer.config)
         config["num_layers"] = num_layers
         config["attention_head_dim"] = attention_head_dim
         config["num_attention_heads"] = num_attention_heads
         config["extra_condition_channels"] = extra_condition_channels
+        config["controlnet_block_type"] = controlnet_block_type
 
         controlnet = cls.from_config(config)
 
@@ -190,7 +221,8 @@ class QwenImageControlNetModel(
         hidden_states = self.img_in(hidden_states)
 
         # add
-        hidden_states = hidden_states + self.controlnet_x_embedder(controlnet_cond)
+        controlnet_cond_embed = self.controlnet_x_embedder(controlnet_cond)
+        hidden_states = hidden_states + controlnet_cond_embed
 
         temb = self.time_text_embed(timestep, hidden_states)
 
@@ -240,9 +272,14 @@ class QwenImageControlNetModel(
 
         # controlnet block
         controlnet_block_samples = ()
-        for block_sample, controlnet_block in zip(block_samples, self.controlnet_blocks):
-            block_sample = controlnet_block(block_sample)
-            controlnet_block_samples = controlnet_block_samples + (block_sample,)
+        if self.config.controlnet_block_type == "blockwise":
+            for block_sample, controlnet_block in zip(block_samples, self.controlnet_blocks):
+                block_sample = controlnet_block(block_sample, controlnet_cond_embed)
+                controlnet_block_samples = controlnet_block_samples + (block_sample,)
+        else:
+            for block_sample, controlnet_block in zip(block_samples, self.controlnet_blocks):
+                block_sample = controlnet_block(block_sample)
+                controlnet_block_samples = controlnet_block_samples + (block_sample,)
 
         # scaling
         controlnet_block_samples = [sample * conditioning_scale for sample in controlnet_block_samples]
