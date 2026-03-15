@@ -54,6 +54,7 @@ from .flux import (
 )
 from .flux2 import Flux2KleinPipeline, Flux2Pipeline
 from .glm_image import GlmImagePipeline
+from .helios import HeliosPipeline, HeliosPyramidPipeline
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -94,6 +95,7 @@ from .pag import (
     StableDiffusionXLPAGPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+from .prx import PRXPipeline
 from .qwenimage import (
     QwenImageControlNetPipeline,
     QwenImageEditInpaintPipeline,
@@ -174,6 +176,8 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
         ("glm_image", GlmImagePipeline),
+        ("helios", HeliosPipeline),
+        ("helios-pyramid", HeliosPyramidPipeline),
         ("cogview4-control", CogView4ControlPipeline),
         ("qwenimage", QwenImagePipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
@@ -182,6 +186,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("z-image-controlnet-inpaint", ZImageControlNetInpaintPipeline),
         ("z-image-omni", ZImageOmniPipeline),
         ("ovis", OvisImagePipeline),
+        ("prx", PRXPipeline),
     ]
 )
 

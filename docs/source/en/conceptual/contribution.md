@@ -566,3 +566,15 @@ $ git push --set-upstream origin your-branch-for-syncing
 ### Style guide
 
 For documentation strings, 🧨 Diffusers follows the [Google style](https://google.github.io/styleguide/pyguide.html).
+
+
+## Coding with AI agents
+
+The repository keeps AI-agent configuration in `.ai/` and exposes local agent files via symlinks.
+
+- **Source of truth** — edit `.ai/AGENTS.md` (and any future `.ai/skills/`)
+- **Don't edit** generated root-level `AGENTS.md` or `CLAUDE.md` — they are symlinks
+- Setup commands:
+  - `make codex` — symlink for OpenAI Codex
+  - `make claude` — symlink for Claude Code
+  - `make clean-ai` — remove generated symlinks
