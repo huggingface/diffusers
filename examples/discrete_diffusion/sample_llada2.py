@@ -172,7 +172,7 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             args.model_id,
             trust_remote_code=True,
-            torch_dtype=torch_dtype,
+            dtype=torch_dtype,
             low_cpu_mem_usage=True,
         )
         # Apply group offloading with CUDA streams for better performance
@@ -191,7 +191,7 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             args.model_id,
             trust_remote_code=True,
-            torch_dtype=torch_dtype,
+            dtype=torch_dtype,
             low_cpu_mem_usage=True,
         )
         # Sequential offloading will be applied via pipeline
@@ -200,7 +200,7 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             args.model_id,
             trust_remote_code=True,
-            torch_dtype=torch_dtype,
+            dtype=torch_dtype,
             device_map="auto",
             low_cpu_mem_usage=True,
         )

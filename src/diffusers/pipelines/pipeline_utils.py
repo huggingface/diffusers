@@ -2407,6 +2407,8 @@ class DiscreteDiffusionPipelineMixin:
         cumulative_probs = sorted_probs.cumsum(dim=-1)
 
         sorted_indices_to_remove = cumulative_probs > float(top_p)
+        # Shift right to keep at least the first token above the threshold
+        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
         sorted_indices_to_remove[..., 0] = 0
 
         sorted_logits = sorted_logits.masked_fill(sorted_indices_to_remove, torch.finfo(sorted_logits.dtype).min)
@@ -2434,25 +2436,34 @@ class DiscreteDiffusionPipelineMixin:
         generator: Optional["torch.Generator"],
         use_multinomial: bool,
     ) -> "tuple[torch.LongTensor, torch.Tensor]":
-        """Sample tokens from logits with temperature scaling, top-k, and top-p."""
-        vocab_size = logits.shape[-1]
-        flat_logits = logits.reshape(-1, vocab_size)
+        """Sample tokens from logits with temperature scaling, top-k, and top-p.
 
-        filtered = DiscreteDiffusionPipelineMixin._top_k_filtering(flat_logits, top_k=top_k)
-        filtered = DiscreteDiffusionPipelineMixin._top_p_filtering(filtered, top_p=top_p)
-
+        Follows the official LLaDA2 ordering: temperature scaling is applied before top-k/top-p filtering so that
+        filtering operates on the scaled logit distribution.
+        """
         if temperature < 0:
             raise ValueError(f"`temperature` must be >= 0, got {temperature}.")
 
-        scaled = filtered
-        if temperature > 0.0 and temperature != 1.0:
-            scaled = filtered / float(temperature)
+        vocab_size = logits.shape[-1]
+        flat_logits = logits.reshape(-1, vocab_size)
 
-        probs = torch.softmax(scaled.float(), dim=-1)
-        if use_multinomial:
-            token = torch.multinomial(probs, num_samples=1, generator=generator)
-        else:
-            token = scaled.argmax(dim=-1, keepdim=True)
+        # Greedy: return argmax directly (matches official LLaDA2 temperature=0 branch)
+        if temperature == 0.0 or not use_multinomial:
+            probs = torch.softmax(flat_logits.float(), dim=-1)
+            token = flat_logits.argmax(dim=-1, keepdim=True)
+            token_prob = torch.gather(probs, -1, token)
+            return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
+
+        # Temperature scaling before filtering (matches official LLaDA2 code)
+        scaled = flat_logits
+        if temperature != 1.0:
+            scaled = flat_logits / float(temperature)
+
+        filtered = DiscreteDiffusionPipelineMixin._top_k_filtering(scaled, top_k=top_k)
+        filtered = DiscreteDiffusionPipelineMixin._top_p_filtering(filtered, top_p=top_p)
+
+        probs = torch.softmax(filtered.float(), dim=-1)
+        token = torch.multinomial(probs, num_samples=1, generator=generator)
         token_prob = torch.gather(probs, -1, token)
 
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
@@ -2523,13 +2534,6 @@ class DiscreteDiffusionPipelineMixin:
 
         chat_template_kwargs = chat_template_kwargs or {}
 
-        def _extract_input_ids(encoded):
-            if isinstance(encoded, dict) and "input_ids" in encoded:
-                return encoded["input_ids"]
-            if hasattr(encoded, "input_ids"):
-                return encoded.input_ids
-            return encoded
-
         if messages is not None:
             encoded = self.tokenizer.apply_chat_template(
                 messages,
@@ -2539,7 +2543,7 @@ class DiscreteDiffusionPipelineMixin:
                 return_dict=True,
                 **chat_template_kwargs,
             )
-            return _extract_input_ids(encoded)
+            return encoded["input_ids"]
 
         if use_chat_template and getattr(self.tokenizer, "chat_template", None):
             if isinstance(prompt, list):
@@ -2552,7 +2556,7 @@ class DiscreteDiffusionPipelineMixin:
                 return_dict=True,
                 **chat_template_kwargs,
             )
-            return _extract_input_ids(encoded)
+            return encoded["input_ids"]
 
         encoded = self.tokenizer(prompt, return_tensors="pt", padding=isinstance(prompt, list))
-        return _extract_input_ids(encoded)
+        return encoded["input_ids"]

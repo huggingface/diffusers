@@ -500,6 +500,10 @@
         title: AuraFlow
       - local: api/pipelines/blip_diffusion
         title: BLIP-Diffusion
+      - local: api/pipelines/block_refinement
+        title: Block Refinement
+      - local: api/pipelines/block_token_diffusion
+        title: Block Token Diffusion
       - local: api/pipelines/bria_3_2
         title: Bria 3.2
       - local: api/pipelines/bria_fibo
@@ -538,6 +542,8 @@
         title: DDPM
       - local: api/pipelines/deepfloyd_if
         title: DeepFloyd IF
+      - local: api/pipelines/dflash
+        title: DFlash
       - local: api/pipelines/diffedit
         title: DiffEdit
       - local: api/pipelines/dit
@@ -558,6 +564,8 @@
         title: Hunyuan-DiT
       - local: api/pipelines/hunyuanimage21
         title: HunyuanImage2.1
+      - local: api/pipelines/hybrid_token_diffusion
+        title: Hybrid Token Diffusion
       - local: api/pipelines/pix2pix
         title: InstructPix2Pix
       - local: api/pipelines/kandinsky
@@ -608,6 +616,8 @@
         title: Sana Sprint
       - local: api/pipelines/sana_video
         title: Sana Video
+      - local: api/pipelines/sdar
+        title: SDAR
       - local: api/pipelines/self_attention_guidance
         title: Self-Attention Guidance
       - local: api/pipelines/semantic_stable_diffusion
@@ -653,6 +663,8 @@
         title: Stable Diffusion
       - local: api/pipelines/stable_unclip
         title: Stable unCLIP
+      - local: api/pipelines/token_diffusion
+        title: Token Diffusion
       - local: api/pipelines/unclip
         title: unCLIP
       - local: api/pipelines/unidiffuser
@@ -691,6 +703,8 @@
         title: Kandinsky 5.0 Video
       - local: api/pipelines/latte
         title: Latte
+      - local: api/pipelines/llada2
+        title: LLaDA2
       - local: api/pipelines/ltx2
         title: LTX-2
       - local: api/pipelines/ltx_video
@@ -714,6 +728,10 @@
   - sections:
     - local: api/schedulers/overview
       title: Overview
+    - local: api/schedulers/bd3lm_token_diffusion
+      title: BD3LMTokenDiffusionScheduler
+    - local: api/schedulers/block_token_diffusion
+      title: BlockTokenDiffusionScheduler
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
     - local: api/schedulers/ddim_cogvideox
@@ -732,6 +750,8 @@
       title: DDPMScheduler
     - local: api/schedulers/deis
       title: DEISMultistepScheduler
+    - local: api/schedulers/dflash_token_diffusion
+      title: DFlashTokenDiffusionScheduler
     - local: api/schedulers/multistep_dpm_solver_inverse
       title: DPMSolverMultistepInverse
     - local: api/schedulers/multistep_dpm_solver
@@ -758,6 +778,8 @@
       title: HeliosScheduler
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
+    - local: api/schedulers/hybrid_token_diffusion
+      title: HybridTokenDiffusionScheduler
     - local: api/schedulers/ipndm
       title: IPNDMScheduler
     - local: api/schedulers/stochastic_karras_ve
@@ -778,8 +800,12 @@
       title: ScoreSdeVeScheduler
     - local: api/schedulers/score_sde_vp
       title: ScoreSdeVpScheduler
+    - local: api/schedulers/sdar_token_diffusion
+      title: SDARTokenDiffusionScheduler
     - local: api/schedulers/tcd
       title: TCDScheduler
+    - local: api/schedulers/token_diffusion
+      title: TokenDiffusionScheduler
     - local: api/schedulers/unipc
       title: UniPCMultistepScheduler
     - local: api/schedulers/vq_diffusion

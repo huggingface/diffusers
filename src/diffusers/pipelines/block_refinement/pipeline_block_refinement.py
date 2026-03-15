@@ -111,19 +111,14 @@ class BlockRefinementPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin)
         device: torch.device,
         dtype: torch.dtype,
     ) -> torch.Tensor:
-        block_mask = torch.tril(torch.ones(num_blocks, num_blocks, device=device, dtype=torch.bool))
+        block_mask = torch.tril(torch.ones(num_blocks, num_blocks, device=device, dtype=dtype))
         attn = (
             block_mask.repeat_interleave(block_length, dim=0)
             .repeat_interleave(block_length, dim=1)
             .unsqueeze(0)
             .unsqueeze(0)
         )
-        attn = attn[:, :, :total_length, :total_length]
-        return torch.where(
-            attn,
-            torch.zeros((), device=device, dtype=dtype),
-            torch.full((), float("-inf"), device=device, dtype=dtype),
-        )
+        return attn[:, :, :total_length, :total_length]
 
     def _encode_prompt(
         self,

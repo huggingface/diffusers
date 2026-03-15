@@ -29,7 +29,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.checkpoint_path, use_fast=True, cache_dir=args.cache_dir)
     model = AutoModelForCausalLM.from_pretrained(
         args.checkpoint_path,
-        torch_dtype=torch.bfloat16 if args.device.startswith("cuda") else torch.float32,
+        dtype=torch.bfloat16 if args.device.startswith("cuda") else torch.float32,
         cache_dir=args.cache_dir,
     )
     model.to(args.device)
