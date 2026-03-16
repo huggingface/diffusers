@@ -1,4 +1,4 @@
-__version__ = "0.37.0.dev0"
+__version__ = "0.38.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -204,6 +204,7 @@ else:
             "AutoencoderOobleck",
             "AutoencoderRAE",
             "AutoencoderTiny",
+            "AutoencoderVidTok",
             "AutoModel",
             "BriaFiboTransformer2DModel",
             "BriaTransformer2DModel",
@@ -433,6 +434,12 @@ else:
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
             "FluxModularPipeline",
+            "HeliosAutoBlocks",
+            "HeliosModularPipeline",
+            "HeliosPyramidAutoBlocks",
+            "HeliosPyramidDistilledAutoBlocks",
+            "HeliosPyramidDistilledModularPipeline",
+            "HeliosPyramidModularPipeline",
             "QwenImageAutoBlocks",
             "QwenImageEditAutoBlocks",
             "QwenImageEditModularPipeline",
@@ -503,6 +510,7 @@ else:
             "EasyAnimateControlPipeline",
             "EasyAnimateInpaintPipeline",
             "EasyAnimatePipeline",
+            "Flux2KleinKVPipeline",
             "Flux2KleinPipeline",
             "Flux2Pipeline",
             "FluxControlImg2ImgPipeline",
@@ -978,6 +986,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderOobleck,
             AutoencoderRAE,
             AutoencoderTiny,
+            AutoencoderVidTok,
             AutoModel,
             BriaFiboTransformer2DModel,
             BriaTransformer2DModel,
@@ -1186,6 +1195,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxKontextAutoBlocks,
             FluxKontextModularPipeline,
             FluxModularPipeline,
+            HeliosAutoBlocks,
+            HeliosModularPipeline,
+            HeliosPyramidAutoBlocks,
+            HeliosPyramidDistilledAutoBlocks,
+            HeliosPyramidDistilledModularPipeline,
+            HeliosPyramidModularPipeline,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
             QwenImageEditModularPipeline,
@@ -1252,6 +1267,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
+            Flux2KleinKVPipeline,
             Flux2KleinPipeline,
             Flux2Pipeline,
             FluxControlImg2ImgPipeline,
