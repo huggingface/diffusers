@@ -696,7 +696,8 @@ class Lumina2Pipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
-        image_seq_len = latents.shape[1]
+        patch_size = self.transformer.config.patch_size
+        image_seq_len = (latents.shape[-2] // patch_size) * (latents.shape[-1] // patch_size)
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.get("base_image_seq_len", 256),
