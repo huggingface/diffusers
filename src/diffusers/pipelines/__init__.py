@@ -129,7 +129,7 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
-    _import_structure["flux2"] = ["Flux2Pipeline", "Flux2KleinPipeline"]
+    _import_structure["flux2"] = ["Flux2Pipeline", "Flux2KleinPipeline", "Flux2KleinKVPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -237,6 +237,7 @@ else:
         "EasyAnimateInpaintPipeline",
         "EasyAnimateControlPipeline",
     ]
+    _import_structure["helios"] = ["HeliosPipeline", "HeliosPyramidPipeline"]
     _import_structure["hidream_image"] = ["HiDreamImagePipeline"]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
     _import_structure["hunyuan_video"] = [
@@ -291,7 +292,12 @@ else:
         "LTXLatentUpsamplePipeline",
         "LTXI2VLongMultiPromptPipeline",
     ]
-    _import_structure["ltx2"] = ["LTX2Pipeline", "LTX2ImageToVideoPipeline", "LTX2LatentUpsamplePipeline"]
+    _import_structure["ltx2"] = [
+        "LTX2Pipeline",
+        "LTX2ConditionPipeline",
+        "LTX2ImageToVideoPipeline",
+        "LTX2LatentUpsamplePipeline",
+    ]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
@@ -665,8 +671,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
-        from .flux2 import Flux2KleinPipeline, Flux2Pipeline
+        from .flux2 import Flux2KleinKVPipeline, Flux2KleinPipeline, Flux2Pipeline
         from .glm_image import GlmImagePipeline
+        from .helios import HeliosPipeline, HeliosPyramidPipeline
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
@@ -729,7 +736,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXLatentUpsamplePipeline,
             LTXPipeline,
         )
-        from .ltx2 import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2Pipeline
+        from .ltx2 import LTX2ConditionPipeline, LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2Pipeline
         from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline

@@ -179,3 +179,7 @@ tags
 
 # wandb
 wandb
+
+# AI agent generated symlinks
+/AGENTS.md
+/CLAUDE.md

@@ -20,7 +20,7 @@ from typing import Any, Callable
 
 import PIL
 import torch
-from transformers import AutoTokenizer, UMT5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel, UMT5EncoderModel
 
 from diffusers.image_processor import PipelineImageInput
 from diffusers.utils.torch_utils import randn_tensor
@@ -158,7 +158,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
     def __init__(
         self,
         tokenizer: AutoTokenizer,
-        text_encoder: UMT5EncoderModel,
+        text_encoder: T5EncoderModel | UMT5EncoderModel,
         transformer: SkyReelsV2Transformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: UniPCMultistepScheduler,
