@@ -532,8 +532,6 @@
         title: ControlNet-XS with Stable Diffusion XL
       - local: api/pipelines/controlnet_union
         title: ControlNetUnion
-      - local: api/pipelines/cosmos
-        title: Cosmos
       - local: api/pipelines/ddim
         title: DDIM
       - local: api/pipelines/ddpm
@@ -677,6 +675,8 @@
         title: CogVideoX
       - local: api/pipelines/consisid
         title: ConsisID
+      - local: api/pipelines/cosmos
+        title: Cosmos
       - local: api/pipelines/framepack
         title: Framepack
       - local: api/pipelines/helios
