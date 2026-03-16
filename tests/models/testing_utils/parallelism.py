@@ -26,6 +26,7 @@ from diffusers.models._modeling_parallel import ContextParallelConfig
 from ...testing_utils import (
     is_context_parallel,
     require_torch_multi_accelerator,
+    torch_device,
 )
 
 
@@ -47,12 +48,17 @@ def _context_parallel_worker(rank, world_size, master_port, model_class, init_di
         os.environ["RANK"] = str(rank)
         os.environ["WORLD_SIZE"] = str(world_size)
 
+        # Determine backend based on device type
+        backend = "xccl" if torch_device == "xpu" else "nccl"
+
         # Initialize process group
-        dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
+        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+
+        torch_accelerator_module = getattr(torch, torch_device, torch.cuda)
 
         # Set device for this process
-        torch.cuda.set_device(rank)
-        device = torch.device(f"cuda:{rank}")
+        torch_accelerator_module.set_device(rank)
+        device = torch.device(f"{torch_device}:{rank}")
 
         # Create model
         model = model_class(**init_dict)
@@ -103,10 +109,14 @@ def _custom_mesh_worker(
         os.environ["RANK"] = str(rank)
         os.environ["WORLD_SIZE"] = str(world_size)
 
-        dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
+        # Determine backend based on device type
+        backend = "xccl" if torch_device == "xpu" else "nccl"
 
-        torch.cuda.set_device(rank)
-        device = torch.device(f"cuda:{rank}")
+        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+
+        torch_accelerator_module = getattr(torch, torch_device, torch.cuda)
+        torch_accelerator_module.set_device(rank)
+        device = torch.device(f"{torch_device}:{rank}")
 
         model = model_class(**init_dict)
         model.to(device)
@@ -116,7 +126,7 @@ def _custom_mesh_worker(
 
         # DeviceMesh must be created after init_process_group, inside each worker process.
         mesh = torch.distributed.device_mesh.init_device_mesh(
-            "cuda", mesh_shape=mesh_shape, mesh_dim_names=mesh_dim_names
+            torch_device, mesh_shape=mesh_shape, mesh_dim_names=mesh_dim_names
         )
         cp_config = ContextParallelConfig(**cp_dict, mesh=mesh)
         model.enable_parallelism(config=cp_config)
