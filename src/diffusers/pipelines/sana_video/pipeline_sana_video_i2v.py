@@ -26,7 +26,7 @@ from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFa
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import SanaLoraLoaderMixin
-from ...models import AutoencoderDC, AutoencoderKLWan, SanaVideoTransformer3DModel
+from ...models import AutoencoderDC, AutoencoderKLLTX2Video, AutoencoderKLWan, SanaVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -203,7 +203,7 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         self,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         text_encoder: Gemma2PreTrainedModel,
-        vae: AutoencoderDC | AutoencoderKLWan,
+        vae: AutoencoderDC | AutoencoderKLLTX2Video | AutoencoderKLWan,
         transformer: SanaVideoTransformer3DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
@@ -213,8 +213,19 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
 
-        self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
-        self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
+        if getattr(self, "vae", None):
+            if isinstance(self.vae, AutoencoderKLWan):
+                self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal
+                self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial
+            elif isinstance(self.vae, AutoencoderKLLTX2Video):
+                self.vae_scale_factor_temporal = self.vae.config.temporal_compression_ratio
+                self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio
+            else:
+                self.vae_scale_factor_temporal = getattr(self.vae, "temporal_compression_ratio", 4)
+                self.vae_scale_factor_spatial = getattr(self.vae, "spatial_compression_ratio", 8)
+        else:
+            self.vae_scale_factor_temporal = 4
+            self.vae_scale_factor_spatial = 8
 
         self.vae_scale_factor = self.vae_scale_factor_spatial
 
@@ -687,14 +698,22 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
             image_latents = image_latents.repeat(batch_size, 1, 1, 1, 1)
 
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean)
-            .view(1, -1, 1, 1, 1)
-            .to(image_latents.device, image_latents.dtype)
-        )
-        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, -1, 1, 1, 1).to(
-            image_latents.device, image_latents.dtype
-        )
+        if hasattr(self.vae.config, "latents_mean"):
+            _latents_mean = torch.tensor(self.vae.config.latents_mean)
+        elif getattr(self.vae, "latents_mean", None) is not None:
+            _latents_mean = self.vae.latents_mean
+        else:
+            _latents_mean = torch.zeros(image_latents.shape[1], device=image_latents.device, dtype=image_latents.dtype)
+
+        if hasattr(self.vae.config, "latents_std"):
+            _latents_std = torch.tensor(self.vae.config.latents_std)
+        elif getattr(self.vae, "latents_std", None) is not None:
+            _latents_std = self.vae.latents_std
+        else:
+            _latents_std = torch.ones(image_latents.shape[1], device=image_latents.device, dtype=image_latents.dtype)
+
+        latents_mean = _latents_mean.view(1, -1, 1, 1, 1).to(image_latents.device, image_latents.dtype)
+        latents_std = 1.0 / _latents_std.view(1, -1, 1, 1, 1).to(image_latents.device, image_latents.dtype)
         image_latents = (image_latents - latents_mean) * latents_std
 
         latents[:, :, 0:1] = image_latents.to(dtype)
@@ -1034,14 +1053,28 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 if is_torch_version(">=", "2.5.0")
                 else torch_accelerator_module.OutOfMemoryError
             )
-            latents_mean = (
-                torch.tensor(self.vae.config.latents_mean)
-                .view(1, self.vae.config.z_dim, 1, 1, 1)
-                .to(latents.device, latents.dtype)
-            )
-            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                latents.device, latents.dtype
-            )
+            if hasattr(self.vae.config, "latents_mean"):
+                _latents_mean = torch.tensor(self.vae.config.latents_mean)
+            elif getattr(self.vae, "latents_mean", None) is not None:
+                _latents_mean = self.vae.latents_mean
+            else:
+                _latents_mean = torch.zeros(latents.shape[1], device=latents.device, dtype=latents.dtype)
+
+            if hasattr(self.vae.config, "latents_std"):
+                _latents_std = torch.tensor(self.vae.config.latents_std)
+            elif getattr(self.vae, "latents_std", None) is not None:
+                _latents_std = self.vae.latents_std
+            else:
+                _latents_std = torch.ones(latents.shape[1], device=latents.device, dtype=latents.dtype)
+
+            z_dim = getattr(self.vae.config, "z_dim", None)
+            if z_dim is None:
+                z_dim = getattr(self.vae.config, "latent_channels", None)
+            if z_dim is None:
+                z_dim = latents.shape[1]
+
+            latents_mean = _latents_mean.view(1, z_dim, 1, 1, 1).to(latents.device, latents.dtype)
+            latents_std = 1.0 / _latents_std.view(1, z_dim, 1, 1, 1).to(latents.device, latents.dtype)
             latents = latents / latents_std + latents_mean
             try:
                 video = self.vae.decode(latents, return_dict=False)[0]

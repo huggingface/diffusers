@@ -24,7 +24,7 @@ from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFa
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import SanaLoraLoaderMixin
-from ...models import AutoencoderDC, AutoencoderKLWan, SanaVideoTransformer3DModel
+from ...models import AutoencoderDC, AutoencoderKLLTX2Video, AutoencoderKLWan, SanaVideoTransformer3DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -213,7 +213,7 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         self,
         tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         text_encoder: Gemma2PreTrainedModel,
-        vae: AutoencoderDC | AutoencoderKLWan,
+        vae: AutoencoderDC | AutoencoderKLLTX2Video | AutoencoderKLWan,
         transformer: SanaVideoTransformer3DModel,
         scheduler: DPMSolverMultistepScheduler,
     ):
@@ -224,7 +224,7 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         )
 
         if getattr(self, "vae", None):
-            if hasattr(self.vae.config, "scale_factor_temporal"):
+            if isinstance(self.vae, AutoencoderKLWan):
                 self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal
             elif hasattr(self.vae.config, "temporal_compression_ratio"):
                 # LTX2 VAE uses temporal_compression_ratio
@@ -232,8 +232,8 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
             if hasattr(self.vae.config, "scale_factor_spatial"):
                 self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial
-            elif hasattr(self.vae.config, "spatial_compression_ratio"):
-                # LTX2 VAE uses spatial_compression_ratio
+            elif isinstance(self.vae, AutoencoderKLLTX2Video):
+                self.vae_scale_factor_temporal = self.vae.config.temporal_compression_ratio
                 self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio
         else:
             self.vae_scale_factor_temporal = 4
