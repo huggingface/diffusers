@@ -216,7 +216,7 @@ def log_validation(
     else:
         autocast_ctx = torch.autocast(accelerator.device.type) if not is_final_validation else nullcontext()
 
-    with autocast_ctx:
+    with torch.no_grad(), autocast_ctx:
         images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
 
     for tracker in accelerator.trackers:
