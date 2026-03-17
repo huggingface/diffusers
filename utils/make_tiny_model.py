@@ -46,7 +46,33 @@ import os
 import re
 
 
-LAYER_PARAM_PATTERN = re.compile(r"^(num_.*layers?|n_layers)$")
+LAYER_PARAM_PATTERN = re.compile(r"^(num_.*layers?|n_layers|n_refiner_layers)$")
+
+DIM_PARAM_PATTERNS = {
+    re.compile(r"^num_attention_heads$"): 2,
+    re.compile(r"^num_.*attention_heads$"): 2,
+    re.compile(r"^num_key_value_heads$"): 2,
+    re.compile(r"^num_kv_heads$"): 1,
+    re.compile(r"^n_heads$"): 2,
+    re.compile(r"^n_kv_heads$"): 2,
+    re.compile(r"^attention_head_dim$"): 8,
+    re.compile(r"^.*attention_head_dim$"): 4,
+    re.compile(r"^cross_attention_dim.*$"): 8,
+    re.compile(r"^joint_attention_dim$"): 32,
+    re.compile(r"^pooled_projection_dim$"): 32,
+    re.compile(r"^caption_projection_dim$"): 32,
+    re.compile(r"^caption_channels$"): 8,
+    re.compile(r"^cap_feat_dim$"): 16,
+    re.compile(r"^hidden_size$"): 16,
+    re.compile(r"^dim$"): 16,
+    re.compile(r"^.*embed_dim$"): 16,
+    re.compile(r"^.*embed_.*dim$"): 16,
+    re.compile(r"^text_dim$"): 16,
+    re.compile(r"^time_embed_dim$"): 4,
+    re.compile(r"^ffn_dim$"): 32,
+    re.compile(r"^intermediate_size$"): 32,
+    re.compile(r"^sample_size$"): 32,
+}
 
 
 def parse_args():
@@ -60,6 +86,11 @@ def parse_args():
     )
     parser.add_argument("--subfolder", type=str, default=None, help="Subfolder within the model repo.")
     parser.add_argument("--num_layers", type=int, default=2, help="Number of layers to use for the tiny model.")
+    parser.add_argument(
+        "--shrink_dims",
+        action="store_true",
+        help="Also reduce dimension parameters (attention heads, hidden size, embedding dims, etc.).",
+    )
     parser.add_argument("--push_to_hub", action="store_true", help="Push the tiny model to the HuggingFace Hub.")
     parser.add_argument(
         "--token", type=str, default=None, help="HuggingFace token. Defaults to $HF_TOKEN env var if not provided."
@@ -89,6 +120,8 @@ def launch_job(args):
     ]
     if args.subfolder:
         script_args.extend(["--subfolder", args.subfolder])
+    if args.shrink_dims:
+        script_args.append("--shrink_dims")
     if args.push_to_hub:
         script_args.append("--push_to_hub")
 
@@ -104,7 +137,9 @@ def launch_job(args):
     return job
 
 
-def make_tiny_model(model_repo_id, output_repo_id, subfolder=None, num_layers=2, push_to_hub=False, token=None):
+def make_tiny_model(
+    model_repo_id, output_repo_id, subfolder=None, num_layers=2, shrink_dims=False, push_to_hub=False, token=None
+):
     from diffusers import AutoModel
 
     config_kwargs = {}
@@ -119,14 +154,24 @@ def make_tiny_model(model_repo_id, output_repo_id, subfolder=None, num_layers=2,
             modified_keys[key] = (value, num_layers)
             config[key] = num_layers
 
+    if shrink_dims:
+        for key, value in config.items():
+            if not isinstance(value, int) or key.startswith("_"):
+                continue
+            for pattern, tiny_value in DIM_PARAM_PATTERNS.items():
+                if pattern.match(key) and value > tiny_value:
+                    modified_keys[key] = (value, tiny_value)
+                    config[key] = tiny_value
+                    break
+
     if not modified_keys:
-        print(f"WARNING: No layer parameters found matching pattern '{LAYER_PARAM_PATTERN.pattern}' in config.")
+        print("WARNING: No config parameters were modified.")
         print(f"Config keys: {[k for k in config if not k.startswith('_')]}")
         return
-    else:
-        print("Modified layer parameters:")
-        for key, (old, new) in modified_keys.items():
-            print(f"  {key}: {old} -> {new}")
+
+    print("Modified config parameters:")
+    for key, (old, new) in modified_keys.items():
+        print(f"  {key}: {old} -> {new}")
 
     model = AutoModel.from_config(config)
     total_params = sum(p.numel() for p in model.parameters())
@@ -155,6 +200,7 @@ def main():
             output_repo_id=args.output_repo_id,
             subfolder=args.subfolder,
             num_layers=args.num_layers,
+            shrink_dims=args.shrink_dims,
             push_to_hub=args.push_to_hub,
             token=args.token,
         )
