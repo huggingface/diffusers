@@ -680,7 +680,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             )
             audio_shift_text_kv, audio_scale_text_kv = audio_prompt_ada_params
 
-        # 2.1. Video-Text Cross-Attention (Q: Video; K,V: Test)
+        # 2.1. Video-Text Cross-Attention (Q: Video; K,V: Text)
         norm_hidden_states = self.norm2(hidden_states)
         if self.video_cross_attn_adaln:
             norm_hidden_states = norm_hidden_states * (1 + scale_text_q) + shift_text_q
