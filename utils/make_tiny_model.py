@@ -106,13 +106,12 @@ def launch_job(args):
 
 def make_tiny_model(model_repo_id, output_repo_id, subfolder=None, num_layers=2, push_to_hub=False, token=None):
     from diffusers import AutoModel
-    from diffusers.configuration_utils import ConfigMixin
 
     config_kwargs = {}
     if token:
         config_kwargs["token"] = token
 
-    config = ConfigMixin.load_config(model_repo_id, subfolder=subfolder, **config_kwargs)
+    config = AutoModel.load_config(model_repo_id, subfolder=subfolder, **config_kwargs)
 
     modified_keys = {}
     for key, value in config.items():
