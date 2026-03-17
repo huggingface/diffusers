@@ -615,35 +615,21 @@ class LTX2VideoUpBlock3d(nn.Module):
             self.upsamplers = nn.ModuleList()
 
             if upsample_type == "spatial":
-                self.upsamplers.append(
-                    LTX2VideoUpsampler3d(
-                        in_channels=out_channels * upscale_factor,
-                        stride=(1, 2, 2),
-                        residual=upsample_residual,
-                        upscale_factor=upscale_factor,
-                        spatial_padding_mode=spatial_padding_mode,
-                    )
-                )
+                upsample_stride = (1, 2, 2)
             elif upsample_type == "temporal":
-                self.upsamplers.append(
-                    LTX2VideoUpsampler3d(
-                        in_channels=out_channels * upscale_factor,
-                        stride=(2, 1, 1),
-                        residual=upsample_residual,
-                        upscale_factor=upscale_factor,
-                        spatial_padding_mode=spatial_padding_mode,
-                    )
-                )
+                upsample_stride = (2, 1, 1)
             elif upsample_type == "spatiotemporal":
-                self.upsamplers.append(
-                    LTX2VideoUpsampler3d(
-                        in_channels=out_channels * upscale_factor,
-                        stride=(2, 2, 2),
-                        residual=upsample_residual,
-                        upscale_factor=upscale_factor,
-                        spatial_padding_mode=spatial_padding_mode,
-                    )
+                upsample_stride = (2, 2, 2)
+
+            self.upsamplers.append(
+                LTX2VideoUpsampler3d(
+                    in_channels=out_channels * upscale_factor,
+                    stride=upsample_stride,
+                    residual=upsample_residual,
+                    upscale_factor=upscale_factor,
+                    spatial_padding_mode=spatial_padding_mode,
                 )
+            )
 
         resnets = []
         for _ in range(num_layers):
