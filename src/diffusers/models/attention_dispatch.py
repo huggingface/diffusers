@@ -813,6 +813,9 @@ def _native_attention_forward_op(
     if return_lse:
         raise ValueError("Native attention does not support return_lse=True")
 
+    if attn_mask is not None and attn_mask.dim() == 2:
+        attn_mask = attn_mask[:, None, None, :]
+
     # used for backward pass
     if _save_ctx:
         ctx.save_for_backward(query, key, value)
