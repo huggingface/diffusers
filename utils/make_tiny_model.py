@@ -121,9 +121,9 @@ def make_tiny_model(model_repo_id, output_repo_id, subfolder=None, num_layers=2,
             config[key] = num_layers
 
     if not modified_keys:
-        print(f"No layer parameters found matching pattern '{LAYER_PARAM_PATTERN.pattern}' in config.")
+        print(f"WARNING: No layer parameters found matching pattern '{LAYER_PARAM_PATTERN.pattern}' in config.")
         print(f"Config keys: {[k for k in config if not k.startswith('_')]}")
-        print("Proceeding with the original config...")
+        return
     else:
         print("Modified layer parameters:")
         for key, (old, new) in modified_keys.items():
