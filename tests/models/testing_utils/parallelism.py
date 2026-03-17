@@ -30,6 +30,13 @@ from ...testing_utils import (
 )
 
 
+# Device configuration mapping
+DEVICE_CONFIG = {
+    "cuda": {"backend": "nccl", "module": torch.cuda},
+    "xpu": {"backend": "xccl", "module": torch.xpu},
+}
+
+
 def _find_free_port():
     """Find a free port on localhost."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -48,16 +55,16 @@ def _context_parallel_worker(rank, world_size, master_port, model_class, init_di
         os.environ["RANK"] = str(rank)
         os.environ["WORLD_SIZE"] = str(world_size)
 
-        # Determine backend based on device type
-        backend = "xccl" if torch_device == "xpu" else "nccl"
+        # Get device configuration
+        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
+        backend = device_config["backend"]
+        device_module = device_config["module"]
 
         # Initialize process group
         dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
 
-        torch_accelerator_module = getattr(torch, torch_device, torch.cuda)
-
         # Set device for this process
-        torch_accelerator_module.set_device(rank)
+        device_module.set_device(rank)
         device = torch.device(f"{torch_device}:{rank}")
 
         # Create model
@@ -109,13 +116,15 @@ def _custom_mesh_worker(
         os.environ["RANK"] = str(rank)
         os.environ["WORLD_SIZE"] = str(world_size)
 
-        # Determine backend based on device type
-        backend = "xccl" if torch_device == "xpu" else "nccl"
+        # Get device configuration
+        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
+        backend = device_config["backend"]
+        device_module = device_config["module"]
 
         dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
 
-        torch_accelerator_module = getattr(torch, torch_device, torch.cuda)
-        torch_accelerator_module.set_device(rank)
+        # Set device for this process
+        device_module.set_device(rank)
         device = torch.device(f"{torch_device}:{rank}")
 
         model = model_class(**init_dict)
