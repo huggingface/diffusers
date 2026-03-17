@@ -32,10 +32,13 @@ Can be run locally or submitted as an HF Job via `--launch`.
 
 Usage:
     # Run locally
-    python make_tiny_model.py <model_repo_id> <output_repo_id> [--subfolder transformer] [--num_layers 2]
+    python make_tiny_model.py --model_repo_id <model_repo_id> --output_repo_id <output_repo_id> [--subfolder transformer] [--num_layers 2]
+
+    # Push to Hub
+    python make_tiny_model.py --model_repo_id <model_repo_id> --output_repo_id <output_repo_id> --push_to_hub --token $HF_TOKEN
 
     # Submit as an HF Job
-    python make_tiny_model.py <model_repo_id> <output_repo_id> --launch [--flavor cpu-basic]
+    python make_tiny_model.py --model_repo_id <model_repo_id> --output_repo_id <output_repo_id> --launch [--flavor cpu-basic]
 """
 
 import argparse
@@ -48,10 +51,16 @@ LAYER_PARAM_PATTERN = re.compile(r"^num_.*layers?$")
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Create a tiny version of a diffusers model.")
-    parser.add_argument("model_repo_id", type=str, help="HuggingFace repo ID of the source model.")
-    parser.add_argument("output_repo_id", type=str, help="HuggingFace repo ID to push the tiny model to.")
+    parser.add_argument("--model_repo_id", type=str, required=True, help="HuggingFace repo ID of the source model.")
+    parser.add_argument(
+        "--output_repo_id",
+        type=str,
+        required=True,
+        help="HuggingFace repo ID or local path to save the tiny model to.",
+    )
     parser.add_argument("--subfolder", type=str, default=None, help="Subfolder within the model repo.")
     parser.add_argument("--num_layers", type=int, default=2, help="Number of layers to use for the tiny model.")
+    parser.add_argument("--push_to_hub", action="store_true", help="Push the tiny model to the HuggingFace Hub.")
     parser.add_argument(
         "--token", type=str, default=None, help="HuggingFace token. Defaults to $HF_TOKEN env var if not provided."
     )
@@ -70,9 +79,18 @@ def parse_args():
 def launch_job(args):
     from huggingface_hub import run_uv_job
 
-    script_args = [args.model_repo_id, args.output_repo_id, "--num_layers", str(args.num_layers)]
+    script_args = [
+        "--model_repo_id",
+        args.model_repo_id,
+        "--output_repo_id",
+        args.output_repo_id,
+        "--num_layers",
+        str(args.num_layers),
+    ]
     if args.subfolder:
         script_args.extend(["--subfolder", args.subfolder])
+    if args.push_to_hub:
+        script_args.append("--push_to_hub")
 
     job = run_uv_job(
         __file__,
@@ -86,7 +104,7 @@ def launch_job(args):
     return job
 
 
-def make_tiny_model(model_repo_id, output_repo_id, subfolder=None, num_layers=2, token=None):
+def make_tiny_model(model_repo_id, output_repo_id, subfolder=None, num_layers=2, push_to_hub=False, token=None):
     from diffusers import AutoModel
     from diffusers.configuration_utils import ConfigMixin
 
@@ -115,11 +133,14 @@ def make_tiny_model(model_repo_id, output_repo_id, subfolder=None, num_layers=2,
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Tiny model created with {total_params:,} parameters.")
 
-    push_kwargs = {}
+    save_kwargs = {}
     if token:
-        push_kwargs["token"] = token
-    model.save_pretrained(output_repo_id, push_to_hub=True, **push_kwargs)
-    print(f"Model pushed to https://huggingface.co/{output_repo_id}")
+        save_kwargs["token"] = token
+    model.save_pretrained(output_repo_id, push_to_hub=push_to_hub, **save_kwargs)
+    if push_to_hub:
+        print(f"Model pushed to https://huggingface.co/{output_repo_id}")
+    else:
+        print(f"Model saved to {output_repo_id}")
 
 
 def main():
@@ -133,6 +154,7 @@ def main():
             output_repo_id=args.output_repo_id,
             subfolder=args.subfolder,
             num_layers=args.num_layers,
+            push_to_hub=args.push_to_hub,
             token=args.token,
         )
 
