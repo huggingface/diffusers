@@ -229,8 +229,6 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             elif hasattr(self.vae.config, "temporal_compression_ratio"):
                 # LTX2 VAE uses temporal_compression_ratio
                 self.vae_scale_factor_temporal = self.vae.config.temporal_compression_ratio
-            else:
-                self.vae_scale_factor_temporal = getattr(self.vae, "temporal_compression_ratio", 4)
 
             if hasattr(self.vae.config, "scale_factor_spatial"):
                 self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial
