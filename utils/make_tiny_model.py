@@ -135,6 +135,8 @@ def make_tiny_model(model_repo_id, output_repo_id, subfolder=None, num_layers=2,
     save_kwargs = {}
     if token:
         save_kwargs["token"] = token
+    if push_to_hub:
+        save_kwargs["repo_id"] = output_repo_id
     model.save_pretrained(output_repo_id, push_to_hub=push_to_hub, **save_kwargs)
     if push_to_hub:
         print(f"Model pushed to https://huggingface.co/{output_repo_id}")
