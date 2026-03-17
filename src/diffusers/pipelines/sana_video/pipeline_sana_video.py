@@ -235,8 +235,6 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             elif hasattr(self.vae.config, "spatial_compression_ratio"):
                 # LTX2 VAE uses spatial_compression_ratio
                 self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio
-            else:
-                self.vae_scale_factor_spatial = getattr(self.vae, "spatial_compression_ratio", 8)
         else:
             self.vae_scale_factor_temporal = 4
             self.vae_scale_factor_spatial = 8
