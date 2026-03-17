@@ -46,7 +46,7 @@ import os
 import re
 
 
-LAYER_PARAM_PATTERN = re.compile(r"^num_.*layers?$")
+LAYER_PARAM_PATTERN = re.compile(r"^(num_.*layers?|n_layers)$")
 
 
 def parse_args():
