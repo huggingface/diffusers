@@ -139,7 +139,7 @@ class HeliosPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
 
-    @unittest.skip("Latents are always processed in FP32. Save/Load the entire pipeline in FP16 will result in errors")
+    @unittest.skip("Helios uses a lot of mixed precision internally, which is not suitable for this test case")
     def test_save_load_float16(self):
         pass
 
