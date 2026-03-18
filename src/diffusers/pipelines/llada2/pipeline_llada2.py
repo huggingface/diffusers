@@ -361,7 +361,7 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             block_length=block_length,
             total_length=total_length,
             device=model_device,
-            dtype=attn_dtype,
+            dtype=torch.float32,
         )
         attn_mask_2d_full = torch.ones((batch_size, total_length), device=model_device, dtype=torch.long)
         position_ids = (
