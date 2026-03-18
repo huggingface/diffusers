@@ -253,8 +253,6 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 when provided. Requires a tokenizer with `apply_chat_template`.
             input_ids (`torch.LongTensor`, *optional*):
                 Pre-tokenized input IDs. Takes precedence over `prompt` and `messages`.
-            prompt_ids (`torch.LongTensor`, *optional*):
-                Alias for `input_ids` for backward compatibility.
             use_chat_template (`bool`, defaults to `True`):
                 Whether to wrap the prompt in a chat template.
             add_generation_prompt (`bool`, defaults to `True`):
