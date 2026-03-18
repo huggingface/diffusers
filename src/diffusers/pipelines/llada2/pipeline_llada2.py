@@ -398,7 +398,8 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
             post_steps = 0
             step_idx = 0
-            while step_idx < int(steps) or (editing_enabled and post_steps <= int(max_post_steps)):
+           should_continue = not finished.all() and (step_idx < int(steps) or (editing_enabled and post_steps <= int(max_post_steps))
+            while should_continue:
                 if finished.all():
                     break
 
