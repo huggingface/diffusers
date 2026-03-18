@@ -342,7 +342,7 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         batch_size, prompt_length = prompt_ids_encoded.shape
 
         if eos_token_id is None:
-            eos_token_id = getattr(getattr(self, "tokenizer", None), "eos_token_id", None)
+            eos_token_id = self.eos_token_ids
         if mask_token_id is None:
             mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
         if mask_token_id is None:
