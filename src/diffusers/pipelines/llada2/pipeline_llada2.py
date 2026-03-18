@@ -337,8 +337,7 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
-        model_params = list(self.model.parameters()) if hasattr(self.model, "parameters") else []
-        model_device = model_params[0].device if len(model_params) > 0 else torch.device("cpu")
+        device = self._execution_device
 
         prompt_ids_encoded = self._encode_prompt(None, encoded_ids, device=model_device)
         batch_size, prompt_length = prompt_ids_encoded.shape
