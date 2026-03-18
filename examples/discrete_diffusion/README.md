@@ -34,22 +34,9 @@ accelerate launch examples/discrete_diffusion/train_block_refinement.py \
   --num_dummy_samples 2048
 ```
 
-### Sample
-
-```bash
-python examples/discrete_diffusion/sample_block_refinement.py \
-  --checkpoint_path block-refinement-output/final \
-  --device cuda \
-  --attention_mask_mode 2d \
-  --prompt "Write a short paragraph about diffusion models." \
-  --gen_length 128
-```
-
-For causal LMs that only support a 2D `attention_mask`, use `--attention_mask_mode 2d`.
-
 ## LLaDA2 sampling
 
-[LLaDA2](https://huggingface.co/collections/inclusionAI/llada21) uses block refinement with a masked language model backbone. The `LLaDA2Pipeline` wraps `BlockRefinementPipeline` with LLaDA2-specific defaults.
+[LLaDA2](https://huggingface.co/collections/inclusionAI/llada21) uses block refinement with a masked language model backbone. The `LLaDA2Pipeline` handles block-wise iterative refinement with LLaDA2-specific defaults.
 
 ```bash
 python examples/discrete_diffusion/sample_llada2.py \

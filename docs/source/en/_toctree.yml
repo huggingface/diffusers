@@ -500,8 +500,6 @@
         title: AuraFlow
       - local: api/pipelines/blip_diffusion
         title: BLIP-Diffusion
-      - local: api/pipelines/block_refinement
-        title: Block Refinement
       - local: api/pipelines/bria_3_2
         title: Bria 3.2
       - local: api/pipelines/bria_fibo

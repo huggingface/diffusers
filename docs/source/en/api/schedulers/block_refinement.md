@@ -16,7 +16,7 @@ The `BlockRefinementScheduler` manages block-wise iterative refinement for discr
 commits the most confident tokens and optionally edits already-committed tokens when the model predicts a different
 token with high confidence.
 
-This scheduler is used by [`BlockRefinementPipeline`] and [`LLaDA2Pipeline`].
+This scheduler is used by [`LLaDA2Pipeline`].
 
 ## BlockRefinementScheduler
 [[autodoc]] BlockRefinementScheduler

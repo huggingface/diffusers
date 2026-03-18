@@ -47,7 +47,6 @@ else:
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
     ]
-    _import_structure["block_refinement"] = ["BlockRefinementPipeline", "BlockRefinementPipelineOutput"]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["dance_diffusion"] = ["DanceDiffusionPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
@@ -544,7 +543,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForInpainting,
             AutoPipelineForText2Image,
         )
-        from .block_refinement import BlockRefinementPipeline, BlockRefinementPipelineOutput
         from .consistency_models import ConsistencyModelPipeline
         from .dance_diffusion import DanceDiffusionPipeline
         from .ddim import DDIMPipeline

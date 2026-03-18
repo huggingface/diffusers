@@ -17,8 +17,6 @@ that generate text through block-wise iterative refinement. Instead of autoregre
 LLaDA2 starts with a fully masked sequence and progressively unmasks tokens by confidence over multiple refinement
 steps.
 
-`LLaDA2Pipeline` wraps [`BlockRefinementPipeline`] with LLaDA2-specific defaults including chat template support.
-
 ## Usage
 
 ```py
@@ -44,6 +42,23 @@ output = pipe(
     temperature=0.0,
 )
 print(output.texts[0])
+```
+
+## Callbacks
+
+Callbacks run after each refinement step and can inspect or modify the current tokens.
+
+```py
+def on_step_end(pipe, step, timestep, callback_kwargs):
+    cur_x = callback_kwargs["cur_x"]
+    # Inspect or modify `cur_x` here.
+    return {"cur_x": cur_x}
+
+out = pipe(
+    prompt="Write a short poem.",
+    callback_on_step_end=on_step_end,
+    callback_on_step_end_tensor_inputs=["cur_x"],
+)
 ```
 
 ## Recommended parameters
