@@ -80,6 +80,8 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler, tokenizer=tokenizer)
+        self.eos_token_ids = getattr(self.tokenizer, "eos_token_ids", None) if hasattr(self, "tokenizer") else None
+        self.mask_token_ids = getattr(self.tokenizer, "mask_token_ids", None) if hasattr(self, "tokenizer") else None
 
     @property
     def num_timesteps(self):
