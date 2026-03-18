@@ -400,8 +400,6 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             step_idx = 0
            should_continue = not finished.all() and (step_idx < int(steps) or (editing_enabled and post_steps <= int(max_post_steps))
             while should_continue:
-                if finished.all():
-                    break
 
                 block_tokens = cur_x[:, -int(block_length) :]
                 active_block = block_tokens == int(mask_token_id)
