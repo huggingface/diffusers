@@ -22,7 +22,7 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Union, get_args, get_origin, get_type_hints
+from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin, get_type_hints
 
 import httpx
 import numpy as np
@@ -68,6 +68,7 @@ from ..utils import (
     is_transformers_version,
     logging,
     numpy_to_pil,
+    requires_backends,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
@@ -2247,6 +2248,61 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 pass
 
         return not is_device_type_map and isinstance(device_map, dict) and len(device_map) > 1
+
+    def enable_neuron_compile(
+        self,
+        model_names: Optional[List[str]] = None,
+        cache_dir: Optional[str] = None,
+        fullgraph: bool = True,
+    ) -> None:
+        """
+        Compiles the pipeline's nn.Module components with ``torch.compile(backend="neuron")``,
+        enabling whole-graph NEFF compilation for AWS Trainium/Inferentia.
+
+        The first forward call per component triggers neuronx-cc compilation (slow).
+        Use ``neuron_warmup()`` to trigger this explicitly before timed inference.
+
+        Args:
+            model_names (`List[str]`, *optional*):
+                Component names to compile. Defaults to all nn.Module components.
+            cache_dir (`str`, *optional*):
+                Path to persist compiled NEFFs across runs via ``TORCH_NEURONX_NEFF_CACHE_DIR``.
+                Skips recompilation on subsequent runs.
+            fullgraph (`bool`, defaults to `True`):
+                Disallow graph breaks (required for full-graph fusion).
+        """
+        requires_backends(self, "torch_neuronx")
+        import torch_neuronx  # noqa: F401 — registers neuron backend
+
+        if cache_dir is not None:
+            os.environ["TORCH_NEURONX_NEFF_CACHE_DIR"] = cache_dir
+
+        if model_names is None:
+            model_names = [
+                name for name, comp in self.components.items() if isinstance(comp, torch.nn.Module)
+            ]
+
+        for name in model_names:
+            component = getattr(self, name, None)
+            if isinstance(component, torch.nn.Module) and not is_compiled_module(component):
+                logger.info(f"Compiling {name} with backend='neuron'")
+                setattr(self, name, torch.compile(component, backend="neuron", fullgraph=fullgraph))
+
+    def neuron_warmup(self, *args, **kwargs) -> None:
+        """
+        Runs a single dummy forward pass through the pipeline to trigger neuronx-cc
+        compilation for all components (static-shape NEFF compilation).
+
+        This is equivalent to calling ``__call__`` with the same shapes but discards
+        the output. After warmup, subsequent calls reuse the compiled NEFFs and run fast.
+
+        Pass the same arguments you would use for real inference (height, width,
+        num_inference_steps, batch_size, etc.) so that the compiled shapes match.
+        """
+        logger.info("Running Neuron warmup forward pass to trigger NEFF compilation...")
+        with torch.no_grad():
+            self(*args, **kwargs)
+        logger.info("Neuron warmup complete.")
 
 
 class StableDiffusionMixin:
