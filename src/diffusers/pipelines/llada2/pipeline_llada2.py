@@ -427,14 +427,8 @@ class LLaDA2Pipeline(DiffusionPipeline):
         num_blocks = (prompt_length + int(gen_length) + int(block_length) - 1) // int(block_length)
         total_length = int(num_blocks) * int(block_length)
 
-        attn_dtype = getattr(self.model, "dtype", torch.float32)
-        block_mask = torch.tril(torch.ones(num_blocks, num_blocks, device=device, dtype=attn_dtype))
-        attn_mask_4d = (
-            block_mask.repeat_interleave(block_length, dim=0)
-            .repeat_interleave(block_length, dim=1)
-            .unsqueeze(0)
-            .unsqueeze(0)
-        )[:, :, :total_length, :total_length]
+        # 2D attention mask (no padding) — the model handles backend-specific conversion internally.
+        attn_mask = torch.ones((batch_size, total_length), device=device, dtype=torch.long)
 
         position_ids = torch.arange(total_length, device=device, dtype=torch.long).unsqueeze(0).expand(batch_size, -1)
 
@@ -455,7 +449,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
         for num_block in range(int(prefill_blocks), int(num_blocks)):
             current_window_end = (num_block + 1) * int(block_length)
             cur_x = x[:, :current_window_end]
-            cur_attn_mask_4d = attn_mask_4d[:, :, :current_window_end, :current_window_end]
+            cur_attn_mask = attn_mask[:, :current_window_end]
             cur_position_ids = position_ids[:, :current_window_end]
 
             # Identify which positions in the block are prompt (non-editable).
@@ -479,7 +473,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 if not masks_remaining:
                     post_steps += 1
 
-                logits = self.model(cur_x, attention_mask=cur_attn_mask_4d, position_ids=cur_position_ids).logits
+                logits = self.model(cur_x, attention_mask=cur_attn_mask, position_ids=cur_position_ids).logits
                 block_logits = logits[:, -int(block_length) :, :]
 
                 x0, x0_p = self._sample_with_temperature_topk_topp(
