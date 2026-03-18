@@ -457,20 +457,7 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                     break
 
                 if eos_early_stop and eos_token_id is not None:
-                    for b in range(batch_size):
-                        if finished[b]:
-                            continue
-                        eos_in_commits = (x0[b][final_transfer[b]] == int(eos_token_id)).any().item()
-                        if not eos_in_commits:
-                            continue
-                        eos_pos = (cur_x[b] == int(eos_token_id)).nonzero(as_tuple=True)
-                        if len(eos_pos[0]) == 0:
-                            continue
-                        eos_pos = int(eos_pos[0][0].item())
-                        if prompt_length >= eos_pos:
-                            continue
-                        if (cur_x[b, prompt_length:eos_pos] != int(mask_token_id)).all().item():
-                            finished[b] = True
+                    finished = self._check_eos_finished(...)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
