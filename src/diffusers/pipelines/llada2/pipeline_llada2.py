@@ -216,7 +216,6 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         prompt: Optional[Union[str, List[str]]] = None,
         messages: Optional[List[Dict[str, str]]] = None,
         input_ids: Optional[torch.LongTensor] = None,
-        prompt_ids: Optional[torch.LongTensor] = None,
         use_chat_template: bool = True,
         add_generation_prompt: bool = True,
         gen_length: int = 2048,
