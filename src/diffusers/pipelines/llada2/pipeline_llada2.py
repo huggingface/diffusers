@@ -306,9 +306,6 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
         Examples:
         """
-        # Handle prompt_ids as alias for input_ids (backward compatibility)
-        if prompt_ids is not None and input_ids is None:
-            input_ids = prompt_ids
 
         # Prepare input IDs from prompt/messages/input_ids
         encoded_ids = self._prepare_input_ids(
