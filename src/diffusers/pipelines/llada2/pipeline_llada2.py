@@ -344,7 +344,7 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         if eos_token_id is None:
             eos_token_id = self.eos_token_ids
         if mask_token_id is None:
-            mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
+            mask_token_id = self.mask_token_id
         if mask_token_id is None:
             raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
 
