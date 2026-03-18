@@ -35,7 +35,7 @@ The [`~ModelMixin.set_attention_backend`] method iterates through all the module
 The example below demonstrates how to enable the `_flash_3_hub` implementation for FlashAttention-3 from the [`kernels`](https://github.com/huggingface/kernels) library, which allows you to instantly use optimized compute kernels from the Hub without requiring any setup.
 
 > [!NOTE]
-> FlashAttention-3 is not supported for non-Hopper architectures, in which case, use FlashAttention with `set_attention_backend("flash")`.
+> For FlashAttention-3, at least Ampere GPUs is needed.
 
 ```py
 import torch
