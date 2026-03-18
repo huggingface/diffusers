@@ -466,6 +466,15 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 global_step += 1
                 if masks_remaining:
                     step_idx += 1
+                
+                ## update should_continue flag at same place if possible
+                if finished.all():
+                    should_continue = False
+                if not mask_remaining and not final_transformer.amy():
+                    should_continue = False
+                if step_idx < steps or (editing_enabled and post_steps <= max_post_steps):
+                    should_continue = False
+                 
 
             x[:, :current_window_end] = cur_x
             if eos_token_id is not None and (x[:, prompt_length:current_window_end] == int(eos_token_id)).any().item():
