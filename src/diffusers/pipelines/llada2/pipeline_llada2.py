@@ -452,8 +452,6 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                     cur_x[:, -int(block_length) :] = scheduler_output.prev_sample
 
                 # Break if no masks remain and no edits were made.
-                if not masks_remaining and not editing_transfer_index.any():
-                    break
 
                 if eos_early_stop and eos_token_id is not None:
                     finished = self._check_eos_finished(...)
