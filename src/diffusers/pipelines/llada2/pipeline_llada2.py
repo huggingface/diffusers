@@ -477,8 +477,7 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                  
 
             x[:, :current_window_end] = cur_x
-            if eos_token_id is not None and (x[:, prompt_length:current_window_end] == int(eos_token_id)).any().item():
-                if eos_early_stop:
+            if eos_early_stop and finished.all(()
                     break
 
         generated = x[:, : prompt_length + int(gen_length)]
