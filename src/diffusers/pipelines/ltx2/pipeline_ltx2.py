@@ -1347,11 +1347,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                     video_cond_x0 = latents - noise_pred_video * self.scheduler.sigmas[i]
 
                     # Apply guidance rescaling in sample (x0) space, following original code
-                    video_rescale = self.guidance_rescale
-                    cond_std = video_cond_x0.std(dim=list(range(1, video_cond_x0.ndim)), keepdim=True)
-                    guided_std = video_guided_x0.std(dim=list(range(1, video_guided_x0.ndim)), keepdim=True)
-                    rescale_factor = video_rescale * (cond_std / guided_std) + (1 - video_rescale)
-                    video_guided_x0 = video_guided_x0 * rescale_factor
+                    video_guided_x0 = rescale_noise_cfg(
+                        video_guided_x0, video_cond_x0, guidance_rescale=self.guidance_rescale
+                    )
 
                     # Convert back to velocity space for scheduler
                     noise_pred_video = (latents - video_guided_x0) / self.scheduler.sigmas[i]
@@ -1364,11 +1362,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                     audio_cond_x0 = audio_latents - noise_pred_audio * audio_scheduler.sigmas[i]
 
                     # Apply guidance rescaling in sample (x0) space, following original code
-                    audio_rescale = self.audio_guidance_rescale
-                    cond_std = audio_cond_x0.std(dim=list(range(1, audio_cond_x0.ndim)), keepdim=True)
-                    guided_std = audio_guided_x0.std(dim=list(range(1, audio_guided_x0.ndim)), keepdim=True)
-                    rescale_factor = audio_rescale * (cond_std / guided_std) + (1 - audio_rescale)
-                    audio_guided_x0 = audio_guided_x0 * rescale_factor
+                    audio_guided_x0 = rescale_noise_cfg(
+                        audio_guided_x0, audio_cond_x0, guidance_rescale=self.audio_guidance_rescale
+                    )
 
                     # Convert back to velocity space for scheduler
                     noise_pred_audio = (audio_latents - audio_guided_x0) / audio_scheduler.sigmas[i]
