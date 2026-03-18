@@ -356,8 +356,6 @@ class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         num_blocks = (prompt_length + int(gen_length) + int(block_length) - 1) // int(block_length)
         total_length = int(num_blocks) * int(block_length)
 
-        dtype = getattr(self.model, "dtype", torch.float32)
-        attn_dtype = torch.bfloat16 if dtype in (torch.bfloat16, torch.float16) else torch.float32
         attn_mask_4d = self._build_block_attention_mask(
             num_blocks=num_blocks,
             block_length=block_length,
