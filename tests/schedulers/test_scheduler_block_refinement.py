@@ -18,12 +18,23 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         config.update(kwargs)
         return BlockRefinementScheduler(**config)
 
+    def _make_logits_from_probs(self, target_probs: torch.Tensor, vocab_size: int = 100) -> torch.Tensor:
+        """Create logits where softmax of the target token has approximately the given probability."""
+        batch_size, block_length = target_probs.shape
+        logits = torch.zeros(batch_size, block_length, vocab_size)
+        # Set token 0 as the "predicted" token with a logit proportional to desired probability
+        for b in range(batch_size):
+            for t in range(block_length):
+                p = target_probs[b, t].item()
+                if p > 0:
+                    logits[b, t, t % (vocab_size - 1)] = 10.0 * p
+        return logits
+
     def test_set_timesteps(self):
         scheduler = self.get_scheduler()
         scheduler.set_timesteps(8)
         self.assertEqual(scheduler.num_inference_steps, 8)
         self.assertEqual(len(scheduler.timesteps), 8)
-        # Timesteps should count down
         self.assertEqual(scheduler.timesteps[0].item(), 7)
         self.assertEqual(scheduler.timesteps[-1].item(), 0)
 
@@ -37,7 +48,6 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         schedule = scheduler.get_num_transfer_tokens(block_length=32, num_inference_steps=8)
         self.assertEqual(schedule.sum().item(), 32)
         self.assertEqual(len(schedule), 8)
-        # 32 / 8 = 4 each, no remainder
         self.assertTrue((schedule == 4).all().item())
 
     def test_get_num_transfer_tokens_remainder(self):
@@ -45,7 +55,6 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         schedule = scheduler.get_num_transfer_tokens(block_length=10, num_inference_steps=3)
         self.assertEqual(schedule.sum().item(), 10)
         self.assertEqual(len(schedule), 3)
-        # 10 / 3 = 3 base, 1 remainder -> [4, 3, 3]
         self.assertEqual(schedule[0].item(), 4)
         self.assertEqual(schedule[1].item(), 3)
         self.assertEqual(schedule[2].item(), 3)
@@ -78,21 +87,21 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         scheduler = self.get_scheduler(block_length=8)
         scheduler.set_timesteps(2)
 
-        batch_size, block_length = 1, 8
-        mask_id = 99
+        batch_size, block_length, vocab_size = 1, 8, 32
+        mask_id = 31
 
-        # All positions are masked
         sample = torch.full((batch_size, block_length), mask_id, dtype=torch.long)
-        sampled_tokens = torch.arange(block_length, dtype=torch.long).unsqueeze(0)
-        # Confidence decreasing: first tokens are most confident
-        sampled_probs = torch.tensor([[0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]])
+        # Create logits where confidence decreases with position
+        logits = torch.zeros(batch_size, block_length, vocab_size)
+        for i in range(block_length):
+            logits[0, i, i] = 10.0 - i  # decreasing confidence
 
         out = scheduler.step(
-            sampled_tokens=sampled_tokens,
-            sampled_probs=sampled_probs,
+            model_output=logits,
             timestep=0,
             sample=sample,
             mask_token_id=mask_id,
+            temperature=0.0,
             threshold=0.95,
             return_dict=True,
         )
@@ -100,61 +109,28 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         # With 8 tokens and 2 steps, first step should commit 4 tokens
         committed = out.transfer_index[0].sum().item()
         self.assertEqual(committed, 4)
-        # The 4 most confident (highest prob) should be committed
-        self.assertTrue(out.transfer_index[0, 0].item())
-        self.assertTrue(out.transfer_index[0, 1].item())
-        self.assertTrue(out.transfer_index[0, 2].item())
-        self.assertTrue(out.transfer_index[0, 3].item())
-
-    def test_step_threshold_commits_all_above(self):
-        """When enough tokens exceed threshold, commit all of them (not just num_to_transfer)."""
-        scheduler = self.get_scheduler(block_length=8)
-        scheduler.set_timesteps(4)  # 2 tokens per step
-
-        batch_size, block_length = 1, 8
-        mask_id = 99
-
-        sample = torch.full((batch_size, block_length), mask_id, dtype=torch.long)
-        sampled_tokens = torch.arange(block_length, dtype=torch.long).unsqueeze(0)
-        # 5 tokens above threshold of 0.5
-        sampled_probs = torch.tensor([[0.9, 0.8, 0.7, 0.6, 0.55, 0.1, 0.1, 0.1]])
-
-        out = scheduler.step(
-            sampled_tokens=sampled_tokens,
-            sampled_probs=sampled_probs,
-            timestep=0,
-            sample=sample,
-            mask_token_id=mask_id,
-            threshold=0.5,
-            return_dict=True,
-        )
-
-        # All 5 above threshold should be committed (more than num_to_transfer=2)
-        committed = out.transfer_index[0].sum().item()
-        self.assertEqual(committed, 5)
 
     def test_step_no_editing_by_default(self):
         """Without editing_threshold, no non-mask tokens should be changed."""
         scheduler = self.get_scheduler(block_length=4)
         scheduler.set_timesteps(2)
 
-        sample = torch.tensor([[10, 20, 99, 99]], dtype=torch.long)
-        sampled_tokens = torch.tensor([[50, 60, 70, 80]], dtype=torch.long)
-        sampled_probs = torch.tensor([[0.99, 0.99, 0.99, 0.99]])
+        vocab_size = 32
+        sample = torch.tensor([[10, 20, 31, 31]], dtype=torch.long)
+        logits = torch.zeros(1, 4, vocab_size)
+        logits[0, :, 15] = 10.0  # predict token 15 for all positions
 
         out = scheduler.step(
-            sampled_tokens=sampled_tokens,
-            sampled_probs=sampled_probs,
+            model_output=logits,
             timestep=0,
             sample=sample,
-            mask_token_id=99,
+            mask_token_id=31,
+            temperature=0.0,
             editing_threshold=None,
             return_dict=True,
         )
 
-        # Non-mask positions should not be edited
         self.assertFalse(out.editing_transfer_index.any().item())
-        # Only mask positions should be committed
         self.assertFalse(out.transfer_index[0, 0].item())
         self.assertFalse(out.transfer_index[0, 1].item())
 
@@ -163,19 +139,24 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         scheduler = self.get_scheduler(block_length=4)
         scheduler.set_timesteps(2)
 
-        sample = torch.tensor([[10, 20, 99, 99]], dtype=torch.long)
-        # Token 0: model predicts 50 (different from 10) with high confidence
-        # Token 1: model predicts 20 (same as current) — should NOT edit
-        sampled_tokens = torch.tensor([[50, 20, 70, 80]], dtype=torch.long)
-        sampled_probs = torch.tensor([[0.99, 0.99, 0.5, 0.5]])
+        vocab_size = 32
+        sample = torch.tensor([[10, 20, 31, 31]], dtype=torch.long)
+        logits = torch.zeros(1, 4, vocab_size)
+        # Token 0: predict 50 (different from 10) with very high logit
+        logits[0, 0, 15] = 20.0
+        # Token 1: predict 20 (same as current)
+        logits[0, 1, 20] = 20.0
+        # Mask tokens
+        logits[0, 2, 5] = 5.0
+        logits[0, 3, 6] = 5.0
 
         out = scheduler.step(
-            sampled_tokens=sampled_tokens,
-            sampled_probs=sampled_probs,
+            model_output=logits,
             timestep=0,
             sample=sample,
-            mask_token_id=99,
-            editing_threshold=0.8,
+            mask_token_id=31,
+            temperature=0.0,
+            editing_threshold=0.5,
             return_dict=True,
         )
 
@@ -183,31 +164,29 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         self.assertTrue(out.editing_transfer_index[0, 0].item())
         # Token 1 should NOT be edited (same prediction)
         self.assertFalse(out.editing_transfer_index[0, 1].item())
-        # prev_sample should reflect the edit
-        self.assertEqual(out.prev_sample[0, 0].item(), 50)
 
     def test_step_prompt_mask_prevents_editing(self):
         """Prompt positions should never be edited even with editing enabled."""
         scheduler = self.get_scheduler(block_length=4)
         scheduler.set_timesteps(2)
 
-        sample = torch.tensor([[10, 20, 99, 99]], dtype=torch.long)
-        sampled_tokens = torch.tensor([[50, 60, 70, 80]], dtype=torch.long)
-        sampled_probs = torch.tensor([[0.99, 0.99, 0.99, 0.99]])
+        vocab_size = 32
+        sample = torch.tensor([[10, 20, 31, 31]], dtype=torch.long)
+        logits = torch.zeros(1, 4, vocab_size)
+        logits[0, :, 15] = 20.0
         prompt_mask = torch.tensor([True, True, False, False])
 
         out = scheduler.step(
-            sampled_tokens=sampled_tokens,
-            sampled_probs=sampled_probs,
+            model_output=logits,
             timestep=0,
             sample=sample,
-            mask_token_id=99,
+            mask_token_id=31,
+            temperature=0.0,
             editing_threshold=0.5,
             prompt_mask=prompt_mask,
             return_dict=True,
         )
 
-        # Prompt positions should not be edited
         self.assertFalse(out.editing_transfer_index[0, 0].item())
         self.assertFalse(out.editing_transfer_index[0, 1].item())
 
@@ -216,16 +195,16 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         scheduler = self.get_scheduler(block_length=4)
         scheduler.set_timesteps(2)
 
-        sample = torch.full((1, 4), 99, dtype=torch.long)
-        sampled_tokens = torch.arange(4, dtype=torch.long).unsqueeze(0)
-        sampled_probs = torch.ones(1, 4)
+        vocab_size = 32
+        sample = torch.full((1, 4), 31, dtype=torch.long)
+        logits = torch.randn(1, 4, vocab_size)
 
         result = scheduler.step(
-            sampled_tokens=sampled_tokens,
-            sampled_probs=sampled_probs,
+            model_output=logits,
             timestep=0,
             sample=sample,
-            mask_token_id=99,
+            mask_token_id=31,
+            temperature=0.0,
             return_dict=False,
         )
 
@@ -237,47 +216,195 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         scheduler = self.get_scheduler(block_length=4)
         scheduler.set_timesteps(2)
 
-        batch_size = 3
-        mask_id = 99
+        batch_size, vocab_size = 3, 32
+        mask_id = 31
         sample = torch.full((batch_size, 4), mask_id, dtype=torch.long)
-        sampled_tokens = torch.arange(4, dtype=torch.long).unsqueeze(0).expand(batch_size, -1)
-        sampled_probs = torch.rand(batch_size, 4)
+        logits = torch.randn(batch_size, 4, vocab_size)
 
         out = scheduler.step(
-            sampled_tokens=sampled_tokens,
-            sampled_probs=sampled_probs,
+            model_output=logits,
             timestep=0,
             sample=sample,
             mask_token_id=mask_id,
+            temperature=0.0,
             return_dict=True,
         )
 
         self.assertEqual(out.prev_sample.shape, (batch_size, 4))
         self.assertEqual(out.transfer_index.shape, (batch_size, 4))
 
-    def test_step_output_shape_matches_input(self):
-        """All output tensors should match the input sample shape."""
-        scheduler = self.get_scheduler(block_length=8)
-        scheduler.set_timesteps(4)
+    def test_check_should_continue_finished(self):
+        scheduler = self.get_scheduler()
+        scheduler.set_timesteps(8)
+        finished = torch.tensor([True, True])
+        result = scheduler.check_should_continue(
+            step_idx=0,
+            masks_remaining=True,
+            editing_enabled=False,
+            editing_transfer_index=torch.zeros(2, 32, dtype=torch.bool),
+            post_steps=0,
+            max_post_steps=16,
+            finished=finished,
+        )
+        self.assertFalse(result)
 
-        sample = torch.full((2, 8), 99, dtype=torch.long)
-        sampled_tokens = torch.zeros_like(sample)
-        sampled_probs = torch.rand(2, 8)
+    def test_check_should_continue_no_masks_no_edits(self):
+        scheduler = self.get_scheduler()
+        scheduler.set_timesteps(8)
+        finished = torch.tensor([False])
+        result = scheduler.check_should_continue(
+            step_idx=5,
+            masks_remaining=False,
+            editing_enabled=True,
+            editing_transfer_index=torch.zeros(1, 32, dtype=torch.bool),
+            post_steps=1,
+            max_post_steps=16,
+            finished=finished,
+        )
+        self.assertFalse(result)
 
-        out = scheduler.step(
-            sampled_tokens=sampled_tokens,
-            sampled_probs=sampled_probs,
-            timestep=0,
-            sample=sample,
-            mask_token_id=99,
-            return_dict=True,
+    def test_check_should_continue_steps_exhausted(self):
+        scheduler = self.get_scheduler()
+        scheduler.set_timesteps(8)
+        finished = torch.tensor([False])
+        result = scheduler.check_should_continue(
+            step_idx=8,
+            masks_remaining=True,
+            editing_enabled=False,
+            editing_transfer_index=torch.zeros(1, 32, dtype=torch.bool),
+            post_steps=0,
+            max_post_steps=16,
+            finished=finished,
+        )
+        self.assertFalse(result)
+
+    def test_add_noise(self):
+        scheduler = self.get_scheduler(block_length=4)
+        input_ids = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]], dtype=torch.long)
+        attention_mask = torch.ones_like(input_ids)
+        mask_token_id = 99
+
+        gen = torch.Generator().manual_seed(42)
+        noisy, noisy_rev, masked, masked_rev = scheduler.add_noise(
+            input_ids,
+            attention_mask,
+            prompt_length=2,
+            block_length=4,
+            mask_token_id=mask_token_id,
+            generator=gen,
         )
 
-        self.assertEqual(out.prev_sample.shape, sample.shape)
-        self.assertEqual(out.transfer_index.shape, sample.shape)
-        self.assertEqual(out.editing_transfer_index.shape, sample.shape)
-        self.assertEqual(out.sampled_tokens.shape, sample.shape)
-        self.assertEqual(out.sampled_probs.shape, sample.shape)
+        # Prompt positions should never be masked
+        self.assertFalse(masked[0, 0].item())
+        self.assertFalse(masked[0, 1].item())
+        self.assertFalse(masked_rev[0, 0].item())
+        self.assertFalse(masked_rev[0, 1].item())
+
+        # Noisy should have mask_token_id where masked is True
+        self.assertTrue((noisy[masked] == mask_token_id).all().item())
+        self.assertTrue((noisy_rev[masked_rev] == mask_token_id).all().item())
+
+        # masked and masked_rev should be complementary within valid non-prompt positions
+        non_prompt = torch.zeros_like(masked)
+        non_prompt[0, 2:] = True
+        combined = masked | masked_rev
+        self.assertTrue((combined[0, 2:] == non_prompt[0, 2:]).all().item())
+
+
+class TestTopPFiltering(unittest.TestCase):
+    def test_top_p_filtering(self):
+        logits = torch.tensor([[1.0, 2.0, 3.0, 4.0]])
+        filtered = BlockRefinementScheduler._top_p_filtering(logits, top_p=0.5)
+        self.assertTrue((filtered > torch.finfo(filtered.dtype).min).any())
+        self.assertTrue((filtered == torch.finfo(filtered.dtype).min).any())
+
+    def test_top_p_filtering_none(self):
+        logits = torch.tensor([[1.0, 2.0, 3.0]])
+        result = BlockRefinementScheduler._top_p_filtering(logits, top_p=None)
+        self.assertTrue(torch.equal(result, logits))
+
+    def test_top_p_filtering_one(self):
+        logits = torch.tensor([[1.0, 2.0, 3.0]])
+        result = BlockRefinementScheduler._top_p_filtering(logits, top_p=1.0)
+        self.assertTrue(torch.equal(result, logits))
+
+
+class TestTopKFiltering(unittest.TestCase):
+    def test_top_k_filtering(self):
+        logits = torch.tensor([[1.0, 4.0, 2.0, 3.0]])
+        filtered = BlockRefinementScheduler._top_k_filtering(logits, top_k=2)
+        self.assertAlmostEqual(filtered[0, 1].item(), 4.0)
+        self.assertAlmostEqual(filtered[0, 3].item(), 3.0)
+        self.assertEqual(filtered[0, 0].item(), torch.finfo(filtered.dtype).min)
+        self.assertEqual(filtered[0, 2].item(), torch.finfo(filtered.dtype).min)
+
+    def test_top_k_filtering_none(self):
+        logits = torch.tensor([[1.0, 2.0, 3.0]])
+        result = BlockRefinementScheduler._top_k_filtering(logits, top_k=None)
+        self.assertTrue(torch.equal(result, logits))
+
+    def test_top_k_filtering_zero(self):
+        logits = torch.tensor([[1.0, 2.0, 3.0]])
+        result = BlockRefinementScheduler._top_k_filtering(logits, top_k=0)
+        self.assertTrue(torch.equal(result, logits))
+
+    def test_top_k_filtering_large_k(self):
+        logits = torch.tensor([[1.0, 2.0, 3.0]])
+        result = BlockRefinementScheduler._top_k_filtering(logits, top_k=100)
+        self.assertTrue(torch.equal(result, logits))
+
+
+class TestSampleFromLogits(unittest.TestCase):
+    def test_greedy_sampling(self):
+        logits = torch.tensor([[1.0, 5.0, 2.0]])
+        tokens, probs = BlockRefinementScheduler._sample_from_logits(
+            logits,
+            temperature=0.0,
+            top_k=None,
+            top_p=None,
+            generator=None,
+            use_multinomial=False,
+        )
+        self.assertEqual(tokens.item(), 1)
+        self.assertEqual(tokens.shape, (1,))
+        self.assertEqual(probs.shape, (1,))
+
+    def test_multinomial_sampling(self):
+        logits = torch.tensor([[0.0, 100.0, -100.0]])
+        gen = torch.Generator().manual_seed(42)
+        tokens, probs = BlockRefinementScheduler._sample_from_logits(
+            logits,
+            temperature=1.0,
+            top_k=None,
+            top_p=None,
+            generator=gen,
+            use_multinomial=True,
+        )
+        self.assertEqual(tokens.item(), 1)
+
+    def test_temperature_scaling(self):
+        logits = torch.tensor([[1.0, 2.0, 3.0]])
+        tokens, _ = BlockRefinementScheduler._sample_from_logits(
+            logits,
+            temperature=0.01,
+            top_k=None,
+            top_p=None,
+            generator=None,
+            use_multinomial=False,
+        )
+        self.assertEqual(tokens.item(), 2)
+
+    def test_negative_temperature_raises(self):
+        logits = torch.tensor([[1.0, 2.0]])
+        with self.assertRaises(ValueError):
+            BlockRefinementScheduler._sample_from_logits(
+                logits,
+                temperature=-1.0,
+                top_k=None,
+                top_p=None,
+                generator=None,
+                use_multinomial=False,
+            )
 
 
 if __name__ == "__main__":

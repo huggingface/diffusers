@@ -17,7 +17,7 @@ import argparse
 import math
 import os
 from dataclasses import asdict, dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 import torch
 from accelerate import Accelerator
@@ -27,6 +27,7 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer, DataCollatorForLanguageModeling, get_scheduler
 
+from diffusers import BlockRefinementScheduler
 from diffusers.training_utils import compute_confidence_aware_loss
 
 
@@ -124,45 +125,6 @@ class RandomTokenDataset(torch.utils.data.Dataset):
         return {"input_ids": input_ids, "attention_mask": attention_mask}
 
 
-def forward_process_semi_ar(
-    input_ids: torch.LongTensor,
-    attention_mask: torch.LongTensor,
-    *,
-    prompt_length: int,
-    block_length: int,
-    mask_token_id: int,
-    generator: Optional[torch.Generator],
-) -> Tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor, torch.BoolTensor]:
-    batch_size, seq_len = input_ids.shape
-    device = input_ids.device
-
-    noisy = input_ids.clone()
-    noisy_rev = input_ids.clone()
-    masked = torch.zeros_like(input_ids, dtype=torch.bool)
-    masked_rev = torch.zeros_like(input_ids, dtype=torch.bool)
-
-    # Only mask non-padding positions after the prompt.
-    valid = attention_mask.to(dtype=torch.bool)
-    start = int(prompt_length)
-    for block_start in range(start, seq_len, int(block_length)):
-        block_end = min(seq_len, block_start + int(block_length))
-        seg_len = block_end - block_start
-        if seg_len <= 0:
-            continue
-
-        p_mask = torch.rand((batch_size, 1), device=device, generator=generator)
-        seg = torch.rand((batch_size, seg_len), device=device, generator=generator) < p_mask
-        seg = seg & valid[:, block_start:block_end]
-        seg_rev = (~seg) & valid[:, block_start:block_end]
-
-        masked[:, block_start:block_end] = seg
-        masked_rev[:, block_start:block_end] = seg_rev
-
-    noisy = torch.where(masked, torch.full_like(noisy, int(mask_token_id)), noisy)
-    noisy_rev = torch.where(masked_rev, torch.full_like(noisy_rev, int(mask_token_id)), noisy_rev)
-    return noisy, noisy_rev, masked, masked_rev
-
-
 def main():
     cfg = parse_args()
     if cfg.prompt_length >= cfg.max_length:
@@ -244,6 +206,8 @@ def main():
         model, optimizer, train_dataloader, lr_scheduler
     )
 
+    noise_scheduler = BlockRefinementScheduler(block_length=cfg.block_length)
+
     global_step = 0
     model.train()
 
@@ -254,11 +218,11 @@ def main():
                 attention_mask = batch.get("attention_mask", torch.ones_like(input_ids))
 
                 gen = torch.Generator(device=input_ids.device).manual_seed(cfg.seed + global_step)
-                noisy, noisy_rev, masked, masked_rev = forward_process_semi_ar(
+                noisy, noisy_rev, masked, masked_rev = noise_scheduler.add_noise(
                     input_ids,
                     attention_mask,
-                    prompt_length=int(cfg.prompt_length),
-                    block_length=int(cfg.block_length),
+                    prompt_length=cfg.prompt_length,
+                    block_length=cfg.block_length,
                     mask_token_id=mask_token_id,
                     generator=gen,
                 )

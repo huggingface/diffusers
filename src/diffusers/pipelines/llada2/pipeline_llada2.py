@@ -87,75 +87,6 @@ class LLaDA2Pipeline(DiffusionPipeline):
     def num_timesteps(self):
         return self._num_timesteps
 
-    # --- SAR sampling utilities ---
-
-    @staticmethod
-    def _top_p_filtering(logits: torch.Tensor, top_p: Optional[float]) -> torch.Tensor:
-        """Nucleus (top-p) logit filtering."""
-        if top_p is None or top_p >= 1.0:
-            return logits
-        if not (0.0 < top_p <= 1.0):
-            raise ValueError(f"`top_p` must be in (0, 1], got {top_p}.")
-
-        sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
-        sorted_probs = torch.softmax(sorted_logits, dim=-1)
-        cumulative_probs = sorted_probs.cumsum(dim=-1)
-
-        sorted_indices_to_remove = cumulative_probs > float(top_p)
-        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-        sorted_indices_to_remove[..., 0] = 0
-
-        sorted_logits = sorted_logits.masked_fill(sorted_indices_to_remove, torch.finfo(sorted_logits.dtype).min)
-        filtered = logits.scatter(-1, sorted_indices, sorted_logits)
-        return filtered
-
-    @staticmethod
-    def _top_k_filtering(logits: torch.Tensor, top_k: Optional[int]) -> torch.Tensor:
-        """Top-k logit filtering."""
-        if top_k is None or top_k <= 0:
-            return logits
-        if top_k >= logits.shape[-1]:
-            return logits
-        values, _ = torch.topk(logits, k=int(top_k), dim=-1)
-        min_keep = values[..., -1, None]
-        return logits.masked_fill(logits < min_keep, torch.finfo(logits.dtype).min)
-
-    @staticmethod
-    def _sample_with_temperature_topk_topp(
-        logits: torch.Tensor,
-        *,
-        temperature: float,
-        top_k: Optional[int],
-        top_p: Optional[float],
-        generator: Optional[torch.Generator],
-        use_multinomial: bool,
-    ) -> tuple[torch.LongTensor, torch.Tensor]:
-        """Sample tokens from logits with temperature scaling, top-k, and top-p."""
-        if temperature < 0:
-            raise ValueError(f"`temperature` must be >= 0, got {temperature}.")
-
-        vocab_size = logits.shape[-1]
-        flat_logits = logits.reshape(-1, vocab_size)
-
-        if temperature == 0.0 or not use_multinomial:
-            probs = torch.softmax(flat_logits.float(), dim=-1)
-            token = flat_logits.argmax(dim=-1, keepdim=True)
-            token_prob = torch.gather(probs, -1, token)
-            return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
-
-        scaled = flat_logits
-        if temperature != 1.0:
-            scaled = flat_logits / float(temperature)
-
-        filtered = LLaDA2Pipeline._top_k_filtering(scaled, top_k=top_k)
-        filtered = LLaDA2Pipeline._top_p_filtering(filtered, top_p=top_p)
-
-        probs = torch.softmax(filtered.float(), dim=-1)
-        token = torch.multinomial(probs, num_samples=1, generator=generator)
-        token_prob = torch.gather(probs, -1, token)
-
-        return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
-
     # --- Prompt encoding ---
 
     def _prepare_input_ids(
@@ -247,15 +178,35 @@ class LLaDA2Pipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
+        prompt: Optional[Union[str, List[str]]],
+        messages: Optional[List[Dict[str, str]]],
+        input_ids: Optional[torch.LongTensor],
         gen_length: int,
         block_length: int,
         steps: int,
         minimal_topk: int,
         threshold: float,
         sampling_method: str,
+        output_type: str,
         callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
         callback_on_step_end_tensor_inputs: Optional[List[str]],
     ):
+        # Input source validation
+        if prompt is None and messages is None and input_ids is None:
+            raise ValueError("Provide one of `prompt`, `messages`, or `input_ids`.")
+        if prompt is not None and messages is not None:
+            raise ValueError("Provide either `prompt` or `messages`, not both.")
+        if input_ids is not None:
+            if input_ids.ndim not in (1, 2):
+                raise ValueError(f"`input_ids` must be 1D or 2D, got shape {tuple(input_ids.shape)}.")
+            if input_ids.dtype != torch.long:
+                raise ValueError(f"`input_ids` must be int64 token IDs, got dtype={input_ids.dtype}.")
+        if prompt is not None and input_ids is None and self.tokenizer is None:
+            raise ValueError("Tokenizer is required when `input_ids` is not provided.")
+        if messages is not None and input_ids is None and self.tokenizer is None:
+            raise ValueError("Tokenizer is required when `input_ids` is not provided.")
+
+        # Generation parameter validation
         if gen_length <= 0:
             raise ValueError(f"`gen_length` must be > 0, got {gen_length}.")
         if block_length <= 0:
@@ -270,6 +221,10 @@ class LLaDA2Pipeline(DiffusionPipeline):
             raise ValueError(
                 f"`sampling_method` must be one of {{'auto','greedy','multinomial'}}, got {sampling_method!r}."
             )
+        if output_type not in {"seq", "text"}:
+            raise ValueError(f"`output_type` must be 'seq' or 'text', got {output_type!r}.")
+
+        # Callback validation
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
@@ -306,7 +261,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
         eos_token_id: Optional[int] = None,
         mask_token_id: Optional[int] = None,
         generator: Optional[torch.Generator] = None,
-        return_text: bool = True,
+        output_type: str = "text",
         return_dict: bool = True,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
@@ -363,8 +318,9 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 Mask token ID to use for the template.
             generator (`torch.Generator`, *optional*):
                 RNG for sampling.
-            return_text (`bool`, *optional*, defaults to `True`):
-                Whether to decode sequences into text when a tokenizer is available.
+            output_type (`str`, defaults to `"text"`):
+                Output format. `"text"` decodes sequences into strings (requires a tokenizer). `"seq"` returns raw
+                token ID sequences only.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`LLaDA2PipelineOutput`] instead of a tuple.
             callback_on_step_end (`Callable` or `PipelineCallback`, *optional*):
@@ -376,16 +332,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
 
         Examples:
         """
-        # 1. Prepare input IDs from prompt/messages/input_ids
-        prompt_ids = self._prepare_input_ids(
-            prompt=prompt,
-            messages=messages,
-            input_ids=input_ids,
-            use_chat_template=use_chat_template,
-            add_generation_prompt=add_generation_prompt,
-            chat_template_kwargs=None,
-        )
-
+        # 1. Check inputs early
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
@@ -393,16 +340,29 @@ class LLaDA2Pipeline(DiffusionPipeline):
         if callback_on_step_end_tensor_inputs is None:
             callback_on_step_end_tensor_inputs = ["cur_x"]
 
-        # 2. Check inputs
         self.check_inputs(
+            prompt=prompt,
+            messages=messages,
+            input_ids=input_ids,
             gen_length=gen_length,
             block_length=block_length,
             steps=steps,
             minimal_topk=minimal_topk,
             threshold=threshold,
             sampling_method=sampling_method,
+            output_type=output_type,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+        )
+
+        # 2. Prepare input IDs from prompt/messages/input_ids
+        prompt_ids = self._prepare_input_ids(
+            prompt=prompt,
+            messages=messages,
+            input_ids=input_ids,
+            use_chat_template=use_chat_template,
+            add_generation_prompt=add_generation_prompt,
+            chat_template_kwargs=None,
         )
 
         device = self._execution_device
@@ -419,13 +379,13 @@ class LLaDA2Pipeline(DiffusionPipeline):
         if mask_token_id is None:
             raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
 
-        steps = min(int(steps), int(gen_length) // int(minimal_topk))
+        steps = min(steps, gen_length // minimal_topk)
 
         self.scheduler.set_timesteps(steps, device=device)
 
         # 3. Build attention mask and position IDs
-        num_blocks = (prompt_length + int(gen_length) + int(block_length) - 1) // int(block_length)
-        total_length = int(num_blocks) * int(block_length)
+        num_blocks = (prompt_length + gen_length + block_length - 1) // block_length
+        total_length = num_blocks * block_length
 
         # 2D attention mask (no padding) — the model handles backend-specific conversion internally.
         attn_mask = torch.ones((batch_size, total_length), device=device, dtype=torch.long)
@@ -433,30 +393,29 @@ class LLaDA2Pipeline(DiffusionPipeline):
         position_ids = torch.arange(total_length, device=device, dtype=torch.long).unsqueeze(0).expand(batch_size, -1)
 
         # 4. Prepare latents (fully masked sequence)
-        x = torch.full((batch_size, total_length), int(mask_token_id), device=device, dtype=torch.long)
+        x = torch.full((batch_size, total_length), mask_token_id, device=device, dtype=torch.long)
         if prompt_length > 0:
             x[:, :prompt_length] = prompt_ids
 
-        prefill_blocks = prompt_length // int(block_length)
-        self._num_timesteps = int(steps) * max(int(num_blocks) - int(prefill_blocks), 0)
+        prefill_blocks = prompt_length // block_length
+        self._num_timesteps = steps * max(num_blocks - prefill_blocks, 0)
 
         finished = torch.zeros((batch_size,), device=device, dtype=torch.bool)
-        use_multinomial = sampling_method == "multinomial" or (sampling_method == "auto" and float(temperature) != 0.0)
         editing_enabled = editing_threshold is not None and editing_threshold >= 0.0
         global_step = 0
 
         # 5. Block-wise refinement loop
-        for num_block in range(int(prefill_blocks), int(num_blocks)):
-            current_window_end = (num_block + 1) * int(block_length)
+        for num_block in range(prefill_blocks, num_blocks):
+            current_window_end = (num_block + 1) * block_length
             cur_x = x[:, :current_window_end]
             cur_attn_mask = attn_mask[:, :current_window_end]
             cur_position_ids = position_ids[:, :current_window_end]
 
             # Identify which positions in the block are prompt (non-editable).
-            block_start_pos = num_block * int(block_length)
-            prompt_mask_in_block = torch.zeros(int(block_length), device=device, dtype=torch.bool)
+            block_start_pos = num_block * block_length
+            prompt_mask_in_block = torch.zeros(block_length, device=device, dtype=torch.bool)
             if block_start_pos < prompt_length:
-                prompt_end_in_block = min(prompt_length - block_start_pos, int(block_length))
+                prompt_end_in_block = min(prompt_length - block_start_pos, block_length)
                 prompt_mask_in_block[:prompt_end_in_block] = True
 
             post_steps = 0
@@ -464,9 +423,8 @@ class LLaDA2Pipeline(DiffusionPipeline):
             should_continue = True
 
             while should_continue:
-                block_tokens = cur_x[:, -int(block_length) :]
-                active_block = block_tokens == int(mask_token_id)
-                masks_remaining = active_block.any()
+                block_tokens = cur_x[:, -block_length:]
+                masks_remaining = (block_tokens == mask_token_id).any()
 
                 if not masks_remaining and not editing_enabled:
                     break
@@ -474,26 +432,20 @@ class LLaDA2Pipeline(DiffusionPipeline):
                     post_steps += 1
 
                 logits = self.model(cur_x, attention_mask=cur_attn_mask, position_ids=cur_position_ids).logits
-                block_logits = logits[:, -int(block_length) :, :]
-
-                x0, x0_p = self._sample_with_temperature_topk_topp(
-                    block_logits,
-                    temperature=float(temperature),
-                    top_k=top_k,
-                    top_p=top_p,
-                    generator=generator,
-                    use_multinomial=use_multinomial,
-                )
+                block_logits = logits[:, -block_length:, :]
 
                 scheduler_output = self.scheduler.step(
-                    sampled_tokens=x0,
-                    sampled_probs=x0_p,
+                    model_output=block_logits,
                     timestep=step_idx,
                     sample=block_tokens,
-                    mask_token_id=int(mask_token_id),
-                    threshold=float(threshold),
+                    mask_token_id=mask_token_id,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    sampling_method=sampling_method,
+                    threshold=threshold,
                     editing_threshold=editing_threshold,
-                    minimal_topk=int(minimal_topk),
+                    minimal_topk=minimal_topk,
                     prompt_mask=prompt_mask_in_block,
                     generator=generator,
                     return_dict=True,
@@ -504,16 +456,16 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 final_transfer = transfer_index | editing_transfer_index
 
                 if final_transfer.any():
-                    cur_x[:, -int(block_length) :] = scheduler_output.prev_sample
+                    cur_x[:, -block_length:] = scheduler_output.prev_sample
 
                 if eos_early_stop and eos_token_id is not None:
                     finished = self._check_eos_finished(
                         cur_x=cur_x,
-                        x0=x0,
+                        x0=scheduler_output.sampled_tokens,
                         final_transfer=final_transfer,
                         finished=finished,
-                        eos_token_id=int(eos_token_id),
-                        mask_token_id=int(mask_token_id),
+                        eos_token_id=eos_token_id,
+                        mask_token_id=mask_token_id,
                         prompt_length=prompt_length,
                         batch_size=batch_size,
                     )
@@ -529,30 +481,30 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 if masks_remaining:
                     step_idx += 1
 
-                # Update should_continue
-                if finished.all():
-                    should_continue = False
-                elif not masks_remaining and not editing_transfer_index.any():
-                    should_continue = False
-                elif masks_remaining and step_idx >= int(steps):
-                    should_continue = False
-                elif not masks_remaining and post_steps > int(max_post_steps):
-                    should_continue = False
+                should_continue = self.scheduler.check_should_continue(
+                    step_idx=step_idx,
+                    masks_remaining=masks_remaining,
+                    editing_enabled=editing_enabled,
+                    editing_transfer_index=editing_transfer_index,
+                    post_steps=post_steps,
+                    max_post_steps=max_post_steps,
+                    finished=finished,
+                )
 
             x[:, :current_window_end] = cur_x
             if eos_early_stop and finished.all():
                 break
 
         # 6. Post-process output
-        generated = x[:, : prompt_length + int(gen_length)]
+        generated = x[:, : prompt_length + gen_length]
         sequences = generated[:, prompt_length:]
         if eos_token_id is not None and batch_size == 1:
-            eos_positions = (sequences[0] == int(eos_token_id)).nonzero(as_tuple=True)[0]
+            eos_positions = (sequences[0] == eos_token_id).nonzero(as_tuple=True)[0]
             if len(eos_positions) > 0:
                 sequences = sequences[:, : int(eos_positions[0].item()) + 1]
 
         texts = None
-        if return_text and self.tokenizer is not None:
+        if output_type == "text" and self.tokenizer is not None:
             texts = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
 
         if not return_dict:
