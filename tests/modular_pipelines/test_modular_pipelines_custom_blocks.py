@@ -34,6 +34,40 @@ from diffusers.modular_pipelines import (
 from ..testing_utils import nightly, require_torch, require_torch_accelerator, slow, torch_device
 
 
+def _create_tiny_model_dir(model_dir):
+    TINY_MODEL_CODE = (
+        "import torch\n"
+        "from diffusers import ModelMixin, ConfigMixin\n"
+        "from diffusers.configuration_utils import register_to_config\n"
+        "\n"
+        "class TinyModel(ModelMixin, ConfigMixin):\n"
+        "    @register_to_config\n"
+        "    def __init__(self, hidden_size=4):\n"
+        "        super().__init__()\n"
+        "        self.linear = torch.nn.Linear(hidden_size, hidden_size)\n"
+        "\n"
+        "    def forward(self, x):\n"
+        "        return self.linear(x)\n"
+    )
+
+    with open(os.path.join(model_dir, "modeling.py"), "w") as f:
+        f.write(TINY_MODEL_CODE)
+
+    config = {
+        "_class_name": "TinyModel",
+        "_diffusers_version": "0.0.0",
+        "auto_map": {"AutoModel": "modeling.TinyModel"},
+        "hidden_size": 4,
+    }
+    with open(os.path.join(model_dir, "config.json"), "w") as f:
+        json.dump(config, f)
+
+    torch.save(
+        {"linear.weight": torch.randn(4, 4), "linear.bias": torch.randn(4)},
+        os.path.join(model_dir, "diffusion_pytorch_model.bin"),
+    )
+
+
 class DummyCustomBlockSimple(ModularPipelineBlocks):
     def __init__(self, use_dummy_model_component=False):
         self.use_dummy_model_component = use_dummy_model_component
@@ -341,44 +375,11 @@ class TestModularCustomBlocks:
             loaded_pipe.update_components(custom_model=custom_model)
             assert getattr(loaded_pipe, "custom_model", None) is not None
 
-    def _create_tiny_model_dir(self, model_dir):
-        TINY_MODEL_CODE = (
-            "import torch\n"
-            "from diffusers import ModelMixin, ConfigMixin\n"
-            "from diffusers.configuration_utils import register_to_config\n"
-            "\n"
-            "class TinyModel(ModelMixin, ConfigMixin):\n"
-            "    @register_to_config\n"
-            "    def __init__(self, hidden_size=4):\n"
-            "        super().__init__()\n"
-            "        self.linear = torch.nn.Linear(hidden_size, hidden_size)\n"
-            "\n"
-            "    def forward(self, x):\n"
-            "        return self.linear(x)\n"
-        )
-
-        with open(os.path.join(model_dir, "modeling.py"), "w") as f:
-            f.write(TINY_MODEL_CODE)
-
-        config = {
-            "_class_name": "TinyModel",
-            "_diffusers_version": "0.0.0",
-            "auto_map": {"AutoModel": "modeling.TinyModel"},
-            "hidden_size": 4,
-        }
-        with open(os.path.join(model_dir, "config.json"), "w") as f:
-            json.dump(config, f)
-
-        torch.save(
-            {"linear.weight": torch.randn(4, 4), "linear.bias": torch.randn(4)},
-            os.path.join(model_dir, "diffusion_pytorch_model.bin"),
-        )
-
     def test_automodel_type_hint_preserves_torch_dtype(self, tmp_path):
         """Regression test for #13271: torch_dtype was incorrectly removed when type_hint is AutoModel."""
         from diffusers import AutoModel
 
-        self._create_tiny_model_dir(tmp_path)
+        _create_tiny_model_dir(tmp_path)
 
         spec = ComponentSpec(
             name="model",
@@ -393,7 +394,7 @@ class TestModularCustomBlocks:
         """Test that ComponentSpec with AutoModel type_hint correctly passes device_map."""
         from diffusers import AutoModel
 
-        self._create_tiny_model_dir(tmp_path)
+        _create_tiny_model_dir(tmp_path)
 
         spec = ComponentSpec(
             name="model",
