@@ -300,6 +300,55 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
             sampled_probs=sampled_probs,
         )
 
+    @staticmethod
+    def check_eos_finished(
+        cur_x: torch.LongTensor,
+        sampled_tokens: torch.LongTensor,
+        final_transfer: torch.BoolTensor,
+        finished: torch.BoolTensor,
+        eos_token_id: int,
+        mask_token_id: int,
+        prompt_length: int,
+    ) -> torch.BoolTensor:
+        """
+        Update per-batch finished flags when EOS tokens are committed.
+
+        Args:
+            cur_x (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Current full sequence including all blocks up to the current window.
+            sampled_tokens (`torch.LongTensor` of shape `(batch_size, block_length)`):
+                Tokens sampled by the scheduler in this step.
+            final_transfer (`torch.BoolTensor` of shape `(batch_size, block_length)`):
+                Combined mask of committed and edited positions.
+            finished (`torch.BoolTensor` of shape `(batch_size,)`):
+                Current per-batch finished flags.
+            eos_token_id (`int`):
+                EOS token ID.
+            mask_token_id (`int`):
+                Mask token ID.
+            prompt_length (`int`):
+                Number of prompt tokens at the start of the sequence.
+
+        Returns:
+            `torch.BoolTensor`: Updated finished flags.
+        """
+        batch_size = cur_x.shape[0]
+        for b in range(batch_size):
+            if finished[b]:
+                continue
+            eos_in_commits = (sampled_tokens[b][final_transfer[b]] == eos_token_id).any().item()
+            if not eos_in_commits:
+                continue
+            eos_pos = (cur_x[b] == eos_token_id).nonzero(as_tuple=True)
+            if len(eos_pos[0]) == 0:
+                continue
+            eos_pos = int(eos_pos[0][0].item())
+            if prompt_length >= eos_pos:
+                continue
+            if (cur_x[b, prompt_length:eos_pos] != mask_token_id).all().item():
+                finished[b] = True
+        return finished
+
     def check_should_continue(
         self,
         step_idx: int,

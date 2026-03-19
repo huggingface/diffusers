@@ -278,6 +278,65 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         )
         self.assertFalse(result)
 
+    def test_check_eos_finished_marks_batch(self):
+        """When EOS is committed and all tokens before it are unmasked, mark batch as finished."""
+        mask_id, eos_id, prompt_length = 99, 2, 2
+        # cur_x: [prompt, prompt, token, eos, mask, mask]
+        cur_x = torch.tensor([[10, 11, 5, eos_id, mask_id, mask_id]], dtype=torch.long)
+        sampled_tokens = torch.tensor([[0, 0, 0, eos_id]], dtype=torch.long)
+        final_transfer = torch.tensor([[False, False, False, True]])
+        finished = torch.tensor([False])
+
+        finished = BlockRefinementScheduler.check_eos_finished(
+            cur_x=cur_x,
+            sampled_tokens=sampled_tokens,
+            final_transfer=final_transfer,
+            finished=finished,
+            eos_token_id=eos_id,
+            mask_token_id=mask_id,
+            prompt_length=prompt_length,
+        )
+        self.assertTrue(finished[0].item())
+
+    def test_check_eos_finished_ignores_when_masks_before_eos(self):
+        """If there are still mask tokens between prompt and EOS, don't mark as finished."""
+        mask_id, eos_id, prompt_length = 99, 2, 2
+        # cur_x: [prompt, prompt, mask, eos] — mask before EOS
+        cur_x = torch.tensor([[10, 11, mask_id, eos_id]], dtype=torch.long)
+        sampled_tokens = torch.tensor([[0, 0]], dtype=torch.long)
+        final_transfer = torch.tensor([[False, True]])
+        finished = torch.tensor([False])
+
+        finished = BlockRefinementScheduler.check_eos_finished(
+            cur_x=cur_x,
+            sampled_tokens=sampled_tokens,
+            final_transfer=final_transfer,
+            finished=finished,
+            eos_token_id=eos_id,
+            mask_token_id=mask_id,
+            prompt_length=prompt_length,
+        )
+        self.assertFalse(finished[0].item())
+
+    def test_check_eos_finished_already_finished(self):
+        """Already-finished batches should stay finished."""
+        mask_id, eos_id = 99, 2
+        cur_x = torch.tensor([[10, 11, 5, 6]], dtype=torch.long)
+        sampled_tokens = torch.tensor([[0, 0]], dtype=torch.long)
+        final_transfer = torch.tensor([[False, False]])
+        finished = torch.tensor([True])
+
+        finished = BlockRefinementScheduler.check_eos_finished(
+            cur_x=cur_x,
+            sampled_tokens=sampled_tokens,
+            final_transfer=final_transfer,
+            finished=finished,
+            eos_token_id=eos_id,
+            mask_token_id=mask_id,
+            prompt_length=2,
+        )
+        self.assertTrue(finished[0].item())
+
     def test_add_noise(self):
         scheduler = self.get_scheduler(block_length=4)
         input_ids = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]], dtype=torch.long)

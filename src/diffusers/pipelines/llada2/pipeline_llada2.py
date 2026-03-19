@@ -146,36 +146,6 @@ class LLaDA2Pipeline(DiffusionPipeline):
         encoded = self.tokenizer(prompt, return_tensors="pt", padding=isinstance(prompt, list))
         return encoded["input_ids"]
 
-    # --- EOS helper ---
-
-    def _check_eos_finished(
-        self,
-        cur_x: torch.LongTensor,
-        x0: torch.LongTensor,
-        final_transfer: torch.BoolTensor,
-        finished: torch.BoolTensor,
-        eos_token_id: int,
-        mask_token_id: int,
-        prompt_length: int,
-        batch_size: int,
-    ) -> torch.BoolTensor:
-        """Update finished flags when EOS tokens are committed."""
-        for b in range(batch_size):
-            if finished[b]:
-                continue
-            eos_in_commits = (x0[b][final_transfer[b]] == eos_token_id).any().item()
-            if not eos_in_commits:
-                continue
-            eos_pos = (cur_x[b] == eos_token_id).nonzero(as_tuple=True)
-            if len(eos_pos[0]) == 0:
-                continue
-            eos_pos = int(eos_pos[0][0].item())
-            if prompt_length >= eos_pos:
-                continue
-            if (cur_x[b, prompt_length:eos_pos] != mask_token_id).all().item():
-                finished[b] = True
-        return finished
-
     def check_inputs(
         self,
         prompt: Optional[Union[str, List[str]]],
@@ -459,15 +429,14 @@ class LLaDA2Pipeline(DiffusionPipeline):
                     cur_x[:, -block_length:] = scheduler_output.prev_sample
 
                 if eos_early_stop and eos_token_id is not None:
-                    finished = self._check_eos_finished(
+                    finished = self.scheduler.check_eos_finished(
                         cur_x=cur_x,
-                        x0=scheduler_output.sampled_tokens,
+                        sampled_tokens=scheduler_output.sampled_tokens,
                         final_transfer=final_transfer,
                         finished=finished,
                         eos_token_id=eos_token_id,
                         mask_token_id=mask_token_id,
                         prompt_length=prompt_length,
-                        batch_size=batch_size,
                     )
 
                 if callback_on_step_end is not None:
