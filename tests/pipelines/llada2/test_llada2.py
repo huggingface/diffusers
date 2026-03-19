@@ -131,11 +131,15 @@ class LLaDA2PipelineTest(unittest.TestCase):
 
     def test_output_type_text_with_tokenizer(self):
         """output_type='text' with a tokenizer should return decoded texts."""
-        tok = type("Tok", (), {
-            "eos_token_id": None,
-            "mask_token_id": 31,
-            "batch_decode": lambda self, seqs, **kw: [f"decoded_{len(s)}" for s in seqs],
-        })()
+        tok = type(
+            "Tok",
+            (),
+            {
+                "eos_token_id": None,
+                "mask_token_id": 31,
+                "batch_decode": lambda self, seqs, **kw: [f"decoded_{len(s)}" for s in seqs],
+            },
+        )()
         pipe = _make_pipeline(tokenizer=tok).to("cpu")
 
         out = pipe(
