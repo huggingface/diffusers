@@ -1169,7 +1169,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
                 raise ValueError(
                     f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is either [batch_size, seq_len, num_features] or [batch_size, latent_dim, latent_frames, latent_height, latent_width]."
                 )
-        video_sequence_length = latent_num_frames * latent_height * latent_width
+        # video_sequence_length = latent_num_frames * latent_height * latent_width
 
         if latents is None:
             image = self.video_processor.preprocess(image, height=height, width=width)
@@ -1233,7 +1233,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraL
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         mu = calculate_shift(
-            video_sequence_length,
+            self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_image_seq_len", 1024),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.95),

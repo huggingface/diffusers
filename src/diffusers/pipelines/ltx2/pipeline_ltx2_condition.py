@@ -1268,7 +1268,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 "Got latents of shape [batch_size, latent_dim, latent_frames, latent_height, latent_width], `latent_num_frames`, `latent_height`, `latent_width` will be inferred."
             )
             _, _, latent_num_frames, latent_height, latent_width = latents.shape  # [B, C, F, H, W]
-        video_sequence_length = latent_num_frames * latent_height * latent_width
+        # video_sequence_length = latent_num_frames * latent_height * latent_width
 
         num_channels_latents = self.transformer.config.in_channels
         latents, conditioning_mask, clean_latents = self.prepare_latents(
@@ -1318,7 +1318,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         mu = calculate_shift(
-            video_sequence_length,
+            self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_image_seq_len", 1024),
             self.scheduler.config.get("max_image_seq_len", 4096),
             self.scheduler.config.get("base_shift", 0.95),
