@@ -379,30 +379,76 @@ class TestModularCustomBlocks:
         """Regression test for #13271: torch_dtype was incorrectly removed when type_hint is AutoModel."""
         from diffusers import AutoModel
 
-        _create_tiny_model_dir(tmp_path)
+        model_dir = str(tmp_path / "model")
+        os.makedirs(model_dir)
+        _create_tiny_model_dir(model_dir)
 
-        spec = ComponentSpec(
-            name="model",
-            type_hint=AutoModel,
-            pretrained_model_name_or_path=str(tmp_path),
-        )
-        loaded = spec.load(torch_dtype=torch.float16, trust_remote_code=True)
-        assert loaded.dtype == torch.float16
+        class DtypeTestBlock(ModularPipelineBlocks):
+            @property
+            def expected_components(self):
+                return [ComponentSpec("model", AutoModel, pretrained_model_name_or_path=model_dir)]
+
+            @property
+            def inputs(self) -> List[InputParam]:
+                return [InputParam("prompt", type_hint=str, required=True)]
+
+            @property
+            def intermediate_inputs(self) -> List[InputParam]:
+                return []
+
+            @property
+            def intermediate_outputs(self) -> List[OutputParam]:
+                return [OutputParam("output", type_hint=str)]
+
+            def __call__(self, components, state: PipelineState) -> PipelineState:
+                block_state = self.get_block_state(state)
+                block_state.output = "test"
+                self.set_block_state(state, block_state)
+                return components, state
+
+        block = DtypeTestBlock()
+        pipe = block.init_pipeline()
+        pipe.load_components(torch_dtype=torch.float16, trust_remote_code=True)
+
+        assert pipe.model.dtype == torch.float16
 
     @require_torch_accelerator
     def test_automodel_type_hint_preserves_device(self, tmp_path):
         """Test that ComponentSpec with AutoModel type_hint correctly passes device_map."""
         from diffusers import AutoModel
 
-        _create_tiny_model_dir(tmp_path)
+        model_dir = str(tmp_path / "model")
+        os.makedirs(model_dir)
+        _create_tiny_model_dir(model_dir)
 
-        spec = ComponentSpec(
-            name="model",
-            type_hint=AutoModel,
-            pretrained_model_name_or_path=str(tmp_path),
-        )
-        loaded = spec.load(device_map=torch_device, trust_remote_code=True)
-        assert loaded.device.type == torch_device
+        class DeviceTestBlock(ModularPipelineBlocks):
+            @property
+            def expected_components(self):
+                return [ComponentSpec("model", AutoModel, pretrained_model_name_or_path=model_dir)]
+
+            @property
+            def inputs(self) -> List[InputParam]:
+                return [InputParam("prompt", type_hint=str, required=True)]
+
+            @property
+            def intermediate_inputs(self) -> List[InputParam]:
+                return []
+
+            @property
+            def intermediate_outputs(self) -> List[OutputParam]:
+                return [OutputParam("output", type_hint=str)]
+
+            def __call__(self, components, state: PipelineState) -> PipelineState:
+                block_state = self.get_block_state(state)
+                block_state.output = "test"
+                self.set_block_state(state, block_state)
+                return components, state
+
+        block = DeviceTestBlock()
+        pipe = block.init_pipeline()
+        pipe.load_components(device_map=torch_device, trust_remote_code=True)
+
+        assert pipe.model.device.type == torch_device
 
     def test_custom_block_loads_from_hub(self):
         repo_id = "hf-internal-testing/tiny-modular-diffusers-block"
