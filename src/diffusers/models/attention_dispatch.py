@@ -49,7 +49,7 @@ from ..utils import (
     is_xformers_version,
 )
 from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
-from ..utils.torch_utils import maybe_allow_in_graph
+from ..utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from ._modeling_parallel import gather_size_by_comm
 
 
@@ -575,7 +575,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
             )
 
 
-@functools.lru_cache(maxsize=128)
+@lru_cache_unless_export(maxsize=128)
 def _prepare_for_flash_attn_or_sage_varlen_without_mask(
     batch_size: int,
     seq_len_q: int,

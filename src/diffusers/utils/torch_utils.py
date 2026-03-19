@@ -19,9 +19,14 @@ from __future__ import annotations
 
 import functools
 import os
+from typing import Callable, ParamSpec, TypeVar
 
 from . import logging
 from .import_utils import is_torch_available, is_torch_mlu_available, is_torch_npu_available, is_torch_version
+
+
+T = TypeVar("T")
+P = ParamSpec("P")
 
 
 if is_torch_available():
@@ -331,6 +336,22 @@ def disable_full_determinism():
     os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ""
     torch.use_deterministic_algorithms(False)
+
+
+@functools.wraps(functools.lru_cache)
+def lru_cache_unless_export(maxsize=128, typed=False):
+    def outer_wrapper(fn: Callable[P, T]):
+        cached = functools.lru_cache(maxsize=maxsize, typed=typed)(fn)
+
+        @functools.wraps(fn)
+        def inner_wrapper(*args: P.args, **kwargs: P.kwargs):
+            if torch.compiler.is_exporting():
+                return fn(*args, **kwargs)
+            return cached(*args, **kwargs)
+
+        return inner_wrapper
+
+    return outer_wrapper
 
 
 if is_torch_available():
