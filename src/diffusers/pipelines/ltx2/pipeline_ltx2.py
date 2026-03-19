@@ -427,6 +427,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         system_prompt: str,
         max_new_tokens: int = 512,
         seed: int = 10,
+        generator: torch.Generator | None = None,
         generation_kwargs: dict[str, Any] | None = None,
         device: str | torch.device | None = None,
     ):
@@ -449,6 +450,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
 
         # `transformers.GenerationMixin.generate` does not support using a `torch.Generator` to control randomness,
         # so manually apply a seed for reproducible generation.
+        if generator is not None:
+            # Overwrite seed to generator's initial seed
+            seed = generator.initial_seed()
         torch.manual_seed(seed)
         generated_sequences = self.text_encoder.generate(
             **model_inputs,
@@ -1032,6 +1036,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 system_prompt=system_prompt,
                 max_new_tokens=prompt_max_new_tokens,
                 seed=prompt_enhancement_seed,
+                generator=generator,
                 generation_kwargs=prompt_enhancement_kwargs,
                 device=device,
             )
