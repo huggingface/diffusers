@@ -106,6 +106,15 @@ Consult the implementations in `src/diffusers/models/transformers/` if you need 
 - Support `output_type="latent"` for skipping VAE decode
 - Support `generator` parameter for reproducibility
 - Use `self.progress_bar(timesteps)` for progress tracking
+### Misc
+
+**Dealing with new dependencies:**
+
+Don't arbitrarily add new dependencies even if the reference code has it. Always try to implement operations with pure PyTorch first. For example, anything implemented with `einops` can be implemented with just PyTorch.
+
+If you need to rely on a particularly dependency its import should be guarded:
+
+`if is_my_dependency_available(): import my_dependency`
 
 ---
 
@@ -239,9 +248,12 @@ ComponentSpec("transformer", YourTransformerModel)
 ComponentSpec("vae", AutoencoderKL)
 
 # Lightweight objects - created inline from config
-ComponentSpec("guider", ClassifierFreeGuidance,
-              config=FrozenDict({"guidance_scale": 7.5}),
-              default_creation_method="from_config")
+ComponentSpec(
+    "guider", 
+    ClassifierFreeGuidance,
+    config=FrozenDict({"guidance_scale": 7.5}),
+    default_creation_method="from_config"
+)
 ```
 
 ### Conversion checklist

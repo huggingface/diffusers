@@ -3,7 +3,7 @@ name: Parity Testing
 description: >
   Testing pipeline parity between reference and diffusers implementations:
   checkpoint mechanism, stage tests (encode/decode/denoise), injection debugging,
-  visual comparison, comparison utilities, and 18 common pitfalls.
+  visual comparison, comparison utilities, and common pitfalls.
   Trigger: debugging parity, writing conversion tests, investigating divergence.
 ---
 
@@ -13,16 +13,18 @@ Applies to any conversion: research repo -> diffusers, standard -> modular, or r
 
 ## Principles
 
-1. **Don't combine structural changes with behavioral changes.** For research repo -> diffusers, you must restructure code to fit diffusers APIs (ModelMixin, ConfigMixin, etc.) -- that's unavoidable. But don't also "improve" the algorithm, refactor computation order, or rename internal variables for aesthetics. Keep numerical logic as close to the reference as possible, even if it looks ugly. For standard -> modular, this is stricter: copy loop logic verbatim and only restructure into blocks. In both cases, clean up in a separate commit after parity is confirmed.
+1. **Don't combine structural changes with behavioral changes.** For research repo -> diffusers, first, you must restructure code to fit diffusers APIs (ModelMixin, ConfigMixin, etc.) -- that's unavoidable. But don't also "improve" the algorithm, refactor computation order, or rename internal variables for aesthetics. Keep numerical logic as close to the reference as possible, even if it looks unclean. For standard -> modular, this is stricter: copy loop logic verbatim and only restructure into blocks. In both cases, clean up in a separate commit after parity is confirmed.
 
-2. **Match the reference noise generation first.** The way initial noise/latents are constructed (seed handling, generator, randn call order) often differs between reference and diffusers. If the noise doesn't match, nothing downstream will match, making it impossible to isolate other bugs. Strategy: in the first implementation, replicate the reference's exact noise construction to get parity. After everything else is confirmed working, swap to diffusers-style noise generation as a final step.
+2. **Match the reference noise generation first.** The way initial noise/latents are constructed (seed handling, generator, randn call order) often differs between reference and diffusers. If the noise doesn't match, nothing downstream will match, making it impossible to isolate other bugs. Strategy: in the first implementation, replicate the reference's exact noise construction to get parity. After everything else is confirmed working, swap to diffusers-style noise generation as a final step.The same goes for steps, including text encoding, reference image encoding, etc.
 
 3. **Test from the start.** Have component tests ready BEFORE writing conversion code. Test bottom-up: components first, then pipeline stages, then e2e.
 
 ## Test strategy
 
 **Component parity (CPU/float32) -- always run, as you build.**
-Test each component before assembling the pipeline. This is the foundation -- if individual pieces are wrong, the pipeline can't be right. Each component in isolation, strict max_diff < 1e-3. Two modes:
+Test each component before assembling the pipeline. This is the foundation -- if individual pieces are wrong, the pipeline can't be right. Each component in isolation, strict max_diff < 1e-3.
+
+Test freshly converted checkpoints and saved checkpoints.
 - **Fresh**: convert from checkpoint weights, compare against reference (catches conversion bugs)
 - **Saved**: load from saved model on disk, compare against reference (catches stale saves)
 
@@ -56,7 +58,7 @@ def test_my_component(mode="fresh", model_path=None):
     max_diff = (ref_out - diff_out).abs().max().item()
     assert max_diff < 1e-3, f"FAIL: max_diff={max_diff:.2e}"
 ```
-Key points: (a) both sides in one script -- never split into separate scripts that save/load intermediates, (b) deterministic input via seeded generator, (c) load one model at a time to fit in CPU RAM, (d) `.clone()` the reference output before deleting the model.
+Key points: (a) both reference and diffusers component in one script -- never split into separate scripts that save/load intermediates, (b) deterministic input via seeded generator, (c) load one model at a time to fit in CPU RAM, (d) `.clone()` the reference output before deleting the model.
 
 **E2E visual (GPU/bfloat16) -- once the pipeline is assembled.**
 Both pipelines generate independently with identical seeds/params. Save outputs and compare visually. If outputs look identical, you're done -- no need for deeper testing.
@@ -68,7 +70,7 @@ Test encode and decode stages first -- they're simpler and bugs there are easier
 
 The challenge: pipelines are monolithic `__call__` methods -- you can't just call "the encode part". The solution is a checkpoint mechanism that lets you stop, save, or inject tensors at named locations inside the pipeline.
 
-**Add a `_checkpoints` argument to both pipelines.**
+**Add a `_checkpoints` argument to both the diffusers pipeline and the reference implementation.**
 
 The Checkpoint class is minimal:
 ```python

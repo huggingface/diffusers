@@ -24,8 +24,8 @@ Strive to write code as simple and explicit as possible.
 
 ### Models
 - All layer calls should be visible directly in `forward` — avoid helper functions that hide `nn.Module` calls.
-- Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations.
-- See the **model-integration** skill for the attention pattern, pipeline rules, and test setup details.
+- Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations and any other patterns that can break `torch.compile` compatibility with `fullgraph=True`.
+- See the **model-integration** skill for the attention pattern, pipeline rules, test setup instructions, and other important details.
 
 ## Skills
 
