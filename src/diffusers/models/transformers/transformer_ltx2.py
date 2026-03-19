@@ -1331,8 +1331,6 @@ class LTX2VideoTransformer3DModel(
         audio_sigma: torch.Tensor | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         audio_encoder_attention_mask: torch.Tensor | None = None,
-        self_attention_mask: torch.Tensor | None = None,
-        audio_self_attention_mask: torch.Tensor | None = None,
         num_frames: int | None = None,
         height: int | None = None,
         width: int | None = None,
@@ -1376,8 +1374,6 @@ class LTX2VideoTransformer3DModel(
                 Optional multiplicative text attention mask of shape `(batch_size, text_seq_len)`.
             audio_encoder_attention_mask (`torch.Tensor`, *optional*):
                 Optional multiplicative text attention mask of shape `(batch_size, text_seq_len)` for audio modeling.
-            self_attention_mask (`torch.Tensor`, *optional*):
-                Optional multiplicative self-attention mask of shape `(batch_size, seq_len, seq_len)`.
             num_frames (`int`, *optional*):
                 The number of latent video frames. Used if calculating the video coordinates for RoPE.
             height (`int`, *optional*):
@@ -1433,32 +1429,6 @@ class LTX2VideoTransformer3DModel(
         if audio_encoder_attention_mask is not None and audio_encoder_attention_mask.ndim == 2:
             audio_encoder_attention_mask = (1 - audio_encoder_attention_mask.to(audio_hidden_states.dtype)) * -10000.0
             audio_encoder_attention_mask = audio_encoder_attention_mask.unsqueeze(1)
-
-        if self_attention_mask is not None and self_attention_mask.ndim == 3:
-            # Convert to additive attention mask in log-space where 0 (masked) values get mapped to a large negative
-            # number and positive values are mapped to their logarithm.
-            dtype_finfo = torch.finfo(hidden_states.dtype)
-            additive_self_attn_mask = torch.full_like(self_attention_mask, dtype_finfo.min, dtype=hidden_states.dtype)
-            unmasked_entries = self_attention_mask > 0
-            if torch.any(unmasked_entries):
-                additive_self_attn_mask[unmasked_entries] = torch.log(
-                    self_attention_mask[unmasked_entries].clamp(min=dtype_finfo.tiny)
-                ).to(hidden_states.dtype)
-            self_attention_mask = additive_self_attn_mask.unsqueeze(1)  # [batch_size, 1, seq_len, seq_len]
-
-        if audio_self_attention_mask is not None and audio_self_attention_mask.ndim == 3:
-            # Convert to additive attention mask in log-space where 0 (masked) values get mapped to a large negative
-            # number and positive values are mapped to their logarithm.
-            dtype_finfo = torch.finfo(audio_hidden_states.dtype)
-            additive_self_attn_mask = torch.full_like(
-                audio_self_attention_mask, dtype_finfo.min, dtype=audio_hidden_states.dtype
-            )
-            unmasked_entries = audio_self_attention_mask > 0
-            if torch.any(unmasked_entries):
-                additive_self_attn_mask[unmasked_entries] = torch.log(
-                    audio_self_attention_mask[unmasked_entries].clamp(min=dtype_finfo.tiny)
-                ).to(audio_hidden_states.dtype)
-            audio_self_attention_mask = additive_self_attn_mask.unsqueeze(1)  # [batch_size, 1, seq_len, seq_len]
 
         batch_size = hidden_states.size(0)
 
@@ -1599,8 +1569,8 @@ class LTX2VideoTransformer3DModel(
                     audio_cross_attn_rotary_emb,
                     encoder_attention_mask,
                     audio_encoder_attention_mask,
-                    self_attention_mask,
-                    audio_self_attention_mask,
+                    None,  # self_attention_mask
+                    None,  # audio_self_attention_mask
                     None,  # a2v_cross_attention_mask
                     None,  # v2a_cross_attention_mask
                     not isolate_modalities,  # use_a2v_cross_attention
@@ -1628,8 +1598,8 @@ class LTX2VideoTransformer3DModel(
                     ca_audio_rotary_emb=audio_cross_attn_rotary_emb,
                     encoder_attention_mask=encoder_attention_mask,
                     audio_encoder_attention_mask=audio_encoder_attention_mask,
-                    self_attention_mask=self_attention_mask,
-                    audio_self_attention_mask=audio_self_attention_mask,
+                    self_attention_mask=None,
+                    audio_self_attention_mask=None,
                     a2v_cross_attention_mask=None,
                     v2a_cross_attention_mask=None,
                     use_a2v_cross_attention=not isolate_modalities,

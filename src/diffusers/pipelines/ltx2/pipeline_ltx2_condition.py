@@ -1370,8 +1370,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                         sigma=timestep,  # Used by LTX-2.3
                         encoder_attention_mask=connector_attention_mask,
                         audio_encoder_attention_mask=connector_attention_mask,
-                        self_attention_mask=None,
-                        audio_self_attention_mask=None,
                         num_frames=latent_num_frames,
                         height=latent_height,
                         width=latent_width,
@@ -1435,8 +1433,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                             sigma=timestep,  # Used by LTX-2.3
                             encoder_attention_mask=prompt_attn_mask,
                             audio_encoder_attention_mask=prompt_attn_mask,
-                            self_attention_mask=None,
-                            audio_self_attention_mask=None,
                             num_frames=latent_num_frames,
                             height=latent_height,
                             width=latent_width,
@@ -1472,8 +1468,6 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                             sigma=timestep,  # Used by LTX-2.3
                             encoder_attention_mask=prompt_attn_mask,
                             audio_encoder_attention_mask=prompt_attn_mask,
-                            self_attention_mask=None,
-                            audio_self_attention_mask=None,
                             num_frames=latent_num_frames,
                             height=latent_height,
                             width=latent_width,
