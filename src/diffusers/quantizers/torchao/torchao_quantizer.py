@@ -20,6 +20,7 @@ https://github.com/huggingface/transformers/blob/3a8eb74668e9c2cc563b2f5c62fac17
 import importlib
 import re
 import types
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from packaging import version
@@ -188,8 +189,58 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                         f"In order to use TorchAO pre-quantized model, you need to have torch>=2.5.0. However, the current version is {torch_version}."
                     )
 
+        attention_backend = getattr(self.quantization_config, "attention_backend", None)
+        if attention_backend is not None:
+            self._validate_attention_environment(attention_backend)
+
+    def _validate_attention_environment(self, attention_backend):
+        """Validate that the environment supports the requested attention backend."""
+        # Check torchao.prototype.attention is importable
+        try:
+            importlib.import_module("torchao.prototype.attention")
+        except (ImportError, ModuleNotFoundError):
+            raise ImportError(
+                f"attention_backend={attention_backend!r} requires `torchao.prototype.attention`. "
+                "Please install a version of torchao that includes the prototype attention module."
+            )
+
+        # Check PyTorch >= 2.11.0
+        torch_version_parsed = version.parse(version.parse(importlib.metadata.version("torch")).base_version)
+        if torch_version_parsed < version.parse("2.11.0"):
+            raise RuntimeError(
+                f"attention_backend={attention_backend!r} requires PyTorch >= 2.11.0, "
+                f"but the current version is {torch_version_parsed}."
+            )
+
+        # Check CUDA available with SM90+ (Hopper)
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                f"attention_backend={attention_backend!r} requires CUDA."
+            )
+        major, minor = torch.cuda.get_device_capability()
+        if major < 9:
+            raise RuntimeError(
+                f"attention_backend={attention_backend!r} requires Hopper GPU (SM90+), "
+                f"but the current device has SM{major}{minor}."
+            )
+
+        # Check FA3 availability
+        try:
+            importlib.import_module("flash_attn_interface")
+        except (ImportError, ModuleNotFoundError):
+            raise ImportError(
+                f"attention_backend={attention_backend!r} requires the flash-attn package with FA3 support. "
+                "Please install flash-attn with FA3 support."
+            )
+
     def update_torch_dtype(self, torch_dtype):
-        config_name = self.quantization_config.quant_type.__class__.__name__
+        quant_type = self.quantization_config.quant_type
+        if quant_type is None:
+            if torch_dtype is None:
+                torch_dtype = torch.bfloat16
+            return torch_dtype
+
+        config_name = quant_type.__class__.__name__
         is_int_quant = config_name.startswith("Int") or config_name.startswith("Uint")
         if is_int_quant and torch_dtype is not None and torch_dtype != torch.bfloat16:
             logger.warning(
@@ -209,6 +260,10 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         return torch_dtype
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
+        quant_type = self.quantization_config.quant_type
+        if quant_type is None:
+            return target_dtype
+
         from accelerate.utils import CustomDtype
 
         quant_type = self.quantization_config.quant_type
@@ -244,6 +299,9 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         state_dict: dict[str, Any],
         **kwargs,
     ) -> bool:
+        if self.quantization_config.quant_type is None:
+            return False
+
         param_device = kwargs.pop("param_device", None)
         # Check if the param_name is not in self.modules_to_not_convert
         if any((key + "." in param_name) or (key == param_name) for key in self.modules_to_not_convert):
@@ -298,6 +356,9 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         - Use a division factor of 8 for int4 weights
         - Use a division factor of 4 for int8 weights
         """
+        if self.quantization_config.quant_type is None:
+            return 4
+
         quant_type = self.quantization_config.quant_type
         config_name = quant_type.__class__.__name__
         size_digit = fuzzy_match_size(config_name)
@@ -314,6 +375,13 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         keep_in_fp32_modules: list[str] = [],
         **kwargs,
     ):
+        model.config.quantization_config = self.quantization_config
+
+        if self.quantization_config.quant_type is None:
+            # Attention-only mode: no weight quantization setup needed
+            self.modules_to_not_convert = []
+            return
+
         self.modules_to_not_convert = self.quantization_config.modules_to_not_convert
 
         if not isinstance(self.modules_to_not_convert, list):
@@ -332,10 +400,55 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         # and tied modules are usually kept in FP32.
         self.modules_to_not_convert = [module for module in self.modules_to_not_convert if module is not None]
 
-        model.config.quantization_config = self.quantization_config
-
     def _process_model_after_weight_loading(self, model: "ModelMixin"):
+        attention_backend = getattr(self.quantization_config, "attention_backend", None)
+        if attention_backend is not None:
+            self._apply_low_precision_attention(model, attention_backend)
         return model
+
+    def _apply_low_precision_attention(self, model, attention_backend):
+        """Apply low-precision attention by monkey-patching the model's forward.
+
+        Replaces the model's forward method with a wrapper that activates FA3 and
+        swaps F.scaled_dot_product_attention with the FP8 custom op for each forward
+        call.
+
+        Also sets the torch.compile pre-grad fusion pass for RoPE fusion.
+        """
+        import torch._inductor.config as inductor_config
+        import torch.nn.functional as F
+        from torch.nn.attention import activate_flash_attention_impl, restore_flash_attention_impl
+
+        from torchao.prototype.attention.fp8_fa3.attention import _ops
+        from torchao.prototype.attention.shared_utils.fusion_utils import rope_sdpa_fusion_pass
+        from torchao.prototype.attention.shared_utils.wrapper import _make_causal_aware_sdpa
+
+        # Diffusion models don't use causal masks
+        sdpa_patch_fn = _make_causal_aware_sdpa(_ops.fp8_sdpa_op, strip_causal_mask=False)
+
+        # Set the torch.compile fusion pass for RoPE fusion
+        inductor_config.pre_grad_custom_pass = partial(
+            rope_sdpa_fusion_pass,
+            rope_sdpa_op=_ops.rope_sdpa_op,
+            fp8_sdpa_op=_ops.fp8_sdpa_op,
+            backend_name="FA3",
+        )
+
+        original_forward = model.forward
+
+        def _fp8_attention_forward(*args, **kwargs):
+            activate_flash_attention_impl("FA3")
+            try:
+                original_sdpa = F.scaled_dot_product_attention
+                F.scaled_dot_product_attention = sdpa_patch_fn
+                try:
+                    return original_forward(*args, **kwargs)
+                finally:
+                    F.scaled_dot_product_attention = original_sdpa
+            finally:
+                restore_flash_attention_impl()
+
+        model.forward = _fp8_attention_forward
 
     def is_serializable(self, safe_serialization=None):
         # TODO(aryan): needs to be tested
@@ -371,7 +484,10 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
     @property
     def is_trainable(self):
-        return self.quantization_config.quant_type.__class__.__name__ in self._TRAINABLE_QUANTIZATION_CONFIGS
+        quant_type = self.quantization_config.quant_type
+        if quant_type is None:
+            return False
+        return quant_type.__class__.__name__ in self._TRAINABLE_QUANTIZATION_CONFIGS
 
     @property
     def is_compileable(self) -> bool:
