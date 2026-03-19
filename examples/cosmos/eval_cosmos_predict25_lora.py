@@ -142,6 +142,7 @@ def main():
 
     if args.lora_dir is not None:
         pipe.load_lora_weights(args.lora_dir)
+        pipe.fuse_lora(lora_scale=1.0)
         print(f"Loaded LoRA weights from {args.lora_dir}")
 
     latent_shape = pipe.get_latent_shape_cthw(args.height, args.width, args.num_output_frames)
