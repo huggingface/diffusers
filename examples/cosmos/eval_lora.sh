@@ -1,10 +1,8 @@
 revision='post-trained'
 data_dir='dream_gen_benchmark/gr1_object'
 
-lora_dir=None
-#lora_dir='outputs/gr1_ep100/checkpoint-'
-#lora_dir='outputs/gr1_ep100'
-#lora_dir='outputs/gr1_ep100/checkpoint-69'
+lora_dir=YOUR_LORA_WEIGHT_DIR
+#lora_dir=None
 
 if [ "$lora_dir" != "None" ]; then
   output_dir=$lora_dir/results
