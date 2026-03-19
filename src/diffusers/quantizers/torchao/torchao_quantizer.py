@@ -188,8 +188,19 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                         f"In order to use TorchAO pre-quantized model, you need to have torch>=2.5.0. However, the current version is {torch_version}."
                     )
 
+        if self.quantization_config.attention_backend is not None:
+            from torchao.prototype.attention import AttentionBackend
+
+            AttentionBackend(self.quantization_config.attention_backend.upper())
+
     def update_torch_dtype(self, torch_dtype):
-        config_name = self.quantization_config.quant_type.__class__.__name__
+        quant_type = self.quantization_config.quant_type
+        if quant_type is None:
+            if torch_dtype is None:
+                torch_dtype = torch.bfloat16
+            return torch_dtype
+
+        config_name = quant_type.__class__.__name__
         is_int_quant = config_name.startswith("Int") or config_name.startswith("Uint")
         if is_int_quant and torch_dtype is not None and torch_dtype != torch.bfloat16:
             logger.warning(
@@ -209,9 +220,12 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         return torch_dtype
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
+        quant_type = self.quantization_config.quant_type
+        if quant_type is None:
+            return target_dtype
+
         from accelerate.utils import CustomDtype
 
-        quant_type = self.quantization_config.quant_type
         config_name = quant_type.__class__.__name__
         size_digit = fuzzy_match_size(config_name)
 
@@ -244,6 +258,9 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         state_dict: dict[str, Any],
         **kwargs,
     ) -> bool:
+        if self.quantization_config.quant_type is None:
+            return False
+
         param_device = kwargs.pop("param_device", None)
         # Check if the param_name is not in self.modules_to_not_convert
         if any((key + "." in param_name) or (key == param_name) for key in self.modules_to_not_convert):
@@ -298,6 +315,9 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         - Use a division factor of 8 for int4 weights
         - Use a division factor of 4 for int8 weights
         """
+        if self.quantization_config.quant_type is None:
+            return 4
+
         quant_type = self.quantization_config.quant_type
         config_name = quant_type.__class__.__name__
         size_digit = fuzzy_match_size(config_name)
@@ -314,6 +334,13 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         keep_in_fp32_modules: list[str] = [],
         **kwargs,
     ):
+        model.config.quantization_config = self.quantization_config
+
+        if self.quantization_config.quant_type is None:
+            # Attention-only mode: no weight quantization setup needed
+            self.modules_to_not_convert = []
+            return
+
         self.modules_to_not_convert = self.quantization_config.modules_to_not_convert
 
         if not isinstance(self.modules_to_not_convert, list):
@@ -332,10 +359,72 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         # and tied modules are usually kept in FP32.
         self.modules_to_not_convert = [module for module in self.modules_to_not_convert if module is not None]
 
-        model.config.quantization_config = self.quantization_config
-
     def _process_model_after_weight_loading(self, model: "ModelMixin"):
+        if self.quantization_config.attention_backend is not None:
+            from torchao.prototype.attention import AttentionBackend, apply_low_precision_attention
+
+            backend = AttentionBackend(self.quantization_config.attention_backend.upper())
+            modules_to_not_convert = self.quantization_config.modules_to_not_convert or []
+
+            if not modules_to_not_convert:
+                apply_low_precision_attention(model, backend=backend, inplace=True)
+            else:
+                parent_name, excluded_names = self._parse_attention_exclusions(modules_to_not_convert, model)
+                if parent_name is None:
+                    apply_low_precision_attention(model, backend=backend, inplace=True)
+                else:
+                    parent_module = model.get_submodule(parent_name)
+                    for name, child in parent_module.named_children():
+                        if name not in excluded_names:
+                            apply_low_precision_attention(child, backend=backend, inplace=True)
+
         return model
+
+    def _parse_attention_exclusions(self, modules_to_not_convert, model):
+        """Parse and validate modules_to_not_convert for attention exclusion.
+
+        Returns (parent_name, excluded_child_names) or (None, None) if validation fails with a warning.
+        """
+        # Check all keys have a parent (contain a dot)
+        for key in modules_to_not_convert:
+            if "." not in key:
+                logger.warning(
+                    f"modules_to_not_convert key {key!r} is a top-level module and cannot be used for "
+                    f"selective attention exclusion. Low-precision attention will be applied to the entire model."
+                )
+                return None, None
+
+        # Check all keys share the same parent
+        parents = {key.rsplit(".", 1)[0] for key in modules_to_not_convert}
+        if len(parents) > 1:
+            logger.warning(
+                f"modules_to_not_convert keys have different parent modules: {sorted(parents)}. "
+                f"All keys must share the same parent for selective attention exclusion. "
+                f"Low-precision attention will be applied to the entire model."
+            )
+            return None, None
+
+        parent_name = parents.pop()
+
+        # Check parent exists
+        try:
+            parent_module = model.get_submodule(parent_name)
+        except AttributeError:
+            raise ValueError(
+                f"Parent module {parent_name!r} (from modules_to_not_convert) does not exist in the model."
+            )
+
+        # Check all excluded children exist
+        child_names = {name for name, _ in parent_module.named_children()}
+        excluded_names = {key.rsplit(".", 1)[1] for key in modules_to_not_convert}
+        invalid = excluded_names - child_names
+        if invalid:
+            raise ValueError(
+                f"modules_to_not_convert references non-existent modules: {sorted(invalid)}. "
+                f"Available children of {parent_name!r}: {sorted(child_names)}"
+            )
+
+        return parent_name, excluded_names
 
     def is_serializable(self, safe_serialization=None):
         # TODO(aryan): needs to be tested
@@ -371,7 +460,10 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
     @property
     def is_trainable(self):
-        return self.quantization_config.quant_type.__class__.__name__ in self._TRAINABLE_QUANTIZATION_CONFIGS
+        quant_type = self.quantization_config.quant_type
+        if quant_type is None:
+            return False
+        return quant_type.__class__.__name__ in self._TRAINABLE_QUANTIZATION_CONFIGS
 
     @property
     def is_compileable(self) -> bool:
