@@ -713,7 +713,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             latents = self._create_noised_state(latents, noise_scale, generator)
             return latents.to(device=device, dtype=dtype)
 
-        # TODO: confirm whether this logic is correct
         latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
 
         shape = (batch_size, num_channels_latents, audio_latent_length, latent_mel_bins)
@@ -727,6 +726,24 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         latents = self._pack_audio_latents(latents)
         return latents
+
+    def convert_velocity_to_x0(
+        self, sample: torch.Tensor, denoised_output: torch.Tensor, step_idx: int, scheduler: Any | None = None
+    ) -> torch.Tensor:
+        if scheduler is None:
+            scheduler = self.scheduler
+
+        sample_x0 = sample - denoised_output * scheduler.sigmas[step_idx]
+        return sample_x0
+
+    def convert_x0_to_velocity(
+        self, sample: torch.Tensor, denoised_output: torch.Tensor, step_idx: int, scheduler: Any | None = None
+    ) -> torch.Tensor:
+        if scheduler is None:
+            scheduler = self.scheduler
+
+        sample_v = (sample - denoised_output) / scheduler.sigmas[step_idx]
+        return sample_v
 
     @property
     def guidance_scale(self):
@@ -1232,10 +1249,18 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
 
                 if self.do_classifier_free_guidance:
                     noise_pred_video_uncond_text, noise_pred_video = noise_pred_video.chunk(2)
+                    noise_pred_video = self.convert_velocity_to_x0(latents, noise_pred_video, i, self.scheduler)
+                    noise_pred_video_uncond_text = self.convert_velocity_to_x0(
+                        latents, noise_pred_video_uncond_text, i, self.scheduler
+                    )
                     # Use delta formulation as it works more nicely with multiple guidance terms
                     video_cfg_delta = (self.guidance_scale - 1) * (noise_pred_video - noise_pred_video_uncond_text)
 
                     noise_pred_audio_uncond_text, noise_pred_audio = noise_pred_audio.chunk(2)
+                    noise_pred_audio = self.convert_velocity_to_x0(audio_latents, noise_pred_audio, i, audio_scheduler)
+                    noise_pred_audio_uncond_text = self.convert_velocity_to_x0(
+                        audio_latents, noise_pred_audio_uncond_text, i, audio_scheduler
+                    )
                     audio_cfg_delta = (self.audio_guidance_scale - 1) * (
                         noise_pred_audio - noise_pred_audio_uncond_text
                     )
@@ -1262,6 +1287,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
 
                     video_pos_ids = video_coords
                     audio_pos_ids = audio_coords
+
+                    noise_pred_video = self.convert_velocity_to_x0(latents, noise_pred_video, i, self.scheduler)
+                    noise_pred_audio = self.convert_velocity_to_x0(audio_latents, noise_pred_audio, i, audio_scheduler)
 
                 if self.do_spatio_temporal_guidance:
                     with self.transformer.cache_context("uncond_stg"):
@@ -1291,6 +1319,12 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                         )
                     noise_pred_video_uncond_stg = noise_pred_video_uncond_stg.float()
                     noise_pred_audio_uncond_stg = noise_pred_audio_uncond_stg.float()
+                    noise_pred_video_uncond_stg = self.convert_velocity_to_x0(
+                        latents, noise_pred_video_uncond_stg, i, self.scheduler
+                    )
+                    noise_pred_audio_uncond_stg = self.convert_velocity_to_x0(
+                        audio_latents, noise_pred_audio_uncond_stg, i, audio_scheduler
+                    )
 
                     video_stg_delta = self.stg_scale * (noise_pred_video - noise_pred_video_uncond_stg)
                     audio_stg_delta = self.audio_stg_scale * (noise_pred_audio - noise_pred_audio_uncond_stg)
@@ -1325,6 +1359,12 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                         )
                     noise_pred_video_uncond_modality = noise_pred_video_uncond_modality.float()
                     noise_pred_audio_uncond_modality = noise_pred_audio_uncond_modality.float()
+                    noise_pred_video_uncond_modality = self.convert_velocity_to_x0(
+                        latents, noise_pred_video_uncond_modality, i, self.scheduler
+                    )
+                    noise_pred_audio_uncond_modality = self.convert_velocity_to_x0(
+                        audio_latents, noise_pred_audio_uncond_modality, i, audio_scheduler
+                    )
 
                     video_modality_delta = (self.modality_scale - 1) * (
                         noise_pred_video - noise_pred_video_uncond_modality
@@ -1341,34 +1381,22 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
 
                 # Apply LTX-2.X guidance rescaling
                 if self.guidance_rescale > 0:
-                    # Convert from velocity to sample (x0) prediction
-                    video_guided_x0 = latents - noise_pred_video_g * self.scheduler.sigmas[i]
-                    video_cond_x0 = latents - noise_pred_video * self.scheduler.sigmas[i]
-
-                    # Apply guidance rescaling in sample (x0) space, following original code
-                    video_guided_x0 = rescale_noise_cfg(
-                        video_guided_x0, video_cond_x0, guidance_rescale=self.guidance_rescale
+                    noise_pred_video = rescale_noise_cfg(
+                        noise_pred_video_g, noise_pred_video, guidance_rescale=self.guidance_rescale
                     )
-
-                    # Convert back to velocity space for scheduler
-                    noise_pred_video = (latents - video_guided_x0) / self.scheduler.sigmas[i]
                 else:
                     noise_pred_video = noise_pred_video_g
 
                 if self.audio_guidance_rescale > 0:
-                    # Convert from velocity to sample (x0) prediction
-                    audio_guided_x0 = audio_latents - noise_pred_audio_g * audio_scheduler.sigmas[i]
-                    audio_cond_x0 = audio_latents - noise_pred_audio * audio_scheduler.sigmas[i]
-
-                    # Apply guidance rescaling in sample (x0) space, following original code
-                    audio_guided_x0 = rescale_noise_cfg(
-                        audio_guided_x0, audio_cond_x0, guidance_rescale=self.audio_guidance_rescale
+                    noise_pred_audio = rescale_noise_cfg(
+                        noise_pred_audio_g, noise_pred_audio, guidance_rescale=self.audio_guidance_rescale
                     )
-
-                    # Convert back to velocity space for scheduler
-                    noise_pred_audio = (audio_latents - audio_guided_x0) / audio_scheduler.sigmas[i]
                 else:
                     noise_pred_audio = noise_pred_audio_g
+
+                # Convert back to velocity for scheduler
+                noise_pred_video = self.convert_x0_to_velocity(latents, noise_pred_video, i, self.scheduler)
+                noise_pred_audio = self.convert_x0_to_velocity(audio_latents, noise_pred_audio, i, audio_scheduler)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred_video, t, latents, return_dict=False)[0]
@@ -1400,9 +1428,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
             self.transformer_spatial_patch_size,
             self.transformer_temporal_patch_size,
         )
-        latents = self._denormalize_latents(
-            latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-        )
 
         audio_latents = self._denormalize_audio_latents(
             audio_latents, self.audio_vae.latents_mean, self.audio_vae.latents_std
@@ -1410,6 +1435,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         audio_latents = self._unpack_audio_latents(audio_latents, audio_num_frames, num_mel_bins=latent_mel_bins)
 
         if output_type == "latent":
+            latents = self._denormalize_latents(
+                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
             video = latents
             audio = audio_latents
         else:
@@ -1431,6 +1459,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                     :, None, None, None, None
                 ]
                 latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
+
+            latents = self._denormalize_latents(
+                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
 
             latents = latents.to(self.vae.dtype)
             video = self.vae.decode(latents, timestep, return_dict=False)[0]
