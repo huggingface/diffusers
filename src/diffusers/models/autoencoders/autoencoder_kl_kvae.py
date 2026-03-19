@@ -18,7 +18,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import deprecate
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
@@ -199,7 +198,7 @@ class KVAEPXSUpsample(nn.Module):
         return self.linear(out)
 
 
-class KVAEDecoderSpacialNorm2D(nn.Module):
+class KVAEDecoderSpatialNorm2D(nn.Module):
     r"""
     A 2D normalization module for decoder.
 
@@ -429,7 +428,7 @@ class KVAEDecoder2D(nn.Module):
             temb_channels=self.temb_ch,
             zq_ch=zq_ch,
             add_conv=add_conv,
-            normalization=KVAEDecoderSpacialNorm2D,
+            normalization=KVAEDecoderSpatialNorm2D,
         )
 
         self.mid.block_2 = KVAEResnetBlock2D(
@@ -438,7 +437,7 @@ class KVAEDecoder2D(nn.Module):
             temb_channels=self.temb_ch,
             zq_ch=zq_ch,
             add_conv=add_conv,
-            normalization=KVAEDecoderSpacialNorm2D,
+            normalization=KVAEDecoderSpatialNorm2D,
         )
 
         # upsampling
@@ -455,7 +454,7 @@ class KVAEDecoder2D(nn.Module):
                         temb_channels=self.temb_ch,
                         zq_ch=zq_ch,
                         add_conv=add_conv,
-                        normalization=KVAEDecoderSpacialNorm2D,
+                        normalization=KVAEDecoderSpatialNorm2D,
                     )
                 )
                 block_in = block_out
@@ -466,7 +465,7 @@ class KVAEDecoder2D(nn.Module):
                 up.upsample = KVAEPXSUpsample(in_channels=block_in)
             self.up.insert(0, up)
 
-        self.norm_out =KVAEDecoderSpacialNorm2D(block_in, zq_ch, add_conv=add_conv)  # , gather=gather_norm)
+        self.norm_out =KVAEDecoderSpatialNorm2D(block_in, zq_ch, add_conv=add_conv)  # , gather=gather_norm)
 
         self.conv_out = nn.Conv2d(
             in_channels=block_in, out_channels=out_ch, kernel_size=3, padding=(1, 1), padding_mode="replicate"
@@ -478,9 +477,7 @@ class KVAEDecoder2D(nn.Module):
         # timestep embedding
         temb = None
 
-        t = z.shape[2]
         # z to block_in
-
         zq = z
         h = self.conv_in(z)
 

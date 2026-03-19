@@ -19,6 +19,7 @@ The 2D variational autoencoder (VAE) model with KL loss.
 The model can be loaded with the following code snippet.
 
 ```python
+import torch
 from diffusers import AutoencoderKLKVAE
 
 vae = AutoencoderKLKVAE.from_pretrained("kandinskylab/KVAE-2D-1.0", subfolder="diffusers", torch_dtype=torch.bfloat16)
