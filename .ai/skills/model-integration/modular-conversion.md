@@ -148,5 +148,5 @@ ComponentSpec(
 - [ ] Create pipeline class with `default_blocks_name`
 - [ ] Assemble blocks in `modular_blocks_<model>.py`
 - [ ] Wire up `__init__.py` with lazy imports
-- [ ] Run `make style`
+- [ ] Run `make style` and `make quality`
 - [ ] Test all workflows for parity with reference

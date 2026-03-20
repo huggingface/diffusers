@@ -16,12 +16,6 @@ Before writing any test code, gather:
 
 When invoked from the `model-integration` skill, you already have context: the reference script comes from step 2 of setup, and the diffusers script is the one you just wrote. You just need to make sure both scripts are runnable and use the same inputs/seed/params.
 
-## Principles
-
-1. **Match noise generation first.** The way initial noise/latents are constructed (seed handling, generator, randn call order) often differs between the two scripts. If the noise doesn't match, nothing downstream will match, making it impossible to isolate other bugs. Check how noise is initialized in the diffusers script — if it doesn't match the reference, temporarily change it to match. Note what you changed so it can be reverted after parity is confirmed.
-
-2. **Test from the start.** Have component tests ready BEFORE writing conversion code. Test bottom-up: components first, then pipeline stages, then e2e. If the user already suspects where divergence is, start there instead of testing bottom-up.
-
 ## Test strategy
 
 **Component parity (CPU/float32) -- always run, as you build.**
@@ -67,6 +61,10 @@ Key points: (a) both reference and diffusers component in one script -- never sp
 Both pipelines generate independently with identical seeds/params. Save outputs and compare visually. If outputs look identical, you're done -- no need for deeper testing.
 
 **Pipeline stage tests -- only if E2E fails and you need to isolate the bug.**
+If the user already suspects where divergence is, start there. Otherwise, work through stages in order.
+
+First, **match noise generation**: the way initial noise/latents are constructed (seed handling, generator, randn call order) often differs between the two scripts. If the noise doesn't match, nothing downstream will match. Check how noise is initialized in the diffusers script — if it doesn't match the reference, temporarily change it to match. Note what you changed so it can be reverted after parity is confirmed.
+
 For small models, run on CPU/float32 for strict comparison. For large models (e.g. 22B params), CPU/float32 is impractical -- use GPU/bfloat16 with `enable_model_cpu_offload()` and relax tolerances (max_diff < 1e-1 for bfloat16 is typical for passing tests; cosine similarity > 0.9999 is a good secondary check).
 
 Test encode and decode stages first -- they're simpler and bugs there are easier to fix. Only debug the denoising loop if encode and decode both pass.
@@ -146,8 +144,7 @@ extract_frames(diff_video, [0, 60, 120])
 5. **Test both fresh conversion AND saved model.** Fresh catches conversion logic bugs; saved catches stale/corrupted weights from previous runs.
 6. **Diff configs before debugging.** Before investigating any divergence, dump and compare all config values. A 30-second config diff prevents hours of debugging based on wrong assumptions.
 7. **Never modify cached/downloaded model configs directly.** Don't edit files in `~/.cache/huggingface/`. Instead, save to a local directory or open a PR on the upstream repo.
-8. **Test decode before denoise.** Always verify the decoder works correctly before spending time on the denoising loop.
-9. **Compare ALL loop inputs in the encode test.** The preloop checkpoint must capture every single tensor the transformer forward() will receive.
+8. **Compare ALL loop inputs in the encode test.** The preloop checkpoint must capture every single tensor the transformer forward() will receive.
 
 ## Comparison utilities
 
