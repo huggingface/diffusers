@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -250,6 +251,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         )
         self.tokenizer_max_length = 512
         self.default_sample_size = 128
+        self._current_timestep = None
 
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2_klein.Flux2KleinPipeline._get_qwen3_prompt_embeds
@@ -469,6 +471,27 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             x_list.append(out)
 
         return torch.stack(x_list, dim=0)
+
+    @staticmethod
+    def _get_raw_image_size(image: PipelineImageInput) -> Tuple[int, int]:
+        """Helper to get (height, width) without rounding/scaling."""
+        if isinstance(image, list):
+            image = image[0]
+
+        if isinstance(image, PIL.Image.Image):
+            return image.height, image.width
+        elif isinstance(image, torch.Tensor):
+            return image.shape[-2], image.shape[-1]
+        elif isinstance(image, np.ndarray):
+            return (
+                image.shape[-3] if image.ndim > 3 else image.shape[-2],
+                image.shape[-2] if image.ndim > 3 else image.shape[-1],
+            )
+
+        if hasattr(image, "shape"):
+            return image.shape[-2], image.shape[-1]
+
+        raise ValueError(f"Unsupported image type: {type(image)}")
 
     # Copied from diffusers.pipelines.flux2.pipeline_flux2_klein.Flux2KleinPipeline.encode_prompt
     def encode_prompt(
@@ -756,6 +779,10 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return self._num_timesteps
 
     @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
     def interrupt(self):
         return self._interrupt
 
@@ -924,10 +951,16 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             if isinstance(image, list) and isinstance(image[0], torch.Tensor) and image[0].ndim == 4:
                 image = torch.cat(image, dim=0)
             img = image[0] if isinstance(image, list) else image
-            image_height, image_width = self.image_processor.get_default_height_width(img)
-            image_width = image_width // multiple_of * multiple_of
-            image_height = image_height // multiple_of * multiple_of
-            image = self.image_processor.resize(image, image_height, image_width)
+            raw_h, raw_w = self._get_raw_image_size(img)
+
+            if raw_h * raw_w > 1024 * 1024:
+                scale = math.sqrt(1024 * 1024 / (raw_h * raw_w))
+                image = self.image_processor.resize(image, int(raw_h * scale), int(raw_w * scale))
+                img = image[0] if isinstance(image, list) else image
+                raw_h, raw_w = self._get_raw_image_size(img)
+
+            image_width = (raw_w // multiple_of) * multiple_of
+            image_height = (raw_h // multiple_of) * multiple_of
 
             # Use the resolution of the input image
             width = image_width
@@ -963,14 +996,19 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 image_reference = torch.cat(image_reference, dim=0)
 
             img_reference = image_reference[0] if isinstance(image_reference, list) else image_reference
-            image_reference_height, image_reference_width = self.image_processor.get_default_height_width(
-                img_reference
-            )
-            image_reference_width = image_reference_width // multiple_of * multiple_of
-            image_reference_height = image_reference_height // multiple_of * multiple_of
-            image_reference = self.image_processor.resize(
-                image_reference, image_reference_height, image_reference_width
-            )
+            raw_ref_h, raw_ref_w = self._get_raw_image_size(img_reference)
+
+            if raw_ref_h * raw_ref_w > 1024 * 1024:
+                scale = math.sqrt(1024 * 1024 / (raw_ref_h * raw_ref_w))
+                image_reference = self.image_processor.resize(
+                    image_reference, int(raw_ref_h * scale), int(raw_ref_w * scale)
+                )
+                img_reference = image_reference[0] if isinstance(image_reference, list) else image_reference
+                raw_ref_h, raw_ref_w = self._get_raw_image_size(img_reference)
+
+            image_reference_width = (raw_ref_w // multiple_of) * multiple_of
+            image_reference_height = (raw_ref_h // multiple_of) * multiple_of
+
             processed_image_reference = self.image_processor.preprocess(
                 image_reference,
                 image_reference_height,
@@ -1089,6 +1127,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 if self.interrupt:
                     continue
 
+                self._current_timestep = t
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
@@ -1160,6 +1199,8 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
+
+        self._current_timestep = None
 
         # 8. Post-processing
         latents = self._unpack_latents_with_ids(latents, latent_image_ids)
