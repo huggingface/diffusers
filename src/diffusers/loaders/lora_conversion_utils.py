@@ -2156,6 +2156,9 @@ def _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict, non_diffusers_pref
             "scale_shift_table_a2v_ca_audio": "audio_a2v_cross_attn_scale_shift_table",
             "q_norm": "norm_q",
             "k_norm": "norm_k",
+            # LTX-2.3
+            "audio_prompt_adaln_single": "audio_prompt_adaln",
+            "prompt_adaln_single": "prompt_adaln",
         }
     else:
         rename_dict = {"aggregate_embed": "text_proj_in"}
@@ -2538,8 +2541,12 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
 
     def get_alpha_scales(down_weight, alpha_key):
         rank = down_weight.shape[0]
-        alpha = state_dict.pop(alpha_key).item()
-        scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
+        alpha_tensor = state_dict.pop(alpha_key, None)
+        if alpha_tensor is None:
+            return 1.0, 1.0
+        scale = (
+            alpha_tensor.item() / rank
+        )  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
         scale_down = scale
         scale_up = 1.0
         while scale_down * 2 < scale_up:

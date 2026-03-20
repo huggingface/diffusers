@@ -14,6 +14,8 @@
   sections:
   - local: using-diffusers/schedulers
     title: Load schedulers and models
+  - local: using-diffusers/guiders
+    title: Guiders
 
 - title: Inference
   isExpanded: false
@@ -80,8 +82,6 @@
     title: ModularPipeline
   - local: modular_diffusers/components_manager
     title: ComponentsManager
-  - local: modular_diffusers/guiders
-    title: Guiders
 
 - title: Training
   isExpanded: false
