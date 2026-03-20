@@ -242,8 +242,8 @@ class KVAECachedSpatialNorm3D(nn.Module):
             zq = self.conv(zq, cache['add_conv'])
 
         norm_f = self.norm_layer(f, cache['norm'])
-        norm_f.mul_(self.conv_y(zq))
-        norm_f.add_(self.conv_b(zq))
+        norm_f = norm_f * self.conv_y(zq)
+        norm_f = norm_f + self.conv_b(zq)
 
         return norm_f
 
@@ -303,7 +303,7 @@ class KVAECachedResnetBlock3D(nn.Module):
             # Decoder path - spatial norm takes zq and cache
             h = self.norm1(h, zq, cache=layer_cache['norm1'])
 
-        h = F.silu(h, inplace=True)
+        h = F.silu(h)
         h = self.conv1(h, cache=layer_cache['conv1'])
 
         if temb is not None:
@@ -314,7 +314,7 @@ class KVAECachedResnetBlock3D(nn.Module):
         else:
             h = self.norm2(h, zq, cache=layer_cache['norm2'])
 
-        h = F.silu(h, inplace=True)
+        h = F.silu(h)
         h = self.conv2(h, cache=layer_cache['conv2'])
 
         if self.in_channels != self.out_channels:
@@ -423,10 +423,8 @@ class KVAECachedPXSUpsample(nn.Module):
         input_interp = F.interpolate(input_view, scale_factor=2, mode='nearest')
         input_interp = input_interp.view(b, t, c, 2 * h, 2 * w).permute(0, 2, 1, 3, 4)
 
-        to = torch.empty_like(input_interp)
-        out = self.spatial_conv(input_interp, write_to=to)
-        input_interp.add_(out)
-        return input_interp
+        out = self.spatial_conv(input_interp)
+        return input_interp + out
 
     def temporal_upsample(self, input: torch.Tensor, cache: Dict) -> torch.Tensor:
         time_factor = 1.0 + 1.0 * (input.size(2) > 1)
