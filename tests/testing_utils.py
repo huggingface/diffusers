@@ -1235,10 +1235,12 @@ def is_flaky(max_attempts: int = 5, wait_before_retry: float | None = None, desc
     def decorator(obj):
         # If decorating a class, wrap each test method on it
         if inspect.isclass(obj):
-            for attr_name, attr_value in list(obj.__dict__.items()):
-                if callable(attr_value) and attr_name.startswith("test"):
-                    # recursively decorate the method
-                    setattr(obj, attr_name, decorator(attr_value))
+            # Use dir() instead of __dict__ to include inherited test methods from
+            # parent classes (e.g., mixin base classes). __dict__ only contains methods
+            # defined directly on the class, so inherited tests would not be retried.
+            for attr_name in list(dir(obj)):
+                if attr_name.startswith("test") and callable(getattr(obj, attr_name, None)):
+                    setattr(obj, attr_name, decorator(getattr(obj, attr_name)))
             return obj
 
         # Otherwise we're decorating a single test function / method
