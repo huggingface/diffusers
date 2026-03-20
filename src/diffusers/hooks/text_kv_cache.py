@@ -19,15 +19,15 @@ import torch
 from .hooks import HookRegistry, ModelHook
 
 
-_TEXT_KV_CACHE_HOOK = "nucleus_moe_text_kv_cache"
+_TEXT_KV_CACHE_HOOK = "text_kv_cache"
 
 
 @dataclass
-class NucleusMoETextKVCacheConfig:
-    """Enable exact (lossless) text K/V caching for NucleusMoEImageTransformer2DModel.
+class TextKVCacheConfig:
+    """Enable exact (lossless) text K/V caching for transformer models.
 
     Pre-computes per-block text key and value projections once before the
-    denoising loop and reuses them across all steps.  The cached values are keyed by
+    denoising loop and reuses them across all steps. The cached values are keyed by
     the ``data_ptr()`` of the ``encoder_hidden_states`` tensor so that both the positive
     and negative prompts (when ``true_cfg_scale > 1``) are handled correctly.
     """
@@ -35,14 +35,14 @@ class NucleusMoETextKVCacheConfig:
     pass  # no hyperparameters needed — cache is always exact
 
 
-class NucleusMoETextKVCacheHook(ModelHook):
+class TextKVCacheHook(ModelHook):
     """Block-level hook that caches (txt_key, txt_value) per unique prompt."""
 
     _is_stateful = True
 
     def __init__(self):
         super().__init__()
-        # Maps encoder_hidden_states.data_ptr() → (context, txt_key, txt_value)
+        # Maps encoder_hidden_states.data_ptr() → (txt_key, txt_value)
         self.kv_cache: dict[int, tuple] = {}
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
@@ -99,11 +99,11 @@ class NucleusMoETextKVCacheHook(ModelHook):
         return module
 
 
-def apply_nucleus_moe_text_kv_cache(module: torch.nn.Module, config: NucleusMoETextKVCacheConfig) -> None:
+def apply_text_kv_cache(module: torch.nn.Module, config: TextKVCacheConfig) -> None:
     from ..models.transformers.transformer_nucleusmoe_image import NucleusMoEImageTransformerBlock
 
     for _, submodule in module.named_modules():
         if isinstance(submodule, NucleusMoEImageTransformerBlock):
-            hook = NucleusMoETextKVCacheHook()
+            hook = TextKVCacheHook()
             registry = HookRegistry.check_if_exists_or_initialize(submodule)
             registry.register_hook(hook, _TEXT_KV_CACHE_HOOK)
