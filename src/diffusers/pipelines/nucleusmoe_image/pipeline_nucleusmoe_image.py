@@ -39,7 +39,7 @@ else:
 logger = logging.get_logger(__name__)
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are an assistant designed to generate photorealistic, ultra-high-quality images based on user prompts."
+    "You are an image generation assistant. Follow the user's prompt literally. Pay careful attention to spatial layout: objects described as on the left must appear on the left, on the right on the right. Match exact object counts and assign colors to the correct objects."
 )
 
 EXAMPLE_DOC_STRING = """
