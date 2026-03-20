@@ -160,6 +160,7 @@ else:
         "CogVideoXImageToVideoPipeline",
         "CogVideoXVideoToVideoPipeline",
         "CogVideoXFunControlPipeline",
+        "CogVideoXFunInpaintPipeline",
     ]
     _import_structure["cogview3"] = ["CogView3PlusPipeline"]
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
@@ -594,6 +595,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .chronoedit import ChronoEditPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
+            CogVideoXFunInpaintPipeline,
             CogVideoXImageToVideoPipeline,
             CogVideoXPipeline,
             CogVideoXVideoToVideoPipeline,
