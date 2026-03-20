@@ -572,9 +572,9 @@ For documentation strings, 🧨 Diffusers follows the [Google style](https://goo
 
 The repository keeps AI-agent configuration in `.ai/` and exposes local agent files via symlinks.
 
-- **Source of truth** — edit `.ai/AGENTS.md` (and any future `.ai/skills/`)
-- **Don't edit** generated root-level `AGENTS.md` or `CLAUDE.md` — they are symlinks
+- **Source of truth** — edit files under `.ai/` (`AGENTS.md` for coding guidelines, `skills/` for on-demand task knowledge)
+- **Don't edit** generated root-level `AGENTS.md`, `CLAUDE.md`, or `.agents/skills`/`.claude/skills` — they are symlinks
 - Setup commands:
-  - `make codex` — symlink for OpenAI Codex
-  - `make claude` — symlink for Claude Code
-  - `make clean-ai` — remove generated symlinks
+  - `make codex` — symlink guidelines + skills for OpenAI Codex
+  - `make claude` — symlink guidelines + skills for Claude Code
+  - `make clean-ai` — remove all generated symlinks
