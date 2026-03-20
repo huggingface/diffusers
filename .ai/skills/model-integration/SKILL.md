@@ -1,10 +1,32 @@
 ---
-name: Model Integration
+name: integrating-models
 description: >
-  Patterns for integrating a new model into diffusers: standard pipeline setup,
-  modular pipeline conversion, file structure templates, checklists, and conventions.
-  Trigger: adding a new model, converting to modular pipeline, setting up file structure.
+  Use when adding a new model or pipeline to diffusers, setting up file
+  structure for a new model, converting a pipeline to modular format, or
+  converting weights for a new version of an already-supported model.
 ---
+
+## Goal
+
+Integrate a new model into diffusers end-to-end. The overall flow:
+
+1. **Gather info** — ask the user for the reference repo, setup guide, a runnable inference script, and other objectives such as standard vs modular.
+2. **Confirm the plan** — once you have everything, tell the user exactly what you'll do: e.g. "I'll integrate model X with pipeline Y into diffusers based on your script. I'll run parity tests (model-level and pipeline-level) using the `parity-testing` skill to verify numerical correctness against the reference."
+3. **Implement** — write the diffusers code (model, pipeline, scheduler if needed), convert weights, register in `__init__.py`.
+4. **Parity test** — use the `parity-testing` skill to verify component and e2e parity against the reference implementation.
+5. **Deliver a unit test** — provide a self-contained test script that runs the diffusers implementation, checks numerical output (np allclose), and saves an image/video for visual verification. This is what the user runs to confirm everything works.
+
+Work one workflow at a time — get it to full parity before moving on.
+
+## Setup — gather before starting
+
+Before writing any code, gather info in this order:
+
+1. **Reference repo** — ask for the github link. If they've already set it up locally, ask for the path. Otherwise, ask what setup steps are needed (install deps, download checkpoints, set env vars, etc.) and run through them before proceeding.
+2. **Inference script** — ask for a runnable end-to-end script for a basic workflow first (e.g. T2V). Then ask what other workflows they want to support (I2V, V2V, etc.) and agree on the full implementation order together.
+3. **Standard vs modular** — standard pipelines, modular, or both?
+
+Use `AskUserQuestion` with structured choices for step 3 when the options are known.
 
 ## Standard Pipeline Integration
 
@@ -87,8 +109,9 @@ class MyModelAttention(nn.Module, AttentionModuleMixin):
 
 Consult the implementations in `src/diffusers/models/transformers/` if you need further references.
 
-### Pipeline rules
+### Implementation rules
 
+- **Don't combine structural changes with behavioral changes.** Restructuring code to fit diffusers APIs (ModelMixin, ConfigMixin, etc.) is unavoidable. But don't also "improve" the algorithm, refactor computation order, or rename internal variables for aesthetics. Keep numerical logic as close to the reference as possible, even if it looks unclean. For standard → modular, this is stricter: copy loop logic verbatim and only restructure into blocks. Clean up in a separate commit after parity is confirmed.
 - All pipelines must inherit from `DiffusionPipeline`. Consult implementations in `src/diffusers/pipelines` in case you need references.
 - DO NOT use an existing pipeline class (e.g., `FluxPipeline`) to override another pipeline (e.g., `FluxImg2ImgPipeline` which will be a part of the core codebase (`src`).
 
@@ -106,170 +129,30 @@ Consult the implementations in `src/diffusers/models/transformers/` if you need 
 - Support `output_type="latent"` for skipping VAE decode
 - Support `generator` parameter for reproducibility
 - Use `self.progress_bar(timesteps)` for progress tracking
-### Misc
 
-**Dealing with new dependencies:**
+## Gotchas
 
-Don't arbitrarily add new dependencies even if the reference code has it. Always try to implement operations with pure PyTorch first. For example, anything implemented with `einops` can be implemented with just PyTorch.
+1. **Forgetting `__init__.py` lazy imports.** Every new class must be registered in the appropriate `__init__.py` with lazy imports. Missing this causes `ImportError` that only shows up when users try `from diffusers import YourNewClass`.
 
-If you need to rely on a particularly dependency its import should be guarded:
+2. **Using `einops` or other non-PyTorch deps.** Reference implementations often use `einops.rearrange`. Always rewrite with native PyTorch (`reshape`, `permute`, `unflatten`). Don't add the dependency. If a dependency is truly unavoidable, guard its import: `if is_my_dependency_available(): import my_dependency`.
 
-`if is_my_dependency_available(): import my_dependency`
+3. **Missing `make fix-copies` after `# Copied from`.** If you add `# Copied from` annotations, you must run `make fix-copies` to propagate them. CI will fail otherwise.
+
+4. **Wrong `_supports_cache_class` / `_no_split_modules`.** These class attributes control KV cache and device placement. Copy from a similar model and verify -- wrong values cause silent correctness bugs or OOM errors.
+
+5. **Missing `@torch.no_grad()` on pipeline `__call__`.** Forgetting this causes GPU OOM from gradient accumulation during inference.
+
+6. **Config serialization gaps.** Every `__init__` parameter in a `ModelMixin` subclass must be captured by `register_to_config`. If you add a new param but forget to register it, `from_pretrained` will silently use the default instead of the saved value.
+
+7. **Forgetting to update `_import_structure` and `_lazy_modules`.** The top-level `src/diffusers/__init__.py` has both -- missing either one causes partial import failures.
+
+8. **Hardcoded dtype in model forward.** Don't hardcode `torch.float32` or `torch.bfloat16` in the model's forward pass. Use the dtype of the input tensors or `self.dtype` so the model works with any precision.
 
 ---
 
 ## Modular Pipeline Conversion
 
-### When to use
-
-Modular pipelines break a monolithic `__call__` into composable blocks. Convert when:
-- The model supports multiple workflows (T2V, I2V, V2V, etc.)
-- Users need to swap guidance strategies (CFG, CFG-Zero*, PAG)
-- You want to share blocks across pipeline variants
-
-### File structure
-
-```
-src/diffusers/modular_pipelines/<model>/
-  __init__.py                          # Lazy imports
-  modular_pipeline.py                  # Pipeline class (tiny, mostly config)
-  encoders.py                          # Text encoder + image/video VAE encoder blocks
-  before_denoise.py                    # Pre-denoise setup blocks
-  denoise.py                           # The denoising loop blocks
-  decoders.py                          # VAE decode block
-  modular_blocks_<model>.py            # Block assembly (AutoBlocks)
-```
-
-### Block types decision tree
-
-```
-Is this a single operation?
-  YES -> ModularPipelineBlocks (leaf block)
-
-Does it run multiple blocks in sequence?
-  YES -> SequentialPipelineBlocks
-    Does it iterate (e.g. chunk loop)?
-      YES -> LoopSequentialPipelineBlocks
-
-Does it choose ONE block based on which input is present?
-  Is the selection 1:1 with trigger inputs?
-    YES -> AutoPipelineBlocks (simple trigger mapping)
-    NO  -> ConditionalPipelineBlocks (custom select_block method)
-```
-
-### Build order (easiest first)
-
-1. `decoders.py` -- Takes latents, runs VAE decode, returns images/videos
-2. `encoders.py` -- Takes prompt, returns prompt_embeds. Add image/video VAE encoder if needed
-3. `before_denoise.py` -- Timesteps, latent prep, noise setup. Each logical operation = one block
-4. `denoise.py` -- The hardest. Convert guidance to guider abstraction
-
-### Key pattern: Guider abstraction
-
-Original pipeline has guidance baked in:
-```python
-for i, t in enumerate(timesteps):
-    noise_pred = self.transformer(latents, prompt_embeds, ...)
-    if self.do_classifier_free_guidance:
-        noise_uncond = self.transformer(latents, negative_prompt_embeds, ...)
-        noise_pred = noise_uncond + scale * (noise_pred - noise_uncond)
-    latents = self.scheduler.step(noise_pred, t, latents).prev_sample
-```
-
-Modular pipeline separates concerns:
-```python
-guider_inputs = {
-    "encoder_hidden_states": (prompt_embeds, negative_prompt_embeds),
-}
-
-for i, t in enumerate(timesteps):
-    components.guider.set_state(step=i, num_inference_steps=num_steps, timestep=t)
-    guider_state = components.guider.prepare_inputs(guider_inputs)
-
-    for batch in guider_state:
-        components.guider.prepare_models(components.transformer)
-        cond_kwargs = {k: getattr(batch, k) for k in guider_inputs}
-        context_name = getattr(batch, components.guider._identifier_key)
-        with components.transformer.cache_context(context_name):
-            batch.noise_pred = components.transformer(
-                hidden_states=latents, timestep=timestep,
-                return_dict=False, **cond_kwargs, **shared_kwargs,
-            )[0]
-        components.guider.cleanup_models(components.transformer)
-
-    noise_pred = components.guider(guider_state)[0]
-    latents = components.scheduler.step(noise_pred, t, latents, generator=generator)[0]
-```
-
-### Key pattern: Chunk loops for video models
-
-Use `LoopSequentialPipelineBlocks` for outer loop:
-```python
-class ChunkDenoiseStep(LoopSequentialPipelineBlocks):
-    block_classes = [PrepareChunkStep, NoiseGenStep, DenoiseInnerStep, UpdateStep]
-```
-
-Note: blocks inside `LoopSequentialPipelineBlocks` receive `(components, block_state, k)` where `k` is the loop iteration index.
-
-### Key pattern: Workflow selection
-
-```python
-class AutoDenoise(ConditionalPipelineBlocks):
-    block_classes = [V2VDenoiseStep, I2VDenoiseStep, T2VDenoiseStep]
-    block_trigger_inputs = ["video_latents", "image_latents"]
-    default_block_name = "text2video"
-```
-
-### Standard InputParam/OutputParam templates
-
-```python
-# Inputs
-InputParam.template("prompt")              # str, required
-InputParam.template("negative_prompt")     # str, optional
-InputParam.template("image")               # PIL.Image, optional
-InputParam.template("generator")           # torch.Generator, optional
-InputParam.template("num_inference_steps") # int, default=50
-InputParam.template("latents")             # torch.Tensor, optional
-
-# Outputs
-OutputParam.template("prompt_embeds")
-OutputParam.template("negative_prompt_embeds")
-OutputParam.template("image_latents")
-OutputParam.template("latents")
-OutputParam.template("videos")
-OutputParam.template("images")
-```
-
-### ComponentSpec patterns
-
-```python
-# Heavy models - loaded from pretrained
-ComponentSpec("transformer", YourTransformerModel)
-ComponentSpec("vae", AutoencoderKL)
-
-# Lightweight objects - created inline from config
-ComponentSpec(
-    "guider", 
-    ClassifierFreeGuidance,
-    config=FrozenDict({"guidance_scale": 7.5}),
-    default_creation_method="from_config"
-)
-```
-
-### Conversion checklist
-
-- [ ] Read original pipeline's `__call__` end-to-end, map stages
-- [ ] Write test scripts (reference + target) with identical seeds
-- [ ] Create file structure under `modular_pipelines/<model>/`
-- [ ] Write decoder block (simplest)
-- [ ] Write encoder blocks (text, image, video)
-- [ ] Write before_denoise blocks (timesteps, latent prep, noise)
-- [ ] Write denoise block with guider abstraction (hardest)
-- [ ] Create pipeline class with `default_blocks_name`
-- [ ] Assemble blocks in `modular_blocks_<model>.py`
-- [ ] Wire up `__init__.py` with lazy imports
-- [ ] Run `make style`
-- [ ] Test all workflows for parity with reference
+See [modular-conversion.md](modular-conversion.md) for the full guide on converting standard pipelines to modular format, including block types, build order, guider abstraction, and conversion checklist.
 
 ---
 
