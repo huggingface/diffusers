@@ -343,6 +343,8 @@ class KVAEEncoder2D(nn.Module):
             padding=(1, 1),
         )
 
+        self.gradient_checkpointing = False
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # timestep embedding
         temb = None
@@ -351,15 +353,22 @@ class KVAEEncoder2D(nn.Module):
         h = self.conv_in(x)
         for i_level in range(self.num_resolutions):
             for i_block in range(self.num_res_blocks[i_level]):
-                h = self.down[i_level].block[i_block](h, temb)
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
+                    h = self._gradient_checkpointing_func(self.down[i_level].block[i_block], h, temb)
+                else:
+                    h = self.down[i_level].block[i_block](h, temb)
                 if len(self.down[i_level].attn) > 0:
                     h = self.down[i_level].attn[i_block](h)
             if i_level != self.num_resolutions - 1:
                 h = self.down[i_level].downsample(h)
 
         # middle
-        h = self.mid.block_1(h, temb)
-        h = self.mid.block_2(h, temb)
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            h = self._gradient_checkpointing_func(self.mid.block_1, h, temb)
+            h = self._gradient_checkpointing_func(self.mid.block_2, h, temb)
+        else:
+            h = self.mid.block_1(h, temb)
+            h = self.mid.block_2(h, temb)
 
         # end
         h = self.norm_out(h)
@@ -471,6 +480,8 @@ class KVAEDecoder2D(nn.Module):
             in_channels=block_in, out_channels=out_ch, kernel_size=3, padding=(1, 1), padding_mode="replicate"
         )
 
+        self.gradient_checkpointing = False
+
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         self.last_z_shape = z.shape
 
@@ -482,15 +493,20 @@ class KVAEDecoder2D(nn.Module):
         h = self.conv_in(z)
 
         # middle
-        h = self.mid.block_1(h, temb, zq)
-        h = self.mid.block_2(h, temb, zq)
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            h = self._gradient_checkpointing_func(self.mid.block_1, h, temb, zq)
+            h = self._gradient_checkpointing_func(self.mid.block_2, h, temb, zq)
+        else:
+            h = self.mid.block_1(h, temb, zq)
+            h = self.mid.block_2(h, temb, zq)
 
         # upsampling
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks + 1):
-                h = self.up[i_level].block[i_block](h, temb, zq)
-
-                # h = self.up[i_level].block[i_block](h)
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
+                    h = self._gradient_checkpointing_func(self.up[i_level].block[i_block], h, temb, zq)
+                else:
+                    h = self.up[i_level].block[i_block](h, temb, zq)
                 if len(self.up[i_level].attn) > 0:
                     h = self.up[i_level].attn[i_block](h, zq)
             if i_level != 0:
@@ -530,7 +546,7 @@ class AutoencoderKLKVAE(
         sample_size (`int`, *optional*, defaults to `1024`): Sample input size.
     """
 
-    _supports_gradient_checkpointing = False
+    _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(

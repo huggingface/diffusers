@@ -529,6 +529,8 @@ class KVAECachedEncoder3D(nn.Module):
             chan_in=block_in, chan_out=2 * z_channels if double_z else z_channels, kernel_size=3
         )
 
+        self.gradient_checkpointing = False
+
     def forward(self, x: torch.Tensor, cache_dict: Dict) -> torch.Tensor:
         temb = None
 
@@ -536,14 +538,23 @@ class KVAECachedEncoder3D(nn.Module):
 
         for i_level in range(self.num_resolutions):
             for i_block in range(self.num_res_blocks):
-                h = self.down[i_level].block[i_block](h, temb, layer_cache=cache_dict[i_level][i_block])
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
+                    h = self._gradient_checkpointing_func(
+                        self.down[i_level].block[i_block], h, temb, cache_dict[i_level][i_block]
+                    )
+                else:
+                    h = self.down[i_level].block[i_block](h, temb, layer_cache=cache_dict[i_level][i_block])
                 if len(self.down[i_level].attn) > 0:
                     h = self.down[i_level].attn[i_block](h)
             if i_level != self.num_resolutions - 1:
                 h = self.down[i_level].downsample(h, cache=cache_dict[i_level]['down'])
 
-        h = self.mid.block_1(h, temb, layer_cache=cache_dict['mid_1'])
-        h = self.mid.block_2(h, temb, layer_cache=cache_dict['mid_2'])
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            h = self._gradient_checkpointing_func(self.mid.block_1, h, temb, cache_dict['mid_1'])
+            h = self._gradient_checkpointing_func(self.mid.block_2, h, temb, cache_dict['mid_2'])
+        else:
+            h = self.mid.block_1(h, temb, layer_cache=cache_dict['mid_1'])
+            h = self.mid.block_2(h, temb, layer_cache=cache_dict['mid_2'])
 
         h = self.norm_out(h, cache=cache_dict['norm_out'])
         h = nonlinearity(h)
@@ -622,18 +633,29 @@ class KVAECachedDecoder3D(nn.Module):
         self.norm_out = KVAECachedSpatialNorm3D(block_in, zq_ch, add_conv=add_conv)
         self.conv_out = KVAECachedCausalConv3d(chan_in=block_in, chan_out=out_ch, kernel_size=3)
 
+        self.gradient_checkpointing = False
+
     def forward(self, z: torch.Tensor, cache_dict: Dict) -> torch.Tensor:
         temb = None
         zq = z
 
         h = self.conv_in(z, cache_dict['conv_in'])
 
-        h = self.mid.block_1(h, temb, layer_cache=cache_dict['mid_1'], zq=zq)
-        h = self.mid.block_2(h, temb, layer_cache=cache_dict['mid_2'], zq=zq)
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            h = self._gradient_checkpointing_func(self.mid.block_1, h, temb, cache_dict['mid_1'], zq)
+            h = self._gradient_checkpointing_func(self.mid.block_2, h, temb, cache_dict['mid_2'], zq)
+        else:
+            h = self.mid.block_1(h, temb, layer_cache=cache_dict['mid_1'], zq=zq)
+            h = self.mid.block_2(h, temb, layer_cache=cache_dict['mid_2'], zq=zq)
 
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks + 1):
-                h = self.up[i_level].block[i_block](h, temb, layer_cache=cache_dict[i_level][i_block], zq=zq)
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
+                    h = self._gradient_checkpointing_func(
+                        self.up[i_level].block[i_block], h, temb, cache_dict[i_level][i_block], zq
+                    )
+                else:
+                    h = self.up[i_level].block[i_block](h, temb, layer_cache=cache_dict[i_level][i_block], zq=zq)
                 if len(self.up[i_level].attn) > 0:
                     h = self.up[i_level].attn[i_block](h, zq)
             if i_level != 0:
