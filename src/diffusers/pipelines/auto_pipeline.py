@@ -96,6 +96,7 @@ from .pag import (
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
 from .prx import PRXPipeline
+from .nucleusmoe_image import NucleusMoEImagePipeline
 from .qwenimage import (
     QwenImageControlNetPipeline,
     QwenImageEditInpaintPipeline,
@@ -179,6 +180,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("helios", HeliosPipeline),
         ("helios-pyramid", HeliosPyramidPipeline),
         ("cogview4-control", CogView4ControlPipeline),
+        ("nucleusmoe-image", NucleusMoEImagePipeline),
         ("qwenimage", QwenImagePipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
         ("z-image", ZImagePipeline),
