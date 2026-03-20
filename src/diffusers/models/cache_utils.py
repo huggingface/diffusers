@@ -41,11 +41,12 @@ class CacheMixin:
         Enable caching techniques on the model.
 
         Args:
-            config (`PyramidAttentionBroadcastConfig | FasterCacheConfig | FirstBlockCacheConfig`):
+            config (`PyramidAttentionBroadcastConfig | FasterCacheConfig | FirstBlockCacheConfig | NucleusMoETextKVCacheConfig`):
                 The configuration for applying the caching technique. Currently supported caching techniques are:
                     - [`~hooks.PyramidAttentionBroadcastConfig`]
                     - [`~hooks.FasterCacheConfig`]
                     - [`~hooks.FirstBlockCacheConfig`]
+                    - [`~hooks.NucleusMoETextKVCacheConfig`]
 
         Example:
 
@@ -69,11 +70,13 @@ class CacheMixin:
             FasterCacheConfig,
             FirstBlockCacheConfig,
             MagCacheConfig,
+            NucleusMoETextKVCacheConfig,
             PyramidAttentionBroadcastConfig,
             TaylorSeerCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_mag_cache,
+            apply_nucleus_moe_text_kv_cache,
             apply_pyramid_attention_broadcast,
             apply_taylorseer_cache,
         )
@@ -89,6 +92,8 @@ class CacheMixin:
             apply_first_block_cache(self, config)
         elif isinstance(config, MagCacheConfig):
             apply_mag_cache(self, config)
+        elif isinstance(config, NucleusMoETextKVCacheConfig):
+            apply_nucleus_moe_text_kv_cache(self, config)
         elif isinstance(config, PyramidAttentionBroadcastConfig):
             apply_pyramid_attention_broadcast(self, config)
         elif isinstance(config, TaylorSeerCacheConfig):
@@ -104,6 +109,7 @@ class CacheMixin:
             FirstBlockCacheConfig,
             HookRegistry,
             MagCacheConfig,
+            NucleusMoETextKVCacheConfig,
             PyramidAttentionBroadcastConfig,
             TaylorSeerCacheConfig,
         )
@@ -112,6 +118,7 @@ class CacheMixin:
         from ..hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
         from ..hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
+        from ..hooks.text_kv_cache import _TEXT_KV_CACHE_HOOK
 
         if self._cache_config is None:
             logger.warning("Caching techniques have not been enabled, so there's nothing to disable.")
@@ -129,6 +136,8 @@ class CacheMixin:
             registry.remove_hook(_MAG_CACHE_BLOCK_HOOK, recurse=True)
         elif isinstance(self._cache_config, PyramidAttentionBroadcastConfig):
             registry.remove_hook(_PYRAMID_ATTENTION_BROADCAST_HOOK, recurse=True)
+        elif isinstance(self._cache_config, NucleusMoETextKVCacheConfig):
+            registry.remove_hook(_TEXT_KV_CACHE_HOOK, recurse=True)
         elif isinstance(self._cache_config, TaylorSeerCacheConfig):
             registry.remove_hook(_TAYLORSEER_CACHE_HOOK, recurse=True)
         else:

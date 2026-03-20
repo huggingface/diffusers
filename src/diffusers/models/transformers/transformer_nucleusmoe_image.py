@@ -268,6 +268,8 @@ class NucleusMoEAttnProcessor2_0:
         encoder_hidden_states: torch.FloatTensor = None,
         attention_mask: torch.FloatTensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
+        cached_txt_key: torch.FloatTensor | None = None,
+        cached_txt_value: torch.FloatTensor | None = None,
     ) -> torch.FloatTensor:
         head_dim = attn.inner_dim // attn.heads
         num_kv_heads = attn.inner_kv_dim // head_dim
@@ -287,7 +289,11 @@ class NucleusMoEAttnProcessor2_0:
             img_query = _apply_rotary_emb_nucleus(img_query, img_freqs, use_real=False)
             img_key = _apply_rotary_emb_nucleus(img_key, img_freqs, use_real=False)
 
-        if encoder_hidden_states is not None:
+        if cached_txt_key is not None and cached_txt_value is not None:
+            txt_key, txt_value = cached_txt_key, cached_txt_value
+            joint_key = torch.cat([img_key, txt_key], dim=1)
+            joint_value = torch.cat([img_value, txt_value], dim=1)
+        elif encoder_hidden_states is not None:
             txt_key = attn.add_k_proj(encoder_hidden_states).unflatten(-1, (num_kv_heads, -1))
             txt_value = attn.add_v_proj(encoder_hidden_states).unflatten(-1, (num_kv_heads, -1))
 
@@ -537,17 +543,18 @@ class NucleusMoEImageTransformerBlock(nn.Module):
         gate1 = gate1.clamp(min=-2.0, max=2.0)
         gate2 = gate2.clamp(min=-2.0, max=2.0)
 
-        context = self.encoder_proj(encoder_hidden_states)
+        # Skip encoder_proj when text K/V are already cached — context won't be used by the processor
+        attn_kwargs = attention_kwargs or {}
+        context = None if attn_kwargs.get("cached_txt_key") is not None else self.encoder_proj(encoder_hidden_states)
 
         img_normed = self.pre_attn_norm(hidden_states)
         img_modulated = img_normed * scale1
 
-        attention_kwargs = attention_kwargs or {}
         img_attn_output = self.attn(
             hidden_states=img_modulated,
             encoder_hidden_states=context,
             image_rotary_emb=image_rotary_emb,
-            **attention_kwargs,
+            **attn_kwargs,
         )
 
         hidden_states = hidden_states + gate1.tanh() * img_attn_output

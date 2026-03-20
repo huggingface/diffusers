@@ -574,6 +574,10 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps)
 
         self.scheduler.set_begin_index(0)
+
+        if self.transformer.is_cache_enabled:
+            self.transformer._reset_stateful_cache()
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
