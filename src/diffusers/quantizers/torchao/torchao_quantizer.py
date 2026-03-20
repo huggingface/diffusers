@@ -211,20 +211,15 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
         from accelerate.utils import CustomDtype
-        from torchao.core.config import AOBaseConfig
 
         quant_type = self.quantization_config.quant_type
-        if isinstance(quant_type, AOBaseConfig):
-            # Extract size digit using fuzzy match on the class name
-            config_name = quant_type.__class__.__name__
-            size_digit = fuzzy_match_size(config_name)
+        config_name = quant_type.__class__.__name__
+        size_digit = fuzzy_match_size(config_name)
 
-            # Map the extracted digit to appropriate dtype
-            if size_digit == "4":
-                return CustomDtype.INT4
-            else:
-                # Default to int8
-                return torch.int8
+        if size_digit == "4":
+            return CustomDtype.INT4
+        else:
+            return torch.int8
 
         if isinstance(target_dtype, SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION):
             return target_dtype
@@ -304,20 +299,14 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         - Use a division factor of 8 for int4 weights
         - Use a division factor of 4 for int8 weights
         """
-        from torchao.core.config import AOBaseConfig
-
         quant_type = self.quantization_config.quant_type
-        if isinstance(quant_type, AOBaseConfig):
-            # Extract size digit using fuzzy match on the class name
-            config_name = quant_type.__class__.__name__
-            size_digit = fuzzy_match_size(config_name)
+        config_name = quant_type.__class__.__name__
+        size_digit = fuzzy_match_size(config_name)
 
-            if size_digit == "4":
-                return 8
-            else:
-                return 4
-
-        raise ValueError(f"Unsupported quant_type: {quant_type!r}")
+        if size_digit == "4":
+            return 8
+        else:
+            return 4
 
     def _process_model_before_weight_loading(
         self,

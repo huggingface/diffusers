@@ -486,7 +486,8 @@ class TorchAoConfig(QuantizationConfigMixin):
         from torchao.core.config import config_to_dict
 
         # For now we assume there is 1 config per Transformer, however in the future
-        # We may want to support a config per fqn.
+        # we may want to support a config per fqn.
+        # See: https://docs.pytorch.org/ao/stable/api_reference/generated/torchao.quantization.quantize_.html
         d["quant_type"] = {"default": config_to_dict(self.quant_type)}
 
         return d
