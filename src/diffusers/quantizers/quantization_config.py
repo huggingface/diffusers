@@ -434,10 +434,10 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     Args:
         quant_type (`AOBaseConfig`):
-            An `AOBaseConfig` subclass instance specifying the quantization type. See the
-            [torchao documentation](https://docs.pytorch.org/ao/main/api_ref_quantization.html#inference-apis-for-quantize)
-            for available config classes (e.g. `Int4WeightOnlyConfig`, `Int8WeightOnlyConfig`,
-            `Float8WeightOnlyConfig`, `Float8DynamicActivationFloat8WeightConfig`, etc.).
+            An `AOBaseConfig` subclass instance specifying the quantization type. See the [torchao
+            documentation](https://docs.pytorch.org/ao/main/api_ref_quantization.html#inference-apis-for-quantize) for
+            available config classes (e.g. `Int4WeightOnlyConfig`, `Int8WeightOnlyConfig`, `Float8WeightOnlyConfig`,
+            `Float8DynamicActivationFloat8WeightConfig`, etc.).
         modules_to_not_convert (`list[str]`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
             modules left in their original precision.
