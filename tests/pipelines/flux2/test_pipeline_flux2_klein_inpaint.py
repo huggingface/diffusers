@@ -25,7 +25,9 @@ enable_full_determinism()
 
 class Flux2KleinInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = Flux2KleinInpaintPipeline
-    params = frozenset(["prompt", "image", "image_reference", "mask_image", "height", "width", "guidance_scale", "prompt_embeds"])
+    params = frozenset(
+        ["prompt", "image", "image_reference", "mask_image", "height", "width", "guidance_scale", "prompt_embeds"]
+    )
     batch_params = frozenset(["prompt"])
 
     test_xformers_attention = False
@@ -175,16 +177,16 @@ class Flux2KleinInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     def test_flux2_klein_inpaint_image_reference(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs(torch_device)
-        
+
         # Add a reference image to the inputs
         ref_image = floats_tensor((1, 3, 32, 32), rng=random.Random(1)).to(torch_device)
         inputs["image_reference"] = ref_image
-        
+
         image = pipe(**inputs).images[0]
-        
+
         expected_height = inputs["height"] - inputs["height"] % (pipe.vae_scale_factor * 2)
         expected_width = inputs["width"] - inputs["width"] % (pipe.vae_scale_factor * 2)
-        
+
         output_height, output_width, _ = image.shape
         self.assertEqual(
             (output_height, output_width),

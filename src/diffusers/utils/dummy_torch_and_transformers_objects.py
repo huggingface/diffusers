@@ -1202,7 +1202,7 @@ class EasyAnimatePipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class Flux2KleinKVPipeline(metaclass=DummyObject):
+class Flux2KleinInpaintPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -1215,9 +1215,9 @@ class Flux2KleinKVPipeline(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
-        
-        
-class Flux2KleinInpaintPipeline(metaclass=DummyObject):
+
+
+class Flux2KleinKVPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

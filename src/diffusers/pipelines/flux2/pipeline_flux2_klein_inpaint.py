@@ -136,15 +136,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -262,7 +262,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         dtype: torch.dtype | None = None,
         device: torch.device | None = None,
         max_sequence_length: int = 512,
-        hidden_states_layers: list[int] | tuple[int, ...] = (9, 18, 27),
+        hidden_states_layers: list[int] = (9, 18, 27),
     ):
         dtype = text_encoder.dtype if dtype is None else dtype
         device = text_encoder.device if device is None else device
@@ -501,7 +501,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         num_images_per_prompt: int = 1,
         prompt_embeds: torch.Tensor | None = None,
         max_sequence_length: int = 512,
-        text_encoder_out_layers: tuple[int, ...] = (9, 18, 27),
+        text_encoder_out_layers: tuple[int] = (9, 18, 27),
     ):
         device = device or self._execution_device
 
