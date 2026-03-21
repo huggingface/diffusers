@@ -93,12 +93,12 @@ class LLaDA2Pipeline(DiffusionPipeline):
     def _prepare_input_ids(
         self,
         *,
-        prompt: Optional[Union[str, List[str]]],
-        messages: Optional[List[Dict[str, str]]],
-        input_ids: Optional[torch.LongTensor],
+        prompt: str | list[str] | None,
+        messages: list[dict[str, str]] | None,
+        input_ids: torch.LongTensor | None,
         use_chat_template: bool,
         add_generation_prompt: bool,
-        chat_template_kwargs: Optional[Dict[str, object]],
+        chat_template_kwargs: dict[str, Any] | None,
     ) -> torch.LongTensor:
         """Convert prompt/messages/input_ids to a [batch, seq] LongTensor."""
         if input_ids is not None:
