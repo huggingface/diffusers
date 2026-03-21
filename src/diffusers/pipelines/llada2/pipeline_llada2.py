@@ -218,7 +218,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
         add_generation_prompt: bool = True,
         gen_length: int = 2048,
         block_length: int = 32,
-        steps: int = 32,
+        num_inference_steps: int = 32,
         temperature: float = 0.0,
         top_p: Optional[float] = None,
         top_k: Optional[int] = None,
