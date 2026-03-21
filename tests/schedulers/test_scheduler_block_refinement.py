@@ -233,11 +233,11 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         self.assertEqual(out.prev_sample.shape, (batch_size, 4))
         self.assertEqual(out.transfer_index.shape, (batch_size, 4))
 
-    def test_check_should_continue_finished(self):
+    def test_check_block_should_continue_finished(self):
         scheduler = self.get_scheduler()
         scheduler.set_timesteps(8)
         finished = torch.tensor([True, True])
-        result = scheduler.check_should_continue(
+        result = scheduler.check_block_should_continue(
             step_idx=0,
             masks_remaining=True,
             editing_enabled=False,
@@ -248,11 +248,11 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         )
         self.assertFalse(result)
 
-    def test_check_should_continue_no_masks_no_edits(self):
+    def test_check_block_should_continue_no_masks_no_edits(self):
         scheduler = self.get_scheduler()
         scheduler.set_timesteps(8)
         finished = torch.tensor([False])
-        result = scheduler.check_should_continue(
+        result = scheduler.check_block_should_continue(
             step_idx=5,
             masks_remaining=False,
             editing_enabled=True,
@@ -263,11 +263,11 @@ class BlockRefinementSchedulerTest(unittest.TestCase):
         )
         self.assertFalse(result)
 
-    def test_check_should_continue_steps_exhausted(self):
+    def test_check_block_should_continue_steps_exhausted(self):
         scheduler = self.get_scheduler()
         scheduler.set_timesteps(8)
         finished = torch.tensor([False])
-        result = scheduler.check_should_continue(
+        result = scheduler.check_block_should_continue(
             step_idx=8,
             masks_remaining=True,
             editing_enabled=False,

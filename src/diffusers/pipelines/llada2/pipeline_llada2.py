@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import torch
 from tqdm.auto import tqdm
@@ -53,7 +53,7 @@ EXAMPLE_DOC_STRING = """
 @dataclass
 class LLaDA2PipelineOutput(BaseOutput):
     sequences: torch.LongTensor
-    texts: Optional[List[str]] = None
+    texts: list[str] | None = None
 
 
 class LLaDA2Pipeline(DiffusionPipeline):
@@ -71,13 +71,13 @@ class LLaDA2Pipeline(DiffusionPipeline):
     scheduler: BlockRefinementScheduler
     tokenizer: Any
 
-    _callback_tensor_inputs = ["cur_x", "x0", "x0_p", "transfer_index", "confidence", "active_block"]
+    _callback_tensor_inputs = ["block_x", "x0", "x0_p", "transfer_index", "confidence", "active_block"]
 
     def __init__(
         self,
         model: Any,
         scheduler: BlockRefinementScheduler,
-        tokenizer: Optional[Any] = None,
+        tokenizer: Any | None = None,
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler, tokenizer=tokenizer)
@@ -154,7 +154,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
         input_ids: torch.LongTensor | None,
         gen_length: int,
         block_length: int,
-        steps: int,
+        num_inference_steps: int,
         minimal_topk: int,
         threshold: float,
         sampling_method: str,
@@ -182,8 +182,8 @@ class LLaDA2Pipeline(DiffusionPipeline):
             raise ValueError(f"`gen_length` must be > 0, got {gen_length}.")
         if block_length <= 0:
             raise ValueError(f"`block_length` must be > 0, got {block_length}.")
-        if steps <= 0:
-            raise ValueError(f"`steps` must be > 0, got {steps}.")
+        if num_inference_steps <= 0:
+            raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
         if minimal_topk <= 0:
             raise ValueError(f"`minimal_topk` must be > 0, got {minimal_topk}.")
         if not (0.0 <= threshold <= 1.0) and not (threshold > 1.0):
@@ -212,33 +212,34 @@ class LLaDA2Pipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
-        messages: Optional[List[Dict[str, str]]] = None,
-        input_ids: Optional[torch.LongTensor] = None,
+        prompt: str | list[str] | None = None,
+        messages: list[dict[str, str]] | None = None,
+        input_ids: torch.LongTensor | None = None,
         use_chat_template: bool = True,
         add_generation_prompt: bool = True,
         gen_length: int = 2048,
         block_length: int = 32,
         num_inference_steps: int = 32,
         temperature: float = 0.0,
-        top_p: Optional[float] = None,
-        top_k: Optional[int] = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
         sampling_method: str = "multinomial",
         threshold: float = 0.7,
-        editing_threshold: Optional[float] = 0.5,
+        editing_threshold: float | None = 0.5,
         max_post_steps: int = 16,
         minimal_topk: int = 1,
         eos_early_stop: bool = True,
-        eos_token_id: Optional[int] = None,
-        mask_token_id: Optional[int] = None,
-        generator: Optional[torch.Generator] = None,
+        eos_token_id: int | None = None,
+        mask_token_id: int | None = None,
+        generator: torch.Generator | None = None,
         output_type: str = "text",
         return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
-    ) -> Union[LLaDA2PipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
+        callback_on_step_end: Callable[[int, int, dict], None]
+        | PipelineCallback
+        | MultiPipelineCallbacks
+        | None = None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
+    ) -> LLaDA2PipelineOutput | tuple[torch.LongTensor, list[str] | None]:
         """
         Generate text with block-wise refinement.
 
@@ -259,8 +260,8 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 Number of tokens to generate.
             block_length (`int`):
                 Block size for refinement.
-            steps (`int`):
-                Refinement steps per block.
+            num_inference_steps (`int`):
+                Number of refinement steps per block.
             temperature (`float`):
                 Sampling temperature.
             top_p (`float`, *optional*):
@@ -298,7 +299,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 Callback executed after each refinement step with signature `callback_on_step_end(self, step: int,
                 timestep: int, callback_kwargs: Dict)`.
             callback_on_step_end_tensor_inputs (`List[str]`, *optional*):
-                Tensor keys to pass to the callback. Allowed keys: `cur_x`, `x0`, `x0_p`, `transfer_index`,
+                Tensor keys to pass to the callback. Allowed keys: `block_x`, `x0`, `x0_p`, `transfer_index`,
                 `confidence`, `active_block`.
 
         Examples:
@@ -309,7 +310,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
         ):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
         if callback_on_step_end_tensor_inputs is None:
-            callback_on_step_end_tensor_inputs = ["cur_x"]
+            callback_on_step_end_tensor_inputs = ["block_x"]
 
         self.check_inputs(
             prompt=prompt,
@@ -317,7 +318,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
             input_ids=input_ids,
             gen_length=gen_length,
             block_length=block_length,
-            steps=steps,
+            num_inference_steps=num_inference_steps,
             minimal_topk=minimal_topk,
             threshold=threshold,
             sampling_method=sampling_method,
@@ -350,9 +351,9 @@ class LLaDA2Pipeline(DiffusionPipeline):
         if mask_token_id is None:
             raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
 
-        steps = min(steps, gen_length // minimal_topk)
+        num_inference_steps = min(num_inference_steps, gen_length // minimal_topk)
 
-        self.scheduler.set_timesteps(steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
 
         # 3. Build attention mask and position IDs
         num_blocks = (prompt_length + gen_length + block_length - 1) // block_length
@@ -369,7 +370,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
             x[:, :prompt_length] = prompt_ids
 
         prefill_blocks = prompt_length // block_length
-        self._num_timesteps = steps * max(num_blocks - prefill_blocks, 0)
+        self._num_timesteps = num_inference_steps * max(num_blocks - prefill_blocks, 0)
 
         finished = torch.zeros((batch_size,), device=device, dtype=torch.bool)
         editing_enabled = editing_threshold is not None and editing_threshold >= 0.0
@@ -377,7 +378,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
 
         # 5. Block-wise refinement loop
         block_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy()
-        block_progress_bar_config["leave"] = False  # Prevent stale bars from stacking up
+        block_progress_bar_config["leave"] = False
         for num_block in tqdm(range(prefill_blocks, num_blocks), **block_progress_bar_config):
             current_window_end = (num_block + 1) * block_length
             block_x = x[:, :current_window_end]
@@ -394,9 +395,10 @@ class LLaDA2Pipeline(DiffusionPipeline):
             post_steps = 0
             step_idx = 0
             should_continue = True
+            progress_bar = self.progress_bar(total=num_inference_steps)
 
             while should_continue:
-                block_tokens = cur_x[:, -block_length:]
+                block_tokens = block_x[:, -block_length:]
                 masks_remaining = (block_tokens == mask_token_id).any()
 
                 if not masks_remaining and not editing_enabled:
@@ -404,7 +406,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 if not masks_remaining:
                     post_steps += 1
 
-                logits = self.model(cur_x, attention_mask=cur_attn_mask, position_ids=cur_position_ids).logits
+                logits = self.model(block_x, attention_mask=block_attn_mask, position_ids=block_position_ids).logits
                 block_logits = logits[:, -block_length:, :]
 
                 scheduler_output = self.scheduler.step(
@@ -429,11 +431,11 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 final_transfer = transfer_index | editing_transfer_index
 
                 if final_transfer.any():
-                    cur_x[:, -block_length:] = scheduler_output.prev_sample
+                    block_x[:, -block_length:] = scheduler_output.prev_sample
 
                 if eos_early_stop and eos_token_id is not None:
                     finished = self.scheduler.check_eos_finished(
-                        cur_x=cur_x,
+                        cur_x=block_x,
                         sampled_tokens=scheduler_output.sampled_tokens,
                         final_transfer=final_transfer,
                         finished=finished,
@@ -447,13 +449,14 @@ class LLaDA2Pipeline(DiffusionPipeline):
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
                     callback_outputs = callback_on_step_end(self, global_step, step_idx, callback_kwargs)
-                    cur_x = callback_outputs.pop("cur_x", cur_x)
+                    block_x = callback_outputs.pop("block_x", block_x)
 
                 global_step += 1
                 if masks_remaining:
                     step_idx += 1
+                    progress_bar.update(1)
 
-                should_continue = self.scheduler.check_should_continue(
+                should_continue = self.scheduler.check_block_should_continue(
                     step_idx=step_idx,
                     masks_remaining=masks_remaining,
                     editing_enabled=editing_enabled,
@@ -463,7 +466,8 @@ class LLaDA2Pipeline(DiffusionPipeline):
                     finished=finished,
                 )
 
-            x[:, :current_window_end] = cur_x
+            progress_bar.close()
+            x[:, :current_window_end] = block_x
             if eos_early_stop and finished.all():
                 break
 

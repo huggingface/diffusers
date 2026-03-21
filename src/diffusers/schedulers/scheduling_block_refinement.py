@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import torch
 
@@ -69,12 +68,12 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         block_length: int = 32,
         num_inference_steps: int = 32,
         threshold: float = 0.95,
-        editing_threshold: Optional[float] = None,
+        editing_threshold: float | None = None,
         minimal_topk: int = 1,
     ):
         self.num_inference_steps = num_inference_steps
         self.timesteps = torch.arange(self.num_inference_steps - 1, -1, -1, dtype=torch.long)
-        self._transfer_schedule: Optional[torch.LongTensor] = None
+        self._transfer_schedule: torch.LongTensor | None = None
 
     def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         if num_inference_steps <= 0:
@@ -98,7 +97,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
     # --- SAR sampling utilities ---
 
     @staticmethod
-    def _top_p_filtering(logits: torch.Tensor, top_p: Optional[float]) -> torch.Tensor:
+    def _top_p_filtering(logits: torch.Tensor, top_p: float | None) -> torch.Tensor:
         """Nucleus (top-p) logit filtering."""
         if top_p is None or top_p >= 1.0:
             return logits
@@ -118,7 +117,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         return filtered
 
     @staticmethod
-    def _top_k_filtering(logits: torch.Tensor, top_k: Optional[int]) -> torch.Tensor:
+    def _top_k_filtering(logits: torch.Tensor, top_k: int | None) -> torch.Tensor:
         """Top-k logit filtering."""
         if top_k is None or top_k <= 0:
             return logits
@@ -133,9 +132,9 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         logits: torch.Tensor,
         *,
         temperature: float,
-        top_k: Optional[int],
-        top_p: Optional[float],
-        generator: Optional[torch.Generator],
+        top_k: int | None,
+        top_p: float | None,
+        generator: torch.Generator | None,
         use_multinomial: bool,
     ) -> tuple[torch.LongTensor, torch.Tensor]:
         """Sample tokens from logits with temperature scaling, top-k, and top-p."""
@@ -167,24 +166,24 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.LongTensor,
         *,
         mask_token_id: int,
         temperature: float = 0.0,
-        top_p: Optional[float] = None,
-        top_k: Optional[int] = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
         sampling_method: str = "auto",
-        threshold: Optional[float] = None,
-        editing_threshold: Optional[float] = None,
-        minimal_topk: Optional[int] = None,
-        prompt_mask: Optional[torch.BoolTensor] = None,
-        generator: Optional[torch.Generator] = None,
+        threshold: float | None = None,
+        editing_threshold: float | None = None,
+        minimal_topk: int | None = None,
+        prompt_mask: torch.BoolTensor | None = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[
-        BlockRefinementSchedulerOutput,
-        Tuple[torch.LongTensor, torch.BoolTensor, torch.BoolTensor, torch.LongTensor, torch.Tensor],
-    ]:
+    ) -> (
+        BlockRefinementSchedulerOutput
+        | tuple[torch.LongTensor, torch.BoolTensor, torch.BoolTensor, torch.LongTensor, torch.Tensor]
+    ):
         """
         Perform a single refinement step: sample from logits, commit confident tokens, and optionally edit existing
         ones.
@@ -383,6 +382,8 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         """
         if finished.all():
             return False
+        if not masks_remaining and not editing_enabled:
+            return False
         if not masks_remaining and not editing_transfer_index.any():
             return False
         if masks_remaining and step_idx >= self.num_inference_steps:
@@ -399,7 +400,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         prompt_length: int,
         block_length: int,
         mask_token_id: int,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor, torch.BoolTensor]:
         """
         Apply the forward (noising) process for semi-autoregressive block masking.

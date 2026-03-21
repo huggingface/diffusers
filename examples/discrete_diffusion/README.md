@@ -41,7 +41,7 @@ python examples/discrete_diffusion/sample_llada2.py \
   --model_id inclusionAI/LLaDA2.1-mini \
   --prompt "Write a short poem about the ocean." \
   --gen_length 256 \
-  --steps 32 \
+  --num_inference_steps 32 \
   --threshold 0.7 \
   --editing_threshold 0.5 \
   --max_post_steps 16 \

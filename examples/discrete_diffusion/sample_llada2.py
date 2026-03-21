@@ -62,7 +62,7 @@ def main():
         help="Size of each generation block.",
     )
     parser.add_argument(
-        "--steps",
+        "--num_inference_steps",
         type=int,
         default=32,
         help="Number of refinement steps per block.",
@@ -229,7 +229,9 @@ def main():
         generator = torch.Generator(device=args.device).manual_seed(args.seed)
 
     print(f"\nPrompt: {args.prompt}")
-    print(f"Generating {args.gen_length} tokens with block_length={args.block_length}, steps={args.steps}")
+    print(
+        f"Generating {args.gen_length} tokens with block_length={args.block_length}, steps={args.num_inference_steps}"
+    )
     print("-" * 50)
 
     # Generate
@@ -239,7 +241,7 @@ def main():
         add_generation_prompt=args.add_generation_prompt,
         gen_length=args.gen_length,
         block_length=args.block_length,
-        steps=args.steps,
+        num_inference_steps=args.num_inference_steps,
         temperature=args.temperature,
         top_p=args.top_p,
         top_k=args.top_k,
