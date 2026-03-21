@@ -149,9 +149,9 @@ class LLaDA2Pipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        prompt: Optional[Union[str, List[str]]],
-        messages: Optional[List[Dict[str, str]]],
-        input_ids: Optional[torch.LongTensor],
+        prompt: str | list[str] | None,
+        messages: list[dict[str, str]] | None,
+        input_ids: torch.LongTensor | None,
         gen_length: int,
         block_length: int,
         steps: int,
