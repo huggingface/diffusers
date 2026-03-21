@@ -76,7 +76,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.arange(self.num_inference_steps - 1, -1, -1, dtype=torch.long)
         self._transfer_schedule: Optional[torch.LongTensor] = None
 
-    def set_timesteps(self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None) -> None:
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
         self.num_inference_steps = num_inference_steps
