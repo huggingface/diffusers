@@ -377,9 +377,9 @@ class LLaDA2Pipeline(DiffusionPipeline):
         # 5. Block-wise refinement loop
         for num_block in range(prefill_blocks, num_blocks):
             current_window_end = (num_block + 1) * block_length
-            cur_x = x[:, :current_window_end]
-            cur_attn_mask = attn_mask[:, :current_window_end]
-            cur_position_ids = position_ids[:, :current_window_end]
+            block_x = x[:, :current_window_end]
+            block_attn_mask = attn_mask[:, :current_window_end]
+            block_position_ids = position_ids[:, :current_window_end]
 
             # Identify which positions in the block are prompt (non-editable).
             block_start_pos = num_block * block_length
