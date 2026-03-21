@@ -159,8 +159,8 @@ class LLaDA2Pipeline(DiffusionPipeline):
         threshold: float,
         sampling_method: str,
         output_type: str,
-        callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
-        callback_on_step_end_tensor_inputs: Optional[List[str]],
+        callback_on_step_end: Callable | PipelineCallback | MultiPipelineCallbacks | None,
+        callback_on_step_end_tensor_inputs: list[str] | None,
     ):
         # Input source validation
         if prompt is None and messages is None and input_ids is None:
