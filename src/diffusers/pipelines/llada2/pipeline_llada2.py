@@ -401,8 +401,6 @@ class LLaDA2Pipeline(DiffusionPipeline):
                 block_tokens = block_x[:, -block_length:]
                 masks_remaining = (block_tokens == mask_token_id).any()
 
-                if not masks_remaining and not editing_enabled:
-                    break
                 if not masks_remaining:
                     post_steps += 1
 
