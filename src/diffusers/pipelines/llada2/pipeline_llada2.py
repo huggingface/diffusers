@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+from tqdm.auto import tqdm
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...schedulers import BlockRefinementScheduler
