@@ -349,7 +349,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
                 finished[b] = True
         return finished
 
-    def check_should_continue(
+    def check_block_should_continue(
         self,
         step_idx: int,
         masks_remaining: bool,
