@@ -25,7 +25,7 @@ enable_full_determinism()
 
 class Flux2KleinInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = Flux2KleinInpaintPipeline
-    params = frozenset(["prompt", "image", "mask_image", "height", "width", "guidance_scale", "prompt_embeds"])
+    params = frozenset(["prompt", "image", "image_reference", "mask_image", "height", "width", "guidance_scale", "prompt_embeds"])
     batch_params = frozenset(["prompt"])
 
     test_xformers_attention = False

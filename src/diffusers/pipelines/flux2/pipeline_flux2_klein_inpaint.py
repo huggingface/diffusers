@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import numpy as np
 import PIL
@@ -75,12 +75,12 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> prompt = "Replace this ball"
-        >>> img_url = "https://images.pexels.com/photos/39362/the-ball-stadion-football-the-pitch-39362.jpeg?auto=compress&cs=tinysrgb&dpr=1&w=500"
+        >>> img_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/klein_inpaint/the-ball-stadion-football-the-pitch-39362.jpeg"
         >>> mask_url = (
-        ...     "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/ball_mask.png?raw=true"
+        ...     "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/klein_inpaint/ball_mask.png"
         ... )
         >>> image_reference_url = (
-        ...     "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTah3x6OL_ECMBaZ5ZlJJhNsyC-OSMLWAI-xw&s"
+        ...     "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/klein_inpaint/ball.jpg"
         ... )
 
         >>> source = load_image(img_url)
@@ -118,10 +118,10 @@ def compute_empirical_mu(image_seq_len: int, num_steps: int) -> float:
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -177,7 +177,7 @@ def retrieve_timesteps(
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -258,11 +258,11 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     def _get_qwen3_prompt_embeds(
         text_encoder: Qwen3ForCausalLM,
         tokenizer: Qwen2TokenizerFast,
-        prompt: Union[str, List[str]],
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
         max_sequence_length: int = 512,
-        hidden_states_layers: List[int] = (9, 18, 27),
+        hidden_states_layers: list[int] | tuple[int, ...] = (9, 18, 27),
     ):
         dtype = text_encoder.dtype if dtype is None else dtype
         device = text_encoder.device if device is None else device
@@ -315,7 +315,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_text_ids
     def _prepare_text_ids(
         x: torch.Tensor,  # (B, L, D) or (L, D)
-        t_coord: Optional[torch.Tensor] = None,
+        t_coord: torch.Tensor | None = None,
     ):
         B, L, _ = x.shape
         out_ids = []
@@ -367,7 +367,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_image_ids
     def _prepare_image_ids(
-        image_latents: List[torch.Tensor],  # [(1, C, H, W), (1, C, H, W), ...]
+        image_latents: list[torch.Tensor],  # [(1, C, H, W), (1, C, H, W), ...]
         scale: int = 10,
     ):
         r"""
@@ -377,7 +377,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         dimensions.
 
         Args:
-            image_latents (List[torch.Tensor]):
+            image_latents (list[torch.Tensor]):
                 A list of image latent feature tensors, typically of shape (C, H, W).
             scale (int, optional):
                 A factor used to define the time separation (T-coordinate) between latents. T-coordinate for the i-th
@@ -473,7 +473,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return torch.stack(x_list, dim=0)
 
     @staticmethod
-    def _get_raw_image_size(image: PipelineImageInput) -> Tuple[int, int]:
+    def _get_raw_image_size(image: PipelineImageInput) -> tuple[int, int]:
         """Helper to get (height, width) without rounding/scaling."""
         if isinstance(image, list):
             image = image[0]
@@ -496,12 +496,12 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     # Copied from diffusers.pipelines.flux2.pipeline_flux2_klein.Flux2KleinPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds: torch.Tensor | None = None,
         max_sequence_length: int = 512,
-        text_encoder_out_layers: Tuple[int] = (9, 18, 27),
+        text_encoder_out_layers: tuple[int, ...] = (9, 18, 27),
     ):
         device = device or self._execution_device
 
@@ -554,8 +554,8 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         width,
         dtype,
         device,
-        generator: torch.Generator,
-        latents: Optional[torch.Tensor] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ):
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -605,7 +605,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
     def prepare_image_latents(
         self,
-        images: List[torch.Tensor],
+        images: list[torch.Tensor],
         batch_size,
         generator: torch.Generator,
         device,
@@ -751,6 +751,19 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 )
             if output_type != "pil":
                 raise ValueError(f"The output type should be PIL when inpainting mask crop, but is {output_type}.")
+        else:
+            if image is not None:
+                if not isinstance(image, (PIL.Image.Image, torch.Tensor, np.ndarray, list)):
+                    raise ValueError(
+                        f"`image` has to be of type `PIL.Image.Image`, `torch.Tensor`, `np.ndarray`, or `list`"
+                        f" but is {type(image)}."
+                    )
+            if mask_image is not None:
+                if not isinstance(mask_image, (PIL.Image.Image, torch.Tensor, np.ndarray, list)):
+                    raise ValueError(
+                        f"`mask_image` has to be of type `PIL.Image.Image`, `torch.Tensor`, `np.ndarray`, or `list`"
+                        f" but is {type(mask_image)}."
+                    )
 
         if image_reference is not None:
             if not isinstance(image_reference, (PIL.Image.Image, torch.Tensor, np.ndarray, list)):
@@ -790,29 +803,29 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        image: PipelineImageInput = None,
-        image_reference: Optional[PipelineImageInput] = None,
-        mask_image: PipelineImageInput = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        padding_mask_crop: Optional[int] = None,
+        prompt: str | list[str] | None = None,
+        image: PipelineImageInput | None = None,
+        image_reference: PipelineImageInput | None = None,
+        mask_image: PipelineImageInput | None = None,
+        height: int | None = None,
+        width: int | None = None,
+        padding_mask_crop: int | None = None,
         strength: float = 0.8,
         num_inference_steps: int = 50,
-        sigmas: Optional[List[float]] = None,
-        guidance_scale: Optional[float] = 8.0,
+        sigmas: list[float] | None = None,
+        guidance_scale: float = 8.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        output_type: str = "pil",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int, dict], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-        text_encoder_out_layers: Tuple[int] = (9, 18, 27),
+        text_encoder_out_layers: tuple[int, ...] = (9, 18, 27),
     ):
         r"""
         Function invoked when calling the pipeline for inpainting.
