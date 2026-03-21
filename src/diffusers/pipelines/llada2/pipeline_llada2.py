@@ -375,7 +375,9 @@ class LLaDA2Pipeline(DiffusionPipeline):
         global_step = 0
 
         # 5. Block-wise refinement loop
-        for num_block in range(prefill_blocks, num_blocks):
+        block_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy()
+        block_progress_bar_config["leave"] = False  # Prevent stale bars from stacking up
+        for num_block in tqdm(range(prefill_blocks, num_blocks), **block_progress_bar_config):
             current_window_end = (num_block + 1) * block_length
             block_x = x[:, :current_window_end]
             block_attn_mask = attn_mask[:, :current_window_end]
