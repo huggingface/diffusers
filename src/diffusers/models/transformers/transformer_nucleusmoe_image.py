@@ -37,6 +37,7 @@ from ..normalization import AdaLayerNormContinuous, RMSNorm
 logger = logging.get_logger(__name__)
 
 
+# copied from diffusers.models.transformers.transformer_qwenimage.apply_rotary_emb_qwen
 def _apply_rotary_emb_nucleus(
     x: torch.Tensor,
     freqs_cis: torch.Tensor | tuple[torch.Tensor],
@@ -122,6 +123,7 @@ class NucleusMoETimestepProjEmbeddings(nn.Module):
         return self.norm(conditioning)
 
 
+# copied from diffusers.models.transformers.transformer_qwenimage.QwenEmbedRope
 class NucleusMoEEmbedRope(nn.Module):
     def __init__(self, theta: int, axes_dim: list[int], scale_rope=False):
         super().__init__()
