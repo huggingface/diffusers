@@ -161,6 +161,8 @@
     - local: training/ddpo
       title: Reinforcement learning training with DDPO
     title: Methods
+  - local: training/nemo_automodel
+    title: NeMo Automodel
   title: Training
 - isExpanded: false
   sections:
