@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import os
 import socket
 
@@ -161,7 +162,7 @@ def _custom_mesh_worker(
 @require_torch_multi_accelerator
 class ContextParallelTesterMixin:
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
-    def test_context_parallel_inference(self, cp_type):
+    def test_context_parallel_inference(self, cp_type, batch_size=None):
         if not torch.distributed.is_available():
             pytest.skip("torch.distributed is not available.")
 
@@ -175,7 +176,12 @@ class ContextParallelTesterMixin:
 
         world_size = 2
         init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
+        
+        # get_dummy_inputs may or may not support a batch_size argument
+        if batch_size is not None and "batch_size" in inspect.signature(self.get_dummy_inputs).parameters:
+            inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
+        else:
+            inputs_dict = self.get_dummy_inputs()
 
         # Move all tensors to CPU for multiprocessing
         inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
@@ -199,6 +205,14 @@ class ContextParallelTesterMixin:
         assert return_dict.get("status") == "success", (
             f"Context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
+
+    @pytest.mark.xfail(reason="Context parallel may not support batch_size > 1")
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
+    def test_context_parallel_batch_inputs(self, cp_type):
+        if "batch_size" not in inspect.signature(self.get_dummy_inputs).parameters:
+            pytest.skip("get_dummy_inputs does not support a batch_size parameter.")
+
+        self.test_context_parallel_inference(cp_type, batch_size=2)
 
     @pytest.mark.parametrize(
         "cp_type,mesh_shape,mesh_dim_names",

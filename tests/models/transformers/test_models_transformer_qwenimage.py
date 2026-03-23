@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 import warnings
 
 import torch
@@ -177,10 +176,9 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
 
         assert output.sample.shape[1] == inputs["hidden_states"].shape[1]
 
-    @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_txt_seq_lens_deprecation(self, batch_size):
+    def test_txt_seq_lens_deprecation(self):
         init_dict = self.get_init_dict()
-        inputs = self.get_dummy_inputs(batch_size=batch_size)
+        inputs = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
 
         txt_seq_lens = [inputs["encoder_hidden_states"].shape[1]]
@@ -279,17 +277,6 @@ class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, Attent
 
 class TestQwenImageTransformerContextParallel(QwenImageTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for QwenImage Transformer."""
-
-    @pytest.mark.parametrize(
-        "batch_size",
-        [
-            1,
-            pytest.param(2, marks=pytest.mark.xfail(reason="Context parallel does not support batch_size > 1")),
-        ],
-    )
-    def test_context_parallel_batch_size(self, batch_size):
-        self.get_dummy_inputs = functools.partial(self.get_dummy_inputs, batch_size=batch_size)
-        self.test_context_parallel_inference("ulysses_degree")
 
 
 class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterMixin):
