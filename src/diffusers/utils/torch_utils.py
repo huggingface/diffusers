@@ -342,6 +342,8 @@ def disable_full_determinism():
 def lru_cache_unless_export(maxsize=128, typed=False):
     def outer_wrapper(fn: Callable[P, T]):
         cached = functools.lru_cache(maxsize=maxsize, typed=typed)(fn)
+        if is_torch_version("<", "2.7.0"):
+            return cached
 
         @functools.wraps(fn)
         def inner_wrapper(*args: P.args, **kwargs: P.kwargs):
