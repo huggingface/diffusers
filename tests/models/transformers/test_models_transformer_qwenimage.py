@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import warnings
 
 import torch
+import pytest
 
 from diffusers import QwenImageTransformer2DModel
 from diffusers.models.transformers.transformer_qwenimage import compute_text_seq_len_from_mask
@@ -77,8 +79,7 @@ class QwenImageTransformerTesterConfig(BaseModelTesterConfig):
             "axes_dims_rope": (8, 4, 4),
         }
 
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        batch_size = 2
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
         num_latent_channels = embedding_dim = 16
         height = width = 4
         sequence_length = 8
@@ -106,9 +107,10 @@ class QwenImageTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixin):
-    def test_infers_text_seq_len_from_mask(self):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_infers_text_seq_len_from_mask(self, batch_size):
         init_dict = self.get_init_dict()
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(batch_size=batch_size)
         model = self.model_class(**init_dict).to(torch_device)
 
         encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
@@ -122,7 +124,7 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         assert isinstance(per_sample_len, torch.Tensor)
         assert int(per_sample_len.max().item()) == 2
         assert normalized_mask.dtype == torch.bool
-        assert normalized_mask.sum().item() == 4
+        assert normalized_mask.sum().item() == 2 * batch_size
         assert rope_text_seq_len >= inputs["encoder_hidden_states"].shape[1]
 
         inputs["encoder_hidden_states_mask"] = normalized_mask
@@ -139,7 +141,7 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         )
 
         assert int(per_sample_len2.max().item()) == 8
-        assert normalized_mask2.sum().item() == 10
+        assert normalized_mask2.sum().item() == 5 * batch_size
 
         rope_text_seq_len_none, per_sample_len_none, normalized_mask_none = compute_text_seq_len_from_mask(
             inputs["encoder_hidden_states"], None
@@ -149,9 +151,10 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         assert per_sample_len_none is None
         assert normalized_mask_none is None
 
-    def test_non_contiguous_attention_mask(self):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_non_contiguous_attention_mask(self, batch_size):
         init_dict = self.get_init_dict()
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(batch_size=batch_size)
         model = self.model_class(**init_dict).to(torch_device)
 
         encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
@@ -174,9 +177,10 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
 
         assert output.sample.shape[1] == inputs["hidden_states"].shape[1]
 
-    def test_txt_seq_lens_deprecation(self):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_txt_seq_lens_deprecation(self, batch_size):
         init_dict = self.get_init_dict()
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(batch_size=batch_size)
         model = self.model_class(**init_dict).to(torch_device)
 
         txt_seq_lens = [inputs["encoder_hidden_states"].shape[1]]
@@ -219,7 +223,7 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
 
         assert isinstance(model.pos_embed, QwenEmbedLayer3DRope)
 
-        batch_size = 2
+        batch_size = 1
         text_seq_len = 8
         img_h, img_w = 4, 4
         layers = 4
@@ -230,9 +234,9 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
         encoder_hidden_states_mask = torch.ones(batch_size, text_seq_len).to(torch_device)
         encoder_hidden_states_mask[0, 5:] = 0
 
-        timestep = torch.tensor([1.0, 1.0]).to(torch_device)
+        timestep = torch.tensor([1.0]).to(torch_device)
 
-        addition_t_cond = torch.tensor([0, 0], dtype=torch.long).to(torch_device)
+        addition_t_cond = torch.tensor([0], dtype=torch.long).to(torch_device)
 
         img_shapes = [
             [
@@ -242,7 +246,7 @@ class TestQwenImageTransformer(QwenImageTransformerTesterConfig, ModelTesterMixi
                 (1, img_h, img_w),
                 (1, img_h, img_w),
             ]
-        ] * batch_size
+        ]
 
         with torch.no_grad():
             output = model(
@@ -276,32 +280,16 @@ class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, Attent
 class TestQwenImageTransformerContextParallel(QwenImageTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for QwenImage Transformer."""
 
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        batch_size = 1  # TODO: context parallel failed with batch size > 1, need fix
-        num_latent_channels = embedding_dim = 16
-        height = width = 4
-        sequence_length = 8
-        vae_scale_factor = 4
-
-        hidden_states = randn_tensor(
-            (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
-        )
-        encoder_hidden_states = randn_tensor(
-            (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
-        )
-        encoder_hidden_states_mask = torch.ones((batch_size, sequence_length)).to(torch_device, torch.long)
-        timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
-        orig_height = height * 2 * vae_scale_factor
-        orig_width = width * 2 * vae_scale_factor
-        img_shapes = [(1, orig_height // vae_scale_factor // 2, orig_width // vae_scale_factor // 2)] * batch_size
-
-        return {
-            "hidden_states": hidden_states,
-            "encoder_hidden_states": encoder_hidden_states,
-            "encoder_hidden_states_mask": encoder_hidden_states_mask,
-            "timestep": timestep,
-            "img_shapes": img_shapes,
-        }
+    @pytest.mark.parametrize(
+        "batch_size",
+        [
+            1,
+            pytest.param(2, marks=pytest.mark.xfail(reason="Context parallel does not support batch_size > 1")),
+        ],
+    )
+    def test_context_parallel_batch_size(self, batch_size):
+        self.get_dummy_inputs = functools.partial(self.get_dummy_inputs, batch_size=batch_size)
+        self.test_context_parallel_inference("ulysses_degree")
 
 
 class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterMixin):
