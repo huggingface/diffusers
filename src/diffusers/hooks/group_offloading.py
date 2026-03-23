@@ -54,11 +54,25 @@ def _get_torchao_inner_tensor_names(tensor: torch.Tensor) -> list[str]:
     return names
 
 
-def _update_torchao_tensor_in_place(param: torch.Tensor, source: torch.Tensor) -> None:
-    """Update internal tensor data of a TorchAO parameter in-place from source.
+def _swap_torchao_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
+    """Move a TorchAO parameter to the device of `source` via `swap_tensors`.
 
-    Must operate on the parameter/buffer object directly (not ``param.data``) because ``_make_wrapper_subclass``
-    returns a fresh wrapper from ``.data`` each time, so attribute mutations on ``.data`` are lost.
+    `param.data = source` does not work for `_make_wrapper_subclass` tensors because the `.data` setter only replaces
+    the outer wrapper storage while leaving the subclass's internal attributes (e.g. `.qdata`, `.scale`) on the
+    original device. `swap_tensors` swaps the full tensor contents in-place, preserving the parameter's identity so
+    that any dict keyed by `id(param)` remains valid.
+
+    Refer to https://github.com/huggingface/diffusers/pull/13276#discussion_r2944471548 for the full discussion.
+    """
+    torch.utils.swap_tensors(param, source)
+
+
+def _restore_torchao_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
+    """Restore internal tensor data of a TorchAO parameter from `source` without mutating `source`.
+
+    Unlike `_swap_torchao_tensor` this copies attribute references one-by-one via `setattr` so that `source` is **not**
+    modified. Use this when `source` is a cached tensor that must remain unchanged (e.g. a pinned CPU copy in
+    `cpu_param_dict`).
     """
     for attr_name in _get_torchao_inner_tensor_names(source):
         setattr(param, attr_name, getattr(source, attr_name))
@@ -194,7 +208,7 @@ class ModuleGroup:
     def _transfer_tensor_to_device(self, tensor, source_tensor, default_stream):
         moved = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
         if _is_torchao_tensor(tensor):
-            _update_torchao_tensor_in_place(tensor, moved)
+            _swap_torchao_tensor(tensor, moved)
         else:
             tensor.data = moved
         if self.record_stream:
@@ -288,17 +302,17 @@ class ModuleGroup:
             for group_module in self.modules:
                 for param in group_module.parameters():
                     if _is_torchao_tensor(param):
-                        _update_torchao_tensor_in_place(param, self.cpu_param_dict[param])
+                        _restore_torchao_tensor(param, self.cpu_param_dict[param])
                     else:
                         param.data = self.cpu_param_dict[param]
             for param in self.parameters:
                 if _is_torchao_tensor(param):
-                    _update_torchao_tensor_in_place(param, self.cpu_param_dict[param])
+                    _restore_torchao_tensor(param, self.cpu_param_dict[param])
                 else:
                     param.data = self.cpu_param_dict[param]
             for buffer in self.buffers:
                 if _is_torchao_tensor(buffer):
-                    _update_torchao_tensor_in_place(buffer, self.cpu_param_dict[buffer])
+                    _restore_torchao_tensor(buffer, self.cpu_param_dict[buffer])
                 else:
                     buffer.data = self.cpu_param_dict[buffer]
         else:
@@ -307,13 +321,13 @@ class ModuleGroup:
             for param in self.parameters:
                 if _is_torchao_tensor(param):
                     moved = param.data.to(self.offload_device, non_blocking=False)
-                    _update_torchao_tensor_in_place(param, moved)
+                    _swap_torchao_tensor(param, moved)
                 else:
                     param.data = param.data.to(self.offload_device, non_blocking=False)
             for buffer in self.buffers:
                 if _is_torchao_tensor(buffer):
                     moved = buffer.data.to(self.offload_device, non_blocking=False)
-                    _update_torchao_tensor_in_place(buffer, moved)
+                    _swap_torchao_tensor(buffer, moved)
                 else:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=False)
 
