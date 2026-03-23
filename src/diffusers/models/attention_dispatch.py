@@ -229,6 +229,7 @@ class AttentionBackendName(str, Enum):
     FLASH_HUB = "flash_hub"
     FLASH_VARLEN = "flash_varlen"
     FLASH_VARLEN_HUB = "flash_varlen_hub"
+    FLASH_4_HUB = "flash_4_hub"
     _FLASH_3 = "_flash_3"
     _FLASH_VARLEN_3 = "_flash_varlen_3"
     _FLASH_3_HUB = "_flash_3_hub"
@@ -357,6 +358,11 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
         repo_id="kernels-community/sage-attention",
         function_attr="sageattn",
         version=1,
+    ),
+    AttentionBackendName.FLASH_4_HUB: _HubKernelConfig(
+        repo_id="kernels-staging/flash-attn4",
+        function_attr="flash_attn_func",
+        version=0,
     ),
 }
 
@@ -521,6 +527,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         AttentionBackendName._FLASH_3_HUB,
         AttentionBackendName._FLASH_3_VARLEN_HUB,
         AttentionBackendName.SAGE_HUB,
+        AttentionBackendName.FLASH_4_HUB,
     ]:
         if not is_kernels_available():
             raise RuntimeError(
@@ -529,6 +536,11 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         if not is_kernels_version(">=", "0.12"):
             raise RuntimeError(
                 f"Backend '{backend.value}' needs to be used with a `kernels` version of at least 0.12. Please update with `pip install -U kernels`."
+            )
+
+        if backend == AttentionBackendName.FLASH_4_HUB and not is_kernels_available(">=", "0.12.3"):
+            raise RuntimeError(
+                f"Backend '{backend.value}' needs to be used with a `kernels` version of at least 0.12.3. Please update with `pip install -U kernels`."
             )
 
     elif backend == AttentionBackendName.AITER:
@@ -2674,6 +2686,37 @@ def _flash_attention_3_varlen_hub(
     out = out.unflatten(0, (batch_size, -1))
 
     return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.FLASH_4_HUB,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
+)
+def _flash_attention_4_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor | None = None,
+    scale: float | None = None,
+    is_causal: bool = False,
+    return_lse: bool = False,
+    _parallel_config: "ParallelConfig" | None = None,
+) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for flash-attn 4.")
+
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_4_HUB].kernel_fn
+    out = func(
+        q=query,
+        k=key,
+        v=value,
+        softmax_scale=scale,
+        causal=is_causal,
+    )
+    if isinstance(out, tuple):
+        return (out[0], out[1]) if return_lse else out[0]
+    return out
 
 
 @_AttentionBackendRegistry.register(
