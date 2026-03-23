@@ -23,7 +23,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from diffusers.models._modeling_parallel import ContextParallelConfig
-from diffusers.models.attention_dispatch import _AttentionBackendRegistry, AttentionBackendName
+from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
 
 from ...testing_utils import (
     is_context_parallel,
@@ -176,7 +176,7 @@ class ContextParallelTesterMixin:
 
         world_size = 2
         init_dict = self.get_init_dict()
-        
+
         # get_dummy_inputs may or may not support a batch_size argument
         if batch_size is not None and "batch_size" in inspect.signature(self.get_dummy_inputs).parameters:
             inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
