@@ -36,7 +36,6 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def _is_torchao_tensor(tensor: torch.Tensor) -> bool:
-    """Check if a tensor is a TorchAO quantized tensor subclass."""
     if not is_torchao_available():
         return False
     from torchao.utils import TorchAOBaseTensor
