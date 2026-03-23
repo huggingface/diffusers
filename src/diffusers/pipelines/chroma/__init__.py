@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_chroma"] = ["ChromaPipeline"]
+    _import_structure["pipeline_chroma_radiance"] = ["ChromaRadiancePipeline"]
     _import_structure["pipeline_chroma_img2img"] = ["ChromaImg2ImgPipeline"]
     _import_structure["pipeline_chroma_inpainting"] = ["ChromaInpaintPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -34,6 +35,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_chroma import ChromaPipeline
         from .pipeline_chroma_img2img import ChromaImg2ImgPipeline
+        from .pipeline_chroma_radiance import ChromaRadiancePipeline
         from .pipeline_chroma_inpainting import ChromaInpaintPipeline
 else:
     import sys
