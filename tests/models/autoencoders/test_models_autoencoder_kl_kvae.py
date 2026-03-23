@@ -71,4 +71,3 @@ class AutoencoderKLKVAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.
             "KVAEDecoder2D",
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-

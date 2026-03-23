@@ -76,11 +76,15 @@ class AutoencoderKLKVAEVideoTests(ModelTesterMixin, AutoencoderTesterMixin, unit
     def test_outputs_equivalence(self):
         pass
 
-    @unittest.skip("Multi-GPU inference is not supported due to the stateful cache_dict passing through the forward pass.")
+    @unittest.skip(
+        "Multi-GPU inference is not supported due to the stateful cache_dict passing through the forward pass."
+    )
     def test_model_parallelism(self):
         pass
 
-    @unittest.skip("Multi-GPU inference is not supported due to the stateful cache_dict passing through the forward pass.")
+    @unittest.skip(
+        "Multi-GPU inference is not supported due to the stateful cache_dict passing through the forward pass."
+    )
     def test_sharded_checkpoints_device_map(self):
         pass
 
@@ -88,6 +92,7 @@ class AutoencoderKLKVAEVideoTests(ModelTesterMixin, AutoencoderTesterMixin, unit
         # reflection_pad3d_backward_out_cuda has no deterministic CUDA implementation;
         # temporarily relax the requirement for training tests that do backward passes.
         import torch
+
         torch.use_deterministic_algorithms(False)
         try:
             fn()

@@ -39,6 +39,7 @@ def nonlinearity(x: torch.Tensor) -> torch.Tensor:
 # Base layers
 # =============================================================================
 
+
 class KVAESafeConv3d(nn.Conv3d):
     r"""
     A 3D convolution layer that splits the input tensor into smaller parts to avoid OOM.
@@ -58,7 +59,7 @@ class KVAESafeConv3d(nn.Conv3d):
                     if i == 0 or kernel_size == 1:
                         z = torch.clone(chunk)
                     else:
-                        z = torch.cat([z[:, :, -kernel_size + 1:], chunk], dim=2)
+                        z = torch.cat([z[:, :, -kernel_size + 1 :], chunk], dim=2)
                     output.append(super().forward(z))
                 return torch.cat(output, dim=2)
             else:
@@ -67,9 +68,9 @@ class KVAESafeConv3d(nn.Conv3d):
                     if i == 0 or kernel_size == 1:
                         z = torch.clone(chunk)
                     else:
-                        z = torch.cat([z[:, :, -kernel_size + 1:], chunk], dim=2)
+                        z = torch.cat([z[:, :, -kernel_size + 1 :], chunk], dim=2)
                     z_time = z.size(2) - (kernel_size - 1)
-                    write_to[:, :, time_offset:time_offset + z_time] = super().forward(z)
+                    write_to[:, :, time_offset : time_offset + z_time] = super().forward(z)
                     time_offset += z_time
                 return write_to
         else:
@@ -147,13 +148,13 @@ class KVAECachedCausalConv3d(nn.Module):
         padding_3d = (self.height_pad, self.height_pad, self.width_pad, self.width_pad, 0, 0)
         input_parallel = F.pad(input, padding_3d, mode="replicate")
 
-        if cache['padding'] is None:
+        if cache["padding"] is None:
             first_frame = input_parallel[:, :, :1]
             time_pad_shape = list(first_frame.shape)
             time_pad_shape[2] = self.time_pad
             padding = first_frame.expand(time_pad_shape)
         else:
-            padding = cache['padding']
+            padding = cache["padding"]
 
         out_size = list(input.shape)
         out_size[1] = self.conv.out_channels
@@ -165,14 +166,20 @@ class KVAECachedCausalConv3d(nn.Module):
         offset_in = offset_out * t_stride - padding.size(2)
 
         if offset_out > 0:
-            padding_poisoned = torch.cat([padding, input_parallel[:, :, :offset_in + self.time_kernel_size - t_stride]], dim=2)
+            padding_poisoned = torch.cat(
+                [padding, input_parallel[:, :, : offset_in + self.time_kernel_size - t_stride]], dim=2
+            )
             output[:, :, :offset_out] = self.conv(padding_poisoned)
 
         if offset_out < output.size(2):
             output[:, :, offset_out:] = self.conv(input_parallel[:, :, offset_in:])
 
-        pad_offset = offset_in + t_stride * math.trunc((input_parallel.size(2) - offset_in - self.time_kernel_size) / t_stride) + t_stride
-        cache['padding'] = torch.clone(input_parallel[:, :, pad_offset:])
+        pad_offset = (
+            offset_in
+            + t_stride * math.trunc((input_parallel.size(2) - offset_in - self.time_kernel_size) / t_stride)
+            + t_stride
+        )
+        cache["padding"] = torch.clone(input_parallel[:, :, pad_offset:])
 
         return output
 
@@ -181,20 +188,23 @@ class KVAECachedGroupNorm(nn.Module):
     r"""
     GroupNorm with caching support for temporal processing.
     """
-    def __init__(self, in_channels: int):  
-          super().__init__()  
-          self.norm_layer = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True) 
+
+    def __init__(self, in_channels: int):
+        super().__init__()
+        self.norm_layer = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
     def forward(self, x: torch.Tensor, cache: Dict = None) -> torch.Tensor:
         out = self.norm_layer(x)
-        if cache is not None and cache.get('mean') is None and cache.get('var') is None:
-            cache['mean'] = 1
-            cache['var'] = 1
+        if cache is not None and cache.get("mean") is None and cache.get("var") is None:
+            cache["mean"] = 1
+            cache["var"] = 1
         return out
+
 
 # =============================================================================
 # Cached layers
 # =============================================================================
+
 
 class KVAECachedSpatialNorm3D(nn.Module):
     r"""
@@ -218,7 +228,7 @@ class KVAECachedSpatialNorm3D(nn.Module):
         self.conv_b = KVAESafeConv3d(zq_channels, f_channels, kernel_size=1)
 
     def forward(self, f: torch.Tensor, zq: torch.Tensor, cache: Dict) -> torch.Tensor:
-        if cache['norm'].get('mean') is None and cache['norm'].get('var') is None:
+        if cache["norm"].get("mean") is None and cache["norm"].get("var") is None:
             f_first, f_rest = f[:, :, :1], f[:, :, 1:]
             f_first_size, f_rest_size = f_first.shape[-3:], f_rest.shape[-3:]
             zq_first, zq_rest = zq[:, :, :1], zq[:, :, 1:]
@@ -227,7 +237,9 @@ class KVAECachedSpatialNorm3D(nn.Module):
 
             if zq.size(2) > 1:
                 zq_rest_splits = torch.split(zq_rest, 32, dim=1)
-                interpolated_splits = [F.interpolate(split, size=f_rest_size, mode="nearest") for split in zq_rest_splits]
+                interpolated_splits = [
+                    F.interpolate(split, size=f_rest_size, mode="nearest") for split in zq_rest_splits
+                ]
                 zq_rest = torch.cat(interpolated_splits, dim=1)
                 zq = torch.cat([zq_first, zq_rest], dim=2)
             else:
@@ -239,9 +251,9 @@ class KVAECachedSpatialNorm3D(nn.Module):
             zq = torch.cat(interpolated_splits, dim=1)
 
         if self.add_conv:
-            zq = self.conv(zq, cache['add_conv'])
+            zq = self.conv(zq, cache["add_conv"])
 
-        norm_f = self.norm_layer(f, cache['norm'])
+        norm_f = self.norm_layer(f, cache["norm"])
         norm_f = norm_f * self.conv_y(zq)
         norm_f = norm_f + self.conv_b(zq)
 
@@ -298,28 +310,28 @@ class KVAECachedResnetBlock3D(nn.Module):
 
         if zq is None:
             # Encoder path - norm takes cache
-            h = self.norm1(h, cache=layer_cache['norm1'])
+            h = self.norm1(h, cache=layer_cache["norm1"])
         else:
             # Decoder path - spatial norm takes zq and cache
-            h = self.norm1(h, zq, cache=layer_cache['norm1'])
+            h = self.norm1(h, zq, cache=layer_cache["norm1"])
 
         h = F.silu(h)
-        h = self.conv1(h, cache=layer_cache['conv1'])
+        h = self.conv1(h, cache=layer_cache["conv1"])
 
         if temb is not None:
             h = h + self.temb_proj(nonlinearity(temb))[:, :, None, None, None]
 
         if zq is None:
-            h = self.norm2(h, cache=layer_cache['norm2'])
+            h = self.norm2(h, cache=layer_cache["norm2"])
         else:
-            h = self.norm2(h, zq, cache=layer_cache['norm2'])
+            h = self.norm2(h, zq, cache=layer_cache["norm2"])
 
         h = F.silu(h)
-        h = self.conv2(h, cache=layer_cache['conv2'])
+        h = self.conv2(h, cache=layer_cache["conv2"])
 
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
-                x = self.conv_shortcut(x, cache=layer_cache['conv_shortcut'])
+                x = self.conv_shortcut(x, cache=layer_cache["conv_shortcut"])
             else:
                 x = self.nin_shortcut(x)
 
@@ -339,8 +351,12 @@ class KVAECachedPXSDownsample(nn.Module):
         self.s_pool = nn.AvgPool3d((1, 2, 2), (1, 2, 2))
 
         self.spatial_conv = KVAESafeConv3d(
-            in_channels, in_channels, kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=(0, 1, 1),
-            padding_mode='reflect'
+            in_channels,
+            in_channels,
+            kernel_size=(1, 3, 3),
+            stride=(1, 2, 2),
+            padding=(0, 1, 1),
+            padding_mode="reflect",
         )
 
         if self.temporal_compress:
@@ -356,7 +372,7 @@ class KVAECachedPXSDownsample(nn.Module):
         # pxs_input = rearrange(input, 'b c t h w -> (b t) c h w')
         pxs_interm = self.unshuffle(pxs_input)
         b_it, c_it, h_it, w_it = pxs_interm.shape
-        pxs_interm_view = pxs_interm.view(b_it, c_it // self.factor ** 2, self.factor ** 2, h_it, w_it)
+        pxs_interm_view = pxs_interm.view(b_it, c_it // self.factor**2, self.factor**2, h_it, w_it)
         pxs_out = torch.mean(pxs_interm_view, dim=2)
         pxs_out = pxs_out.view(b, t, -1, h_it, w_it).permute(0, 2, 1, 3, 4)
         # pxs_out = rearrange(pxs_out, '(b t) c h w -> b c t h w', t=input.size(2))
@@ -368,7 +384,7 @@ class KVAECachedPXSDownsample(nn.Module):
 
         permuted = input.permute(0, 3, 4, 1, 2).reshape(b * h * w, c, t)
 
-        if cache[0]['padding'] is None:
+        if cache[0]["padding"] is None:
             first, rest = permuted[..., :1], permuted[..., 1:]
             if rest.size(-1) > 0:
                 rest_interp = F.avg_pool1d(rest, kernel_size=2, stride=2)
@@ -406,8 +422,12 @@ class KVAECachedPXSUpsample(nn.Module):
         self.shuffle = nn.PixelShuffle(self.factor)
 
         self.spatial_conv = KVAESafeConv3d(
-            in_channels, in_channels, kernel_size=(1, 3, 3), stride=(1, 1, 1), padding=(0, 1, 1),
-            padding_mode='reflect'
+            in_channels,
+            in_channels,
+            kernel_size=(1, 3, 3),
+            stride=(1, 1, 1),
+            padding=(0, 1, 1),
+            padding_mode="reflect",
         )
 
         if self.temporal_compress:
@@ -420,7 +440,7 @@ class KVAECachedPXSUpsample(nn.Module):
     def spatial_upsample(self, input: torch.Tensor) -> torch.Tensor:
         b, c, t, h, w = input.shape
         input_view = input.permute(0, 2, 1, 3, 4).reshape(b, t * c, h, w)
-        input_interp = F.interpolate(input_view, scale_factor=2, mode='nearest')
+        input_interp = F.interpolate(input_view, scale_factor=2, mode="nearest")
         input_interp = input_interp.view(b, t, c, 2 * h, 2 * w).permute(0, 2, 1, 3, 4)
 
         out = self.spatial_conv(input_interp)
@@ -433,8 +453,8 @@ class KVAECachedPXSUpsample(nn.Module):
 
         repeated = input.repeat_interleave(int(time_factor), dim=2)
 
-        if cache['padding'] is None:
-            tail = repeated[..., int(time_factor - 1):, :, :]
+        if cache["padding"] is None:
+            tail = repeated[..., int(time_factor - 1) :, :, :]
         else:
             tail = repeated
 
@@ -454,6 +474,7 @@ class KVAECachedPXSUpsample(nn.Module):
 # =============================================================================
 # Cached Encoder/Decoder
 # =============================================================================
+
 
 class KVAECachedEncoder3D(nn.Module):
     r"""
@@ -532,7 +553,7 @@ class KVAECachedEncoder3D(nn.Module):
     def forward(self, x: torch.Tensor, cache_dict: Dict) -> torch.Tensor:
         temb = None
 
-        h = self.conv_in(x, cache=cache_dict['conv_in'])
+        h = self.conv_in(x, cache=cache_dict["conv_in"])
 
         for i_level in range(self.num_resolutions):
             for i_block in range(self.num_res_blocks):
@@ -545,18 +566,18 @@ class KVAECachedEncoder3D(nn.Module):
                 if len(self.down[i_level].attn) > 0:
                     h = self.down[i_level].attn[i_block](h)
             if i_level != self.num_resolutions - 1:
-                h = self.down[i_level].downsample(h, cache=cache_dict[i_level]['down'])
+                h = self.down[i_level].downsample(h, cache=cache_dict[i_level]["down"])
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            h = self._gradient_checkpointing_func(self.mid.block_1, h, temb, cache_dict['mid_1'])
-            h = self._gradient_checkpointing_func(self.mid.block_2, h, temb, cache_dict['mid_2'])
+            h = self._gradient_checkpointing_func(self.mid.block_1, h, temb, cache_dict["mid_1"])
+            h = self._gradient_checkpointing_func(self.mid.block_2, h, temb, cache_dict["mid_2"])
         else:
-            h = self.mid.block_1(h, temb, layer_cache=cache_dict['mid_1'])
-            h = self.mid.block_2(h, temb, layer_cache=cache_dict['mid_2'])
+            h = self.mid.block_1(h, temb, layer_cache=cache_dict["mid_1"])
+            h = self.mid.block_2(h, temb, layer_cache=cache_dict["mid_2"])
 
-        h = self.norm_out(h, cache=cache_dict['norm_out'])
+        h = self.norm_out(h, cache=cache_dict["norm_out"])
         h = nonlinearity(h)
-        h = self.conv_out(h, cache=cache_dict['conv_out'])
+        h = self.conv_out(h, cache=cache_dict["conv_out"])
 
         return h
 
@@ -594,12 +615,20 @@ class KVAECachedDecoder3D(nn.Module):
 
         self.mid = nn.Module()
         self.mid.block_1 = KVAECachedResnetBlock3D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch,
-            dropout=dropout, zq_ch=zq_ch, add_conv=add_conv
+            in_channels=block_in,
+            out_channels=block_in,
+            temb_channels=self.temb_ch,
+            dropout=dropout,
+            zq_ch=zq_ch,
+            add_conv=add_conv,
         )
         self.mid.block_2 = KVAECachedResnetBlock3D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch,
-            dropout=dropout, zq_ch=zq_ch, add_conv=add_conv
+            in_channels=block_in,
+            out_channels=block_in,
+            temb_channels=self.temb_ch,
+            dropout=dropout,
+            zq_ch=zq_ch,
+            add_conv=add_conv,
         )
 
         self.up = nn.ModuleList()
@@ -611,8 +640,12 @@ class KVAECachedDecoder3D(nn.Module):
             for i_block in range(self.num_res_blocks + 1):
                 block.append(
                     KVAECachedResnetBlock3D(
-                        in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch,
-                        dropout=dropout, zq_ch=zq_ch, add_conv=add_conv
+                        in_channels=block_in,
+                        out_channels=block_out,
+                        temb_channels=self.temb_ch,
+                        dropout=dropout,
+                        zq_ch=zq_ch,
+                        add_conv=add_conv,
                     )
                 )
                 block_in = block_out
@@ -637,14 +670,14 @@ class KVAECachedDecoder3D(nn.Module):
         temb = None
         zq = z
 
-        h = self.conv_in(z, cache_dict['conv_in'])
+        h = self.conv_in(z, cache_dict["conv_in"])
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            h = self._gradient_checkpointing_func(self.mid.block_1, h, temb, cache_dict['mid_1'], zq)
-            h = self._gradient_checkpointing_func(self.mid.block_2, h, temb, cache_dict['mid_2'], zq)
+            h = self._gradient_checkpointing_func(self.mid.block_1, h, temb, cache_dict["mid_1"], zq)
+            h = self._gradient_checkpointing_func(self.mid.block_2, h, temb, cache_dict["mid_2"], zq)
         else:
-            h = self.mid.block_1(h, temb, layer_cache=cache_dict['mid_1'], zq=zq)
-            h = self.mid.block_2(h, temb, layer_cache=cache_dict['mid_2'], zq=zq)
+            h = self.mid.block_1(h, temb, layer_cache=cache_dict["mid_1"], zq=zq)
+            h = self.mid.block_2(h, temb, layer_cache=cache_dict["mid_2"], zq=zq)
 
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks + 1):
@@ -657,27 +690,27 @@ class KVAECachedDecoder3D(nn.Module):
                 if len(self.up[i_level].attn) > 0:
                     h = self.up[i_level].attn[i_block](h, zq)
             if i_level != 0:
-                h = self.up[i_level].upsample(h, cache_dict[i_level]['up'])
+                h = self.up[i_level].upsample(h, cache_dict[i_level]["up"])
 
-        h = self.norm_out(h, zq, cache_dict['norm_out'])
+        h = self.norm_out(h, zq, cache_dict["norm_out"])
         h = nonlinearity(h)
-        h = self.conv_out(h, cache_dict['conv_out'])
+        h = self.conv_out(h, cache_dict["conv_out"])
 
         return h
-
 
 
 # =============================================================================
 # Main AutoencoderKL class
 # =============================================================================
 
+
 class AutoencoderKLKVAEVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
-    A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
-    Used in [KVAE](https://github.com/kandinskylab/kvae-1).
+    A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Used in
+    [KVAE](https://github.com/kandinskylab/kvae-1).
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
-    for all models (such as downloading or saving).
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented for
+    all models (such as downloading or saving).
 
     Parameters:
         ch (`int`, *optional*, defaults to 128): Base channel count.
@@ -729,77 +762,79 @@ class AutoencoderKLKVAEVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
 
     def _make_encoder_cache(self) -> Dict:
         """Create empty cache for cached encoder."""
-        def make_dict(name, p=None):
-            if name == 'conv':
-                return {'padding': None}
 
-            layer, module = name.split('_')
-            if layer == 'norm':
-                if module == 'enc':
-                    return {'mean': None, 'var': None}
+        def make_dict(name, p=None):
+            if name == "conv":
+                return {"padding": None}
+
+            layer, module = name.split("_")
+            if layer == "norm":
+                if module == "enc":
+                    return {"mean": None, "var": None}
                 else:
-                    return {'norm': make_dict('norm_enc'), 'add_conv': make_dict('conv')}
-            elif layer == 'resblock':
+                    return {"norm": make_dict("norm_enc"), "add_conv": make_dict("conv")}
+            elif layer == "resblock":
                 return {
-                    'norm1': make_dict(f'norm_{module}'),
-                    'norm2': make_dict(f'norm_{module}'),
-                    'conv1': make_dict('conv'),
-                    'conv2': make_dict('conv'),
-                    'conv_shortcut': make_dict('conv')
+                    "norm1": make_dict(f"norm_{module}"),
+                    "norm2": make_dict(f"norm_{module}"),
+                    "conv1": make_dict("conv"),
+                    "conv2": make_dict("conv"),
+                    "conv_shortcut": make_dict("conv"),
                 }
             elif layer.isdigit():
-                out_dict = {'down': [make_dict('conv'), make_dict('conv')], 'up': make_dict('conv')}
+                out_dict = {"down": [make_dict("conv"), make_dict("conv")], "up": make_dict("conv")}
                 for i in range(p):
-                    out_dict[i] = make_dict(f'resblock_{module}')
+                    out_dict[i] = make_dict(f"resblock_{module}")
                 return out_dict
 
         cache = {
-            'conv_in': make_dict('conv'),
-            'mid_1': make_dict('resblock_enc'),
-            'mid_2': make_dict('resblock_enc'),
-            'norm_out': make_dict('norm_enc'),
-            'conv_out': make_dict('conv')
+            "conv_in": make_dict("conv"),
+            "mid_1": make_dict("resblock_enc"),
+            "mid_2": make_dict("resblock_enc"),
+            "norm_out": make_dict("norm_enc"),
+            "conv_out": make_dict("conv"),
         }
         # Encoder uses num_res_blocks per level
         for i in range(len(self.config.ch_mult)):
-            cache[i] = make_dict(f'{i}_enc', p=self.config.num_res_blocks)
+            cache[i] = make_dict(f"{i}_enc", p=self.config.num_res_blocks)
         return cache
 
     def _make_decoder_cache(self) -> Dict:
         """Create empty cache for decoder."""
-        def make_dict(name, p=None):
-            if name == 'conv':
-                return {'padding': None}
 
-            layer, module = name.split('_')
-            if layer == 'norm':
-                if module == 'enc':
-                    return {'mean': None, 'var': None}
+        def make_dict(name, p=None):
+            if name == "conv":
+                return {"padding": None}
+
+            layer, module = name.split("_")
+            if layer == "norm":
+                if module == "enc":
+                    return {"mean": None, "var": None}
                 else:
-                    return {'norm': make_dict('norm_enc'), 'add_conv': make_dict('conv')}
-            elif layer == 'resblock':
+                    return {"norm": make_dict("norm_enc"), "add_conv": make_dict("conv")}
+            elif layer == "resblock":
                 return {
-                    'norm1': make_dict(f'norm_{module}'),
-                    'norm2': make_dict(f'norm_{module}'),
-                    'conv1': make_dict('conv'),
-                    'conv2': make_dict('conv'),
-                    'conv_shortcut': make_dict('conv')
+                    "norm1": make_dict(f"norm_{module}"),
+                    "norm2": make_dict(f"norm_{module}"),
+                    "conv1": make_dict("conv"),
+                    "conv2": make_dict("conv"),
+                    "conv_shortcut": make_dict("conv"),
                 }
             elif layer.isdigit():
-                out_dict = {'down': [make_dict('conv'), make_dict('conv')], 'up': make_dict('conv')}
+                out_dict = {"down": [make_dict("conv"), make_dict("conv")], "up": make_dict("conv")}
                 for i in range(p):
-                    out_dict[i] = make_dict(f'resblock_{module}')
+                    out_dict[i] = make_dict(f"resblock_{module}")
                 return out_dict
 
         cache = {
-            'conv_in': make_dict('conv'),
-            'mid_1': make_dict('resblock_dec'),
-            'mid_2': make_dict('resblock_dec'),
-            'norm_out': make_dict('norm_dec'),
-            'conv_out': make_dict('conv')
+            "conv_in": make_dict("conv"),
+            "mid_1": make_dict("resblock_dec"),
+            "mid_2": make_dict("resblock_dec"),
+            "norm_out": make_dict("norm_dec"),
+            "conv_out": make_dict("conv"),
         }
         for i in range(len(self.config.ch_mult)):
-            cache[i] = make_dict(f'{i}_dec', p=self.config.num_res_blocks + 1)
+            cache[i] = make_dict(f"{i}_dec", p=self.config.num_res_blocks + 1)
         return cache
 
     def enable_slicing(self) -> None:

@@ -41,8 +41,8 @@ class KVAEResnetBlock2D(nn.Module):
             If `True` add conv2d layer for normalization.
         normalization (`nn.Module`, *optional*, default to `None`): The normalization layer.
         act_fn (`str`, *optional*, default to `"swish"`): The activation function to use.
-        
     """
+
     def __init__(
         self,
         *,
@@ -52,7 +52,7 @@ class KVAEResnetBlock2D(nn.Module):
         temb_channels: int = 512,
         zq_ch: Optional[int] = None,
         add_conv: bool = False,
-        act_fn: str = 'swish'
+        act_fn: str = "swish",
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -76,7 +76,11 @@ class KVAEResnetBlock2D(nn.Module):
         else:
             self.norm2 = KVAEDecoderSpatialNorm2D(out_channels, zq_channels=zq_ch, add_conv=add_conv)
         self.conv2 = nn.Conv2d(
-            in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=(1, 1), padding_mode="replicate"
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            padding=(1, 1),
+            padding_mode="replicate",
         )
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
@@ -129,11 +133,7 @@ class KVAEResnetBlock2D(nn.Module):
 
 
 class KVAEPXSDownsample(nn.Module):
-    def __init__(
-            self,
-            in_channels: int,
-            factor: int = 2
-        ):
+    def __init__(self, in_channels: int, factor: int = 2):
         r"""
         A Downsampling module.
 
@@ -164,11 +164,7 @@ class KVAEPXSDownsample(nn.Module):
 
 
 class KVAEPXSUpsample(nn.Module):
-    def __init__(
-            self,
-            in_channels: int,
-            factor: int = 2
-        ):
+    def __init__(self, in_channels: int, factor: int = 2):
         r"""
         An Upsampling module.
 
@@ -204,8 +200,10 @@ class KVAEDecoderSpatialNorm2D(nn.Module):
     Args:
         in_channels (`int`): The number of channels in the input.
         zq_channels (`int`): The number of channels in the guidance.
-        add_conv (`bool`, *optional*, default to `false`): If `True` add conv2d 3x3 layer for guidance in the beginning.
+        add_conv (`bool`, *optional*, default to `false`):
+            If `True` add conv2d 3x3 layer for guidance in the beginning.
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -255,7 +253,7 @@ class KVAEEncoder2D(nn.Module):
 
     Args:
         ch (`int`): The base number of channels in multiresolution blocks.
-        ch_mult (`Tuple[int, ...]`, *optional*, default to `(1, 2, 4, 8)`): 
+        ch_mult (`Tuple[int, ...]`, *optional*, default to `(1, 2, 4, 8)`):
             The channel multipliers in multiresolution blocks.
         num_res_blocks (`int`): The number of Resnet blocks.
         in_channels (`int`): The number of channels in the input.
@@ -264,6 +262,7 @@ class KVAEEncoder2D(nn.Module):
             Whether to double the number of output channels for the last block.
         act_fn (`str`, *optional*, default to `"swish"`): The activation function to use.
     """
+
     def __init__(
         self,
         *,
@@ -273,7 +272,7 @@ class KVAEEncoder2D(nn.Module):
         in_channels: int,
         z_channels: int,
         double_z: bool = True,
-        act_fn: str = 'swish'
+        act_fn: str = "swish",
     ):
         super().__init__()
         self.ch = ch
@@ -383,7 +382,7 @@ class KVAEDecoder2D(nn.Module):
     Args:
         ch (`int`): The base number of channels in multiresolution blocks.
         out_ch (`int`): The number of output channels.
-        ch_mult (`Tuple[int, ...]`, *optional*, default to `(1, 2, 4, 8)`): 
+        ch_mult (`Tuple[int, ...]`, *optional*, default to `(1, 2, 4, 8)`):
             The channel multipliers in multiresolution blocks.
         num_res_blocks (`int`): The number of Resnet blocks.
         in_channels (`int`): The number of channels in the input.
@@ -394,6 +393,7 @@ class KVAEDecoder2D(nn.Module):
         add_conv (`bool`, *optional*, default to `false`): If `True` add conv2d layer for Resnet normalization layer.
         act_fn (`str`, *optional*, default to `"swish"`): The activation function to use.
     """
+
     def __init__(
         self,
         *,
@@ -406,7 +406,7 @@ class KVAEDecoder2D(nn.Module):
         give_pre_end: bool = False,
         zq_ch: Optional[int] = None,
         add_conv: bool = False,
-        act_fn: str = 'swish'
+        act_fn: str = "swish",
     ):
         super().__init__()
         self.ch = ch
@@ -518,24 +518,24 @@ class KVAEDecoder2D(nn.Module):
         return h
 
 
-class AutoencoderKLKVAE(
-    ModelMixin, AutoencoderMixin, ConfigMixin
-):
+class AutoencoderKLKVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
-    for all models (such as downloading or saving).
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented for
+    all models (such as downloading or saving).
 
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         channels (int,  *optional*, defaults to 128): The base number of channels in multiresolution blocks.
-        num_enc_blocks (int, *optional*, defaults to 2): The number of Resnet blocks in encoder multiresolution layers.
-        num_dec_blocks (int, *optional*, defaults to 2): The number of Resnet blocks in decoder multiresolution layers.
+        num_enc_blocks (int, *optional*, defaults to 2):
+            The number of Resnet blocks in encoder multiresolution layers.
+        num_dec_blocks (int, *optional*, defaults to 2):
+            The number of Resnet blocks in decoder multiresolution layers.
         z_channels (int, *optional*, defaults to 16): Number of channels in the latent space.
         double_z (`bool`, *optional*, defaults to `True`):
             Whether to double the number of output channels of encoder.
-        ch_mult (`Tuple[int, ...]`, *optional*, default to `(1, 2, 4, 8)`): 
+        ch_mult (`Tuple[int, ...]`, *optional*, default to `(1, 2, 4, 8)`):
             The channel multipliers in multiresolution blocks.
         sample_size (`int`, *optional*, defaults to `1024`): Sample input size.
     """
@@ -588,7 +588,6 @@ class AutoencoderKLKVAE(
         )
         self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.ch_mult) - 1)))
         self.tile_overlap_factor = 0.25
-
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, height, width = x.shape
@@ -726,7 +725,6 @@ class AutoencoderKLKVAE(
 
         enc = torch.cat(result_rows, dim=2)
         return enc
-
 
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
         r"""
