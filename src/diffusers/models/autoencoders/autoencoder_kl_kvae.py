@@ -52,7 +52,6 @@ class KVAEResnetBlock2D(nn.Module):
         temb_channels: int = 512,
         zq_ch: Optional[int] = None,
         add_conv: bool = False,
-        normalization: nn.Module = nn.GroupNorm,
         act_fn: str = 'swish'
     ):
         super().__init__()
@@ -63,9 +62,9 @@ class KVAEResnetBlock2D(nn.Module):
         self.nonlinearity = get_activation(act_fn)
 
         if zq_ch is None:
-            self.norm1 = normalization(num_channels=in_channels, num_groups=32, eps=1e-6, affine=True)
+            self.norm1 = nn.GroupNorm(num_channels=in_channels, num_groups=32, eps=1e-6, affine=True)
         else:
-            self.norm1 = normalization(in_channels, zq_channels=zq_ch, add_conv=add_conv)
+            self.norm1 = KVAEDecoderSpatialNorm2D(in_channels, zq_channels=zq_ch, add_conv=add_conv)
 
         self.conv1 = nn.Conv2d(
             in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=(1, 1), padding_mode="replicate"
@@ -73,9 +72,9 @@ class KVAEResnetBlock2D(nn.Module):
         if temb_channels > 0:
             self.temb_proj = torch.nn.Linear(temb_channels, out_channels)
         if zq_ch is None:
-            self.norm2 = normalization(num_channels=out_channels, num_groups=32, eps=1e-6, affine=True)
+            self.norm2 = nn.GroupNorm(num_channels=out_channels, num_groups=32, eps=1e-6, affine=True)
         else:
-            self.norm2 = normalization(out_channels, zq_channels=zq_ch, add_conv=add_conv)
+            self.norm2 = KVAEDecoderSpatialNorm2D(out_channels, zq_channels=zq_ch, add_conv=add_conv)
         self.conv2 = nn.Conv2d(
             in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=(1, 1), padding_mode="replicate"
         )
@@ -212,7 +211,6 @@ class KVAEDecoderSpatialNorm2D(nn.Module):
         in_channels: int,
         zq_channels: int,
         add_conv: bool = False,
-        **norm_layer_params,
     ):
         super().__init__()
         self.norm_layer = nn.GroupNorm(num_channels=in_channels, num_groups=32, eps=1e-6, affine=True)
@@ -437,7 +435,6 @@ class KVAEDecoder2D(nn.Module):
             temb_channels=self.temb_ch,
             zq_ch=zq_ch,
             add_conv=add_conv,
-            normalization=KVAEDecoderSpatialNorm2D,
         )
 
         self.mid.block_2 = KVAEResnetBlock2D(
@@ -446,7 +443,6 @@ class KVAEDecoder2D(nn.Module):
             temb_channels=self.temb_ch,
             zq_ch=zq_ch,
             add_conv=add_conv,
-            normalization=KVAEDecoderSpatialNorm2D,
         )
 
         # upsampling
@@ -463,7 +459,6 @@ class KVAEDecoder2D(nn.Module):
                         temb_channels=self.temb_ch,
                         zq_ch=zq_ch,
                         add_conv=add_conv,
-                        normalization=KVAEDecoderSpatialNorm2D,
                     )
                 )
                 block_in = block_out
@@ -474,7 +469,7 @@ class KVAEDecoder2D(nn.Module):
                 up.upsample = KVAEPXSUpsample(in_channels=block_in)
             self.up.insert(0, up)
 
-        self.norm_out =KVAEDecoderSpatialNorm2D(block_in, zq_ch, add_conv=add_conv)  # , gather=gather_norm)
+        self.norm_out = KVAEDecoderSpatialNorm2D(block_in, zq_ch, add_conv=add_conv)  # , gather=gather_norm)
 
         self.conv_out = nn.Conv2d(
             in_channels=block_in, out_channels=out_ch, kernel_size=3, padding=(1, 1), padding_mode="replicate"
@@ -542,7 +537,6 @@ class AutoencoderKLKVAE(
             Whether to double the number of output channels of encoder.
         ch_mult (`Tuple[int, ...]`, *optional*, default to `(1, 2, 4, 8)`): 
             The channel multipliers in multiresolution blocks.
-        bottleneck (nn.Module, *optional*, defaults to `None`): Bottleneck module of VAE.
         sample_size (`int`, *optional*, defaults to `1024`): Sample input size.
     """
 
@@ -558,7 +552,6 @@ class AutoencoderKLKVAE(
         z_channels: int = 16,
         double_z: bool = True,
         ch_mult: Tuple[int, ...] = (1, 2, 4, 8),
-        bottleneck: Optional[nn.Module] = None,
         sample_size: int = 1024,
     ):
         super().__init__()
