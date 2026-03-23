@@ -15,3 +15,7 @@
 ## AutoPipelineBlocks
 
 [[autodoc]] diffusers.modular_pipelines.modular_pipeline.AutoPipelineBlocks
+
+## ConditionalPipelineBlocks
+
+[[autodoc]] diffusers.modular_pipelines.modular_pipeline.ConditionalPipelineBlocks
