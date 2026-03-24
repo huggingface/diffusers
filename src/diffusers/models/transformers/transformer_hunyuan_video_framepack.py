@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -20,7 +20,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, get_logger, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, get_logger
 from ..cache_utils import CacheMixin
 from ..embeddings import get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -39,7 +39,7 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class HunyuanVideoFramepackRotaryPosEmbed(nn.Module):
-    def __init__(self, patch_size: int, patch_size_t: int, rope_dim: List[int], theta: float = 256.0) -> None:
+    def __init__(self, patch_size: int, patch_size_t: int, rope_dim: list[int], theta: float = 256.0) -> None:
         super().__init__()
 
         self.patch_size = patch_size
@@ -91,9 +91,9 @@ class HunyuanVideoHistoryPatchEmbed(nn.Module):
 
     def forward(
         self,
-        latents_clean: Optional[torch.Tensor] = None,
-        latents_clean_2x: Optional[torch.Tensor] = None,
-        latents_clean_4x: Optional[torch.Tensor] = None,
+        latents_clean: torch.Tensor | None = None,
+        latents_clean_2x: torch.Tensor | None = None,
+        latents_clean_4x: torch.Tensor | None = None,
     ):
         if latents_clean is not None:
             latents_clean = self.proj(latents_clean)
@@ -139,8 +139,8 @@ class HunyuanVideoFramepackTransformer3DModel(
         text_embed_dim: int = 4096,
         pooled_projection_dim: int = 768,
         rope_theta: float = 256.0,
-        rope_axes_dim: Tuple[int, ...] = (16, 56, 56),
-        image_condition_type: Optional[str] = None,
+        rope_axes_dim: tuple[int, ...] = (16, 56, 56),
+        image_condition_type: str | None = None,
         has_image_proj: int = False,
         image_proj_dim: int = 1152,
         has_clean_x_embedder: int = False,
@@ -198,6 +198,7 @@ class HunyuanVideoFramepackTransformer3DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -207,31 +208,16 @@ class HunyuanVideoFramepackTransformer3DModel(
         pooled_projections: torch.Tensor,
         image_embeds: torch.Tensor,
         indices_latents: torch.Tensor,
-        guidance: Optional[torch.Tensor] = None,
-        latents_clean: Optional[torch.Tensor] = None,
-        indices_latents_clean: Optional[torch.Tensor] = None,
-        latents_history_2x: Optional[torch.Tensor] = None,
-        indices_latents_history_2x: Optional[torch.Tensor] = None,
-        latents_history_4x: Optional[torch.Tensor] = None,
-        indices_latents_history_4x: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        guidance: torch.Tensor | None = None,
+        latents_clean: torch.Tensor | None = None,
+        indices_latents_clean: torch.Tensor | None = None,
+        latents_history_2x: torch.Tensor | None = None,
+        indices_latents_history_2x: torch.Tensor | None = None,
+        latents_history_4x: torch.Tensor | None = None,
+        indices_latents_history_4x: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p, p_t = self.config.patch_size, self.config.patch_size_t
         post_patch_num_frames = num_frames // p_t
@@ -337,10 +323,6 @@ class HunyuanVideoFramepackTransformer3DModel(
         hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
         hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
 
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
-
         if not return_dict:
             return (hidden_states,)
         return Transformer2DModelOutput(sample=hidden_states)
@@ -348,13 +330,13 @@ class HunyuanVideoFramepackTransformer3DModel(
     def _pack_history_states(
         self,
         hidden_states: torch.Tensor,
-        latents_clean: Optional[torch.Tensor] = None,
-        latents_history_2x: Optional[torch.Tensor] = None,
-        latents_history_4x: Optional[torch.Tensor] = None,
-        image_rotary_emb: Tuple[torch.Tensor, torch.Tensor] = None,
-        image_rotary_emb_clean: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        image_rotary_emb_history_2x: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        image_rotary_emb_history_4x: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        latents_clean: torch.Tensor | None = None,
+        latents_history_2x: torch.Tensor | None = None,
+        latents_history_4x: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] = None,
+        image_rotary_emb_clean: tuple[torch.Tensor, torch.Tensor] | None = None,
+        image_rotary_emb_history_2x: tuple[torch.Tensor, torch.Tensor] | None = None,
+        image_rotary_emb_history_4x: tuple[torch.Tensor, torch.Tensor] | None = None,
         height: int = None,
         width: int = None,
     ):
@@ -381,10 +363,10 @@ class HunyuanVideoFramepackTransformer3DModel(
 
     def _pad_rotary_emb(
         self,
-        image_rotary_emb: Tuple[torch.Tensor],
+        image_rotary_emb: tuple[torch.Tensor],
         height: int,
         width: int,
-        kernel_size: Tuple[int, int, int],
+        kernel_size: tuple[int, int, int],
     ):
         # freqs_cos, freqs_sin have shape [W * H * T, D / 2], where D is attention head dim
         freqs_cos, freqs_sin = image_rotary_emb

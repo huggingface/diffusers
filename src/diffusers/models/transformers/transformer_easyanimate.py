@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union
-
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -58,7 +56,7 @@ class EasyAnimateLayerNormZero(nn.Module):
 
     def forward(
         self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         shift, scale, gate, enc_shift, enc_scale, enc_gate = self.linear(self.silu(temb)).chunk(6, dim=1)
         hidden_states = self.norm(hidden_states) * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
         encoder_hidden_states = self.norm(encoder_hidden_states) * (1 + enc_scale.unsqueeze(1)) + enc_shift.unsqueeze(
@@ -68,7 +66,7 @@ class EasyAnimateLayerNormZero(nn.Module):
 
 
 class EasyAnimateRotaryPosEmbed(nn.Module):
-    def __init__(self, patch_size: int, rope_dim: List[int]) -> None:
+    def __init__(self, patch_size: int, rope_dim: list[int]) -> None:
         super().__init__()
 
         self.patch_size = patch_size
@@ -128,8 +126,8 @@ class EasyAnimateAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if attn.add_q_proj is None and encoder_hidden_states is not None:
             hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
@@ -220,7 +218,7 @@ class EasyAnimateTransformerBlock(nn.Module):
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-6,
         final_dropout: bool = True,
-        ff_inner_dim: Optional[int] = None,
+        ff_inner_dim: int | None = None,
         ff_bias: bool = True,
         qk_norm: bool = True,
         after_norm: bool = False,
@@ -280,8 +278,8 @@ class EasyAnimateTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # 1. Attention
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
@@ -375,9 +373,9 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         self,
         num_attention_heads: int = 48,
         attention_head_dim: int = 64,
-        in_channels: Optional[int] = None,
-        out_channels: Optional[int] = None,
-        patch_size: Optional[int] = None,
+        in_channels: int | None = None,
+        out_channels: int | None = None,
+        patch_size: int | None = None,
         sample_width: int = 90,
         sample_height: int = 60,
         activation_fn: str = "gelu-approximate",
@@ -464,13 +462,13 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         self,
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
-        timestep_cond: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_hidden_states_t5: Optional[torch.Tensor] = None,
-        inpaint_latents: Optional[torch.Tensor] = None,
-        control_latents: Optional[torch.Tensor] = None,
+        timestep_cond: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_hidden_states_t5: torch.Tensor | None = None,
+        inpaint_latents: torch.Tensor | None = None,
+        control_latents: torch.Tensor | None = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         batch_size, channels, video_length, height, width = hidden_states.size()
         p = self.config.patch_size
         post_patch_height = height // p

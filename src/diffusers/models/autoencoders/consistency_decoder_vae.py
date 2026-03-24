@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -77,9 +76,9 @@ class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, Config
         latent_channels: int = 4,
         sample_size: int = 32,
         encoder_act_fn: str = "silu",
-        encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        encoder_block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
         encoder_double_z: bool = True,
-        encoder_down_block_types: Tuple[str, ...] = (
+        encoder_down_block_types: tuple[str, ...] = (
             "DownEncoderBlock2D",
             "DownEncoderBlock2D",
             "DownEncoderBlock2D",
@@ -90,8 +89,8 @@ class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, Config
         encoder_norm_num_groups: int = 32,
         encoder_out_channels: int = 4,
         decoder_add_attention: bool = False,
-        decoder_block_out_channels: Tuple[int, ...] = (320, 640, 1024, 1024),
-        decoder_down_block_types: Tuple[str, ...] = (
+        decoder_block_out_channels: tuple[int, ...] = (320, 640, 1024, 1024),
+        decoder_down_block_types: tuple[str, ...] = (
             "ResnetDownsampleBlock2D",
             "ResnetDownsampleBlock2D",
             "ResnetDownsampleBlock2D",
@@ -106,7 +105,7 @@ class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, Config
         decoder_out_channels: int = 6,
         decoder_resnet_time_scale_shift: str = "scale_shift",
         decoder_time_embedding_type: str = "learned",
-        decoder_up_block_types: Tuple[str, ...] = (
+        decoder_up_block_types: tuple[str, ...] = (
             "ResnetUpsampleBlock2D",
             "ResnetUpsampleBlock2D",
             "ResnetUpsampleBlock2D",
@@ -186,7 +185,7 @@ class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, Config
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[ConsistencyDecoderVAEOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> ConsistencyDecoderVAEOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -222,21 +221,21 @@ class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, Config
     def decode(
         self,
         z: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
         num_inference_steps: int = 2,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         """
         Decodes the input latent vector `z` using the consistency decoder VAE model.
 
         Args:
             z (torch.Tensor): The input latent vector.
-            generator (Optional[torch.Generator]): The random number generator. Default is None.
+            generator (torch.Generator | None): The random number generator. Default is None.
             return_dict (bool): Whether to return the output as a dictionary. Default is True.
             num_inference_steps (int): The number of inference steps. Default is 2.
 
         Returns:
-            Union[DecoderOutput, Tuple[torch.Tensor]]: The decoded output.
+            DecoderOutput | tuple[torch.Tensor]: The decoded output.
 
         """
         z = (z * self.config.scaling_factor - self.means) / self.stds
@@ -279,7 +278,7 @@ class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, Config
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
-    def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[ConsistencyDecoderVAEOutput, Tuple]:
+    def tiled_encode(self, x: torch.Tensor, return_dict: bool = True) -> ConsistencyDecoderVAEOutput | tuple:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
@@ -339,8 +338,8 @@ class ConsistencyDecoderVAE(ModelMixin, AttentionMixin, AutoencoderMixin, Config
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+        generator: torch.Generator | None = None,
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 import uuid
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict
 
 import numpy as np
 import PIL.Image
@@ -1072,7 +1072,7 @@ class PipelineTesterMixin:
         return generator
 
     @property
-    def pipeline_class(self) -> Union[Callable, DiffusionPipeline]:
+    def pipeline_class(self) -> Callable | DiffusionPipeline:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_class = ClassNameOfPipeline` in the child test class. "
             "See existing pipeline tests for reference."
@@ -1157,6 +1157,9 @@ class PipelineTesterMixin:
 
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
@@ -1295,6 +1298,9 @@ class PipelineTesterMixin:
         additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for components in pipe.components.values():
             if hasattr(components, "set_default_attn_processor"):
@@ -1345,6 +1351,9 @@ class PipelineTesterMixin:
 
     def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=1e-4):
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
@@ -1477,6 +1486,9 @@ class PipelineTesterMixin:
         if not self.pipeline_class._optional_components:
             return
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
@@ -1557,6 +1569,9 @@ class PipelineTesterMixin:
             return
 
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
@@ -2065,7 +2080,16 @@ class PipelineTesterMixin:
             for component_name in model_components_pipe:
                 pipe_component = model_components_pipe[component_name]
                 pipe_loaded_component = model_components_pipe_loaded[component_name]
-                for p1, p2 in zip(pipe_component.parameters(), pipe_loaded_component.parameters()):
+
+                model_loaded_params = dict(pipe_loaded_component.named_parameters())
+                model_original_params = dict(pipe_component.named_parameters())
+
+                for name, p1 in model_original_params.items():
+                    # Skip tied weights that aren't saved with variants (transformers v5 behavior)
+                    if name not in model_loaded_params:
+                        continue
+
+                    p2 = model_loaded_params[name]
                     # nan check for luminanext (mps).
                     if not (is_nan(p1) and is_nan(p2)):
                         self.assertTrue(torch.equal(p1, p2))
@@ -2089,6 +2113,9 @@ class PipelineTesterMixin:
             return
 
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
 
         # We initialize the pipeline with only text encoders and tokenizers,
         # mimicking a real-world scenario.
@@ -2220,6 +2247,9 @@ class PipelineTesterMixin:
         from huggingface_hub import export_folder_as_dduf
 
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -2355,9 +2385,13 @@ class PipelineTesterMixin:
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
                 )
 
-    @require_torch_accelerator
     def test_pipeline_with_accelerator_device_map(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
+        # Set text encoders to eval mode to match from_pretrained behavior
+        # This ensures deterministic outputs when models are loaded with device_map
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -2406,7 +2440,11 @@ class PipelineTesterMixin:
             if name not in [exclude_module_name] and isinstance(component, torch.nn.Module):
                 # `component.device` prints the `onload_device` type. We should probably override the
                 # `device` property in `ModelMixin`.
-                component_device = next(component.parameters())[0].device
+                # Skip modules with no parameters (e.g., dummy safety checkers with only buffers)
+                params = list(component.parameters())
+                if not params:
+                    continue
+                component_device = params[0].device
                 self.assertTrue(torch.device(component_device).type == torch.device(offload_device).type)
 
     @require_torch_accelerator
@@ -2677,6 +2715,9 @@ class PyramidAttentionBroadcastTesterMixin:
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         num_layers = 2
         components = self.get_dummy_components(num_layers=num_layers)
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)

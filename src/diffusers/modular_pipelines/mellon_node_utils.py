@@ -5,7 +5,7 @@ import os
 
 # Simple typed wrapper for parameter overrides
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from huggingface_hub import create_repo, hf_hub_download, upload_file
 from huggingface_hub.utils import (
@@ -278,19 +278,19 @@ class MellonParam(metaclass=MellonParamMeta):
     name: str
     label: str
     type: str
-    display: Optional[str] = None
+    display: str | None = None
     default: Any = None
-    min: Optional[float] = None
-    max: Optional[float] = None
-    step: Optional[float] = None
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
     options: Any = None
     value: Any = None
-    fieldOptions: Optional[Dict[str, Any]] = None
+    fieldOptions: dict[str, Any] | None = None
     onChange: Any = None
     onSignal: Any = None
-    required_block_params: Optional[Union[str, List[str]]] = None
+    required_block_params: str | list[str] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dict for Mellon schema, excluding None values and internal fields."""
         data = asdict(self)
         return {k: v for k, v in data.items() if v is not None and k not in ("name", "required_block_params")}
@@ -314,7 +314,7 @@ class MellonParam(metaclass=MellonParamMeta):
             )
 
         @classmethod
-        def dropdown(cls, name: str, options: List[str] = None, default: str = None) -> "MellonParam":
+        def dropdown(cls, name: str, options: list[str] = None, default: str = None) -> "MellonParam":
             """dropdown selection."""
             if options and not default:
                 default = options[0]
@@ -579,7 +579,7 @@ def mark_required(label: str, marker: str = " *") -> str:
     return f"{label}{marker}"
 
 
-def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[str, Any]:
+def node_spec_to_mellon_dict(node_spec: dict[str, Any], node_type: str) -> dict[str, Any]:
     """
     Convert a node spec dict into Mellon format.
 
@@ -736,7 +736,7 @@ class MellonPipelineConfig:
 
     def __init__(
         self,
-        node_specs: Dict[str, Optional[Dict[str, Any]]],
+        node_specs: dict[str, dict[str, Any] | None],
         label: str = "",
         default_repo: str = "",
         default_dtype: str = "",
@@ -758,7 +758,7 @@ class MellonPipelineConfig:
         self.default_dtype = default_dtype
 
     @property
-    def node_params(self) -> Dict[str, Any]:
+    def node_params(self) -> dict[str, Any]:
         """Lazily compute node_params from node_specs."""
         if self.node_specs is None:
             return self._node_params
@@ -788,7 +788,7 @@ class MellonPipelineConfig:
                 lines.append(f"    outputs: {outputs}")
         return "\n".join(lines)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to a JSON-serializable dictionary."""
         return {
             "label": self.label,
@@ -798,7 +798,7 @@ class MellonPipelineConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MellonPipelineConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "MellonPipelineConfig":
         """
         Create from a dictionary (loaded from JSON).
 
@@ -816,19 +816,19 @@ class MellonPipelineConfig:
         """Serialize to JSON string."""
         return json.dumps(self.to_dict(), indent=2, sort_keys=False) + "\n"
 
-    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
+    def to_json_file(self, json_file_path: str | os.PathLike):
         """Save to a JSON file."""
         with open(json_file_path, "w", encoding="utf-8") as writer:
             writer.write(self.to_json_string())
 
     @classmethod
-    def from_json_file(cls, json_file_path: Union[str, os.PathLike]) -> "MellonPipelineConfig":
+    def from_json_file(cls, json_file_path: str | os.PathLike) -> "MellonPipelineConfig":
         """Load from a JSON file."""
         with open(json_file_path, "r", encoding="utf-8") as reader:
             data = json.load(reader)
         return cls.from_dict(data)
 
-    def save(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
         """Save the mellon pipeline config to a directory."""
         if os.path.isfile(save_directory):
             raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
@@ -859,7 +859,7 @@ class MellonPipelineConfig:
     @classmethod
     def load(
         cls,
-        pretrained_model_name_or_path: Union[str, os.PathLike],
+        pretrained_model_name_or_path: str | os.PathLike,
         **kwargs,
     ) -> "MellonPipelineConfig":
         """Load a pipeline config from a local path or Hugging Face Hub."""
@@ -942,7 +942,7 @@ class MellonPipelineConfig:
     def from_blocks(
         cls,
         blocks,
-        template: Dict[str, Optional[Dict[str, Any]]] = None,
+        template: dict[str, dict[str, Any]] | None = None,
         label: str = "",
         default_repo: str = "",
         default_dtype: str = "bfloat16",
@@ -955,7 +955,7 @@ class MellonPipelineConfig:
 
         sub_block_map = dict(blocks.sub_blocks)
 
-        def filter_spec_for_block(template_spec: Dict[str, Any], block) -> Optional[Dict[str, Any]]:
+        def filter_spec_for_block(template_spec: dict[str, Any], block) -> dict[str, Any] | None:
             """Filter template spec params based on what the block actually supports."""
             block_input_names = set(block.input_names)
             block_output_names = set(block.intermediate_output_names)
@@ -1025,8 +1025,8 @@ class MellonPipelineConfig:
         cls,
         block,
         node_label: str = None,
-        input_types: Optional[Dict[str, str]] = None,
-        output_types: Optional[Dict[str, str]] = None,
+        input_types: dict[str, Any] | None = None,
+        output_types: dict[str, Any] | None = None,
     ) -> "MellonPipelineConfig":
         """
         Create a MellonPipelineConfig from a custom block.

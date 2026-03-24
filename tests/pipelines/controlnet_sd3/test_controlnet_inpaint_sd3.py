@@ -17,7 +17,14 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
+from transformers import (
+    AutoConfig,
+    AutoTokenizer,
+    CLIPTextConfig,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    T5EncoderModel,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -28,10 +35,7 @@ from diffusers import (
 from diffusers.models import SD3ControlNetModel
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
+from ...testing_utils import enable_full_determinism, torch_device
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -103,7 +107,8 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
         text_encoder_2 = CLIPTextModelWithProjection(clip_text_encoder_config)
 
         torch.manual_seed(0)
-        text_encoder_3 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder_3 = T5EncoderModel(config)
 
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")

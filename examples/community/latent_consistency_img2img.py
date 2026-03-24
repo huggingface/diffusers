@@ -286,7 +286,7 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
         num_inference_steps: int = 4,
         lcm_origin_steps: int = 50,
         prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):

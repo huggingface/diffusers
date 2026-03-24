@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 import PIL.Image
 import torch
@@ -92,7 +92,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     @property
-    def components(self) -> Dict[str, Any]:
+    def components(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
 
     @torch.no_grad()
@@ -107,8 +107,8 @@ class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
-        generator: Optional[torch.Generator] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
@@ -141,8 +141,8 @@ class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
-        generator: Optional[torch.Generator] = None,
-        output_type: Optional[str] = "pil",
+        generator: torch.Generator | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
@@ -176,9 +176,9 @@ class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,

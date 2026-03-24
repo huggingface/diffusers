@@ -15,14 +15,14 @@
 
 import inspect
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, deprecate, is_torch_version, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -64,9 +64,9 @@ class LTXVideoAttnProcessor:
         self,
         attn: "LTXAttention",
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
@@ -124,7 +124,7 @@ class LTXAttention(torch.nn.Module, AttentionModuleMixin):
         dim_head: int = 64,
         dropout: float = 0.0,
         bias: bool = True,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int | None = None,
         out_bias: bool = True,
         qk_norm: str = "rms_norm_across_heads",
         processor=None,
@@ -161,9 +161,9 @@ class LTXAttention(torch.nn.Module, AttentionModuleMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
         **kwargs,
     ) -> torch.Tensor:
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
@@ -203,7 +203,7 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         num_frames: int,
         height: int,
         width: int,
-        rope_interpolation_scale: Tuple[torch.Tensor, float, float],
+        rope_interpolation_scale: tuple[torch.Tensor, float, float],
         device: torch.device,
     ) -> torch.Tensor:
         # Always compute rope in fp32
@@ -226,12 +226,12 @@ class LTXVideoRotaryPosEmbed(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        num_frames: Optional[int] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        rope_interpolation_scale: Optional[Tuple[torch.Tensor, float, float]] = None,
-        video_coords: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        num_frames: int | None = None,
+        height: int | None = None,
+        width: int | None = None,
+        rope_interpolation_scale: tuple[torch.Tensor, float, float] | None = None,
+        video_coords: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size = hidden_states.size(0)
 
         if video_coords is None:
@@ -346,8 +346,8 @@ class LTXVideoTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size = hidden_states.size(0)
         norm_hidden_states = self.norm1(hidden_states)
@@ -491,35 +491,21 @@ class LTXVideoTransformer3DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_attention_mask: torch.Tensor,
-        num_frames: Optional[int] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        rope_interpolation_scale: Optional[Union[Tuple[float, float, float], torch.Tensor]] = None,
-        video_coords: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        num_frames: int | None = None,
+        height: int | None = None,
+        width: int | None = None,
+        rope_interpolation_scale: tuple[float, float, float] | torch.Tensor | None = None,
+        video_coords: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
         image_rotary_emb = self.rope(hidden_states, num_frames, height, width, rope_interpolation_scale, video_coords)
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
@@ -567,10 +553,6 @@ class LTXVideoTransformer3DModel(
         hidden_states = self.norm_out(hidden_states)
         hidden_states = hidden_states * (1 + scale) + shift
         output = self.proj_out(hidden_states)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

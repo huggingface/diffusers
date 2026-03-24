@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, List, Optional, Union
+from typing import Callable
 
 import torch
 
@@ -173,27 +173,27 @@ class ConsistencyModelPipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
-        class_labels: Optional[Union[torch.Tensor, List[int], int]] = None,
+        class_labels: torch.Tensor | list[int] | int | None = None,
         num_inference_steps: int = 1,
-        timesteps: List[int] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        timesteps: list[int] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
+        callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
     ):
         r"""
         Args:
             batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
-            class_labels (`torch.Tensor` or `List[int]` or `int`, *optional*):
+            class_labels (`torch.Tensor` or `list[int]` or `int`, *optional*):
                 Optional class labels for conditioning class-conditional consistency models. Not used if the model is
                 not class-conditional.
             num_inference_steps (`int`, *optional*, defaults to 1):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps are used. Must be in descending order.
             generator (`torch.Generator`, *optional*):

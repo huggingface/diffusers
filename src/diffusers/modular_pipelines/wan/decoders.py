@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Tuple, Union
+from typing import Any
 
 import numpy as np
 import PIL
@@ -33,7 +33,7 @@ class WanVaeDecoderStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLWan),
             ComponentSpec(
@@ -49,7 +49,7 @@ class WanVaeDecoderStep(ModularPipelineBlocks):
         return "Step that decodes the denoised latents into images"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam(
                 "latents",
@@ -63,11 +63,11 @@ class WanVaeDecoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "videos",
-                type_hint=Union[List[List[PIL.Image.Image]], List[torch.Tensor], List[np.ndarray]],
+                type_hint=list[list[PIL.Image.Image]] | list[torch.Tensor] | list[np.ndarray],
                 description="The generated videos, can be a PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]

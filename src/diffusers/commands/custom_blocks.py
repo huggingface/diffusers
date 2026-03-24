@@ -89,8 +89,6 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
         # automap = self._create_automap(parent_class=parent_class, child_class=child_class)
         # with open(CONFIG, "w") as f:
         #     json.dump(automap, f)
-        with open("requirements.txt", "w") as f:
-            f.write("")
 
     def _choose_block(self, candidates, chosen=None):
         for cls, base in candidates:

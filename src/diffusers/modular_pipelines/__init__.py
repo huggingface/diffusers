@@ -33,6 +33,7 @@ else:
         "ModularPipeline",
         "AutoPipelineBlocks",
         "SequentialPipelineBlocks",
+        "ConditionalPipelineBlocks",
         "LoopSequentialPipelineBlocks",
         "PipelineState",
         "BlockState",
@@ -54,6 +55,14 @@ else:
         "Wan22ModularPipeline",
         "WanImage2VideoModularPipeline",
         "Wan22Image2VideoModularPipeline",
+    ]
+    _import_structure["helios"] = [
+        "HeliosAutoBlocks",
+        "HeliosModularPipeline",
+        "HeliosPyramidAutoBlocks",
+        "HeliosPyramidDistilledAutoBlocks",
+        "HeliosPyramidDistilledModularPipeline",
+        "HeliosPyramidModularPipeline",
     ]
     _import_structure["flux"] = [
         "FluxAutoBlocks",
@@ -102,9 +111,18 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
         )
+        from .helios import (
+            HeliosAutoBlocks,
+            HeliosModularPipeline,
+            HeliosPyramidAutoBlocks,
+            HeliosPyramidDistilledAutoBlocks,
+            HeliosPyramidDistilledModularPipeline,
+            HeliosPyramidModularPipeline,
+        )
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
+            ConditionalPipelineBlocks,
             LoopSequentialPipelineBlocks,
             ModularPipeline,
             ModularPipelineBlocks,
