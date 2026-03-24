@@ -1,3 +1,17 @@
+# Copyright 2026 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -53,6 +67,9 @@ class SD3TextInputStep(ModularPipelineBlocks):
         pooled_prompt_embeds = block_state.pooled_prompt_embeds.repeat(1, block_state.num_images_per_prompt)
         pooled_prompt_embeds = pooled_prompt_embeds.view(block_state.batch_size * block_state.num_images_per_prompt, -1)
 
+        block_state.original_prompt_embeds = prompt_embeds
+        block_state.original_pooled_prompt_embeds = pooled_prompt_embeds
+
         if block_state.do_classifier_free_guidance and block_state.negative_prompt_embeds is not None:
             _, neg_seq_len, _ = block_state.negative_prompt_embeds.shape
             negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
@@ -60,10 +77,6 @@ class SD3TextInputStep(ModularPipelineBlocks):
 
             negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.repeat(1, block_state.num_images_per_prompt)
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.view(block_state.batch_size * block_state.num_images_per_prompt, -1)
-
-            if block_state.skip_guidance_layers is not None:
-                block_state.original_prompt_embeds = prompt_embeds
-                block_state.original_pooled_prompt_embeds = pooled_prompt_embeds
 
             block_state.prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             block_state.pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
