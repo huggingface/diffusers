@@ -175,7 +175,6 @@ class ContextParallelTesterMixin:
 
         world_size = 2
         init_dict = self.get_init_dict()
-
         inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
 
         # Move all tensors to CPU for multiprocessing
