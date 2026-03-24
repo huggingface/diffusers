@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [NeMo Automodel](https://github.com/NVIDIA-NeMo/Automodel) is a PyTorch DTensor-native training library from NVIDIA for fine-tuning and pretraining diffusion models at scale. It uses [flow matching](https://huggingface.co/papers/2210.02747) for training and [FSDP2](https://pytorch.org/docs/stable/fsdp.html) for distributed parallelism on single-node and multi-node setups.
 
-NeMo Automodel integrates directly with Diffusers — it loads pretrained models from the Hugging Face Hub using Diffusers model classes and generates outputs via Diffusers pipelines. No checkpoint conversion is needed.
+NeMo Automodel integrates directly with Diffusers, and doesn't require checkpoint conversion. It loads pretrained models from the Hugging Face Hub using Diffusers model classes and generates outputs with the [`DiffusionPipeline`].
 
 ### Why NeMo Automodel?
 
