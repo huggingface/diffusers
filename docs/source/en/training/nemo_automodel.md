@@ -340,6 +340,12 @@ This integration provides several benefits for Diffusers users:
 | RAM | 128 GB | 256 GB+ |
 | Storage | 500 GB SSD | 2 TB NVMe |
 
+## NVIDIA Team
+
+- Pranav Prashant Thombre, pthombre@nvidia.com
+- Linnan Wang, linnanw@nvidia.com
+- Alexandros Koumparoulis, akoumparouli@nvidia.com
+
 ## Resources
 
 - [NeMo Automodel GitHub](https://github.com/NVIDIA-NeMo/Automodel)
