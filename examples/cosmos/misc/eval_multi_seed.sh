@@ -4,7 +4,7 @@
 set -euo pipefail
 export TOKENIZERS_PARALLELISM=false
 
-lora_dir='outputs/gr1' # The directory that contains lora weights after training
+lora_dir='outputs/gr1-r8/checkpoint-399' # The directory that contains lora weights after training
 data_dir='dream_gen_benchmark/gr1_object'
 revision='post-trained'
 

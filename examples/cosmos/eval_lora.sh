@@ -1,32 +1,31 @@
-revision='post-trained'
-data_dir='dream_gen_benchmark/gr1_object'
+LORA_DIR=YOUR_LORA_WEIGHT_DIR
+#LORA_DIR=None # base model
+DATA_DIR="gr1_dataset/test"
+revision="post-trained"
 
-lora_dir=YOUR_LORA_WEIGHT_DIR
-#lora_dir=None
-
-if [ "$lora_dir" != "None" ]; then
-  output_dir=$lora_dir/results
+if [ "$LORA_DIR" != "None" ]; then
+  OUTPUT_DIR=$LORA_DIR/results
 else
-  output_dir=outputs/$revision/results
+  OUTPUT_DIR=outputs/$revision/results
 fi
 
 echo Revision=$revision
-echo Data_dir=$data_dir
-echo LoRA=$lora_dir
-echo Out_dir=$output_dir
+echo Data_dir=$DATA_DIR
+echo LoRA=$LORA_DIR
+echo Out_dir=$OUTPUT_DIR
 
 
 python_args=(
   --seed 0
-  --data_dir $data_dir
+  --data_dir $DATA_DIR
   --revision diffusers/base/$revision
   --height 432 --width 768
-  --output_dir $output_dir
+  --output_dir $OUTPUT_DIR
 )
 
-if [ "$lora_dir" != "None" ]; then
-  python_args+=(--lora_dir $lora_dir)
+if [ "$LORA_DIR" != "None" ]; then
+  python_args+=(--lora_dir $LORA_DIR)
 fi
 
 export TOKENIZERS_PARALLELISM=false
-python ./scripts/eval_cosmos_predict25_lora.py "${python_args[@]}"
+python eval_cosmos_predict25_lora.py "${python_args[@]}"
