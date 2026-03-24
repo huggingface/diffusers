@@ -419,7 +419,7 @@ class SD3ModularPipeline(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
-        
+
 
 class Wan22Blocks(metaclass=DummyObject):
     _backends = ["torch", "transformers"]

@@ -141,8 +141,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
         )
-        from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .stable_diffusion_3 import SD3AutoBlocks, SD3ModularPipeline
+        from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import (
             Wan22Blocks,
             Wan22Image2VideoBlocks,

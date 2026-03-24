@@ -14,12 +14,12 @@
 # limitations under the License.
 
 import random
+
 import numpy as np
 import PIL
 import torch
 
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.modular_pipelines import ModularPipeline
 from diffusers.modular_pipelines.stable_diffusion_3 import SD3AutoBlocks, SD3ModularPipeline
 
 from ...testing_utils import floats_tensor, torch_device
@@ -89,10 +89,10 @@ class TestSD3ModularPipelineFast(ModularPipelineTesterMixin):
     def test_load_expected_components_from_save_pretrained(self, tmp_path):
         base_pipe = self.get_pipeline()
         base_pipe.save_pretrained(str(tmp_path))
-        
+
         pipe = self.pipeline_class.from_pretrained(tmp_path)
         pipe.load_components(torch_dtype=torch.float32)
-        
+
         assert set(base_pipe.components.keys()) == set(pipe.components.keys())
 
     def test_float16_inference(self):
@@ -173,10 +173,10 @@ class TestSD3Img2ImgModularPipelineFast(ModularPipelineTesterMixin):
     def test_load_expected_components_from_save_pretrained(self, tmp_path):
         base_pipe = self.get_pipeline()
         base_pipe.save_pretrained(str(tmp_path))
-        
+
         pipe = self.pipeline_class.from_pretrained(tmp_path)
         pipe.load_components(torch_dtype=torch.float32)
-        
+
         assert set(base_pipe.components.keys()) == set(pipe.components.keys())
 
     def test_float16_inference(self):

@@ -13,11 +13,13 @@
 # limitations under the License.
 
 import torch
+
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import InputParam, OutputParam
 from ..qwenimage.inputs import calculate_dimension_from_latents, repeat_tensor_to_batch_size
 from .modular_pipeline import SD3ModularPipeline
+
 
 logger = logging.get_logger(__name__)
 
@@ -55,7 +57,7 @@ class SD3TextInputStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        
+
         block_state.batch_size = block_state.prompt_embeds.shape[0]
         block_state.dtype = block_state.prompt_embeds.dtype
         block_state.do_classifier_free_guidance = block_state.guidance_scale > 1.0
@@ -129,7 +131,7 @@ class SD3AdditionalInputsStep(ModularPipelineBlocks):
             height, width = calculate_dimension_from_latents(tensor, components.vae_scale_factor)
             block_state.height = block_state.height or height
             block_state.width = block_state.width or width
-            
+
             if not hasattr(block_state, "image_height"):
                 block_state.image_height = height
             if not hasattr(block_state, "image_width"):
@@ -143,7 +145,8 @@ class SD3AdditionalInputsStep(ModularPipelineBlocks):
 
         for input_name in self._additional_batch_inputs:
             tensor = getattr(block_state, input_name)
-            if tensor is None: continue
+            if tensor is None:
+                continue
             tensor = repeat_tensor_to_batch_size(
                 input_name=input_name, input_tensor=tensor,
                 num_images_per_prompt=block_state.num_images_per_prompt, batch_size=block_state.batch_size

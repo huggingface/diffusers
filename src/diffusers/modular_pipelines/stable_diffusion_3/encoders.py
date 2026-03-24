@@ -24,6 +24,7 @@ from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import SD3ModularPipeline
 
+
 logger = logging.get_logger(__name__)
 
 def retrieve_latents(
@@ -95,7 +96,7 @@ class SD3ProcessImagesInputStep(ModularPipelineBlocks):
         if block_state.resized_image is None:
             image = block_state.image
             self.check_inputs(
-                height=block_state.height, width=block_state.width, 
+                height=block_state.height, width=block_state.width,
                 vae_scale_factor=components.vae_scale_factor, patch_size=components.patch_size
             )
             height = block_state.height or components.default_height
@@ -233,7 +234,7 @@ class SD3TextEncoderStep(ModularPipelineBlocks):
             prompt, padding="max_length", max_length=tokenizer.model_max_length,
             truncation=True, return_tensors="pt",
         )
-        
+
         prompt_embeds = text_encoder(text_inputs.input_ids.to(device), output_hidden_states=True)
         pooled_prompt_embeds = prompt_embeds[0]
 
@@ -247,8 +248,10 @@ class SD3TextEncoderStep(ModularPipelineBlocks):
     @staticmethod
     def encode_prompt(components, block_state, device, do_classifier_free_guidance, lora_scale):
         if lora_scale is not None and isinstance(components, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
-            if components.text_encoder is not None: scale_lora_layers(components.text_encoder, lora_scale)
-            if components.text_encoder_2 is not None: scale_lora_layers(components.text_encoder_2, lora_scale)
+            if components.text_encoder is not None:
+                scale_lora_layers(components.text_encoder, lora_scale)
+            if components.text_encoder_2 is not None:
+                scale_lora_layers(components.text_encoder_2, lora_scale)
 
         prompt_embeds = block_state.prompt_embeds
         pooled_prompt_embeds = block_state.pooled_prompt_embeds
@@ -292,8 +295,10 @@ class SD3TextEncoderStep(ModularPipelineBlocks):
             negative_pooled_prompt_embeds = torch.cat([neg_pooled_embed, neg_2_pooled_embed], dim=-1)
 
         if lora_scale is not None and isinstance(components, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
-            if components.text_encoder is not None: unscale_lora_layers(components.text_encoder, lora_scale)
-            if components.text_encoder_2 is not None: unscale_lora_layers(components.text_encoder_2, lora_scale)
+            if components.text_encoder is not None:
+                unscale_lora_layers(components.text_encoder, lora_scale)
+            if components.text_encoder_2 is not None:
+                unscale_lora_layers(components.text_encoder_2, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 

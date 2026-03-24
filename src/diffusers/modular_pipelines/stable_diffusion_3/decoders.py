@@ -16,9 +16,9 @@ import PIL
 import torch
 
 from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...utils import logging
-from ...image_processor import VaeImageProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 

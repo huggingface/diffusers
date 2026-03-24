@@ -28,6 +28,7 @@ from ..modular_pipeline import (
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import SD3ModularPipeline
 
+
 logger = logging.get_logger(__name__)
 
 
@@ -79,7 +80,7 @@ class SD3LoopDenoiser(ModularPipelineBlocks):
         if block_state.do_classifier_free_guidance:
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + block_state.guidance_scale * (noise_pred_text - noise_pred_uncond)
-            
+
             should_skip_layers = (
                 getattr(block_state, "skip_guidance_layers", None) is not None
                 and i > getattr(block_state, "num_inference_steps", 50) * getattr(block_state, "skip_layer_guidance_start", 0.01)
@@ -151,7 +152,7 @@ class SD3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.num_warmup_steps = max(len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0)
-        
+
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
                 components, block_state = self.loop_step(components, block_state, i=i, t=t)

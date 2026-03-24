@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 
-import numpy as np
 import torch
 
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -143,10 +141,10 @@ class SD3SetTimestepsStep(ModularPipelineBlocks):
             block_state.device,
             getattr(block_state, "mu", None)
         )
-        
+
         block_state.timesteps = timesteps
         block_state.num_inference_steps = num_inference_steps
-        
+
         self.set_block_state(state, block_state)
         return components, state
 
@@ -207,11 +205,11 @@ class SD3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
             block_state.device,
             getattr(block_state, "mu", None)
         )
-        
+
         timesteps, num_inference_steps = self.get_timesteps(
             components.scheduler, num_inference_steps, block_state.strength
         )
-        
+
         block_state.timesteps = timesteps
         block_state.num_inference_steps = num_inference_steps
 
@@ -247,7 +245,7 @@ class SD3PrepareLatentsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
         batch_size = block_state.batch_size * block_state.num_images_per_prompt
-        
+
         if block_state.latents is not None:
             block_state.latents = block_state.latents.to(device=block_state.device, dtype=block_state.dtype)
         else:
