@@ -87,8 +87,12 @@ class HunyuanVideo15RMS_norm(nn.Module):
         self.bias = nn.Parameter(torch.zeros(shape)) if bias else 0.0
 
     def forward(self, x):
-        norm_input = x.float() if x.dtype in (torch.float16, torch.bfloat16) else x
-        normalized = F.normalize(norm_input, dim=(1 if self.channel_first else -1)).to(x.dtype)
+        needs_fp32_normalize = x.dtype in (torch.float16, torch.bfloat16) or any(
+            t in str(x.dtype) for t in ("float4_", "float8_")
+        )
+        normalized = F.normalize(
+            x.float() if needs_fp32_normalize else x, dim=(1 if self.channel_first else -1)
+        ).to(x.dtype)
 
         return normalized * self.scale * self.gamma + self.bias
 
