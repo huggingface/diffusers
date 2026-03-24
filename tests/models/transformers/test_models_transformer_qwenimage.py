@@ -289,7 +289,7 @@ class TestQwenImageTransformerLoRAHotSwap(QwenImageTransformerTesterConfig, Lora
     @pytest.mark.xfail(True, reason="Recompilation issues.", strict=True)
     def test_hotswapping_compiled_model_linear(self):
         super().test_hotswapping_compiled_model_linear()
-    
+
     @pytest.mark.xfail(True, reason="Recompilation issues.", strict=True)
     def test_hotswapping_compiled_model_both_linear_and_other(self):
         super().test_hotswapping_compiled_model_both_linear_and_other()
