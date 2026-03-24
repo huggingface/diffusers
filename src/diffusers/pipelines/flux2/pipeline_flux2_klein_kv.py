@@ -207,7 +207,8 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         self.default_sample_size = 128
 
         # Set KV-cache-aware attention processors
-        self._set_kv_attn_processors()
+        if transformer is not None:
+            self._set_kv_attn_processors()
 
     @staticmethod
     def _get_qwen3_prompt_embeds(
