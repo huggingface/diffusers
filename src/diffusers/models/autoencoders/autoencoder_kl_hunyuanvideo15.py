@@ -90,9 +90,9 @@ class HunyuanVideo15RMS_norm(nn.Module):
         needs_fp32_normalize = x.dtype in (torch.float16, torch.bfloat16) or any(
             t in str(x.dtype) for t in ("float4_", "float8_")
         )
-        normalized = F.normalize(
-            x.float() if needs_fp32_normalize else x, dim=(1 if self.channel_first else -1)
-        ).to(x.dtype)
+        normalized = F.normalize(x.float() if needs_fp32_normalize else x, dim=(1 if self.channel_first else -1)).to(
+            x.dtype
+        )
 
         return normalized * self.scale * self.gamma + self.bias
 
