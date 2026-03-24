@@ -150,8 +150,7 @@ class FluxTransformerTesterConfig(BaseModelTesterConfig):
             "axes_dims_rope": [4, 4, 8],
         }
 
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        batch_size = 1
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
         height = width = 4
         num_latent_channels = 4
         num_image_channels = 3
