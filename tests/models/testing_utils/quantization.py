@@ -25,7 +25,6 @@ from diffusers.utils.import_utils import (
     is_nvidia_modelopt_available,
     is_optimum_quanto_available,
     is_torchao_available,
-    is_torchao_version,
 )
 
 from ...testing_utils import (
@@ -63,8 +62,7 @@ if is_gguf_available():
     pass
 
 if is_torchao_available():
-    if is_torchao_version(">=", "0.9.0"):
-        pass
+    from torchao.quantization import Int4WeightOnlyConfig, Int8DynamicActivationInt8WeightConfig, Int8WeightOnlyConfig
 
 
 class LoRALayer(torch.nn.Module):
@@ -806,9 +804,9 @@ class TorchAoConfigMixin:
     """
 
     TORCHAO_QUANT_TYPES = {
-        "int4wo": {"quant_type": "int4_weight_only"},
-        "int8wo": {"quant_type": "int8_weight_only"},
-        "int8dq": {"quant_type": "int8_dynamic_activation_int8_weight"},
+        "int4wo": {"quant_type": Int4WeightOnlyConfig()},
+        "int8wo": {"quant_type": Int8WeightOnlyConfig()},
+        "int8dq": {"quant_type": Int8DynamicActivationInt8WeightConfig()},
     }
 
     TORCHAO_EXPECTED_MEMORY_REDUCTIONS = {

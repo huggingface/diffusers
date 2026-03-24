@@ -74,16 +74,15 @@ Weight-only quantization stores the model weights in a specific low-bit data typ
 
 Dynamic activation quantization stores the model weights in a low-bit dtype, while also quantizing the activations on-the-fly to save additional memory. This lowers the memory requirements from model weights, while also lowering the memory overhead from activation computations. However, this may come at a quality tradeoff at times, so it is recommended to test different models thoroughly.
 
-The available quantization configurations are as follows:
+Refer to the [official torchao documentation](https://docs.pytorch.org/ao/stable/index.html) for a better understanding of the available quantization methods. An exhaustive list of configuration options are available [here](https://docs.pytorch.org/ao/stable/api_reference/api_ref_quantization.html).
+
+Some example popular quantization configurations are as follows:
 
 | **Category** | **Configuration Classes** |
 |---|---|
-| **Integer quantization** | [`Int4WeightOnlyConfig`](https://docs.pytorch.org/ao/main/generated/torchao.quantization.Int4WeightOnlyConfig), [`Int8WeightOnlyConfig`](https://docs.pytorch.org/ao/main/generated/torchao.quantization.Int8WeightOnlyConfig), [`Int8DynamicActivationInt4WeightConfig`](https://docs.pytorch.org/ao/main/generated/torchao.quantization.Int8DynamicActivationInt4WeightConfig), [`Int8DynamicActivationInt8WeightConfig`](https://docs.pytorch.org/ao/main/generated/torchao.quantization.Int8DynamicActivationInt8WeightConfig) |
-| **Floating point 8-bit quantization** | [`Float8WeightOnlyConfig`](https://docs.pytorch.org/ao/main/generated/torchao.quantization.Float8WeightOnlyConfig), [`Float8DynamicActivationFloat8WeightConfig`](https://docs.pytorch.org/ao/main/generated/torchao.quantization.Float8DynamicActivationFloat8WeightConfig), [`Float8StaticActivationFloat8WeightConfig`](https://docs.pytorch.org/ao/main/generated/torchao.quantization.Float8StaticActivationFloat8WeightConfig) |
-| **Floating point X-bit quantization** | [`FPXWeightOnlyConfig`](https://docs.pytorch.org/ao/main/generated/torchao.quantization.FPXWeightOnlyConfig) |
-| **Unsigned integer quantization** | [`IntxWeightOnlyConfig`](https://docs.pytorch.org/ao/main/generated/torchao.quantization.IntxWeightOnlyConfig) |
-
-Refer to the [official torchao documentation](https://docs.pytorch.org/ao/stable/index.html) for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
+| **Integer quantization** | [`Int4WeightOnlyConfig`](https://docs.pytorch.org/ao/stable/api_reference/generated/torchao.quantization.Int4WeightOnlyConfig.html), [`Int8WeightOnlyConfig`](https://docs.pytorch.org/ao/stable/api_reference/generated/torchao.quantization.Int8WeightOnlyConfig.html), [`Int8DynamicActivationInt8WeightConfig`](https://docs.pytorch.org/ao/stable/api_reference/generated/torchao.quantization.Int8DynamicActivationInt8WeightConfig.html) |
+| **Floating point 8-bit quantization** | [`Float8WeightOnlyConfig`](https://docs.pytorch.org/ao/stable/api_reference/generated/torchao.quantization.Float8WeightOnlyConfig.html), [`Float8DynamicActivationFloat8WeightConfig`](https://docs.pytorch.org/ao/stable/api_reference/generated/torchao.quantization.Float8DynamicActivationFloat8WeightConfig.html) |
+| **Unsigned integer quantization** | [`IntxWeightOnlyConfig`](https://docs.pytorch.org/ao/stable/api_reference/generated/torchao.quantization.IntxWeightOnlyConfig.html) |
 
 ## Serializing and Deserializing quantized models
 
