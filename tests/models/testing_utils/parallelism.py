@@ -22,6 +22,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from diffusers.models._modeling_parallel import ContextParallelConfig
+from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
 
 from ...testing_utils import (
     is_context_parallel,
@@ -160,16 +161,21 @@ def _custom_mesh_worker(
 @require_torch_multi_accelerator
 class ContextParallelTesterMixin:
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
-    def test_context_parallel_inference(self, cp_type):
+    def test_context_parallel_inference(self, cp_type, batch_size: int = 1):
         if not torch.distributed.is_available():
             pytest.skip("torch.distributed is not available.")
 
         if not hasattr(self.model_class, "_cp_plan") or self.model_class._cp_plan is None:
             pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
 
+        if cp_type == "ring_degree":
+            active_backend, _ = _AttentionBackendRegistry.get_active_backend()
+            if active_backend == AttentionBackendName.NATIVE:
+                pytest.skip("Ring attention is not supported with the native attention backend.")
+
         world_size = 2
         init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
+        inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
 
         # Move all tensors to CPU for multiprocessing
         inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
@@ -194,6 +200,10 @@ class ContextParallelTesterMixin:
             f"Context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
 
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
+    def test_context_parallel_batch_inputs(self, cp_type):
+        self.test_context_parallel_inference(cp_type, batch_size=2)
+
     @pytest.mark.parametrize(
         "cp_type,mesh_shape,mesh_dim_names",
         [
@@ -208,6 +218,11 @@ class ContextParallelTesterMixin:
 
         if not hasattr(self.model_class, "_cp_plan") or self.model_class._cp_plan is None:
             pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
+
+        if cp_type == "ring_degree":
+            active_backend, _ = _AttentionBackendRegistry.get_active_backend()
+            if active_backend == AttentionBackendName.NATIVE:
+                pytest.skip("Ring attention is not supported with the native attention backend.")
 
         world_size = 2
         init_dict = self.get_init_dict()
