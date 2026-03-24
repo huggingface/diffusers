@@ -90,8 +90,7 @@ class Flux2TransformerTesterConfig(BaseModelTesterConfig):
             "axes_dims_rope": [4, 4, 4, 4],
         }
 
-    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
-        batch_size = 1
+    def get_dummy_inputs(self, height: int = 4, width: int = 4, batch_size: int = 1) -> dict[str, torch.Tensor]:
         num_latent_channels = 4
         sequence_length = 48
         embedding_dim = 32
