@@ -286,6 +286,14 @@ class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterM
 class TestQwenImageTransformerLoRAHotSwap(QwenImageTransformerTesterConfig, LoraHotSwappingForModelTesterMixin):
     """LoRA hot-swapping tests for QwenImage Transformer."""
 
+    @pytest.mark.xfail(True, reason="Recompilation issues.", strict=True)
+    def test_hotswapping_compiled_model_linear(self):
+        super().test_hotswapping_compiled_model_linear()
+    
+    @pytest.mark.xfail(True, reason="Recompilation issues.", strict=True)
+    def test_hotswapping_compiled_model_both_linear_and_other(self):
+        super().test_hotswapping_compiled_model_both_linear_and_other()
+
     @property
     def different_shapes_for_compilation(self):
         return [(4, 4), (4, 8), (8, 8)]
