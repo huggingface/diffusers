@@ -1,0 +1,25 @@
+system_prompt: "You are a helpful assistant."
+user_prompt: |
+  You are a helpful video analyzer. Evaluate whether the video follows physical commonsense.
+
+  Evaluation Criteria:
+  1. **Object Behavior:** Do objects behave according to their expected physical properties (e.g., rigid objects do not deform unnaturally, fluids flow naturally)?
+  2. **Motion and Forces:** Are motions and forces depicted in the video consistent with real-world physics (e.g., gravity, inertia, conservation of momentum)?
+  3. **Interactions:** Do objects interact with each other and their environment in a plausible manner (e.g., no unnatural penetration, appropriate reactions on impact)?
+  4. **Consistency Over Time:** Does the video maintain consistency across frames without abrupt, unexplainable changes in object behavior or motion?
+
+  Instructions for Scoring:
+  - **1:** No adherence to physical commonsense. The video contains numerous violations of fundamental physical laws.
+  - **2:** Poor adherence. Some elements follow physics, but major violations are present.
+  - **3:** Moderate adherence. The video follows physics for the most part but contains noticeable inconsistencies.
+  - **4:** Good adherence. Most elements in the video follow physical laws, with only minor issues.
+  - **5:** Perfect adherence. The video demonstrates a strong understanding of physical commonsense with no violations.
+
+  Response Template:
+  Analyze the video carefully and answer the question according to the following template:
+  [Score between 1 and 5.]
+
+  Example Response:
+  2
+
+  Does this video adhere to the physical laws?
