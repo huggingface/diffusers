@@ -2331,6 +2331,18 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
             temp_state_dict[new_key] = v
         original_state_dict = temp_state_dict
 
+        # Bake alpha/rank scaling into lora_A weights so .alpha keys are consumed.
+        # Matches the pattern used by _convert_kohya_flux_lora_to_diffusers for Flux1.
+        alpha_keys = [k for k in original_state_dict if k.endswith(".alpha")]
+        for alpha_key in alpha_keys:
+            alpha = original_state_dict.pop(alpha_key).item()
+            module_path = alpha_key[: -len(".alpha")]
+            lora_a_key = f"{module_path}.lora_A.weight"
+            if lora_a_key in original_state_dict:
+                rank = original_state_dict[lora_a_key].shape[0]
+                scale = alpha / rank
+                original_state_dict[lora_a_key] = original_state_dict[lora_a_key] * scale
+
     num_double_layers = 0
     num_single_layers = 0
     for key in original_state_dict.keys():
@@ -2628,6 +2640,105 @@ def _convert_kohya_flux2_lora_to_diffusers(state_dict):
     return ait_sd
 
 
+def _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict):
+    """Convert non-diffusers Flux2 LoKR state dict (kohya/LyCORIS format) to peft-compatible diffusers format.
+
+    Uses fuse-first QKV mapping: BFL fused `img_attn.qkv` maps to diffusers `attn.to_qkv` (created by
+    `fuse_projections()`), avoiding lossy Kronecker factor splitting. The caller must fuse the model's
+    QKV projections before injecting the adapter.
+    """
+    converted_state_dict = {}
+
+    prefix = "diffusion_model."
+    original_state_dict = {k[len(prefix) :] if k.startswith(prefix) else k: v for k, v in state_dict.items()}
+
+    num_double_layers = 0
+    num_single_layers = 0
+    for key in original_state_dict:
+        if key.startswith("single_blocks."):
+            num_single_layers = max(num_single_layers, int(key.split(".")[1]) + 1)
+        elif key.startswith("double_blocks."):
+            num_double_layers = max(num_double_layers, int(key.split(".")[1]) + 1)
+
+    lokr_suffixes = ("lokr_w1", "lokr_w1_a", "lokr_w1_b", "lokr_w2", "lokr_w2_a", "lokr_w2_b", "lokr_t2")
+
+    def _remap_lokr_module(bfl_path, diff_path):
+        """Pop all lokr keys for a BFL module, bake alpha scaling, and store under diffusers path."""
+        alpha_key = f"{bfl_path}.alpha"
+        alpha = original_state_dict.pop(alpha_key).item() if alpha_key in original_state_dict else None
+
+        for suffix in lokr_suffixes:
+            src_key = f"{bfl_path}.{suffix}"
+            if src_key not in original_state_dict:
+                continue
+
+            weight = original_state_dict.pop(src_key)
+
+            # Bake alpha/rank scaling into the first w1 tensor encountered for this module.
+            # After baking, peft's config uses alpha=r so its runtime scaling is 1.0.
+            if alpha is not None and suffix in ("lokr_w1", "lokr_w1_a"):
+                w2a_key = f"{bfl_path}.lokr_w2_a"
+                w1a_key = f"{bfl_path}.lokr_w1_a"
+                if w2a_key in original_state_dict:
+                    r_eff = original_state_dict[w2a_key].shape[1]
+                elif w1a_key in original_state_dict:
+                    r_eff = original_state_dict[w1a_key].shape[1]
+                else:
+                    r_eff = alpha
+                scale = alpha / r_eff
+                weight = weight * scale
+                alpha = None  # only bake once per module
+
+            converted_state_dict[f"{diff_path}.{suffix}"] = weight
+
+    # --- Single blocks ---
+    for sl in range(num_single_layers):
+        _remap_lokr_module(f"single_blocks.{sl}.linear1", f"single_transformer_blocks.{sl}.attn.to_qkv_mlp_proj")
+        _remap_lokr_module(f"single_blocks.{sl}.linear2", f"single_transformer_blocks.{sl}.attn.to_out")
+
+    # --- Double blocks ---
+    for dl in range(num_double_layers):
+        tb = f"transformer_blocks.{dl}"
+        db = f"double_blocks.{dl}"
+
+        # QKV -> fused to_qkv / to_added_qkv (model must be fused before injection)
+        _remap_lokr_module(f"{db}.img_attn.qkv", f"{tb}.attn.to_qkv")
+        _remap_lokr_module(f"{db}.txt_attn.qkv", f"{tb}.attn.to_added_qkv")
+
+        # Projections
+        _remap_lokr_module(f"{db}.img_attn.proj", f"{tb}.attn.to_out.0")
+        _remap_lokr_module(f"{db}.txt_attn.proj", f"{tb}.attn.to_add_out")
+
+        # MLPs
+        _remap_lokr_module(f"{db}.img_mlp.0", f"{tb}.ff.linear_in")
+        _remap_lokr_module(f"{db}.img_mlp.2", f"{tb}.ff.linear_out")
+        _remap_lokr_module(f"{db}.txt_mlp.0", f"{tb}.ff_context.linear_in")
+        _remap_lokr_module(f"{db}.txt_mlp.2", f"{tb}.ff_context.linear_out")
+
+    # --- Extra mappings (embedders, modulation, final layer) ---
+    extra_mappings = {
+        "img_in": "x_embedder",
+        "txt_in": "context_embedder",
+        "time_in.in_layer": "time_guidance_embed.timestep_embedder.linear_1",
+        "time_in.out_layer": "time_guidance_embed.timestep_embedder.linear_2",
+        "final_layer.linear": "proj_out",
+        "final_layer.adaLN_modulation.1": "norm_out.linear",
+        "single_stream_modulation.lin": "single_stream_modulation.linear",
+        "double_stream_modulation_img.lin": "double_stream_modulation_img.linear",
+        "double_stream_modulation_txt.lin": "double_stream_modulation_txt.linear",
+    }
+    for bfl_key, diff_key in extra_mappings.items():
+        _remap_lokr_module(bfl_key, diff_key)
+
+    if len(original_state_dict) > 0:
+        raise ValueError(f"`original_state_dict` should be empty at this point but has {original_state_dict.keys()=}.")
+
+    for key in list(converted_state_dict.keys()):
+        converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
+
+    return converted_state_dict
+
+
 def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
     """
     Convert non-diffusers ZImage LoRA state dict to diffusers format.
@@ -2785,14 +2896,14 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
 
             base = k[: -len(lora_dot_down_key)]
 
-            # Skip combined "qkv" projection — individual to.q/k/v keys are also present.
+            # Skip combined "qkv" projection - individual to.q/k/v keys are also present.
             if base.endswith(".qkv"):
                 state_dict.pop(k)
                 state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
                 state_dict.pop(base + ".alpha", None)
                 continue
 
-            # Skip bare "out.lora.*" — "to_out.0.lora.*" covers the same projection.
+            # Skip bare "out.lora.*" - "to_out.0.lora.*" covers the same projection.
             if re.search(r"\.out$", base) and ".to_out" not in base:
                 state_dict.pop(k)
                 state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)

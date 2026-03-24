@@ -46,6 +46,7 @@ from .lora_conversion_utils import (
     _convert_kohya_flux2_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
+    _convert_non_diffusers_flux2_lokr_to_diffusers,
     _convert_non_diffusers_flux2_lora_to_diffusers,
     _convert_non_diffusers_hidream_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
@@ -57,6 +58,7 @@ from .lora_conversion_utils import (
     _convert_non_diffusers_z_image_lora_to_diffusers,
     _convert_xlabs_flux_lora_to_diffusers,
     _maybe_map_sgm_blocks_to_diffusers,
+    _refuse_flux2_lora_state_dict,
 )
 
 
@@ -5687,12 +5689,18 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
 
         is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
         if is_ai_toolkit:
-            state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
+            is_lokr = any("lokr_" in k for k in state_dict)
+            if is_lokr:
+                state_dict = _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict)
+                if metadata is None:
+                    metadata = {}
+                metadata["is_lokr"] = "true"
+            else:
+                state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -5720,13 +5728,26 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         kwargs["return_lora_metadata"] = True
         state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
-        is_correct_format = all("lora" in key for key in state_dict.keys())
+        is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+            raise ValueError("Invalid LoRA/LoKR checkpoint. Make sure all param names contain `'lora'` or `'lokr'`.")
+
+        # For LoKR adapters, fuse QKV projections so peft can target the fused modules directly.
+        is_lokr = metadata is not None and metadata.get("is_lokr") == "true"
+        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+        if is_lokr:
+            transformer.fuse_qkv_projections()
+        elif (
+            hasattr(transformer, "transformer_blocks")
+            and len(transformer.transformer_blocks) > 0
+            and getattr(transformer.transformer_blocks[0].attn, "fused_projections", False)
+        ):
+            # Model QKV is fused but LoRA targets separate Q/K/V - re-fuse the keys to match.
+            state_dict = _refuse_flux2_lora_state_dict(state_dict)
 
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
