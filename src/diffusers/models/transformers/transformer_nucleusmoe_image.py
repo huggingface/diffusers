@@ -159,7 +159,7 @@ class NucleusMoEEmbedRope(nn.Module):
 
     def forward(
         self,
-        video_fhw: tuple[int, int, int, list[tuple[int, int, int]]],
+        video_fhw: tuple[int, int, int] | list[tuple[int, int, int]],
         txt_seq_lens: list[int] | None = None,
         device: torch.device = None,
         max_txt_seq_len: int | torch.Tensor | None = None,
