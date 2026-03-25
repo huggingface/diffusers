@@ -10,14 +10,14 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# LLaDA2
+# BD3LM
 
-`LLaDA2Pipeline` adapts block refinement sampling for LLaDA2-style token diffusion models.
+`BD3LMPipeline` performs block diffusion decoding in the style of BD3LM models.
 
-## LLaDA2Pipeline
-[[autodoc]] LLaDA2Pipeline
+## BD3LMPipeline
+[[autodoc]] BD3LMPipeline
     - all
     - __call__
 
-## LLaDA2PipelineOutput
-[[autodoc]] pipelines.LLaDA2PipelineOutput
+## BD3LMPipelineOutput
+[[autodoc]] pipelines.BD3LMPipelineOutput
