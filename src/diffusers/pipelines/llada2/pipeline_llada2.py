@@ -396,6 +396,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
             post_steps = 0
             step_idx = 0
             should_continue = True
+            self.set_progress_bar_config(position=1, leave=False, desc=f"Block {num_block} Inference Steps")
             progress_bar = self.progress_bar(total=num_inference_steps)
 
             while should_continue:
