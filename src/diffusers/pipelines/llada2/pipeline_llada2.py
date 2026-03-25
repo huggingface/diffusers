@@ -378,7 +378,8 @@ class LLaDA2Pipeline(DiffusionPipeline):
 
         # 5. Block-wise refinement loop
         block_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy()
-        block_progress_bar_config["leave"] = False
+        block_progress_bar_config["position"] = 0
+        block_progress_bar_config["desc"] = "Blocks"
         for num_block in tqdm(range(prefill_blocks, num_blocks), **block_progress_bar_config):
             current_window_end = (num_block + 1) * block_length
             block_x = x[:, :current_window_end]
