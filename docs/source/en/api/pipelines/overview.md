@@ -35,7 +35,6 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [AuraFlow](aura_flow) | text2image |
 | [BLIP Diffusion](blip_diffusion) | text2image |
 | [Block Refinement](block_refinement) | text2text |
-| [Block Token Diffusion](block_token_diffusion) | text2text |
 | [Bria 3.2](bria_3_2) | text2image |
 | [CogVideoX](cogvideox) | text2video |
 | [Consistency Models](consistency_models) | unconditional image generation |

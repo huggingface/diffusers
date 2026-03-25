@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -39,7 +38,7 @@ class TokenDiffusionSchedulerOutput(BaseOutput):
     prev_sample: torch.LongTensor
 
 
-def _gumbel_argmax(logits: torch.Tensor, generator: Optional[torch.Generator] = None) -> torch.LongTensor:
+def _gumbel_argmax(logits: torch.Tensor, generator: torch.Generator | None = None) -> torch.LongTensor:
     """
     Sample from a categorical distribution defined by (unnormalized) logits via Gumbel-max.
 
@@ -134,7 +133,7 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         return self.vocab_size
 
     def _sample_uniform_tokens(
-        self, shape: torch.Size, device: torch.device, dtype: torch.dtype, generator: Optional[torch.Generator] = None
+        self, shape: torch.Size, device: torch.device, dtype: torch.dtype, generator: torch.Generator | None = None
     ) -> torch.LongTensor:
         """
         Sample uniform token IDs, optionally excluding `mask_token_id` (by shifting indices around it).
@@ -154,7 +153,7 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self,
         shape: torch.Size,
         device: torch.device,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> torch.LongTensor:
         """
         Sample from the prior distribution of the forward process at t=1.
@@ -177,7 +176,7 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             return self._sample_uniform_tokens(shape, device=device, dtype=torch.long, generator=generator)
         return torch.full(shape, self.mask_token_id, device=device, dtype=torch.long)
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device, None] = None) -> None:
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -202,10 +201,10 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         # Build a map from timestep value → index for O(1) lookup in step().
         self._step_index_map = {int(self.timesteps[i].item()): i for i in range(len(self.timesteps))}
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         return sample
 
-    def _t_from_timestep(self, timestep: Union[int, torch.Tensor], device: torch.device) -> torch.Tensor:
+    def _t_from_timestep(self, timestep: int | torch.Tensor, device: torch.device) -> torch.Tensor:
         """
         Convert an integer training timestep index into continuous time `t in [0, 1]`.
         """
@@ -336,9 +335,9 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
     def add_noise(
         self,
         original_samples: torch.LongTensor,
-        noise: Optional[torch.Tensor],
+        noise: torch.Tensor | None,
         timesteps: torch.LongTensor,
-        block_mask: Optional[torch.BoolTensor] = None,
+        block_mask: torch.BoolTensor | None = None,
     ) -> torch.LongTensor:
         """
         Apply the forward process q(x_t | x_0).
@@ -395,15 +394,39 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             noised = torch.where(block_mask.to(device=device), noised, original_samples)
         return noised
 
+    def enforce_fixed_masks(
+        self,
+        sample: torch.LongTensor,
+        fixed_mask: torch.BoolTensor,
+        fixed_values: torch.LongTensor,
+    ) -> torch.LongTensor:
+        """
+        Re-apply fixed token values at positions indicated by `fixed_mask`.
+
+        This is used by the pipeline to enforce prefix / infill conditioning after each scheduler step.
+
+        Args:
+            sample (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Current token IDs after a scheduler step.
+            fixed_mask (`torch.BoolTensor` of shape `(batch_size, seq_len)`):
+                Boolean mask where `True` indicates a position whose value must be restored.
+            fixed_values (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Token IDs to restore at the fixed positions.
+
+        Returns:
+            `torch.LongTensor`: Token IDs with fixed positions restored.
+        """
+        return torch.where(fixed_mask, fixed_values, sample)
+
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.LongTensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-        block_mask: Optional[torch.BoolTensor] = None,
-    ) -> Union[TokenDiffusionSchedulerOutput, Tuple[torch.LongTensor]]:
+        block_mask: torch.BoolTensor | None = None,
+    ) -> TokenDiffusionSchedulerOutput | tuple[torch.LongTensor]:
         """
         Reverse diffusion step for the configured forward process.
 

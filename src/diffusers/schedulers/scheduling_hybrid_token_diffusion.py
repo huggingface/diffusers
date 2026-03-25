@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -94,7 +95,7 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self,
         shape: torch.Size,
         device: torch.device,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ) -> torch.LongTensor:
         """
         Sample from the prior distribution at t=1.
@@ -115,7 +116,7 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         """
         return torch.full(shape, self.mask_token_id, device=device, dtype=torch.long)
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device, None] = None) -> None:
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
         self.num_inference_steps = int(num_inference_steps)
@@ -126,9 +127,7 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self._timesteps_with_end = timesteps
         self.timesteps = timesteps[:-1]
 
-    def scale_model_input(
-        self, sample: torch.Tensor, timestep: Optional[Union[int, torch.Tensor]] = None
-    ) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | torch.Tensor | None = None) -> torch.Tensor:
         return sample
 
     def _to_continuous_t(self, timesteps: torch.Tensor, device: torch.device) -> torch.Tensor:
@@ -143,7 +142,7 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         t = (1.0 - 2.0 * float(self.t_eps)) * t + float(self.t_eps)
         return t.clamp(float(self.t_eps), 1.0 - float(self.t_eps))
 
-    def _get_alpha_betapi(self, t: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _get_alpha_betapi(self, t: torch.Tensor, eps: float = 1e-6) -> tuple[torch.Tensor, torch.Tensor]:
         t = t.view(-1, 1)
         t1m = 1.0 - t
 
@@ -168,7 +167,7 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         out[..., : beta_pi.shape[-1]].add_(beta_pi.unsqueeze(1))
         return out
 
-    def _sample_categorical(self, probs: torch.Tensor, generator: Optional[torch.Generator]) -> torch.LongTensor:
+    def _sample_categorical(self, probs: torch.Tensor, generator: torch.Generator | None) -> torch.LongTensor:
         bsz, seqlen, vocab = probs.shape
         flat = probs.view(-1, vocab).clamp_min(torch.finfo(probs.dtype).tiny)
         flat = flat / flat.sum(dim=-1, keepdim=True).clamp_min(torch.finfo(probs.dtype).eps)
@@ -178,7 +177,7 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
     def add_noise(
         self,
         original_samples: torch.LongTensor,
-        noise: Optional[torch.Tensor],
+        noise: torch.Tensor | None,
         timesteps: torch.Tensor,
     ) -> torch.LongTensor:
         del noise
@@ -191,7 +190,7 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         probs = self._probs_at_t(onehot, t)
         return self._sample_categorical(probs, generator=None)
 
-    def _index_for_timestep(self, timestep: Union[float, torch.Tensor]) -> int:
+    def _index_for_timestep(self, timestep: float | torch.Tensor) -> int:
         if self.timesteps is None:
             raise ValueError("Call `set_timesteps(...)` before calling `step()`.")
 
@@ -206,11 +205,11 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
         sample: torch.LongTensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[HybridTokenDiffusionSchedulerOutput, Tuple[torch.LongTensor]]:
+    ) -> HybridTokenDiffusionSchedulerOutput | tuple[torch.LongTensor]:
         if sample.dtype != torch.long:
             raise ValueError(f"`sample` must be int64 token IDs, got dtype={sample.dtype}.")
         if model_output.ndim != 3 or model_output.shape[-1] != self.vocab_size:

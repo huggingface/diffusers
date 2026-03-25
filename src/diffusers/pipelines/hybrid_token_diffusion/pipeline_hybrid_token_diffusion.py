@@ -14,11 +14,229 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Callable
+
+import torch
+
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...utils import BaseOutput, logging
 from ..token_diffusion.pipeline_token_diffusion import TokenDiffusionPipeline
 
 
+logger = logging.get_logger(__name__)
+
+
+@dataclass
+class HybridTokenDiffusionPipelineOutput(BaseOutput):
+    """
+    Output class for hybrid token diffusion pipelines.
+
+    Args:
+        sequences (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
+            Sampled token IDs.
+        texts (`list[str]`, *optional*):
+            Decoded texts if a tokenizer was provided and `output_type="text"`.
+    """
+
+    sequences: torch.LongTensor
+    texts: list[str] | None = None
+
+
 class HybridTokenDiffusionPipeline(TokenDiffusionPipeline):
-    """Alias of `TokenDiffusionPipeline` for hybrid-transition schedulers."""
+    """
+    Pipeline for hybrid-transition discrete token diffusion sampling.
+
+    This pipeline extends `TokenDiffusionPipeline` with conventions aligned to LLaDA2-style pipelines: `output_type`
+    parameter, input validation via `check_inputs`, and progress bar support.
+    """
+
+    def check_inputs(
+        self,
+        batch_size: int,
+        seq_len: int,
+        num_inference_steps: int,
+        output_type: str,
+        callback_on_step_end: Callable | PipelineCallback | MultiPipelineCallbacks | None,
+        callback_on_step_end_tensor_inputs: list[str] | None,
+        infill_mask: torch.BoolTensor | None,
+        prefix_ids: torch.LongTensor | None,
+    ):
+        # Generation parameter validation
+        if batch_size <= 0:
+            raise ValueError(f"`batch_size` must be > 0, got {batch_size}.")
+        if seq_len <= 0:
+            raise ValueError(f"`seq_len` must be > 0, got {seq_len}.")
+        if num_inference_steps <= 0:
+            raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
+        if output_type not in {"seq", "text"}:
+            raise ValueError(f"`output_type` must be 'seq' or 'text', got {output_type!r}.")
+
+        # Callback validation
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
+        # Conditioning validation
+        if infill_mask is not None and infill_mask.shape != (batch_size, seq_len):
+            raise ValueError(f"`infill_mask` must have shape {(batch_size, seq_len)}, got {tuple(infill_mask.shape)}.")
+        if prefix_ids is not None:
+            p = prefix_ids
+            if p.ndim == 1:
+                p = p.unsqueeze(0)
+            if p.ndim == 2 and p.shape[1] > seq_len:
+                raise ValueError(f"`prefix_ids` length {p.shape[1]} must be <= seq_len={seq_len}.")
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        batch_size: int = 1,
+        seq_len: int = 64,
+        num_inference_steps: int = 128,
+        generator: torch.Generator | None = None,
+        prefix_ids: torch.LongTensor | None = None,
+        infill_mask: torch.BoolTensor | None = None,
+        inject_start_token: bool = False,
+        output_type: str = "text",
+        return_dict: bool = True,
+        callback_on_step_end: Callable[[int, int, dict], None]
+        | PipelineCallback
+        | MultiPipelineCallbacks
+        | None = None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
+        **model_kwargs,
+    ) -> HybridTokenDiffusionPipelineOutput | tuple[torch.LongTensor, list[str] | None]:
+        """
+        Generate token sequences via hybrid-transition discrete diffusion.
+
+        Args:
+            batch_size (`int`, defaults to `1`):
+                Number of sequences to generate.
+            seq_len (`int`, defaults to `64`):
+                Sequence length in tokens.
+            num_inference_steps (`int`, defaults to `128`):
+                Number of reverse diffusion steps.
+            generator (`torch.Generator`, *optional*):
+                Optional torch generator for determinism.
+            prefix_ids (`torch.LongTensor`, *optional*):
+                Optional prefix token IDs to keep fixed at the start of each sequence. Shape `[P]` or `[batch_size,
+                P]`.
+            infill_mask (`torch.BoolTensor`, *optional*):
+                Optional boolean mask of shape `[batch_size, seq_len]` indicating which positions are editable (`True`)
+                vs fixed (`False`). Fixed positions are clamped to the initial values on every step.
+            inject_start_token (`bool`, defaults to `False`):
+                If True, inject `bos_token_id` (or `cls_token_id`) into position 0 (if available).
+            output_type (`str`, defaults to `"text"`):
+                Output format. `"text"` decodes sequences into strings (requires a tokenizer). `"seq"` returns raw
+                token ID sequences only.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return a [`HybridTokenDiffusionPipelineOutput`] instead of a tuple.
+            callback_on_step_end (`Callable` or `PipelineCallback`, *optional*):
+                A function called after each denoising step with signature `callback_on_step_end(self, step: int,
+                timestep: int, callback_kwargs: Dict)`.
+            callback_on_step_end_tensor_inputs (`list[str]`, *optional*):
+                List of tensor keys to include in `callback_kwargs`.
+            model_kwargs:
+                Forward kwargs passed to `model(...)` (e.g. attention mask overrides).
+        """
+        # 1. Check inputs early
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is None:
+            callback_on_step_end_tensor_inputs = ["input_ids"]
+
+        self.check_inputs(
+            batch_size=batch_size,
+            seq_len=seq_len,
+            num_inference_steps=num_inference_steps,
+            output_type=output_type,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            infill_mask=infill_mask,
+            prefix_ids=prefix_ids,
+        )
+
+        # 2. Set up device and scheduler
+        device = self._execution_device
+
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
+        self._num_timesteps = len(timesteps)
+
+        # 3. Prepare latents
+        input_ids = self.prepare_latents(batch_size, seq_len, generator=generator, device=device)
+        attention_mask = torch.ones_like(input_ids, dtype=torch.long)
+
+        fixed_mask = None
+        fixed_values = None
+        if infill_mask is not None:
+            fixed_mask = (~infill_mask.to(device=device)).to(dtype=torch.bool)
+            fixed_values = input_ids.clone()
+
+        if prefix_ids is not None:
+            prefix_ids = self._normalize_prefix_ids(prefix_ids, batch_size=batch_size, device=device)
+            prefix_len = prefix_ids.shape[1]
+
+            input_ids[:, :prefix_len] = prefix_ids
+            if fixed_mask is None:
+                fixed_mask = torch.zeros((batch_size, seq_len), device=device, dtype=torch.bool)
+                fixed_values = input_ids.clone()
+            fixed_mask[:, :prefix_len] = True
+            fixed_values[:, :prefix_len] = prefix_ids
+
+        start_token_id = self._resolve_start_token_id()
+        if inject_start_token and start_token_id is not None:
+            input_ids[:, 0] = start_token_id
+            if fixed_mask is not None:
+                fixed_mask[:, 0] = True
+                fixed_values[:, 0] = start_token_id
+
+        # 4. Denoising loop with progress bar
+        progress_bar = self.progress_bar(total=len(timesteps))
+        for step_idx, t in enumerate(timesteps):
+            timestep = t.expand(batch_size)
+            out = self.model(input_ids=input_ids, timesteps=timestep, return_dict=True, **model_kwargs)
+            logits = getattr(out, "logits", None)
+            if logits is None:
+                # Fall back to tuple-style returns.
+                logits = out[0]
+
+            input_ids = self.scheduler.step(logits, t, input_ids, generator=generator, return_dict=True).prev_sample
+
+            if fixed_mask is not None:
+                input_ids = torch.where(fixed_mask, fixed_values, input_ids)
+
+            if inject_start_token and start_token_id is not None:
+                input_ids[:, 0] = start_token_id
+
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, step_idx, t, callback_kwargs)
+                input_ids = callback_outputs.pop("input_ids", input_ids)
+
+            progress_bar.update(1)
+        progress_bar.close()
+
+        # 5. Post-process output
+        texts = None
+        if output_type == "text" and getattr(self, "tokenizer", None) is not None:
+            texts = self.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+
+        if not return_dict:
+            return (input_ids, texts)
+        return HybridTokenDiffusionPipelineOutput(sequences=input_ids, texts=texts)
 
 
-__all__ = ["HybridTokenDiffusionPipeline"]
+__all__ = ["HybridTokenDiffusionPipeline", "HybridTokenDiffusionPipelineOutput"]

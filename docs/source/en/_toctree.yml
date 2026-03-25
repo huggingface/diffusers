@@ -506,8 +506,6 @@
         title: BLIP-Diffusion
       - local: api/pipelines/block_refinement
         title: Block Refinement
-      - local: api/pipelines/block_token_diffusion
-        title: Block Token Diffusion
       - local: api/pipelines/bria_3_2
         title: Bria 3.2
       - local: api/pipelines/bria_fibo
@@ -738,8 +736,6 @@
       title: BD3LMTokenDiffusionScheduler
     - local: api/schedulers/block_refinement
       title: BlockRefinementScheduler
-    - local: api/schedulers/block_token_diffusion
-      title: BlockTokenDiffusionScheduler
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
     - local: api/schedulers/ddim_cogvideox

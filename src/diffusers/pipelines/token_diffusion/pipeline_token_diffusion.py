@@ -15,13 +15,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import torch
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...utils import BaseOutput
+from ...utils import BaseOutput, logging
 from ..pipeline_utils import DiffusionPipeline, DiscreteDiffusionPipelineMixin
+
+
+logger = logging.get_logger(__name__)
 
 
 @dataclass
@@ -32,12 +35,12 @@ class TokenDiffusionPipelineOutput(BaseOutput):
     Args:
         sequences (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
             Sampled token IDs.
-        texts (`List[str]`, *optional*):
-            Decoded texts if a tokenizer was provided and `return_text=True`.
+        texts (`list[str]`, *optional*):
+            Decoded texts if a tokenizer was provided and `output_type="text"`.
     """
 
     sequences: torch.LongTensor
-    texts: Optional[List[str]] = None
+    texts: list[str] | None = None
 
 
 class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
@@ -62,7 +65,7 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         self,
         model: Any,
         scheduler: Any,
-        tokenizer: Optional[Any] = None,
+        tokenizer: Any | None = None,
     ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler, tokenizer=tokenizer)
@@ -75,8 +78,8 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         self,
         batch_size: int,
         seq_len: int,
-        generator: Optional[torch.Generator] = None,
-        device: Optional[torch.device] = None,
+        generator: torch.Generator | None = None,
+        device: torch.device | None = None,
     ) -> torch.LongTensor:
         shape = torch.Size((batch_size, seq_len))
         return self.scheduler.sample_prior(shape, device=device, generator=generator)
@@ -85,11 +88,24 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         self,
         batch_size: int,
         seq_len: int,
-        callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
-        callback_on_step_end_tensor_inputs: Optional[List[str]],
-        infill_mask: Optional[torch.BoolTensor],
-        prefix_ids: Optional[torch.LongTensor],
+        num_inference_steps: int,
+        output_type: str,
+        callback_on_step_end: Callable | PipelineCallback | MultiPipelineCallbacks | None,
+        callback_on_step_end_tensor_inputs: list[str] | None,
+        infill_mask: torch.BoolTensor | None,
+        prefix_ids: torch.LongTensor | None,
     ):
+        # Generation parameter validation
+        if batch_size <= 0:
+            raise ValueError(f"`batch_size` must be > 0, got {batch_size}.")
+        if seq_len <= 0:
+            raise ValueError(f"`seq_len` must be > 0, got {seq_len}.")
+        if num_inference_steps <= 0:
+            raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
+        if output_type not in {"seq", "text"}:
+            raise ValueError(f"`output_type` must be 'seq' or 'text', got {output_type!r}.")
+
+        # Callback validation
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
@@ -101,6 +117,8 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
                 f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
+
+        # Mask / prefix validation
         if infill_mask is not None and infill_mask.shape != (batch_size, seq_len):
             raise ValueError(f"`infill_mask` must have shape {(batch_size, seq_len)}, got {tuple(infill_mask.shape)}.")
         if prefix_ids is not None:
@@ -116,18 +134,19 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         batch_size: int = 1,
         seq_len: int = 64,
         num_inference_steps: int = 128,
-        generator: Optional[torch.Generator] = None,
-        prefix_ids: Optional[torch.LongTensor] = None,
-        infill_mask: Optional[torch.BoolTensor] = None,
+        generator: torch.Generator | None = None,
+        prefix_ids: torch.LongTensor | None = None,
+        infill_mask: torch.BoolTensor | None = None,
         inject_start_token: bool = False,
-        return_text: bool = True,
+        output_type: str = "text",
         return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
+        callback_on_step_end: Callable[[int, int, dict], None]
+        | PipelineCallback
+        | MultiPipelineCallbacks
+        | None = None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
         **model_kwargs,
-    ) -> Union[TokenDiffusionPipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
+    ) -> TokenDiffusionPipelineOutput | tuple[torch.LongTensor, list[str] | None]:
         """
         Args:
             batch_size: Number of sequences to generate.
@@ -140,13 +159,16 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 Optional boolean mask of shape `[batch_size, seq_len]` indicating which positions are editable (`True`)
                 vs fixed (`False`). Fixed positions are clamped to the initial values on every step.
             inject_start_token: If True, inject `bos_token_id` (or `cls_token_id`) into position 0 (if available).
-            return_text: If True and tokenizer exists, also return decoded strings.
+            output_type (`str`, defaults to `"text"`):
+                Output format. `"text"` decodes sequences into strings (requires a tokenizer). `"seq"` returns raw
+                token ID sequences only.
             return_dict: If True, returns a `TokenDiffusionPipelineOutput`.
             callback_on_step_end: A function called after each denoising step with signature
-                `callback_on_step_end(self, step: int, timestep: int, callback_kwargs: Dict)`.
+                `callback_on_step_end(self, step: int, timestep: int, callback_kwargs: dict)`.
             callback_on_step_end_tensor_inputs: List of tensor keys to include in `callback_kwargs`.
             model_kwargs: Forward kwargs passed to `model(...)` (e.g. attention mask overrides).
         """
+        # 1. Check inputs early
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
@@ -157,21 +179,26 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         self.check_inputs(
             batch_size=batch_size,
             seq_len=seq_len,
+            num_inference_steps=num_inference_steps,
+            output_type=output_type,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             infill_mask=infill_mask,
             prefix_ids=prefix_ids,
         )
 
+        # 2. Prepare timesteps
         device = self._execution_device
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
         self._num_timesteps = len(timesteps)
 
+        # 3. Prepare latents
         input_ids = self.prepare_latents(batch_size, seq_len, generator=generator, device=device)
         attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
+        # 4. Build fixed masks for prefix / infill conditioning
         fixed_mask = None
         fixed_values = None
         if infill_mask is not None:
@@ -196,6 +223,8 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 fixed_mask[:, 0] = True
                 fixed_values[:, 0] = start_token_id
 
+        # 5. Denoising loop
+        progress_bar = self.progress_bar(total=num_inference_steps)
         for step_idx, t in enumerate(timesteps):
             timestep = t.expand(batch_size)
             out = self.model(input_ids=input_ids, timesteps=timestep, return_dict=True, **model_kwargs)
@@ -206,8 +235,9 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
             input_ids = self.scheduler.step(logits, t, input_ids, generator=generator, return_dict=True).prev_sample
 
+            # Enforce fixed masks (prefix / infill conditioning)
             if fixed_mask is not None:
-                input_ids = torch.where(fixed_mask, fixed_values, input_ids)
+                input_ids = self.scheduler.enforce_fixed_masks(input_ids, fixed_mask, fixed_values)
 
             if inject_start_token and start_token_id is not None:
                 input_ids[:, 0] = start_token_id
@@ -219,8 +249,12 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 callback_outputs = callback_on_step_end(self, step_idx, t, callback_kwargs)
                 input_ids = callback_outputs.pop("input_ids", input_ids)
 
+            progress_bar.update(1)
+        progress_bar.close()
+
+        # 6. Post-process output
         texts = None
-        if return_text and getattr(self, "tokenizer", None) is not None:
+        if output_type == "text" and getattr(self, "tokenizer", None) is not None:
             texts = self.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
 
         if not return_dict:

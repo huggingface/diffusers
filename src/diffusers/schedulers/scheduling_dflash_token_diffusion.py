@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import torch
 
@@ -60,7 +59,7 @@ class DFlashTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = 1
         self.timesteps = torch.tensor([0], dtype=torch.long)
 
-    def set_timesteps(self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None) -> None:
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
         self.num_inference_steps = int(num_inference_steps)
@@ -81,10 +80,10 @@ class DFlashTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         *,
         temperature: float = 0.0,
         return_dict: bool = True,
-    ) -> Union[
-        DFlashTokenDiffusionSchedulerOutput,
-        Tuple[torch.LongTensor, torch.LongTensor, torch.LongTensor, torch.LongTensor],
-    ]:
+    ) -> (
+        DFlashTokenDiffusionSchedulerOutput
+        | tuple[torch.LongTensor, torch.LongTensor, torch.LongTensor, torch.LongTensor]
+    ):
         posterior = self.sample(target_logits, temperature=temperature)
         if draft_tokens.shape[1] > 1:
             matches = draft_tokens[:, 1:] == posterior[:, :-1]
@@ -102,6 +101,87 @@ class DFlashTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             next_token=next_token,
             posterior=posterior,
         )
+
+    @staticmethod
+    def check_should_stop(
+        output_ids: torch.LongTensor,
+        stop_token_ids: list[int] | None,
+        num_input_tokens: int,
+    ) -> bool:
+        """
+        Check whether any stop token has been generated in the output sequence.
+
+        Args:
+            output_ids (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Current output token IDs including prompt and generated tokens.
+            stop_token_ids (`list[int]` or `None`):
+                Token IDs that signal generation should stop.
+            num_input_tokens (`int`):
+                Number of prompt tokens at the start of the sequence.
+
+        Returns:
+            `bool`: `True` if generation should stop, `False` otherwise.
+        """
+        if stop_token_ids is None:
+            return False
+        stop_tensor = torch.tensor(stop_token_ids, device=output_ids.device, dtype=torch.long)
+        return torch.isin(output_ids[:, num_input_tokens:], stop_tensor).any().item()
+
+    def add_noise(
+        self,
+        original_samples: torch.LongTensor,
+        attention_mask: torch.LongTensor,
+        *,
+        prompt_length: int,
+        block_size: int,
+        mask_token_id: int,
+        generator: torch.Generator | None = None,
+    ) -> tuple[torch.LongTensor, torch.BoolTensor]:
+        """
+        Apply the forward (noising) process for DFlash-style block diffusion training.
+
+        For each block after the prompt, a random fraction of valid (non-padding) tokens are replaced with
+        `mask_token_id`.
+
+        Args:
+            original_samples (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Clean token IDs.
+            attention_mask (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Padding mask (1 for valid, 0 for padding).
+            prompt_length (`int`):
+                Number of leading prompt tokens to keep unmasked.
+            block_size (`int`):
+                Block size for masking.
+            mask_token_id (`int`):
+                Token ID to use for masked positions.
+            generator (`torch.Generator`, *optional*):
+                RNG for reproducibility.
+
+        Returns:
+            `tuple[torch.LongTensor, torch.BoolTensor]`:
+                `(noisy, masked)` -- the noisy sequence and the boolean mask indicating which positions were masked.
+        """
+        batch_size, seq_len = original_samples.shape
+        device = original_samples.device
+
+        noisy = original_samples.clone()
+        masked = torch.zeros_like(original_samples, dtype=torch.bool)
+
+        valid = attention_mask.to(dtype=torch.bool)
+        for block_start in range(prompt_length, seq_len, block_size):
+            block_end = min(seq_len, block_start + block_size)
+            seg_len = block_end - block_start
+            if seg_len <= 0:
+                continue
+
+            p_mask = torch.rand((batch_size, 1), device=device, generator=generator)
+            seg = torch.rand((batch_size, seg_len), device=device, generator=generator) < p_mask
+            seg = seg & valid[:, block_start:block_end]
+
+            masked[:, block_start:block_end] = seg
+
+        noisy = torch.where(masked, torch.full_like(noisy, mask_token_id), noisy)
+        return noisy, masked
 
 
 __all__ = ["DFlashTokenDiffusionScheduler", "DFlashTokenDiffusionSchedulerOutput"]

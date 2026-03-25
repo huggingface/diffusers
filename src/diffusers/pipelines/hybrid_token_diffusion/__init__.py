@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .pipeline_hybrid_token_diffusion import HybridTokenDiffusionPipeline
+from .pipeline_hybrid_token_diffusion import HybridTokenDiffusionPipeline, HybridTokenDiffusionPipelineOutput
 
 
-__all__ = ["HybridTokenDiffusionPipeline"]
+__all__ = ["HybridTokenDiffusionPipeline", "HybridTokenDiffusionPipelineOutput"]

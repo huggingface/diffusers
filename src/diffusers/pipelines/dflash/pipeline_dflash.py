@@ -15,9 +15,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import torch
+from tqdm.auto import tqdm
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer, DynamicCache
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -52,10 +53,10 @@ EXAMPLE_DOC_STRING = """
 @dataclass
 class DFlashPipelineOutput(BaseOutput):
     sequences: torch.LongTensor
-    texts: Optional[List[str]] = None
+    texts: list[str] | None = None
 
 
-def _build_target_layer_ids(num_target_layers: int, num_draft_layers: int) -> List[int]:
+def _build_target_layer_ids(num_target_layers: int, num_draft_layers: int) -> list[int]:
     if num_draft_layers == 1:
         return [int(num_target_layers // 2)]
     start = 1
@@ -64,7 +65,7 @@ def _build_target_layer_ids(num_target_layers: int, num_draft_layers: int) -> Li
     return [int(round(start + (i * span) / (num_draft_layers - 1))) for i in range(int(num_draft_layers))]
 
 
-def _extract_context_feature(hidden_states: List[torch.Tensor], layer_ids: List[int]) -> torch.Tensor:
+def _extract_context_feature(hidden_states: list[torch.Tensor], layer_ids: list[int]) -> torch.Tensor:
     offset = 1
     selected_states = [hidden_states[layer_id + offset] for layer_id in layer_ids]
     return torch.cat(selected_states, dim=-1)
@@ -75,9 +76,9 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     Block diffusion pipeline for speculative decoding with a DFlash draft model and a target causal LM.
     """
 
-    draft_model: torch.nn.Module
-    target_model: torch.nn.Module
-    tokenizer: Optional[object]
+    draft_model: Any
+    target_model: Any
+    tokenizer: Any
     scheduler: DFlashTokenDiffusionScheduler
     _callback_tensor_inputs = ["block_output_ids", "draft_logits", "accepted_length", "next_token", "output_ids"]
 
@@ -85,8 +86,8 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         self,
         draft_model: torch.nn.Module,
         target_model: torch.nn.Module,
-        tokenizer: Optional[object] = None,
-        scheduler: Optional[DFlashTokenDiffusionScheduler] = None,
+        tokenizer: Any | None = None,
+        scheduler: DFlashTokenDiffusionScheduler | None = None,
     ):
         super().__init__()
         if scheduler is None:
@@ -98,16 +99,16 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     @classmethod
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Optional[str] = None,
+        pretrained_model_name_or_path: str | None = None,
         *,
-        draft_model_id: Optional[str] = None,
-        target_model_id: Optional[str] = None,
-        tokenizer_id: Optional[str] = None,
-        mask_token: Optional[str] = "<|MASK|>",
-        scheduler: Optional[DFlashTokenDiffusionScheduler] = None,
-        draft_model_kwargs: Optional[Dict[str, object]] = None,
-        target_model_kwargs: Optional[Dict[str, object]] = None,
-        tokenizer_kwargs: Optional[Dict[str, object]] = None,
+        draft_model_id: str | None = None,
+        target_model_id: str | None = None,
+        tokenizer_id: str | None = None,
+        mask_token: str | None = "<|MASK|>",
+        scheduler: DFlashTokenDiffusionScheduler | None = None,
+        draft_model_kwargs: dict[str, object] | None = None,
+        target_model_kwargs: dict[str, object] | None = None,
+        tokenizer_kwargs: dict[str, object] | None = None,
         **pipeline_kwargs,
     ) -> "DFlashPipeline":
         if draft_model_id is None and target_model_id is None and pretrained_model_name_or_path is not None:
@@ -142,15 +143,36 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
     def check_inputs(
         self,
-        input_ids: torch.LongTensor,
-        mask_token_id: Optional[int],
-        callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
-        callback_on_step_end_tensor_inputs: Optional[List[str]],
+        prompt: str | list[str] | None,
+        messages: list[dict[str, str]] | None,
+        input_ids: torch.LongTensor | None,
+        max_new_tokens: int,
+        output_type: str,
+        callback_on_step_end: Callable | PipelineCallback | MultiPipelineCallbacks | None,
+        callback_on_step_end_tensor_inputs: list[str] | None,
     ):
-        if input_ids.shape[0] != 1:
-            raise ValueError("DFlashPipeline currently supports batch_size=1 input_ids.")
-        if mask_token_id is None:
-            raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
+        # Input source validation
+        if prompt is None and messages is None and input_ids is None:
+            raise ValueError("Provide one of `prompt`, `messages`, or `input_ids`.")
+        if prompt is not None and messages is not None:
+            raise ValueError("Provide either `prompt` or `messages`, not both.")
+        if input_ids is not None:
+            if input_ids.ndim not in (1, 2):
+                raise ValueError(f"`input_ids` must be 1D or 2D, got shape {tuple(input_ids.shape)}.")
+            if input_ids.dtype != torch.long:
+                raise ValueError(f"`input_ids` must be int64 token IDs, got dtype={input_ids.dtype}.")
+        if prompt is not None and input_ids is None and self.tokenizer is None:
+            raise ValueError("Tokenizer is required when `input_ids` is not provided.")
+        if messages is not None and input_ids is None and self.tokenizer is None:
+            raise ValueError("Tokenizer is required when `input_ids` is not provided.")
+
+        # Generation parameter validation
+        if max_new_tokens <= 0:
+            raise ValueError(f"`max_new_tokens` must be > 0, got {max_new_tokens}.")
+        if output_type not in {"seq", "text"}:
+            raise ValueError(f"`output_type` must be 'seq' or 'text', got {output_type!r}.")
+
+        # Callback validation
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
@@ -181,28 +203,62 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
-        messages: Optional[List[Dict[str, str]]] = None,
-        input_ids: Optional[torch.LongTensor] = None,
+        prompt: str | list[str] | None = None,
+        messages: list[dict[str, str]] | None = None,
+        input_ids: torch.LongTensor | None = None,
         max_new_tokens: int = 2048,
         temperature: float = 0.0,
-        stop_token_ids: Optional[List[int]] = None,
-        mask_token_id: Optional[int] = None,
+        stop_token_ids: list[int] | None = None,
+        mask_token_id: int | None = None,
         use_chat_template: bool = True,
         add_generation_prompt: bool = True,
-        chat_template_kwargs: Optional[Dict[str, object]] = None,
-        return_text: bool = True,
+        chat_template_kwargs: dict[str, object] | None = None,
+        output_type: str = "text",
         return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
-    ) -> Union[DFlashPipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
+        callback_on_step_end: Callable[[int, int, dict], None]
+        | PipelineCallback
+        | MultiPipelineCallbacks
+        | None = None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
+    ) -> DFlashPipelineOutput | tuple[torch.LongTensor, list[str] | None]:
         """
         Generate text using block-diffusion speculative decoding.
 
+        Args:
+            prompt (`str` or `list[str]`, *optional*):
+                Prompt text. When `use_chat_template` is `True` (default) and a tokenizer with a chat template is
+                available, the prompt is wrapped in a chat message before tokenization.
+            messages (`list[dict[str, str]]`, *optional*):
+                Chat messages to encode. Takes precedence over `prompt` when provided.
+            input_ids (`torch.LongTensor`, *optional*):
+                Pre-tokenized input IDs. Takes precedence over `prompt` and `messages`.
+            max_new_tokens (`int`):
+                Maximum number of new tokens to generate.
+            temperature (`float`):
+                Sampling temperature.
+            stop_token_ids (`list[int]`, *optional*):
+                Token IDs that signal generation should stop.
+            mask_token_id (`int`, *optional*):
+                Mask token ID for the draft model.
+            use_chat_template (`bool`, defaults to `True`):
+                Whether to wrap the prompt in a chat template.
+            add_generation_prompt (`bool`, defaults to `True`):
+                Whether to add the generation prompt when using chat templates.
+            chat_template_kwargs (`dict[str, object]`, *optional*):
+                Additional keyword arguments for the chat template.
+            output_type (`str`, defaults to `"text"`):
+                Output format. `"text"` decodes sequences into strings (requires a tokenizer). `"seq"` returns raw
+                token ID sequences only.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a [`DFlashPipelineOutput`] instead of a tuple.
+            callback_on_step_end (`Callable` or `PipelineCallback`, *optional*):
+                Callback executed after each speculative decoding step.
+            callback_on_step_end_tensor_inputs (`list[str]`, *optional*):
+                Tensor keys to pass to the callback.
+
         Examples:
         """
+        # 1. Check inputs early
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
@@ -210,6 +266,17 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         if callback_on_step_end_tensor_inputs is None:
             callback_on_step_end_tensor_inputs = ["block_output_ids"]
 
+        self.check_inputs(
+            prompt=prompt,
+            messages=messages,
+            input_ids=input_ids,
+            max_new_tokens=max_new_tokens,
+            output_type=output_type,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+        )
+
+        # 2. Prepare input IDs from prompt/messages/input_ids
         input_ids = self._prepare_input_ids(
             prompt=prompt,
             messages=messages,
@@ -221,13 +288,10 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
         if mask_token_id is None:
             mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
-
-        self.check_inputs(
-            input_ids=input_ids,
-            mask_token_id=mask_token_id,
-            callback_on_step_end=callback_on_step_end,
-            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-        )
+        if mask_token_id is None:
+            raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
+        if input_ids.shape[0] != 1:
+            raise ValueError("DFlashPipeline currently supports batch_size=1 input_ids.")
 
         target_params = list(self.target_model.parameters()) if hasattr(self.target_model, "parameters") else []
         device = target_params[0].device if len(target_params) > 0 else torch.device("cpu")
@@ -247,6 +311,7 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         if stop_token_ids is not None:
             stop_token_ids = [int(token_id) for token_id in stop_token_ids]
 
+        # 3. Setup models and scheduler
         self.draft_model.eval()
         self.target_model.eval()
         self.scheduler.set_timesteps(1, device=device)
@@ -265,6 +330,7 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         past_key_values_target = DynamicCache()
         past_key_values_draft = DynamicCache()
 
+        # 4. Prefill step
         output = self._target_forward(
             input_ids=input_ids,
             position_ids=position_ids[:, :num_input_tokens],
@@ -280,11 +346,18 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
         start = num_input_tokens
         global_step = 0
-        stop_tensor = None
-        if stop_token_ids is not None:
-            stop_tensor = torch.tensor(stop_token_ids, device=device, dtype=torch.long)
+        num_blocks = (max_length - num_input_tokens + block_size - 1) // block_size
 
-        while start < max_length:
+        # 5. Block-wise speculative decoding loop
+        block_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy()
+        block_progress_bar_config["position"] = 0
+        block_progress_bar_config["desc"] = "Blocks"
+        block_iter = tqdm(range(num_blocks), **block_progress_bar_config)
+
+        for _block_idx in block_iter:
+            if start >= max_length:
+                break
+
             block_output_ids = output_ids[:, start : start + int(block_size)].clone()
             block_position_ids = position_ids[:, start : start + int(block_size)]
             noise_embedding = input_embeddings(block_output_ids)
@@ -331,12 +404,14 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 output_ids = callback_outputs.pop("output_ids", output_ids)
                 global_step += 1
 
-            if stop_tensor is not None and torch.isin(output_ids[:, num_input_tokens:], stop_tensor).any():
+            if self.scheduler.check_should_stop(output_ids, stop_token_ids, num_input_tokens):
                 break
 
+        # 6. Post-process output
         output_ids = output_ids[:, :max_length]
         output_ids = output_ids[:, output_ids[0] != int(mask_token_id)]
-        if stop_tensor is not None:
+        if stop_token_ids is not None:
+            stop_tensor = torch.tensor(stop_token_ids, device=device, dtype=torch.long)
             stop_positions = torch.isin(output_ids[0, num_input_tokens:], stop_tensor).nonzero(as_tuple=True)[0]
             if stop_positions.numel() > 0:
                 output_ids = output_ids[:, : num_input_tokens + int(stop_positions[0].item()) + 1]
@@ -345,7 +420,7 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         sequences = output_ids[:, prompt_len:]
 
         texts = None
-        if return_text and getattr(self, "tokenizer", None) is not None:
+        if output_type == "text" and getattr(self, "tokenizer", None) is not None:
             texts = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
 
         if not return_dict:
@@ -360,7 +435,7 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             raise ValueError("`draft_model` must define `block_size` on the module or its config.")
         return int(block_size)
 
-    def _get_target_layer_ids(self) -> List[int]:
+    def _get_target_layer_ids(self) -> list[int]:
         layer_ids = getattr(self.draft_model, "target_layer_ids", None)
         if layer_ids is not None:
             return list(layer_ids)
@@ -395,7 +470,7 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         position_ids: torch.LongTensor,
         past_key_values: DynamicCache,
         output_hidden_states: bool,
-        logits_to_keep: Optional[int],
+        logits_to_keep: int | None,
     ):
         kwargs = {
             "input_ids": input_ids,

@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -69,7 +68,7 @@ class SDARTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = int(denoising_steps)
         self.timesteps = torch.arange(self.num_inference_steps - 1, -1, -1, dtype=torch.long)
 
-    def set_timesteps(self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None) -> None:
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
         self.num_inference_steps = int(num_inference_steps)
@@ -108,11 +107,11 @@ class SDARTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self,
         logits: torch.Tensor,
         *,
-        temperature: Optional[float] = None,
-        top_k: Optional[int] = None,
-        top_p: Optional[float] = None,
-        generator: Optional[torch.Generator] = None,
-    ) -> Tuple[torch.LongTensor, torch.Tensor]:
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        generator: torch.Generator | None = None,
+    ) -> tuple[torch.LongTensor, torch.Tensor]:
         if temperature is None:
             temperature = float(self.config.temperature)
         if top_k is None:
@@ -138,25 +137,111 @@ class SDARTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         token_probs = torch.gather(probs, -1, tokens)
         return tokens.view(*orig_shape), token_probs.view(*orig_shape)
 
+    def check_should_stop(
+        self,
+        sequences: torch.LongTensor,
+        prompt_length: int,
+        stop_token_ids: list[int] | None = None,
+    ) -> bool:
+        """
+        Check whether generation should stop based on stop token IDs.
+
+        Args:
+            sequences (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Current full sequence including prompt.
+            prompt_length (`int`):
+                Number of prompt tokens at the start of the sequence.
+            stop_token_ids (`list[int]`, *optional*):
+                Token IDs that signal generation should stop.
+
+        Returns:
+            `bool`: `True` if any stop token is found in the generated portion.
+        """
+        if stop_token_ids is None or len(stop_token_ids) == 0:
+            return False
+        stop_tensor = torch.tensor(stop_token_ids, device=sequences.device, dtype=torch.long)
+        return torch.isin(sequences[:, prompt_length:], stop_tensor).any().item()
+
+    def add_noise(
+        self,
+        original_samples: torch.LongTensor,
+        attention_mask: torch.LongTensor,
+        *,
+        prompt_length: int,
+        block_length: int,
+        mask_token_id: int,
+        generator: torch.Generator | None = None,
+    ) -> tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor, torch.BoolTensor]:
+        """
+        Apply the forward (noising) process for semi-autoregressive block masking.
+
+        For each block after the prompt, a random fraction of valid (non-padding) tokens are replaced with
+        `mask_token_id`. Two complementary views are returned: `noisy` and `noisy_rev`, where the masked positions in
+        one are the unmasked positions in the other.
+
+        Args:
+            original_samples (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Clean token IDs.
+            attention_mask (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Padding mask (1 for valid, 0 for padding).
+            prompt_length (`int`):
+                Number of leading prompt tokens to keep unmasked.
+            block_length (`int`):
+                Block size for masking.
+            mask_token_id (`int`):
+                Token ID to use for masked positions.
+            generator (`torch.Generator`, *optional*):
+                RNG for reproducibility.
+
+        Returns:
+            `tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor, torch.BoolTensor]`:
+                `(noisy, noisy_rev, masked, masked_rev)` — the two complementary noisy sequences and their
+                corresponding boolean masks.
+        """
+        batch_size, seq_len = original_samples.shape
+        device = original_samples.device
+
+        noisy = original_samples.clone()
+        noisy_rev = original_samples.clone()
+        masked = torch.zeros_like(original_samples, dtype=torch.bool)
+        masked_rev = torch.zeros_like(original_samples, dtype=torch.bool)
+
+        valid = attention_mask.to(dtype=torch.bool)
+        for block_start in range(prompt_length, seq_len, block_length):
+            block_end = min(seq_len, block_start + block_length)
+            seg_len = block_end - block_start
+            if seg_len <= 0:
+                continue
+
+            p_mask = torch.rand((batch_size, 1), device=device, generator=generator)
+            seg = torch.rand((batch_size, seg_len), device=device, generator=generator) < p_mask
+            seg = seg & valid[:, block_start:block_end]
+            seg_rev = (~seg) & valid[:, block_start:block_end]
+
+            masked[:, block_start:block_end] = seg
+            masked_rev[:, block_start:block_end] = seg_rev
+
+        noisy = torch.where(masked, torch.full_like(noisy, mask_token_id), noisy)
+        noisy_rev = torch.where(masked_rev, torch.full_like(noisy_rev, mask_token_id), noisy_rev)
+        return noisy, noisy_rev, masked, masked_rev
+
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.LongTensor,
         *,
         mask_token_id: int,
         num_transfer_tokens: torch.LongTensor,
-        remasking_strategy: Optional[str] = None,
-        confidence_threshold: Optional[float] = None,
-        entropy_threshold: Optional[float] = None,
-        temperature: Optional[float] = None,
-        top_k: Optional[int] = None,
-        top_p: Optional[float] = None,
-        generator: Optional[torch.Generator] = None,
+        remasking_strategy: str | None = None,
+        confidence_threshold: float | None = None,
+        entropy_threshold: float | None = None,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[
-        SDARTokenDiffusionSchedulerOutput, Tuple[torch.LongTensor, torch.BoolTensor, torch.LongTensor, torch.Tensor]
-    ]:
+    ) -> SDARTokenDiffusionSchedulerOutput | tuple[torch.LongTensor, torch.BoolTensor, torch.LongTensor, torch.Tensor]:
         if remasking_strategy is None:
             remasking_strategy = str(self.config.remasking_strategy)
         if confidence_threshold is None:

@@ -15,9 +15,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import torch
+from tqdm.auto import tqdm
 from transformers import DynamicCache
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -51,48 +52,83 @@ EXAMPLE_DOC_STRING = """
 @dataclass
 class SDARPipelineOutput(BaseOutput):
     sequences: torch.LongTensor
-    texts: Optional[List[str]] = None
+    texts: list[str] | None = None
 
 
 class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     r"""
     Block diffusion pipeline for SDAR-style token generation.
+
+    This pipeline generates text by processing blocks of tokens in a semi-autoregressive fashion. Each block is
+    iteratively denoised using a masked diffusion process, where tokens are progressively revealed based on model
+    confidence.
+
+    The model is expected to accept an attention mask and `position_ids`, and to return logits of shape `[batch, seq,
+    vocab_size]`.
     """
 
-    model: torch.nn.Module
-    tokenizer: Optional[object]
+    model: Any
     scheduler: SDARTokenDiffusionScheduler
+    tokenizer: Any
+
     _callback_tensor_inputs = ["cur_x", "logits", "sampled_tokens", "sampled_probs", "transfer_index"]
 
     def __init__(
         self,
-        model: torch.nn.Module,
-        tokenizer: Optional[object] = None,
-        scheduler: Optional[SDARTokenDiffusionScheduler] = None,
+        model: Any,
+        scheduler: SDARTokenDiffusionScheduler | None = None,
+        tokenizer: Any | None = None,
     ):
         super().__init__()
         if scheduler is None:
             scheduler = SDARTokenDiffusionScheduler()
         self.register_modules(model=model, tokenizer=tokenizer, scheduler=scheduler)
-        self._store_kv_supported: Optional[bool] = None
+        self._store_kv_supported: bool | None = None
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
 
     def check_inputs(
         self,
-        input_ids: torch.LongTensor,
+        prompt: str | list[str] | None,
+        messages: list[dict[str, str]] | None,
+        input_ids: torch.LongTensor | None,
         block_length: int,
-        denoising_steps: int,
-        mask_token_id: Optional[int],
-        callback_on_step_end: Optional[Union[Callable, PipelineCallback, MultiPipelineCallbacks]],
-        callback_on_step_end_tensor_inputs: Optional[List[str]],
+        num_inference_steps: int,
+        mask_token_id: int | None,
+        output_type: str,
+        callback_on_step_end: Callable | PipelineCallback | MultiPipelineCallbacks | None,
+        callback_on_step_end_tensor_inputs: list[str] | None,
     ):
-        if input_ids.shape[0] != 1:
-            raise ValueError("SDARPipeline currently supports batch_size=1 input_ids.")
+        # Input source validation
+        if prompt is None and messages is None and input_ids is None:
+            raise ValueError("Provide one of `prompt`, `messages`, or `input_ids`.")
+        if prompt is not None and messages is not None:
+            raise ValueError("Provide either `prompt` or `messages`, not both.")
+        if input_ids is not None:
+            if input_ids.ndim not in (1, 2):
+                raise ValueError(f"`input_ids` must be 1D or 2D, got shape {tuple(input_ids.shape)}.")
+            if input_ids.dtype != torch.long:
+                raise ValueError(f"`input_ids` must be int64 token IDs, got dtype={input_ids.dtype}.")
+            if input_ids.ndim == 2 and input_ids.shape[0] != 1:
+                raise ValueError("SDARPipeline currently supports batch_size=1 input_ids.")
+        if prompt is not None and input_ids is None and self.tokenizer is None:
+            raise ValueError("Tokenizer is required when `input_ids` is not provided.")
+        if messages is not None and input_ids is None and self.tokenizer is None:
+            raise ValueError("Tokenizer is required when `input_ids` is not provided.")
+
+        # Generation parameter validation
         if block_length <= 0:
             raise ValueError(f"`block_length` must be > 0, got {block_length}.")
-        if denoising_steps <= 0:
-            raise ValueError(f"`denoising_steps` must be > 0, got {denoising_steps}.")
+        if num_inference_steps <= 0:
+            raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
         if mask_token_id is None:
             raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
+        if output_type not in {"seq", "text"}:
+            raise ValueError(f"`output_type` must be 'seq' or 'text', got {output_type!r}.")
+
+        # Callback validation
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
@@ -122,36 +158,88 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
-        messages: Optional[List[Dict[str, str]]] = None,
-        input_ids: Optional[torch.LongTensor] = None,
+        prompt: str | list[str] | None = None,
+        messages: list[dict[str, str]] | None = None,
+        input_ids: torch.LongTensor | None = None,
         max_new_tokens: int = 256,
         block_length: int = 4,
-        denoising_steps: int = 4,
+        num_inference_steps: int = 4,
         temperature: float = 1.0,
         top_k: int = 0,
         top_p: float = 1.0,
         remasking_strategy: str = "low_confidence_dynamic",
         confidence_threshold: float = 0.9,
         entropy_threshold: float = 0.35,
-        stop_token_ids: Optional[List[int]] = None,
-        mask_token_id: Optional[int] = None,
-        attention_mask_mode: str = "3d",
+        stop_token_ids: list[int] | None = None,
+        mask_token_id: int | None = None,
         use_chat_template: bool = True,
         add_generation_prompt: bool = True,
-        chat_template_kwargs: Optional[Dict[str, object]] = None,
-        return_text: bool = True,
+        chat_template_kwargs: dict[str, object] | None = None,
+        generator: torch.Generator | None = None,
+        output_type: str = "text",
         return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
-    ) -> Union[SDARPipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
+        callback_on_step_end: Callable[[int, int, dict], None]
+        | PipelineCallback
+        | MultiPipelineCallbacks
+        | None = None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
+    ) -> SDARPipelineOutput | tuple[torch.LongTensor, list[str] | None]:
         """
         Generate text using SDAR-style block diffusion decoding.
 
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                Prompt text. When `use_chat_template` is `True` (default) and a tokenizer with a chat template is
+                available, the prompt is wrapped in a chat message before tokenization.
+            messages (`List[Dict[str, str]]`, *optional*):
+                Chat messages to encode (e.g. `[{"role": "user", "content": "Hello"}]`). Takes precedence over `prompt`
+                when provided. Requires a tokenizer with `apply_chat_template`.
+            input_ids (`torch.LongTensor`, *optional*):
+                Pre-tokenized input IDs. Takes precedence over `prompt` and `messages`.
+            max_new_tokens (`int`):
+                Number of tokens to generate.
+            block_length (`int`):
+                Block size for denoising.
+            num_inference_steps (`int`):
+                Number of denoising steps per block.
+            temperature (`float`):
+                Sampling temperature.
+            top_k (`int`):
+                Top-k sampling cutoff.
+            top_p (`float`):
+                Nucleus sampling cutoff.
+            remasking_strategy (`str`):
+                Strategy for selecting which tokens to commit (`sequential`, `low_confidence_static`,
+                `low_confidence_dynamic`, `entropy_bounded`).
+            confidence_threshold (`float`):
+                Confidence threshold for dynamic remasking.
+            entropy_threshold (`float`):
+                Entropy threshold for entropy-bounded remasking.
+            stop_token_ids (`list[int]`, *optional*):
+                Token IDs that signal generation should stop.
+            mask_token_id (`int`, *optional*):
+                Mask token ID to use for the template.
+            use_chat_template (`bool`, defaults to `True`):
+                Whether to wrap the prompt in a chat template.
+            add_generation_prompt (`bool`, defaults to `True`):
+                Whether to add the generation prompt when using chat templates.
+            chat_template_kwargs (`dict`, *optional*):
+                Extra kwargs for `apply_chat_template`.
+            generator (`torch.Generator`, *optional*):
+                RNG for sampling.
+            output_type (`str`, defaults to `"text"`):
+                Output format. `"text"` decodes sequences into strings (requires a tokenizer). `"seq"` returns raw
+                token ID sequences only.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a [`SDARPipelineOutput`] instead of a tuple.
+            callback_on_step_end (`Callable` or `PipelineCallback`, *optional*):
+                Callback executed after each denoising step.
+            callback_on_step_end_tensor_inputs (`List[str]`, *optional*):
+                Tensor keys to pass to the callback.
+
         Examples:
         """
+        # 1. Check inputs early
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
@@ -166,6 +254,22 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         if model_block_length is not None:
             block_length = int(model_block_length)
 
+        if mask_token_id is None:
+            mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
+
+        self.check_inputs(
+            prompt=prompt,
+            messages=messages,
+            input_ids=input_ids,
+            block_length=block_length,
+            num_inference_steps=num_inference_steps,
+            mask_token_id=mask_token_id,
+            output_type=output_type,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+        )
+
+        # 2. Prepare input IDs from prompt/messages/input_ids
         input_ids = self._prepare_input_ids(
             prompt=prompt,
             messages=messages,
@@ -175,20 +279,7 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             chat_template_kwargs=chat_template_kwargs,
         )
 
-        if mask_token_id is None:
-            mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
-
-        self.check_inputs(
-            input_ids=input_ids,
-            block_length=block_length,
-            denoising_steps=denoising_steps,
-            mask_token_id=mask_token_id,
-            callback_on_step_end=callback_on_step_end,
-            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-        )
-
-        params = list(self.model.parameters()) if hasattr(self.model, "parameters") else []
-        device = params[0].device if len(params) > 0 else torch.device("cpu")
+        device = self._execution_device
         input_ids = input_ids.to(device=device)
 
         if stop_token_ids is None:
@@ -198,21 +289,19 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             stop_token_ids = [int(token_id) for token_id in stop_token_ids]
 
         self.model.eval()
-        self.scheduler.set_timesteps(int(denoising_steps), device=device)
+        self.scheduler.set_timesteps(int(num_inference_steps), device=device)
 
         prompt_length = input_ids.shape[1]
         num_blocks = (prompt_length + int(max_new_tokens) + int(block_length) - 1) // int(block_length)
         total_length = int(num_blocks) * int(block_length)
 
-        block_mask_3d = self._build_block_attention_mask_3d(
+        # 3. Build 2D attention mask — the model handles backend-specific conversion internally.
+        attn_mask = self._build_block_attention_mask_2d(
             num_blocks=num_blocks,
             block_length=block_length,
             total_length=total_length,
             device=device,
-            dtype=torch.float32,
         )
-        block_mask_4d = self._build_block_attention_mask_4d(block_mask_3d, dtype=torch.float32)
-        block_mask_2d = block_mask_3d[0]
 
         x = self.prepare_latents(total_length, int(mask_token_id), device)
         x[:, :prompt_length] = input_ids
@@ -222,65 +311,57 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
         prefill_blocks = prompt_length // int(block_length)
         prefill_length = int(prefill_blocks) * int(block_length)
-        resolved_attention_mode = str(attention_mask_mode)
+
+        self._num_timesteps = num_inference_steps * max(num_blocks - prefill_blocks, 0)
 
         if prefill_length > 0:
             cur_x = x[:, :prefill_length]
             cur_position_ids = position_ids[:, :prefill_length]
-            cur_attn_mask = block_mask_3d[:, :prefill_length, :prefill_length]
-            cur_attn_mask_4d = block_mask_4d[:, :, :prefill_length, :prefill_length]
-            cur_attn_mask_2d = block_mask_2d[:prefill_length, :prefill_length]
-            _, resolved_attention_mode = self._model_forward_logits(
+            cur_attn_mask = attn_mask[:prefill_length, :prefill_length].unsqueeze(0)
+            self._model_forward_logits(
                 input_ids=cur_x,
-                attention_mask_3d=cur_attn_mask,
-                attention_mask_4d=cur_attn_mask_4d,
-                attention_mask_2d=cur_attn_mask_2d,
+                attention_mask=cur_attn_mask,
                 position_ids=cur_position_ids,
-                attention_mask_mode=resolved_attention_mode,
                 past_key_values=past_key_values,
                 store_kv=True,
             )
 
-        num_transfer_tokens = self.scheduler.get_num_transfer_tokens(int(block_length), int(denoising_steps)).to(
+        num_transfer_tokens = self.scheduler.get_num_transfer_tokens(int(block_length), int(num_inference_steps)).to(
             device=device
         )
 
-        stop_tensor = None
-        if stop_token_ids is not None:
-            stop_tensor = torch.tensor(stop_token_ids, device=device, dtype=torch.long)
-
         global_step = 0
-        for block_idx in range(prefill_blocks, int(num_blocks)):
+
+        # 4. Block-wise generation loop
+        block_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy()
+        block_progress_bar_config["position"] = 0
+        block_progress_bar_config["desc"] = "Blocks"
+        for block_idx in tqdm(range(prefill_blocks, int(num_blocks)), **block_progress_bar_config):
             start = int(block_idx) * int(block_length)
             end = start + int(block_length)
             cur_x = x[:, start:end].clone()
             cur_position_ids = position_ids[:, start:end]
-            cur_attn_mask = block_mask_3d[:, start:end, :end]
-            cur_attn_mask_4d = block_mask_4d[:, :, start:end, :end]
-            cur_attn_mask_2d = block_mask_2d[start:end, :end]
+            cur_attn_mask = attn_mask[start:end, :end].unsqueeze(0)
 
-            for step in range(int(denoising_steps) + 1):
+            self.set_progress_bar_config(position=1, leave=False, desc=f"Block {block_idx} Inference Steps")
+            progress_bar = self.progress_bar(total=num_inference_steps)
+
+            for step in range(int(num_inference_steps) + 1):
                 mask_index = cur_x == int(mask_token_id)
                 if mask_index.sum() == 0:
-                    _, resolved_attention_mode = self._model_forward_logits(
+                    self._model_forward_logits(
                         input_ids=cur_x,
-                        attention_mask_3d=cur_attn_mask,
-                        attention_mask_4d=cur_attn_mask_4d,
-                        attention_mask_2d=cur_attn_mask_2d,
+                        attention_mask=cur_attn_mask,
                         position_ids=cur_position_ids,
-                        attention_mask_mode=resolved_attention_mode,
                         past_key_values=past_key_values,
                         store_kv=True,
                     )
                     break
 
-                logits, resolved_attention_mode = self._model_forward_logits(
+                logits = self._model_forward_logits(
                     input_ids=cur_x,
-                    attention_mask_3d=cur_attn_mask,
-                    attention_mask_4d=cur_attn_mask_4d,
-                    attention_mask_2d=cur_attn_mask_2d,
+                    attention_mask=cur_attn_mask,
                     position_ids=cur_position_ids,
-                    attention_mask_mode=resolved_attention_mode,
                     past_key_values=past_key_values,
                     store_kv=False,
                 )
@@ -297,6 +378,7 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                     temperature=temperature,
                     top_k=top_k,
                     top_p=top_p,
+                    generator=generator,
                     return_dict=True,
                 )
                 cur_x = step_output.prev_sample
@@ -312,13 +394,18 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                     cur_x = callback_outputs.pop("cur_x", cur_x)
 
                 global_step += 1
+                progress_bar.update(1)
 
+            progress_bar.close()
             x[:, start:end] = cur_x
-            if stop_tensor is not None and torch.isin(x[:, prompt_length:], stop_tensor).any():
+
+            if self.scheduler.check_should_stop(x, prompt_length, stop_token_ids):
                 break
 
+        # 5. Post-process output
         output_ids = x[:, : prompt_length + int(max_new_tokens)]
-        if stop_tensor is not None:
+        if stop_token_ids is not None:
+            stop_tensor = torch.tensor(stop_token_ids, device=device, dtype=torch.long)
             stop_positions = torch.isin(output_ids[0, prompt_length:], stop_tensor).nonzero(as_tuple=True)[0]
             if stop_positions.numel() > 0:
                 output_ids = output_ids[:, : prompt_length + int(stop_positions[0].item()) + 1]
@@ -328,7 +415,7 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
         sequences = output_ids[:, prompt_length:]
         texts = None
-        if return_text and getattr(self, "tokenizer", None) is not None:
+        if output_type == "text" and self.tokenizer is not None:
             texts = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
 
         if not return_dict:
@@ -339,86 +426,54 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         self,
         *,
         input_ids: torch.LongTensor,
-        attention_mask_3d: Optional[torch.Tensor],
-        attention_mask_4d: Optional[torch.Tensor],
-        attention_mask_2d: Optional[torch.Tensor],
+        attention_mask: torch.Tensor,
         position_ids: torch.LongTensor,
-        attention_mask_mode: str,
         past_key_values: DynamicCache,
         store_kv: bool,
-    ) -> Tuple[torch.Tensor, str]:
-        if attention_mask_mode not in {"auto", "3d", "4d", "2d", "none"}:
-            raise ValueError(
-                f"`attention_mask_mode` must be one of {{'auto','3d','4d','2d','none'}}, got {attention_mask_mode!r}."
-            )
+    ) -> torch.Tensor:
+        """Run the model forward pass and return logits.
 
-        def _call(mask):
-            kwargs = {
-                "input_ids": input_ids,
-                "attention_mask": mask,
-                "position_ids": position_ids,
-                "past_key_values": past_key_values,
-                "use_cache": True,
-            }
-            if self._store_kv_supported is False:
-                output = self.model(**kwargs)
-                return output.logits if hasattr(output, "logits") else output[0]
-            if self._store_kv_supported is True:
-                kwargs["store_kv"] = store_kv
-                output = self.model(**kwargs)
-                return output.logits if hasattr(output, "logits") else output[0]
-            try:
-                kwargs["store_kv"] = store_kv
-                output = self.model(**kwargs)
-                self._store_kv_supported = True
-                return output.logits if hasattr(output, "logits") else output[0]
-            except TypeError:
-                output = self.model(**kwargs)
-                self._store_kv_supported = False
-                return output.logits if hasattr(output, "logits") else output[0]
-
-        if attention_mask_mode == "none":
-            return _call(None), "none"
-        if attention_mask_mode == "2d":
-            return _call(attention_mask_2d), "2d"
-        if attention_mask_mode == "3d":
-            return _call(attention_mask_3d), "3d"
-        if attention_mask_mode == "4d":
-            return _call(attention_mask_4d), "4d"
-
+        Passes a 2D attention mask and lets the model handle internal conversion.
+        """
+        kwargs = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "position_ids": position_ids,
+            "past_key_values": past_key_values,
+            "use_cache": True,
+        }
+        if self._store_kv_supported is False:
+            output = self.model(**kwargs)
+            return output.logits if hasattr(output, "logits") else output[0]
+        if self._store_kv_supported is True:
+            kwargs["store_kv"] = store_kv
+            output = self.model(**kwargs)
+            return output.logits if hasattr(output, "logits") else output[0]
         try:
-            return _call(attention_mask_3d), "3d"
-        except (TypeError, ValueError, RuntimeError):
-            pass
-        try:
-            return _call(attention_mask_4d), "4d"
-        except (TypeError, ValueError, RuntimeError):
-            pass
-        try:
-            return _call(attention_mask_2d), "2d"
-        except (TypeError, ValueError, RuntimeError):
-            return _call(None), "none"
+            kwargs["store_kv"] = store_kv
+            output = self.model(**kwargs)
+            self._store_kv_supported = True
+            return output.logits if hasattr(output, "logits") else output[0]
+        except TypeError:
+            output = self.model(**kwargs)
+            self._store_kv_supported = False
+            return output.logits if hasattr(output, "logits") else output[0]
 
-    def _build_block_attention_mask_3d(
+    def _build_block_attention_mask_2d(
         self,
         *,
         num_blocks: int,
         block_length: int,
         total_length: int,
         device: torch.device,
-        dtype: torch.dtype,
     ) -> torch.Tensor:
-        block_mask = torch.tril(torch.ones(num_blocks, num_blocks, device=device, dtype=dtype))
-        attn = block_mask.repeat_interleave(block_length, dim=0).repeat_interleave(block_length, dim=1).unsqueeze(0)
-        return attn[:, :total_length, :total_length]
+        """Build a 2D block-causal attention mask of shape `(total_length, total_length)`.
 
-    def _build_block_attention_mask_4d(self, mask_3d: torch.Tensor, *, dtype: torch.dtype) -> torch.Tensor:
-        attn = mask_3d.unsqueeze(1).to(dtype=dtype)
-        return torch.where(
-            attn > 0,
-            torch.zeros((), device=attn.device, dtype=dtype),
-            torch.full((), float("-inf"), device=attn.device, dtype=dtype),
-        )
+        Each position can attend to all positions in the same or earlier blocks.
+        """
+        block_mask = torch.tril(torch.ones(num_blocks, num_blocks, device=device, dtype=torch.long))
+        attn = block_mask.repeat_interleave(block_length, dim=0).repeat_interleave(block_length, dim=1)
+        return attn[:total_length, :total_length]
 
 
 __all__ = ["SDARPipeline", "SDARPipelineOutput"]
