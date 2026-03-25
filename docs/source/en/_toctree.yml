@@ -580,6 +580,8 @@
         title: Latent Diffusion
       - local: api/pipelines/ledits_pp
         title: LEDITS++
+      - local: api/pipelines/llada2
+        title: LLaDA2
       - local: api/pipelines/longcat_image
         title: LongCat-Image
       - local: api/pipelines/lumina2
@@ -718,6 +720,8 @@
   - sections:
     - local: api/schedulers/overview
       title: Overview
+    - local: api/schedulers/block_refinement
+      title: BlockRefinementScheduler
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
     - local: api/schedulers/ddim_cogvideox
