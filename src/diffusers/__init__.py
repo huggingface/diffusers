@@ -193,6 +193,8 @@ else:
             "AutoencoderKLHunyuanImageRefiner",
             "AutoencoderKLHunyuanVideo",
             "AutoencoderKLHunyuanVideo15",
+            "AutoencoderKLKVAE",
+            "AutoencoderKLKVAEVideo",
             "AutoencoderKLLTX2Audio",
             "AutoencoderKLLTX2Video",
             "AutoencoderKLLTXVideo",
@@ -353,6 +355,8 @@ else:
     _import_structure["schedulers"].extend(
         [
             "AmusedScheduler",
+            "BlockRefinementScheduler",
+            "BlockRefinementSchedulerOutput",
             "BlockTokenDiffusionScheduler",
             "CMStochasticIterativeScheduler",
             "CogVideoXDDIMScheduler",
@@ -1000,6 +1004,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanImageRefiner,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
+            AutoencoderKLKVAE,
+            AutoencoderKLKVAEVideo,
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
             AutoencoderKLLTXVideo,
@@ -1152,6 +1158,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers import DiffusersQuantizer
         from .schedulers import (
             AmusedScheduler,
+            BlockRefinementScheduler,
+            BlockRefinementSchedulerOutput,
             BlockTokenDiffusionScheduler,
             CMStochasticIterativeScheduler,
             CogVideoXDDIMScheduler,

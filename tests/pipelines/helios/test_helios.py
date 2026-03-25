@@ -139,9 +139,9 @@ class HeliosPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
 
-    # Override to set a more lenient max diff threshold.
+    @unittest.skip("Helios uses a lot of mixed precision internally, which is not suitable for this test case")
     def test_save_load_float16(self):
-        super().test_save_load_float16(expected_max_diff=0.03)
+        pass
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):

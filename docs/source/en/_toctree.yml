@@ -22,6 +22,8 @@
     title: Reproducibility
   - local: using-diffusers/schedulers
     title: Schedulers
+  - local: using-diffusers/guiders
+    title: Guiders
   - local: using-diffusers/automodel
     title: AutoModel
   - local: using-diffusers/other-formats
@@ -110,8 +112,6 @@
     title: ModularPipeline
   - local: modular_diffusers/components_manager
     title: ComponentsManager
-  - local: modular_diffusers/guiders
-    title: Guiders
   - local: modular_diffusers/custom_blocks
     title: Building Custom Blocks
   - local: modular_diffusers/mellon
@@ -446,6 +446,10 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoder_kl_hunyuan_video15
         title: AutoencoderKLHunyuanVideo15
+      - local: api/models/autoencoder_kl_kvae
+        title: AutoencoderKLKVAE
+      - local: api/models/autoencoder_kl_kvae_video
+        title: AutoencoderKLKVAEVideo
       - local: api/models/autoencoderkl_audio_ltx_2
         title: AutoencoderKLLTX2Audio
       - local: api/models/autoencoderkl_ltx_2
@@ -584,6 +588,8 @@
         title: Latent Diffusion
       - local: api/pipelines/ledits_pp
         title: LEDITS++
+      - local: api/pipelines/llada2
+        title: LLaDA2
       - local: api/pipelines/longcat_image
         title: LongCat-Image
       - local: api/pipelines/lumina2
@@ -730,6 +736,8 @@
       title: Overview
     - local: api/schedulers/bd3lm_token_diffusion
       title: BD3LMTokenDiffusionScheduler
+    - local: api/schedulers/block_refinement
+      title: BlockRefinementScheduler
     - local: api/schedulers/block_token_diffusion
       title: BlockTokenDiffusionScheduler
     - local: api/schedulers/cm_stochastic_iterative

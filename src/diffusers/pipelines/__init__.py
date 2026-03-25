@@ -289,6 +289,7 @@ else:
         ]
     )
     _import_structure["latte"] = ["LattePipeline"]
+    _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
     _import_structure["ltx"] = [
         "LTXPipeline",
         "LTXImageToVideoPipeline",

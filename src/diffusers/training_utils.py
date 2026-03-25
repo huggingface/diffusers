@@ -7,7 +7,7 @@ import re
 import warnings
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Iterable, Optional, Tuple
+from typing import Any, Iterable
 
 import numpy as np
 import torch
@@ -116,9 +116,9 @@ def compute_confidence_aware_loss(
     *,
     lambda_conf: float = 0.0,
     temperature: float = 1.0,
-    per_token_weights: Optional[torch.Tensor] = None,
+    per_token_weights: torch.Tensor | None = None,
     ignore_index: int = -100,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Computes a confidence-aware training loss for token classification-style heads.
 
