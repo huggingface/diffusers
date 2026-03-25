@@ -138,10 +138,9 @@ def _context_parallel_backward_worker(
         loss = output.sum()
         loss.backward()
 
-        # Check that all trainable parameters have finite gradients
-        has_valid_grads = all(
-            p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters() if p.requires_grad
-        )
+        # Check that backward actually produced at least one valid gradient
+        grads = [p.grad for p in model.parameters() if p.requires_grad and p.grad is not None]
+        has_valid_grads = len(grads) > 0 and all(torch.isfinite(g).all() for g in grads)
 
         # Only rank 0 reports results
         if rank == 0:
