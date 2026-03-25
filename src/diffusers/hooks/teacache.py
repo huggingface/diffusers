@@ -36,8 +36,9 @@ def _handle_accelerate_hook(module: torch.nn.Module, *args, **kwargs) -> Tuple[t
 
 def _is_peft_adapter(module: torch.nn.Module) -> bool:
     """Check if module inherits from PeftAdapterMixin (lazy import to avoid circular imports)."""
+    from ..loaders import PeftAdapterMixin
 
-    return _is_peft_adapter(module)
+    return isinstance(module, PeftAdapterMixin)
 
 
 def _extract_lora_scale(attention_kwargs: Optional[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], float]:
@@ -405,16 +406,26 @@ class TeaCacheHook(ModelHook):
             logger.debug("TeaCache: Inference run completed, resetting state")
             state.reset()
 
-        # Set num_steps on first timestep (priority: config > callback > module attribute)
-        if state.cnt == 0 and state.num_steps == 0:
+        # Set or update num_steps on first timestep.
+        # Always update (not just when num_steps==0) because some models (e.g., Lumina2)
+        # wrap cnt to 0 at end of run without triggering reset above, so num_steps
+        # must be refreshed in case it changed between inference runs.
+        if state.cnt == 0:
+            new_num_steps = None
             if self.config.num_inference_steps is not None:
-                state.num_steps = self.config.num_inference_steps
+                new_num_steps = self.config.num_inference_steps
             elif self.config.num_inference_steps_callback is not None:
-                state.num_steps = self.config.num_inference_steps_callback()
+                new_num_steps = self.config.num_inference_steps_callback()
             elif hasattr(module, "num_steps"):
-                state.num_steps = module.num_steps
+                new_num_steps = module.num_steps
 
-            if state.num_steps > 0:
+            if new_num_steps is not None and new_num_steps != state.num_steps:
+                if state.num_steps > 0:
+                    logger.debug(f"TeaCache: num_steps changed {state.num_steps} -> {new_num_steps}, resetting state")
+                    state.reset()
+                state.num_steps = new_num_steps
+
+            if state.num_steps > 0 and new_num_steps is not None:
                 logger.debug(f"TeaCache: Using {state.num_steps} inference steps")
 
     def initialize_hook(self, module):
@@ -1050,6 +1061,9 @@ def apply_teacache(module: torch.nn.Module, config: TeaCacheConfig) -> None:
             The transformer model to optimize (e.g., FluxTransformer2DModel, CogVideoXTransformer3DModel).
         config (`TeaCacheConfig`):
             The configuration to use for TeaCache.
+
+    Note:
+        For pipeline usage, prefer `pipe.transformer.enable_cache(config)` over calling this function directly.
 
     Example:
         ```python

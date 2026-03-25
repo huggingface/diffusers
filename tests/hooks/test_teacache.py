@@ -77,7 +77,7 @@ class TeaCacheConfigTests(unittest.TestCase):
         """Test negative threshold raises ValueError."""
         with self.assertRaises(ValueError) as context:
             TeaCacheConfig(rel_l1_thresh=-0.5)
-        self.assertIn("must be positive", str(context.exception))
+        self.assertIn("must be non-negative", str(context.exception))
 
     def test_invalid_coefficients_length(self):
         """Test wrong coefficient count raises ValueError."""
