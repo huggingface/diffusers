@@ -273,10 +273,10 @@ class LLaDA2Pipeline(DiffusionPipeline):
             threshold (`float`):
                 Confidence threshold for committing tokens.
             editing_threshold (`float`, *optional*):
-                Confidence threshold for editing already-committed (non-mask) tokens. When set, after all mask tokens
-                in a block are resolved, the pipeline continues refining: if the model predicts a different token with
-                confidence above this threshold, the existing token is replaced. Set to `None` or a negative value to
-                disable editing. Defaults to `0.5`.
+                Confidence threshold for editing already-committed (non-mask) tokens. When positive, after all mask
+                tokens in a block are resolved, the pipeline continues refining: if the model predicts a different
+                token with confidence above this threshold, the existing token is replaced. Set to `None`, `0.0`, or a
+                negative value to disable editing. Defaults to `0.5`.
             max_post_steps (`int`):
                 Maximum number of additional refinement iterations after all mask tokens in a block are resolved. Only
                 used when `editing_threshold` is enabled. Defaults to `16`.
@@ -373,7 +373,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
         self._num_timesteps = num_inference_steps * max(num_blocks - prefill_blocks, 0)
 
         finished = torch.zeros((batch_size,), device=device, dtype=torch.bool)
-        editing_enabled = editing_threshold is not None and editing_threshold >= 0.0
+        editing_enabled = editing_threshold is not None and editing_threshold > 0.0
         global_step = 0
 
         # 5. Block-wise refinement loop

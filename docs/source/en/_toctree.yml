@@ -580,8 +580,6 @@
         title: Latent Diffusion
       - local: api/pipelines/ledits_pp
         title: LEDITS++
-      - local: api/pipelines/llada2
-        title: LLaDA2
       - local: api/pipelines/longcat_image
         title: LongCat-Image
       - local: api/pipelines/lumina2
@@ -672,6 +670,10 @@
       - local: api/pipelines/z_image
         title: Z-Image
       title: Image
+    - sections:
+      - local: api/pipelines/llada2
+        title: LLaDA2
+      title: Text
     - sections:
       - local: api/pipelines/allegro
         title: Allegro
