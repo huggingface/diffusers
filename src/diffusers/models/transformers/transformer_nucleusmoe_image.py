@@ -37,7 +37,7 @@ from ..normalization import AdaLayerNormContinuous, RMSNorm
 logger = logging.get_logger(__name__)
 
 
-# copied from diffusers.models.transformers.transformer_qwenimage.apply_rotary_emb_qwen
+# Copied from diffusers.models.transformers.transformer_qwenimage.apply_rotary_emb_qwen with qwen->nucleus
 def _apply_rotary_emb_nucleus(
     x: torch.Tensor,
     freqs_cis: torch.Tensor | tuple[torch.Tensor],
