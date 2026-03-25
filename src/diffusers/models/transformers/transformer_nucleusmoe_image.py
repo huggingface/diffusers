@@ -572,7 +572,8 @@ class NucleusMoEImageTransformerBlock(nn.Module):
         hidden_states = hidden_states + gate2.tanh() * img_mlp_output
 
         if hidden_states.dtype == torch.float16:
-            hidden_states = hidden_states.clip(-65504, 65504)
+            fp16_finfo = torch.finfo(torch.float16)
+            hidden_states = hidden_states.clip(fp16_finfo.min, fp16_finfo.max)
 
         return hidden_states
 
