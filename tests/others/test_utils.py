@@ -13,8 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import os
 import unittest
+import warnings
 
 import pytest
 
@@ -181,6 +183,25 @@ class DeprecateTester(unittest.TestCase):
             deprecate(("deprecated_arg", self.higher_version, "This message is better!!!"), standard_warn=False)
         assert str(warning.warning) == "This message is better!!!"
         assert "diffusers/tests/others/test_utils.py" in warning.filename
+
+    def test_deprecate_testing_utils_module(self):
+        import diffusers.utils.testing_utils
+
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            importlib.reload(diffusers.utils.testing_utils)
+
+        deprecation_warnings = [w for w in caught_warnings if issubclass(w.category, FutureWarning)]
+        assert len(deprecation_warnings) >= 1, "Expected at least one FutureWarning from diffusers.utils.testing_utils"
+
+        messages = [str(w.message) for w in deprecation_warnings]
+        assert any("diffusers.utils.testing_utils" in msg for msg in messages), (
+            f"Expected a deprecation warning mentioning 'diffusers.utils.testing_utils', got: {messages}"
+        )
+        assert any(
+            "diffusers.utils.testing_utils is deprecated and will be removed in a future version." in msg
+            for msg in messages
+        ), f"Expected deprecation message substring not found, got: {messages}"
 
 
 # Copied from https://github.com/huggingface/transformers/blob/main/tests/utils/test_expectations.py

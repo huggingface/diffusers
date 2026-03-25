@@ -200,7 +200,6 @@ class ContextParallelTesterMixin:
             f"Context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
 
-    @pytest.mark.xfail(reason="Context parallel may not support batch_size > 1")
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
     def test_context_parallel_batch_inputs(self, cp_type):
         self.test_context_parallel_inference(cp_type, batch_size=2)

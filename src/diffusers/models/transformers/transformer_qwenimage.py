@@ -933,6 +933,7 @@ class QwenImageTransformer2DModel(
             batch_size, image_seq_len = hidden_states.shape[:2]
             image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
             joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
+            joint_attention_mask = joint_attention_mask[:, None, None, :]
             block_attention_kwargs["attention_mask"] = joint_attention_mask
 
         for index_block, block in enumerate(self.transformer_blocks):
