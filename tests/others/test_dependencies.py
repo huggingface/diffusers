@@ -13,16 +13,15 @@
 # limitations under the License.
 
 import inspect
-import unittest
 from importlib import import_module
+from pathlib import Path
+
+import pytest
 
 
-class DependencyTester(unittest.TestCase):
+class TestDependencies:
     def test_diffusers_import(self):
-        try:
-            import diffusers  # noqa: F401
-        except ImportError:
-            assert False
+        import diffusers  # noqa: F401
 
     def test_backend_registration(self):
         import diffusers
@@ -52,3 +51,46 @@ class DependencyTester(unittest.TestCase):
             if hasattr(diffusers.pipelines, cls_name):
                 pipeline_folder_module = ".".join(str(cls_module.__module__).split(".")[:3])
                 _ = import_module(pipeline_folder_module, str(cls_name))
+
+    def test_pipeline_module_imports(self):
+        """Import every pipeline submodule whose folder-level dependency guards
+        are satisfied, to catch unguarded optional-dep imports.
+
+        Each pipeline folder's __init__.py evaluates guards like
+        is_torch_available() and populates _import_structure only for submodules
+        whose deps are met. We use _import_structure as the source of truth:
+        if a submodule is listed there, its declared deps are installed, so any
+        ImportError from importing it is a real bug (e.g., unguarded torchvision).
+        """
+        import diffusers.pipelines
+
+        pipelines_dir = Path(diffusers.pipelines.__file__).parent
+        failures = []
+
+        for subdir in sorted(pipelines_dir.iterdir()):
+            if not subdir.is_dir() or not (subdir / "__init__.py").exists():
+                continue
+
+            # Import the pipeline package to trigger its guard evaluation
+            package_module_path = f"diffusers.pipelines.{subdir.name}"
+            try:
+                package_module = import_module(package_module_path)
+            except Exception:
+                continue
+
+            # _import_structure keys are the submodules whose deps are satisfied
+            import_structure = getattr(package_module, "_import_structure", {})
+
+            for submodule_name in import_structure:
+                full_module_path = f"{package_module_path}.{submodule_name}"
+                try:
+                    import_module(full_module_path)
+                except ImportError as e:
+                    failures.append(f"{full_module_path}: {e}")
+                except Exception:
+                    # Non-import errors (e.g., missing config) are fine; we only
+                    # care about unguarded import statements.
+                    pass
+
+        if failures:
+            pytest.fail("Unguarded optional-dependency imports found:\n" + "\n".join(failures))

@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e .
-          pip install torch torchvision torchaudio pytest
+          pip install torch pytest
       - name: Check for soft dependencies
         run: |
             pytest tests/others/test_dependencies.py
