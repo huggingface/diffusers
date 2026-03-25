@@ -342,6 +342,8 @@ else:
     )
     _import_structure["pipelines"].extend(
         [
+            "BD3LMPipeline",
+            "BD3LMPipelineOutput",
             "HybridTokenDiffusionPipeline",
             "TokenDiffusionPipeline",
             "TokenDiffusionPipelineOutput",
@@ -351,6 +353,8 @@ else:
     _import_structure["schedulers"].extend(
         [
             "AmusedScheduler",
+            "BD3LMTokenDiffusionScheduler",
+            "BD3LMTokenDiffusionSchedulerOutput",
             "BlockRefinementScheduler",
             "BlockRefinementSchedulerOutput",
             "CMStochasticIterativeScheduler",
@@ -1125,6 +1129,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
             AutoPipelineForText2Image,
+            BD3LMPipeline,
+            BD3LMPipelineOutput,
             BlipDiffusionControlNetPipeline,
             BlipDiffusionPipeline,
             CLIPImageProjection,
@@ -1149,6 +1155,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers import DiffusersQuantizer
         from .schedulers import (
             AmusedScheduler,
+            BD3LMTokenDiffusionScheduler,
+            BD3LMTokenDiffusionSchedulerOutput,
             BlockRefinementScheduler,
             BlockRefinementSchedulerOutput,
             CMStochasticIterativeScheduler,

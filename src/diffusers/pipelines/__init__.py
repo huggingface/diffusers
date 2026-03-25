@@ -47,6 +47,7 @@ else:
         "AutoPipelineForInpainting",
         "AutoPipelineForText2Image",
     ]
+    _import_structure["bd3lm"] = ["BD3LMPipeline", "BD3LMPipelineOutput"]
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["dance_diffusion"] = ["DanceDiffusionPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
@@ -548,6 +549,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForInpainting,
             AutoPipelineForText2Image,
         )
+        from .bd3lm import BD3LMPipeline, BD3LMPipelineOutput
         from .consistency_models import ConsistencyModelPipeline
         from .dance_diffusion import DanceDiffusionPipeline
         from .ddim import DDIMPipeline

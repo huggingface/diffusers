@@ -40,6 +40,10 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["deprecated"] = ["KarrasVeScheduler", "ScoreSdeVpScheduler"]
     _import_structure["scheduling_amused"] = ["AmusedScheduler"]
+    _import_structure["scheduling_bd3lm_token_diffusion"] = [
+        "BD3LMTokenDiffusionScheduler",
+        "BD3LMTokenDiffusionSchedulerOutput",
+    ]
     _import_structure["scheduling_block_refinement"] = ["BlockRefinementScheduler", "BlockRefinementSchedulerOutput"]
     _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
@@ -159,6 +163,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .deprecated import KarrasVeScheduler, ScoreSdeVpScheduler
         from .scheduling_amused import AmusedScheduler
+        from .scheduling_bd3lm_token_diffusion import BD3LMTokenDiffusionScheduler, BD3LMTokenDiffusionSchedulerOutput
         from .scheduling_block_refinement import BlockRefinementScheduler, BlockRefinementSchedulerOutput
         from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
