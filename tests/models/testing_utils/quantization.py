@@ -62,7 +62,7 @@ if is_gguf_available():
     pass
 
 if is_torchao_available():
-    from torchao.quantization import Int4WeightOnlyConfig, Int8DynamicActivationInt8WeightConfig, Int8WeightOnlyConfig
+    import torchao.quantization as _torchao_quantization
 
 
 class LoRALayer(torch.nn.Module):
@@ -804,9 +804,9 @@ class TorchAoConfigMixin:
     """
 
     TORCHAO_QUANT_TYPES = {
-        "int4wo": {"quant_type": Int4WeightOnlyConfig()},
-        "int8wo": {"quant_type": Int8WeightOnlyConfig()},
-        "int8dq": {"quant_type": Int8DynamicActivationInt8WeightConfig()},
+        "int4wo": "Int4WeightOnlyConfig",
+        "int8wo": "Int8WeightOnlyConfig",
+        "int8dq": "Int8DynamicActivationInt8WeightConfig",
     }
 
     TORCHAO_EXPECTED_MEMORY_REDUCTIONS = {
@@ -815,8 +815,13 @@ class TorchAoConfigMixin:
         "int8dq": 1.5,
     }
 
-    def _create_quantized_model(self, config_kwargs, **extra_kwargs):
-        config = TorchAoConfig(**config_kwargs)
+    @staticmethod
+    def _get_quant_config(config_name):
+        config_cls = getattr(_torchao_quantization, config_name)
+        return TorchAoConfig(config_cls())
+
+    def _create_quantized_model(self, config_name, **extra_kwargs):
+        config = self._get_quant_config(config_name)
         kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
         kwargs["quantization_config"] = config
         kwargs["device_map"] = str(torch_device)
