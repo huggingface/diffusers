@@ -10,10 +10,6 @@ Strive to write code as simple and explicit as possible.
 
 ---
 
-### Dependencies
-- No new mandatory dependency without discussion (e.g. `einops`)
-- Optional deps guarded with `is_X_available()` and a dummy in `utils/dummy_*.py`
-
 ## Code formatting
 - `make style` and `make fix-copies` should be run as the final step before opening a PR
 
@@ -23,11 +19,10 @@ Strive to write code as simple and explicit as possible.
 - Remove the header to intentionally break the link
 
 ### Models
-- All layer calls should be visible directly in `forward` — avoid helper functions that hide `nn.Module` calls.
-- Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations and any other patterns that can break `torch.compile` compatibility with `fullgraph=True`.
-- See the **model-integration** skill for the attention pattern, pipeline rules, test setup instructions, and other important details.
+- See [models.md](models.md) for conventions, attention pattern, implementation rules, dependencies, and gotchas.
+- See the [model-integration](./skills/model-integration/SKILL.md) skill for the full integration workflow, file structure, test setup, and other details.
 
 ## Skills
 
 Task-specific guides live in `.ai/skills/` and are loaded on demand by AI agents.
-Available skills: **model-integration** (adding/converting pipelines), **parity-testing** (debugging numerical parity).
+Available skills: [model-integration](./skills/model-integration/SKILL.md) (adding/converting pipelines), [parity-testing](./skills/parity-testing/SKILL.md) (debugging numerical parity).
