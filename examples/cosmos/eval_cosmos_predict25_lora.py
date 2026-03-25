@@ -136,7 +136,6 @@ def main():
         revision=args.revision,
         device_map=args.device,
         torch_dtype=torch.bfloat16,
-        autocast_fp32=True,
         safety_checker=MockSafetyChecker(),
     )
 
