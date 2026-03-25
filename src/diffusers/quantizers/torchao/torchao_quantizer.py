@@ -198,6 +198,14 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                     )
 
     def update_torch_dtype(self, torch_dtype):
+        config_name = self.quantization_config.quant_type.__class__.__name__
+        is_int_quant = config_name.startswith("Int") or config_name.startswith("Uint")
+        if is_int_quant and torch_dtype is not None and torch_dtype != torch.bfloat16:
+            logger.warning(
+                f"You are trying to set torch_dtype to {torch_dtype} for integer quantization, but "
+                f"only bfloat16 is supported right now. Please set `torch_dtype=torch.bfloat16`."
+            )
+
         if torch_dtype is None:
             # We need to set the torch_dtype, otherwise we have dtype mismatch when performing the quantized linear op
             logger.warning(
