@@ -342,8 +342,6 @@ else:
     )
     _import_structure["pipelines"].extend(
         [
-            "BlockRefinementPipeline",
-            "BlockRefinementPipelineOutput",
             "HybridTokenDiffusionPipeline",
             "TokenDiffusionPipeline",
             "TokenDiffusionPipelineOutput",
@@ -1129,8 +1127,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForText2Image,
             BlipDiffusionControlNetPipeline,
             BlipDiffusionPipeline,
-            BlockRefinementPipeline,
-            BlockRefinementPipelineOutput,
             CLIPImageProjection,
             ConsistencyModelPipeline,
             DanceDiffusionPipeline,
