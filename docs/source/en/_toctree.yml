@@ -671,6 +671,10 @@
         title: Z-Image
       title: Image
     - sections:
+      - local: api/pipelines/llada2
+        title: LLaDA2
+      title: Text
+    - sections:
       - local: api/pipelines/allegro
         title: Allegro
       - local: api/pipelines/chronoedit
@@ -718,6 +722,8 @@
   - sections:
     - local: api/schedulers/overview
       title: Overview
+    - local: api/schedulers/block_refinement
+      title: BlockRefinementScheduler
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
     - local: api/schedulers/ddim_cogvideox
