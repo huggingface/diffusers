@@ -174,8 +174,10 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
-        self.default_sample_size = 128
-        self.return_index = -8
+        
+        self.default_sample_size = 64
+        self.default_max_sequence_length = 1024
+        self.default_return_index = -8
 
     def _format_prompt(self, prompt: str, system_prompt: str | None = None) -> str:
         if system_prompt is None:
@@ -195,7 +197,8 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         prompt_embeds: torch.Tensor | None = None,
         prompt_embeds_mask: torch.Tensor | None = None,
-        max_sequence_length: int = 1024,
+        max_sequence_length: int | None = None,
+        return_index: int | None = None,
     ):
         r"""
         Encode text prompt(s) into embeddings using the Qwen3-VL text encoder.
@@ -235,7 +238,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             outputs = self.text_encoder(
                 **inputs, use_cache=False, return_dict=True, output_hidden_states=True
             )
-            prompt_embeds = outputs.hidden_states[self.return_index]
+            prompt_embeds = outputs.hidden_states[return_index]
             prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
         else:
             prompt_embeds = prompt_embeds.to(device=device)
@@ -266,6 +269,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         negative_prompt_embeds_mask=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
+        return_index=None,
     ):
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
             logger.warning(
@@ -300,10 +304,17 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                 "Please make sure to only forward one of the two."
             )
 
-        if max_sequence_length is not None and max_sequence_length > 1024:
+        if max_sequence_length is not None and max_sequence_length > self.default_max_sequence_length:
             raise ValueError(
                 f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}"
             )
+        
+        if return_index is not None and abs(return_index) >= self.text_encoder.config.text_config.num_hidden_layers:
+            raise ValueError(
+                f"absolute value of `return_index` cannot be >= {self.text_encoder.config.text_config.num_hidden_layers} "
+                f"but is {abs(return_index)}"
+            )
+
 
     @staticmethod
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
@@ -414,6 +425,8 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         sigmas: list[float] | None = None,
         num_images_per_prompt: int = 1,
+        max_sequence_length: int | None = None,
+        return_index: int | None = None,
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: torch.Tensor | None = None,
         prompt_embeds: torch.Tensor | None = None,
@@ -425,7 +438,6 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         attention_kwargs: dict[str, Any] | None = None,
         callback_on_step_end: Callable[[int, int, dict], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-        max_sequence_length: int = 512,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -484,6 +496,9 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
 
+        max_sequence_length = max_sequence_length or self.default_max_sequence_length
+        return_index = return_index or self.default_return_index
+
         self.check_inputs(
             prompt,
             height,
@@ -495,6 +510,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             negative_prompt_embeds_mask=negative_prompt_embeds_mask,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
+            return_index=return_index,
         )
 
         self._attention_kwargs = attention_kwargs or {}
@@ -525,6 +541,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             device=device,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
+            return_index=return_index,
         )
         if do_true_cfg:
             negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
@@ -534,6 +551,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
+                return_index=return_index,
             )
 
         num_channels_latents = self.transformer.config.in_channels // 4
