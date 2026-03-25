@@ -265,8 +265,6 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
-        prompt_embeds_mask=None,
-        negative_prompt_embeds_mask=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
         return_index=None,
