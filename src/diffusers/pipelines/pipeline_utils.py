@@ -2388,89 +2388,11 @@ class StableDiffusionMixin:
 class DiscreteDiffusionPipelineMixin:
     """Shared utilities for discrete (token) diffusion pipelines.
 
-    Provides SAR sampling techniques (top-p, top-k) and common helper methods for pipelines that operate on discrete
-    token sequences.
+    Provides common helper methods for pipelines that operate on discrete token sequences, including prompt encoding,
+    prefix handling, and start token resolution.
     """
 
-    # --- SAR sampling utilities (static methods) ---
-
-    @staticmethod
-    def _top_p_filtering(logits: "torch.Tensor", top_p: Optional[float]) -> "torch.Tensor":
-        """Nucleus (top-p) logit filtering."""
-        if top_p is None or top_p >= 1.0:
-            return logits
-        if not (0.0 < top_p <= 1.0):
-            raise ValueError(f"`top_p` must be in (0, 1], got {top_p}.")
-
-        sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
-        sorted_probs = torch.softmax(sorted_logits, dim=-1)
-        cumulative_probs = sorted_probs.cumsum(dim=-1)
-
-        sorted_indices_to_remove = cumulative_probs > float(top_p)
-        # Shift right to keep at least the first token above the threshold
-        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-        sorted_indices_to_remove[..., 0] = 0
-
-        sorted_logits = sorted_logits.masked_fill(sorted_indices_to_remove, torch.finfo(sorted_logits.dtype).min)
-        filtered = logits.scatter(-1, sorted_indices, sorted_logits)
-        return filtered
-
-    @staticmethod
-    def _top_k_filtering(logits: "torch.Tensor", top_k: Optional[int]) -> "torch.Tensor":
-        """Top-k logit filtering."""
-        if top_k is None or top_k <= 0:
-            return logits
-        if top_k >= logits.shape[-1]:
-            return logits
-        values, _ = torch.topk(logits, k=int(top_k), dim=-1)
-        min_keep = values[..., -1, None]
-        return logits.masked_fill(logits < min_keep, torch.finfo(logits.dtype).min)
-
-    @staticmethod
-    def _sample_with_temperature_topk_topp(
-        logits: "torch.Tensor",
-        *,
-        temperature: float,
-        top_k: Optional[int],
-        top_p: Optional[float],
-        generator: Optional["torch.Generator"],
-        use_multinomial: bool,
-    ) -> "tuple[torch.LongTensor, torch.Tensor]":
-        """Sample tokens from logits with temperature scaling, top-k, and top-p.
-
-        Follows the official LLaDA2 ordering: temperature scaling is applied before top-k/top-p filtering so that
-        filtering operates on the scaled logit distribution.
-        """
-        if temperature < 0:
-            raise ValueError(f"`temperature` must be >= 0, got {temperature}.")
-
-        vocab_size = logits.shape[-1]
-        flat_logits = logits.reshape(-1, vocab_size)
-
-        # Greedy: return argmax directly (matches official LLaDA2 temperature=0 branch)
-        if temperature == 0.0 or not use_multinomial:
-            probs = torch.softmax(flat_logits.float(), dim=-1)
-            token = flat_logits.argmax(dim=-1, keepdim=True)
-            token_prob = torch.gather(probs, -1, token)
-            return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
-
-        # Temperature scaling before filtering (matches official LLaDA2 code)
-        scaled = flat_logits
-        if temperature != 1.0:
-            scaled = flat_logits / float(temperature)
-
-        filtered = DiscreteDiffusionPipelineMixin._top_k_filtering(scaled, top_k=top_k)
-        filtered = DiscreteDiffusionPipelineMixin._top_p_filtering(filtered, top_p=top_p)
-
-        probs = torch.softmax(filtered.float(), dim=-1)
-        token = torch.multinomial(probs, num_samples=1, generator=generator)
-        token_prob = torch.gather(probs, -1, token)
-
-        return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
-
-    # --- Token/prefix utilities (instance methods) ---
-
-    def _resolve_start_token_id(self) -> Optional[int]:
+    def _resolve_start_token_id(self) -> "int | None":
         """Resolve BOS or CLS token ID from self.tokenizer."""
         tok = getattr(self, "tokenizer", None)
         if tok is None:
@@ -2502,17 +2424,15 @@ class DiscreteDiffusionPipelineMixin:
             prefix_ids = prefix_ids.expand(batch_size, -1)
         return prefix_ids
 
-    # --- Prompt encoding (instance method) ---
-
     def _prepare_input_ids(
         self,
         *,
-        prompt: Optional[Union[str, List[str]]],
-        messages: Optional[List[Dict[str, str]]],
-        input_ids: Optional["torch.LongTensor"],
+        prompt: "str | list[str] | None",
+        messages: "list[dict[str, str]] | None",
+        input_ids: "torch.LongTensor | None",
         use_chat_template: bool,
         add_generation_prompt: bool,
-        chat_template_kwargs: Optional[Dict[str, object]],
+        chat_template_kwargs: "dict[str, object] | None",
     ) -> "torch.LongTensor":
         """Convert prompt/messages/input_ids to a [batch, seq] LongTensor."""
         if input_ids is not None:

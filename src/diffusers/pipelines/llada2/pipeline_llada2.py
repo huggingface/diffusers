@@ -23,7 +23,7 @@ from tqdm.auto import tqdm
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...schedulers import BlockRefinementScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, DiscreteDiffusionPipelineMixin
 
 
 logger = logging.get_logger(__name__)
@@ -56,7 +56,7 @@ class LLaDA2PipelineOutput(BaseOutput):
     texts: list[str] | None = None
 
 
-class LLaDA2Pipeline(DiffusionPipeline):
+class LLaDA2Pipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     r"""
     Pipeline for LLaDA2-style discrete diffusion text generation via block-wise iterative refinement.
 
@@ -87,65 +87,6 @@ class LLaDA2Pipeline(DiffusionPipeline):
     @property
     def num_timesteps(self):
         return self._num_timesteps
-
-    # --- Prompt encoding ---
-
-    def _prepare_input_ids(
-        self,
-        *,
-        prompt: str | list[str] | None,
-        messages: list[dict[str, str]] | None,
-        input_ids: torch.LongTensor | None,
-        use_chat_template: bool,
-        add_generation_prompt: bool,
-        chat_template_kwargs: dict[str, Any] | None,
-    ) -> torch.LongTensor:
-        """Convert prompt/messages/input_ids to a [batch, seq] LongTensor."""
-        if input_ids is not None:
-            if input_ids.ndim == 1:
-                input_ids = input_ids.unsqueeze(0)
-            if input_ids.ndim != 2:
-                raise ValueError(f"`input_ids` must be 2D, got shape {tuple(input_ids.shape)}.")
-            if input_ids.dtype != torch.long:
-                raise ValueError(f"`input_ids` must be int64 token IDs, got dtype={input_ids.dtype}.")
-            return input_ids
-
-        if self.tokenizer is None:
-            raise ValueError("Tokenizer is required when `input_ids` is not provided.")
-
-        if messages is not None and prompt is not None:
-            raise ValueError("Provide either `prompt` or `messages`, not both.")
-        if messages is None and prompt is None:
-            raise ValueError("Provide one of `prompt`, `messages`, or `input_ids`.")
-
-        chat_template_kwargs = chat_template_kwargs or {}
-
-        if messages is not None:
-            encoded = self.tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=add_generation_prompt,
-                tokenize=True,
-                return_tensors="pt",
-                return_dict=True,
-                **chat_template_kwargs,
-            )
-            return encoded["input_ids"]
-
-        if use_chat_template and getattr(self.tokenizer, "chat_template", None):
-            if isinstance(prompt, list):
-                raise ValueError("`prompt` must be a string when `use_chat_template=True`.")
-            encoded = self.tokenizer.apply_chat_template(
-                [{"role": "user", "content": prompt}],
-                add_generation_prompt=add_generation_prompt,
-                tokenize=True,
-                return_tensors="pt",
-                return_dict=True,
-                **chat_template_kwargs,
-            )
-            return encoded["input_ids"]
-
-        encoded = self.tokenizer(prompt, return_tensors="pt", padding=isinstance(prompt, list))
-        return encoded["input_ids"]
 
     def check_inputs(
         self,
