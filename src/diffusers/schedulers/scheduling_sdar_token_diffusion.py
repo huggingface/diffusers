@@ -57,7 +57,7 @@ class SDARTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
         block_length: int = 4,
-        denoising_steps: int = 4,
+        num_inference_steps: int = 4,
         remasking_strategy: str = "low_confidence_dynamic",
         confidence_threshold: float = 0.9,
         entropy_threshold: float = 0.35,
@@ -65,7 +65,7 @@ class SDARTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         top_k: int = 0,
         top_p: float = 1.0,
     ):
-        self.num_inference_steps = int(denoising_steps)
+        self.num_inference_steps = num_inference_steps
         self.timesteps = torch.arange(self.num_inference_steps - 1, -1, -1, dtype=torch.long)
 
     def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:

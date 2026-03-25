@@ -47,7 +47,7 @@ def main():
     )
     parser.add_argument("--max_new_tokens", type=int, default=256)
     parser.add_argument("--block_length", type=int, default=4)
-    parser.add_argument("--denoising_steps", type=int, default=4)
+    parser.add_argument("--num_inference_steps", type=int, default=4)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top_k", type=int, default=0)
     parser.add_argument("--top_p", type=float, default=1.0)
@@ -84,13 +84,6 @@ def main():
         help="Model dtype.",
     )
     parser.add_argument(
-        "--attention_mask_mode",
-        type=str,
-        default="3d",
-        choices=["auto", "3d", "4d", "2d", "none"],
-        help="Attention mask mode to use.",
-    )
-    parser.add_argument(
         "--revision",
         type=str,
         default=None,
@@ -122,7 +115,7 @@ def main():
         prompt=args.prompt,
         max_new_tokens=args.max_new_tokens,
         block_length=args.block_length,
-        denoising_steps=args.denoising_steps,
+        num_inference_steps=args.num_inference_steps,
         temperature=args.temperature,
         top_k=args.top_k,
         top_p=args.top_p,
@@ -132,7 +125,6 @@ def main():
         mask_token_id=args.mask_token_id,
         use_chat_template=args.use_chat_template,
         add_generation_prompt=args.add_generation_prompt,
-        attention_mask_mode=args.attention_mask_mode,
     )
 
     print("\nGenerated text:")

@@ -123,7 +123,7 @@ python examples/discrete_diffusion/sample_sdar.py \
   --prompt "Explain what reinforcement learning is in simple terms." \
   --max_new_tokens 256 \
   --block_length 4 \
-  --denoising_steps 4 \
+  --num_inference_steps 4 \
   --remasking_strategy low_confidence_dynamic \
   --confidence_threshold 0.9 \
   --use_chat_template \
