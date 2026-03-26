@@ -20,7 +20,9 @@ from diffusers.utils.torch_utils import randn_tensor
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
+    BitsAndBytesTesterMixin,
     ModelTesterMixin,
+    TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -36,6 +38,14 @@ class HunyuanVideoTransformerTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
         return HunyuanVideoTransformer3DModel
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-random-hunyuanvideo"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
 
     @property
     def main_input_name(self) -> str:
@@ -98,8 +108,9 @@ class HunyuanVideoTransformerTesterConfig(BaseModelTesterConfig):
                 (batch_size, pooled_projection_dim), generator=self.generator, device=torch_device
             ),
             "encoder_attention_mask": torch.ones((batch_size, sequence_length)).to(torch_device),
-            "guidance": torch.randint(0, 1000, size=(batch_size,), generator=self.generator)
-            .to(torch_device, dtype=torch.float32),
+            "guidance": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(
+                torch_device, dtype=torch.float32
+            ),
         }
 
 
@@ -115,6 +126,14 @@ class TestHunyuanVideoTransformerTraining(HunyuanVideoTransformerTesterConfig, T
 
 class TestHunyuanVideoTransformerCompile(HunyuanVideoTransformerTesterConfig, TorchCompileTesterMixin):
     pass
+
+
+class TestHunyuanVideoTransformerBitsAndBytes(HunyuanVideoTransformerTesterConfig, BitsAndBytesTesterMixin):
+    """BitsAndBytes quantization tests for HunyuanVideo Transformer."""
+
+
+class TestHunyuanVideoTransformerTorchAo(HunyuanVideoTransformerTesterConfig, TorchAoTesterMixin):
+    """TorchAO quantization tests for HunyuanVideo Transformer."""
 
 
 # ======================== HunyuanVideo Skyreels Image-to-Video ========================
@@ -186,8 +205,9 @@ class HunyuanSkyreelsI2VTransformerTesterConfig(BaseModelTesterConfig):
                 (batch_size, pooled_projection_dim), generator=self.generator, device=torch_device
             ),
             "encoder_attention_mask": torch.ones((batch_size, sequence_length)).to(torch_device),
-            "guidance": torch.randint(0, 1000, size=(batch_size,), generator=self.generator)
-            .to(torch_device, dtype=torch.float32),
+            "guidance": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(
+                torch_device, dtype=torch.float32
+            ),
         }
 
 
@@ -362,8 +382,9 @@ class HunyuanVideoTokenReplaceTransformerTesterConfig(BaseModelTesterConfig):
                 (batch_size, pooled_projection_dim), generator=self.generator, device=torch_device
             ),
             "encoder_attention_mask": torch.ones((batch_size, sequence_length)).to(torch_device),
-            "guidance": torch.randint(0, 1000, size=(batch_size,), generator=self.generator)
-            .to(torch_device, dtype=torch.float32),
+            "guidance": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(
+                torch_device, dtype=torch.float32
+            ),
         }
 
 

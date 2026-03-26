@@ -134,9 +134,7 @@ class TestHunyuanVideoFramepackTransformer(HunyuanVideoFramepackTransformerTeste
     pass
 
 
-class TestHunyuanVideoFramepackTransformerTraining(
-    HunyuanVideoFramepackTransformerTesterConfig, TrainingTesterMixin
-):
+class TestHunyuanVideoFramepackTransformerTraining(HunyuanVideoFramepackTransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HunyuanVideoFramepackTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
