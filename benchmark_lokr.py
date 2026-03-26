@@ -15,6 +15,7 @@ Usage:
     python benchmark_lokr.py --prompt "a portrait in besch art style" --ranks 32 64 128
     python benchmark_lokr.py --tiers 1 2     # skip SVD tier
     python benchmark_lokr.py --tiers 2 3     # skip fuse-first tier
+    python benchmark_lokr.py --weight-space  # weight-space error analysis only (no image generation)
 """
 
 import argparse
@@ -54,6 +55,113 @@ def generate(pipe, prompt, seed, num_steps=4, guidance_scale=1.0):
         width=1024,
     ).images[0]
     return image
+
+
+# ---------------------------------------------------------------------------
+# Weight-space error analysis
+# ---------------------------------------------------------------------------
+
+
+def load_raw_state_dict(lokr_path, lokr_name):
+    """Download/load a LoKR checkpoint and return the raw state dict."""
+    from huggingface_hub import hf_hub_download
+    from safetensors.torch import load_file
+
+    if os.path.isfile(lokr_path):
+        return load_file(lokr_path)
+
+    if os.path.isdir(lokr_path):
+        path = os.path.join(lokr_path, lokr_name) if lokr_name else lokr_path
+        return load_file(path)
+
+    # HF repo
+    path = hf_hub_download(lokr_path, filename=lokr_name or "pytorch_lora_weights.safetensors")
+    return load_file(path)
+
+
+def weight_space_analysis(lokr_path, lokr_name):
+    """Compare tier 1 (lossless) vs tier 2 (Kronecker split) in weight space.
+
+    For each fused QKV module, materializes the exact delta from the fuse-first path
+    and the reconstructed delta from the Kronecker split path, then reports the
+    relative Frobenius norm error.
+    """
+    from diffusers.loaders.lora_conversion_utils import _convert_non_diffusers_flux2_lokr_to_diffusers
+
+    raw_sd = load_raw_state_dict(lokr_path, lokr_name)
+
+    is_bfl = any(k.startswith("diffusion_model.") for k in raw_sd)
+    if not is_bfl:
+        print("  Checkpoint is not BFL format - no fused QKV to compare.")
+        print("  Tiers 1 and 2 produce identical results for this format.")
+        return
+
+    # Convert both ways from the same raw state dict
+    sd_fused = _convert_non_diffusers_flux2_lokr_to_diffusers(dict(raw_sd), fuse_qkv=True)
+    sd_split = _convert_non_diffusers_flux2_lokr_to_diffusers(dict(raw_sd), fuse_qkv=False)
+
+    # Find all fused QKV modules (to_qkv and to_added_qkv)
+    qkv_modules = {}
+    for key in sd_fused:
+        if ".to_qkv.lokr_w1" in key or ".to_added_qkv.lokr_w1" in key:
+            module_path = key.rsplit(".lokr_w1", 1)[0]
+            qkv_modules[module_path] = key
+
+    print(f"\n  Found {len(qkv_modules)} fused QKV modules to compare\n")
+    print(f"  {'Module':<65} {'Rel Error':>12} {'Abs Error':>12} {'Orig Norm':>12}")
+    print(f"  {'-' * 65} {'-' * 12} {'-' * 12} {'-' * 12}")
+
+    errors = []
+    for module_path in sorted(qkv_modules.keys()):
+        # Materialize exact delta from fused path
+        w1_f = sd_fused[f"{module_path}.lokr_w1"].float()
+        w2_f = sd_fused[f"{module_path}.lokr_w2"].float()
+        delta_exact = torch.kron(w1_f, w2_f)
+
+        # Determine split target keys
+        if ".to_qkv" in module_path:
+            base = module_path.replace(".attn.to_qkv", "")
+            proj_keys = [f"{base}.attn.to_q", f"{base}.attn.to_k", f"{base}.attn.to_v"]
+        else:
+            base = module_path.replace(".attn.to_added_qkv", "")
+            proj_keys = [f"{base}.attn.add_q_proj", f"{base}.attn.add_k_proj", f"{base}.attn.add_v_proj"]
+
+        # Materialize reconstructed delta from split path
+        chunks = []
+        for proj in proj_keys:
+            w1_key = f"{proj}.lokr_w1"
+            w2_key = f"{proj}.lokr_w2"
+            if w1_key not in sd_split:
+                break
+            w1_s = sd_split[w1_key].float()
+            w2_s = sd_split[w2_key].float()
+            chunks.append(torch.kron(w1_s, w2_s))
+
+        if len(chunks) != 3:
+            print(f"  {module_path:<65} {'SKIP':>12}")
+            continue
+
+        delta_recon = torch.cat(chunks, dim=0)
+
+        orig_norm = delta_exact.norm().item()
+        abs_err = (delta_exact - delta_recon).norm().item()
+        rel_err = abs_err / orig_norm if orig_norm > 0 else 0.0
+
+        errors.append(rel_err)
+
+        short_name = module_path.replace("transformer.", "")
+        print(f"  {short_name:<65} {rel_err:>11.6f}% {abs_err:>12.6f} {orig_norm:>12.4f}")
+
+    if errors:
+        print(f"\n  Aggregate over {len(errors)} QKV modules:")
+        print(f"    Mean relative error: {sum(errors) / len(errors):.6f}%")
+        print(f"    Max  relative error: {max(errors):.6f}%")
+        print(f"    Min  relative error: {min(errors):.6f}%")
+
+
+# ---------------------------------------------------------------------------
+# Image generation benchmarks
+# ---------------------------------------------------------------------------
 
 
 def benchmark_baseline(pipe, prompt, seed):
@@ -127,6 +235,11 @@ def benchmark_tier3_svd(pipe, prompt, seed, rank, lokr_path, lokr_name):
     return image
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
 def main():
     parser = argparse.ArgumentParser(description="Benchmark LoKR quality tiers")
     parser.add_argument("--prompt", default="a portrait painting in besch art style")
@@ -139,12 +252,20 @@ def main():
     parser.add_argument("--ranks", type=int, nargs="+", default=[32, 64, 128], help="SVD ranks for tier 3")
     parser.add_argument("--skip-baseline", action="store_true")
     parser.add_argument("--no-offload", action="store_true", help="Keep model on GPU instead of CPU offload")
+    parser.add_argument("--weight-space", action="store_true", help="Run weight-space error analysis only (no images)")
     args = parser.parse_args()
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     print(f"Model: {MODEL_ID}")
     print(f"LoKR:  {args.lokr_path}" + (f" ({args.lokr_name})" if args.lokr_name else ""))
+
+    # Weight-space analysis (no model needed)
+    if args.weight_space:
+        print("\n=== Weight-space error: Tier 1 (lossless) vs Tier 2 (Kronecker split) ===")
+        weight_space_analysis(args.lokr_path, args.lokr_name)
+        return
+
     print(f"Prompt: {args.prompt}")
     print(f"Seed: {args.seed}")
     print(f"Tiers: {args.tiers}")
