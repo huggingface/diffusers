@@ -79,12 +79,57 @@ def load_raw_state_dict(lokr_path, lokr_name):
     return load_file(path)
 
 
-def weight_space_analysis(lokr_path, lokr_name):
+def _materialize_lokr_delta(state_dict, module_path):
+    """Materialize the full delta weight from LoKR factors for a single module."""
+    w1_key = f"{module_path}.lokr_w1"
+    w2_key = f"{module_path}.lokr_w2"
+    w1a_key = f"{module_path}.lokr_w1_a"
+    w1b_key = f"{module_path}.lokr_w1_b"
+    w2a_key = f"{module_path}.lokr_w2_a"
+    w2b_key = f"{module_path}.lokr_w2_b"
+
+    # w1: full or decomposed
+    if w1_key in state_dict:
+        w1 = state_dict[w1_key].float()
+    elif w1a_key in state_dict and w1b_key in state_dict:
+        w1 = state_dict[w1a_key].float() @ state_dict[w1b_key].float()
+    else:
+        return None
+
+    # w2: full or decomposed
+    if w2_key in state_dict:
+        w2 = state_dict[w2_key].float()
+    elif w2a_key in state_dict and w2b_key in state_dict:
+        w2 = state_dict[w2a_key].float() @ state_dict[w2b_key].float()
+    else:
+        return None
+
+    return torch.kron(w1, w2)
+
+
+def _print_error_table(title, results):
+    """Print a formatted error table and aggregate stats."""
+    print(f"\n  {title}\n")
+    print(f"  {'Module':<60} {'Rel Error %':>12} {'Abs Error':>12} {'Orig Norm':>12}")
+    print(f"  {'-' * 60} {'-' * 12} {'-' * 12} {'-' * 12}")
+
+    errors = []
+    for name, rel_err, abs_err, orig_norm in results:
+        errors.append(rel_err)
+        print(f"  {name:<60} {rel_err:>11.6f}% {abs_err:>12.6f} {orig_norm:>12.4f}")
+
+    if errors:
+        print(f"\n  Aggregate over {len(errors)} modules:")
+        print(f"    Mean relative error: {sum(errors) / len(errors):.6f}%")
+        print(f"    Max  relative error: {max(errors):.6f}%")
+        print(f"    Min  relative error: {min(errors):.6f}%")
+
+
+def weight_space_kronecker(lokr_path, lokr_name):
     """Compare tier 1 (lossless) vs tier 2 (Kronecker split) in weight space.
 
-    For each fused QKV module, materializes the exact delta from the fuse-first path
-    and the reconstructed delta from the Kronecker split path, then reports the
-    relative Frobenius norm error.
+    No model loading needed - operates on checkpoint state dicts only.
+    Only meaningful for BFL-format LoKR (fused QKV).
     """
     from diffusers.loaders.lora_conversion_utils import _convert_non_diffusers_flux2_lokr_to_diffusers
 
@@ -96,27 +141,22 @@ def weight_space_analysis(lokr_path, lokr_name):
         print("  Tiers 1 and 2 produce identical results for this format.")
         return
 
-    # Convert both ways from the same raw state dict
     sd_fused = _convert_non_diffusers_flux2_lokr_to_diffusers(dict(raw_sd), fuse_qkv=True)
     sd_split = _convert_non_diffusers_flux2_lokr_to_diffusers(dict(raw_sd), fuse_qkv=False)
 
-    # Find all fused QKV modules (to_qkv and to_added_qkv)
-    qkv_modules = {}
+    # Find all fused QKV modules
+    qkv_modules = []
     for key in sd_fused:
         if ".to_qkv.lokr_w1" in key or ".to_added_qkv.lokr_w1" in key:
-            module_path = key.rsplit(".lokr_w1", 1)[0]
-            qkv_modules[module_path] = key
+            qkv_modules.append(key.rsplit(".lokr_w1", 1)[0])
 
-    print(f"\n  Found {len(qkv_modules)} fused QKV modules to compare\n")
-    print(f"  {'Module':<65} {'Rel Error':>12} {'Abs Error':>12} {'Orig Norm':>12}")
-    print(f"  {'-' * 65} {'-' * 12} {'-' * 12} {'-' * 12}")
+    print(f"\n  Found {len(qkv_modules)} fused QKV modules to compare")
 
-    errors = []
-    for module_path in sorted(qkv_modules.keys()):
-        # Materialize exact delta from fused path
-        w1_f = sd_fused[f"{module_path}.lokr_w1"].float()
-        w2_f = sd_fused[f"{module_path}.lokr_w2"].float()
-        delta_exact = torch.kron(w1_f, w2_f)
+    results = []
+    for module_path in sorted(qkv_modules):
+        delta_exact = _materialize_lokr_delta(sd_fused, module_path)
+        if delta_exact is None:
+            continue
 
         # Determine split target keys
         if ".to_qkv" in module_path:
@@ -126,37 +166,122 @@ def weight_space_analysis(lokr_path, lokr_name):
             base = module_path.replace(".attn.to_added_qkv", "")
             proj_keys = [f"{base}.attn.add_q_proj", f"{base}.attn.add_k_proj", f"{base}.attn.add_v_proj"]
 
-        # Materialize reconstructed delta from split path
         chunks = []
         for proj in proj_keys:
-            w1_key = f"{proj}.lokr_w1"
-            w2_key = f"{proj}.lokr_w2"
-            if w1_key not in sd_split:
+            delta = _materialize_lokr_delta(sd_split, proj)
+            if delta is None:
                 break
-            w1_s = sd_split[w1_key].float()
-            w2_s = sd_split[w2_key].float()
-            chunks.append(torch.kron(w1_s, w2_s))
+            chunks.append(delta)
 
         if len(chunks) != 3:
-            print(f"  {module_path:<65} {'SKIP':>12}")
             continue
 
         delta_recon = torch.cat(chunks, dim=0)
-
         orig_norm = delta_exact.norm().item()
         abs_err = (delta_exact - delta_recon).norm().item()
         rel_err = abs_err / orig_norm if orig_norm > 0 else 0.0
 
-        errors.append(rel_err)
-
         short_name = module_path.replace("transformer.", "")
-        print(f"  {short_name:<65} {rel_err:>11.6f}% {abs_err:>12.6f} {orig_norm:>12.4f}")
+        results.append((short_name, rel_err, abs_err, orig_norm))
 
-    if errors:
-        print(f"\n  Aggregate over {len(errors)} QKV modules:")
-        print(f"    Mean relative error: {sum(errors) / len(errors):.6f}%")
-        print(f"    Max  relative error: {max(errors):.6f}%")
-        print(f"    Min  relative error: {min(errors):.6f}%")
+    _print_error_table("Tier 1 (lossless) vs Tier 2 (Kronecker split) - QKV modules only", results)
+
+
+def weight_space_svd(lokr_path, lokr_name, ranks, no_offload=False):
+    """Compare tier 1 (lossless) vs tier 3 (SVD to LoRA) in weight space.
+
+    Requires loading the full model to run peft.convert_to_lora.
+    Compares materialized LoKR deltas against LoRA deltas for ALL modules.
+    """
+    from peft import convert_to_lora
+
+    # Build reference deltas from the converted state dict (tier 2 / default path)
+    # For non-QKV modules tier 2 is identical to tier 1, so this is ground truth.
+    raw_sd = load_raw_state_dict(lokr_path, lokr_name)
+    is_bfl = any(k.startswith("diffusion_model.") for k in raw_sd)
+
+    if is_bfl:
+        from diffusers.loaders.lora_conversion_utils import _convert_non_diffusers_flux2_lokr_to_diffusers
+
+        sd_ref = _convert_non_diffusers_flux2_lokr_to_diffusers(dict(raw_sd), fuse_qkv=False)
+    else:
+        # For non-BFL, just use the default conversion as reference (already lossless)
+        from diffusers.loaders.lora_conversion_utils import (
+            _convert_diffusers_flux2_lokr_to_peft,
+            _convert_lycoris_flux2_lokr_to_diffusers,
+        )
+
+        if any(k.startswith("lycoris_") for k in raw_sd):
+            sd_ref = _convert_lycoris_flux2_lokr_to_diffusers(dict(raw_sd))
+        else:
+            sd_ref = _convert_diffusers_flux2_lokr_to_peft(dict(raw_sd))
+
+    # Find all LoKR modules and materialize their deltas
+    ref_deltas = {}
+    lokr_modules = set()
+    for key in sd_ref:
+        if ".lokr_w1" in key and ".lokr_w1_" not in key:
+            module_path = key.rsplit(".lokr_w1", 1)[0]
+            lokr_modules.add(module_path)
+        elif ".lokr_w1_a" in key:
+            module_path = key.rsplit(".lokr_w1_a", 1)[0]
+            lokr_modules.add(module_path)
+
+    for module_path in lokr_modules:
+        delta = _materialize_lokr_delta(sd_ref, module_path)
+        if delta is not None:
+            ref_deltas[module_path] = delta
+
+    print(f"\n  Materialized {len(ref_deltas)} reference LoKR deltas")
+
+    # Load model and LoKR adapter
+    print("\n  Loading model for SVD conversion...")
+    pipe = load_pipeline(no_offload=no_offload)
+    kwargs = {"weight_name": lokr_name} if lokr_name else {}
+    pipe.load_lora_weights(lokr_path, **kwargs)
+    adapter_name = next(iter(pipe.transformer.peft_config.keys()))
+
+    for rank in ranks:
+        print(f"\n  Converting to LoRA rank={rank}...")
+        t0 = time.time()
+        lora_config, lora_sd = convert_to_lora(pipe.transformer, rank, adapter_name=adapter_name, progressbar=True)
+        print(f"  Converted in {time.time() - t0:.1f}s")
+
+        # Compare each module: LoKR delta vs LoRA delta (lora_B @ lora_A)
+        results = []
+        for module_path in sorted(ref_deltas.keys()):
+            delta_ref = ref_deltas[module_path]
+
+            # Map module_path to LoRA key format: transformer.X.Y -> base_model.model.X.Y
+            lora_module = module_path.replace("transformer.", "")
+            lora_a_key = f"base_model.model.{lora_module}.lora_A.weight"
+            lora_b_key = f"base_model.model.{lora_module}.lora_B.weight"
+
+            if lora_a_key not in lora_sd or lora_b_key not in lora_sd:
+                # Try without base_model.model prefix
+                lora_a_key = f"{lora_module}.lora_A.weight"
+                lora_b_key = f"{lora_module}.lora_B.weight"
+
+            if lora_a_key not in lora_sd or lora_b_key not in lora_sd:
+                continue
+
+            lora_a = lora_sd[lora_a_key].float()
+            lora_b = lora_sd[lora_b_key].float()
+            delta_lora = lora_b @ lora_a
+
+            orig_norm = delta_ref.norm().item()
+            abs_err = (delta_ref - delta_lora).norm().item()
+            rel_err = abs_err / orig_norm if orig_norm > 0 else 0.0
+
+            short_name = module_path.replace("transformer.", "")
+            results.append((short_name, rel_err, abs_err, orig_norm))
+
+        _print_error_table(f"Tier 1 (lossless) vs Tier 3 (SVD rank={rank}) - all modules", results)
+
+    pipe.unload_lora_weights()
+    del pipe
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -260,10 +385,15 @@ def main():
     print(f"Model: {MODEL_ID}")
     print(f"LoKR:  {args.lokr_path}" + (f" ({args.lokr_name})" if args.lokr_name else ""))
 
-    # Weight-space analysis (no model needed)
+    # Weight-space analysis
     if args.weight_space:
         print("\n=== Weight-space error: Tier 1 (lossless) vs Tier 2 (Kronecker split) ===")
-        weight_space_analysis(args.lokr_path, args.lokr_name)
+        weight_space_kronecker(args.lokr_path, args.lokr_name)
+
+        if args.ranks:
+            print("\n=== Weight-space error: Tier 1 (lossless) vs Tier 3 (SVD to LoRA) ===")
+            weight_space_svd(args.lokr_path, args.lokr_name, args.ranks, no_offload=args.no_offload)
+
         return
 
     print(f"Prompt: {args.prompt}")
