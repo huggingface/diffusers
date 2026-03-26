@@ -59,6 +59,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -72,6 +73,7 @@ def calculate_shift(
     return mu
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: int | None = None,
@@ -315,26 +317,27 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
 
 
     @staticmethod
-    def _pack_latents(latents, batch_size, num_channels_latents, height, width):
-        latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
+    def _pack_latents(latents, batch_size, num_channels_latents, height, width, patch_size):
+        latents = latents.view(batch_size, num_channels_latents, height // patch_size, patch_size, width // patch_size, patch_size)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
-        latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
+        latents = latents.reshape(batch_size, (height // patch_size) * (width // patch_size), num_channels_latents * patch_size * patch_size)
         return latents
 
     @staticmethod
-    def _unpack_latents(latents, height, width, vae_scale_factor):
+    def _unpack_latents(latents, height, width, patch_size, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
-        height = 2 * (int(height) // (vae_scale_factor * 2))
-        width = 2 * (int(width) // (vae_scale_factor * 2))
-        latents = latents.view(batch_size, height // 2, width // 2, channels // 4, 2, 2)
+        height = patch_size * (int(height) // (vae_scale_factor * patch_size))
+        width = patch_size * (int(width) // (vae_scale_factor * patch_size))
+        latents = latents.view(batch_size, height // patch_size, width // patch_size, channels // (patch_size * patch_size), patch_size, patch_size)
         latents = latents.permute(0, 3, 1, 4, 2, 5)
-        latents = latents.reshape(batch_size, channels // (2 * 2), 1, height, width)
+        latents = latents.reshape(batch_size, channels // (patch_size * patch_size), 1, height, width)
         return latents
 
     def prepare_latents(
         self,
         batch_size,
         num_channels_latents,
+        patch_size,
         height,
         width,
         dtype,
@@ -342,8 +345,8 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         generator,
         latents=None,
     ):
-        height = 2 * (int(height) // (self.vae_scale_factor * 2))
-        width = 2 * (int(width) // (self.vae_scale_factor * 2))
+        height = patch_size * (int(height) // (self.vae_scale_factor * patch_size))
+        width = patch_size * (int(width) // (self.vae_scale_factor * patch_size))
         shape = (batch_size, 1, num_channels_latents, height, width)
 
         if latents is not None:
@@ -356,44 +359,8 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
+        latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width, patch_size)
         return latents
-
-    def enable_vae_slicing(self):
-        r"""Enable sliced VAE decoding for memory efficiency."""
-        depr_message = (
-            f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and will be "
-            "removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        )
-        deprecate("enable_vae_slicing", "0.40.0", depr_message)
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""Disable sliced VAE decoding."""
-        depr_message = (
-            f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and will be "
-            "removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        )
-        deprecate("disable_vae_slicing", "0.40.0", depr_message)
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""Enable tiled VAE decoding for memory efficiency."""
-        depr_message = (
-            f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and will be "
-            "removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        )
-        deprecate("enable_vae_tiling", "0.40.0", depr_message)
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""Disable tiled VAE decoding."""
-        depr_message = (
-            f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and will be "
-            "removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        )
-        deprecate("disable_vae_tiling", "0.40.0", depr_message)
-        self.vae.disable_tiling()
 
     @property
     def attention_kwargs(self):
@@ -417,7 +384,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         self,
         prompt: str | list[str] = None,
         negative_prompt: str | list[str] = None,
-        true_cfg_scale: float = 4.0,
+        guidance_scale: float = 4.0,
         height: int | None = None,
         width: int | None = None,
         num_inference_steps: int = 50,
@@ -527,9 +494,9 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
         )
-        do_true_cfg = true_cfg_scale > 1
+        do_cfg = guidance_scale > 1
 
-        if do_true_cfg and not has_neg_prompt:
+        if do_cfg and not has_neg_prompt:
             negative_prompt = [""] * batch_size
 
         prompt_embeds, prompt_embeds_mask = self.encode_prompt(
@@ -541,7 +508,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
             return_index=return_index,
         )
-        if do_true_cfg:
+        if do_cfg:
             negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
                 prompt=negative_prompt,
                 prompt_embeds=negative_prompt_embeds,
@@ -553,9 +520,12 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             )
 
         num_channels_latents = self.transformer.config.in_channels // 4
+        patch_size = self.transformer.config.patch_size
+
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
+            patch_size,
             height,
             width,
             prompt_embeds.dtype,
@@ -564,9 +534,11 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             latents,
         )
 
-        latent_h = 2 * (int(height) // (self.vae_scale_factor * 2))
-        latent_w = 2 * (int(width) // (self.vae_scale_factor * 2))
-        img_shapes = [(1, latent_h // 2, latent_w // 2)] * (batch_size * num_images_per_prompt)
+        img_shapes = [(
+            1, 
+            height // self.vae_scale_factor // patch_size, 
+            width // self.vae_scale_factor // patch_size
+        )] * (batch_size * num_images_per_prompt)
 
         sigmas = (
             np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
@@ -604,7 +576,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
 
                 noise_pred = self.transformer(
                     hidden_states=latents,
-                    timestep=timestep / 1000,
+                    timestep=timestep / self.scheduler.config.num_train_timesteps,
                     encoder_hidden_states=prompt_embeds,
                     encoder_hidden_states_mask=prompt_embeds_mask,
                     img_shapes=img_shapes,
@@ -612,10 +584,10 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                     return_dict=False,
                 )[0]
 
-                if do_true_cfg:
+                if do_cfg:
                     neg_noise_pred = self.transformer(
                         hidden_states=latents,
-                        timestep=timestep / 1000,
+                        timestep=timestep / self.scheduler.config.num_train_timesteps,
                         encoder_hidden_states=negative_prompt_embeds,
                         encoder_hidden_states_mask=negative_prompt_embeds_mask,
                         img_shapes=img_shapes,
@@ -623,7 +595,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                         return_dict=False,
                     )[0]
 
-                    comb_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
+                    comb_pred = neg_noise_pred + guidance_scale * (noise_pred - neg_noise_pred)
                     cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
                     noise_norm = torch.norm(comb_pred, dim=-1, keepdim=True)
                     noise_pred = comb_pred * (cond_norm / noise_norm)
@@ -658,7 +630,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         if output_type == "latent":
             image = latents
         else:
-            latents = self._unpack_latents(latents, height, width, self.vae_scale_factor)
+            latents = self._unpack_latents(latents, height, width, patch_size, self.vae_scale_factor)
             latents = latents.to(self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)

@@ -43,7 +43,7 @@ class TextKVCacheHook(ModelHook):
     def __init__(self):
         super().__init__()
         # Maps encoder_hidden_states.data_ptr() → (txt_key, txt_value)
-        self.kv_cache: dict[int, tuple] = {}
+        self.kv_cache: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         from ..models.transformers.transformer_nucleusmoe_image import _apply_rotary_emb_nucleus

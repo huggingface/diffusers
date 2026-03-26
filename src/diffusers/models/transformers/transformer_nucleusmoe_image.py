@@ -22,8 +22,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import AttentionMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
@@ -160,7 +159,6 @@ class NucleusMoEEmbedRope(nn.Module):
     def forward(
         self,
         video_fhw: tuple[int, int, int] | list[tuple[int, int, int]],
-        txt_seq_lens: list[int] | None = None,
         device: torch.device = None,
         max_txt_seq_len: int | torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -168,26 +166,13 @@ class NucleusMoEEmbedRope(nn.Module):
         Args:
             video_fhw (`tuple[int, int, int]` or `list[tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video.
-            txt_seq_lens (`list[int]`, *optional*, **Deprecated**):
-                Deprecated parameter. Use `max_txt_seq_len` instead.
             device: (`torch.device`, *optional*):
                 The device on which to perform the RoPE computation.
             max_txt_seq_len (`int` or `torch.Tensor`, *optional*):
                 The maximum text sequence length for RoPE computation.
         """
-        if txt_seq_lens is not None:
-            deprecate(
-                "txt_seq_lens",
-                "0.39.0",
-                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.39.0. "
-                "Please use `max_txt_seq_len` instead.",
-                standard_warn=False,
-            )
-            if max_txt_seq_len is None:
-                max_txt_seq_len = max(txt_seq_lens) if isinstance(txt_seq_lens, list) else txt_seq_lens
-
         if max_txt_seq_len is None:
-            raise ValueError("Either `max_txt_seq_len` or `txt_seq_lens` (deprecated) must be provided.")
+            raise ValueError("Either `max_txt_seq_len` must be provided.")
 
         if isinstance(video_fhw, list) and len(video_fhw) > 1:
             first_fhw = video_fhw[0]
@@ -457,7 +442,6 @@ class NucleusMoELayer(nn.Module):
         return out
 
 
-@maybe_allow_in_graph
 class NucleusMoEImageTransformerBlock(nn.Module):
     """
     Single-stream DiT block with optional Mixture-of-Experts MLP. Only the image
@@ -540,7 +524,6 @@ class NucleusMoEImageTransformerBlock(nn.Module):
         attention_kwargs: dict[str, Any] | None = None,
     ) -> torch.Tensor:
         scale1, gate1, scale2, gate2 = self.img_mod(temb).unsqueeze(1).chunk(4, dim=-1)
-        scale1, scale2 = 1 + scale1, 1 + scale2
 
         gate1 = gate1.clamp(min=-2.0, max=2.0)
         gate2 = gate2.clamp(min=-2.0, max=2.0)
@@ -550,7 +533,7 @@ class NucleusMoEImageTransformerBlock(nn.Module):
         context = None if attn_kwargs.get("cached_txt_key") is not None else self.encoder_proj(encoder_hidden_states)
 
         img_normed = self.pre_attn_norm(hidden_states)
-        img_modulated = img_normed * scale1
+        img_modulated = img_normed * (1 + scale1)
 
         img_attn_output = self.attn(
             hidden_states=img_modulated,
@@ -562,7 +545,7 @@ class NucleusMoEImageTransformerBlock(nn.Module):
         hidden_states = hidden_states + gate1.tanh() * img_attn_output
 
         img_normed2 = self.pre_mlp_norm(hidden_states)
-        img_modulated2 = img_normed2 * scale2
+        img_modulated2 = img_normed2 * (1 + scale2)
 
         if self.moe_enabled:
             img_mlp_output = self.img_mlp(img_modulated2, img_normed2, timestep=temb)
@@ -614,7 +597,7 @@ class NucleusMoEImageTransformer2DModel(
             Number of experts per MoE layer.
         moe_intermediate_dim (`int`, defaults to `1344`):
             Hidden dimension inside each expert.
-        capacity_factors (`list[float]`, defaults to `[8.0] * 24`):
+        capacity_factors (`float | list[float]`, defaults to `8.0`):
             Expert-choice capacity factor per layer.
         use_sigmoid (`bool`, defaults to `False`):
             Use sigmoid instead of softmax for routing scores.
@@ -644,13 +627,14 @@ class NucleusMoEImageTransformer2DModel(
         dense_moe_strategy: str = "leave_first_three_and_last_block_dense",
         num_experts: int = 128,
         moe_intermediate_dim: int = 1344,
-        capacity_factors: List[float] = [8.0] * 24,
+        capacity_factors: float | list[float] = 8.0,
         use_sigmoid: bool = False,
         route_scale: float = 2.5,
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
         self.inner_dim = num_attention_heads * attention_head_dim
+        capacity_factors = capacity_factors if isinstance(capacity_factors, list) else [capacity_factors] * num_layers
 
         self.pos_embed = NucleusMoEEmbedRope(theta=10000, axes_dim=list(axes_dims_rope), scale_rope=True)
 
@@ -687,11 +671,10 @@ class NucleusMoEImageTransformer2DModel(
     def forward(
         self,
         hidden_states: torch.Tensor,
-        img_shapes: list[tuple[int, int, int]] | None = None,
+        img_shapes: tuple[int, int, int] | list[tuple[int, int, int]],
         encoder_hidden_states: torch.Tensor = None,
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        txt_seq_lens: list[int] | None = None,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> torch.Tensor | Transformer2DModelOutput:
@@ -709,8 +692,6 @@ class NucleusMoEImageTransformer2DModel(
                 Boolean mask for the encoder hidden states.
             timestep (`torch.LongTensor`):
                 Used to indicate denoising step.
-            txt_seq_lens (`list[int]`, *optional*, **Deprecated**):
-                Deprecated. Use ``encoder_hidden_states_mask`` instead.
             attention_kwargs (`dict`, *optional*):
                 Extra kwargs forwarded to the attention processor.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -720,15 +701,6 @@ class NucleusMoEImageTransformer2DModel(
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        if txt_seq_lens is not None:
-            deprecate(
-                "txt_seq_lens",
-                "0.39.0",
-                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.39.0. "
-                "Please use `encoder_hidden_states_mask` instead.",
-                standard_warn=False,
-            )
-
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
