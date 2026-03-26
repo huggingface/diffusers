@@ -406,8 +406,6 @@ def _create_lokr_config(state_dict):
 
     # Determine default rank (most common) and per-module rank pattern
     if rank_dict:
-        import collections
-
         r = collections.Counter(rank_dict.values()).most_common()[0][0]
         rank_pattern = {k: v for k, v in rank_dict.items() if v != r}
     else:

@@ -219,7 +219,7 @@ class PeftAdapterMixin:
             if is_lokr:
                 if adapter_name is None:
                     adapter_name = get_adapter_name(self)
-                lora_config = _create_lokr_config(state_dict)
+                adapter_config = _create_lokr_config(state_dict)
                 is_sai_sd_control_lora = False
             else:
                 # check with first key if is not in peft format
@@ -256,7 +256,7 @@ class PeftAdapterMixin:
                     adapter_name = get_adapter_name(self)
 
                 # create LoraConfig
-                lora_config = _create_lora_config(
+                adapter_config = _create_lora_config(
                     state_dict,
                     network_alphas,
                     metadata,
@@ -267,11 +267,11 @@ class PeftAdapterMixin:
 
                 # Adjust LoRA config for Control LoRA
                 if is_sai_sd_control_lora:
-                    lora_config.lora_alpha = lora_config.r
-                    lora_config.alpha_pattern = lora_config.rank_pattern
-                    lora_config.bias = "all"
-                    lora_config.modules_to_save = lora_config.exclude_modules
-                    lora_config.exclude_modules = None
+                    adapter_config.lora_alpha = adapter_config.r
+                    adapter_config.alpha_pattern = adapter_config.rank_pattern
+                    adapter_config.bias = "all"
+                    adapter_config.modules_to_save = adapter_config.exclude_modules
+                    adapter_config.exclude_modules = None
 
             # <Unsafe code
             # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
@@ -318,13 +318,13 @@ class PeftAdapterMixin:
             try:
                 if hotswap:
                     state_dict = map_state_dict_for_hotswap(state_dict)
-                    check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
+                    check_hotswap_configs_compatible(self.peft_config[adapter_name], adapter_config)
                     try:
                         hotswap_adapter_from_state_dict(
                             model=self,
                             state_dict=state_dict,
                             adapter_name=adapter_name,
-                            config=lora_config,
+                            config=adapter_config,
                         )
                     except Exception as e:
                         logger.error(f"Hotswapping {adapter_name} was unsuccessful with the following error: \n{e}")
@@ -334,7 +334,7 @@ class PeftAdapterMixin:
                     incompatible_keys = None
                 else:
                     inject_adapter_in_model(
-                        lora_config, self, adapter_name=adapter_name, state_dict=state_dict, **peft_kwargs
+                        adapter_config, self, adapter_name=adapter_name, state_dict=state_dict, **peft_kwargs
                     )
                     incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
 
@@ -345,7 +345,7 @@ class PeftAdapterMixin:
                         # - before the model is compiled and the 2nd adapter is being hotswapped in
                         # Therefore, it needs to be called here
                         prepare_model_for_compiled_hotswap(
-                            self, config=lora_config, **self._prepare_lora_hotswap_kwargs
+                            self, config=adapter_config, **self._prepare_lora_hotswap_kwargs
                         )
                         # We only want to call prepare_model_for_compiled_hotswap once
                         self._prepare_lora_hotswap_kwargs = None
