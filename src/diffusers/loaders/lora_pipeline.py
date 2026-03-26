@@ -5648,6 +5648,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+        fuse_qkv = kwargs.pop("fuse_qkv", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -5691,7 +5692,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         is_lokr = any("lokr_" in k for k in state_dict)
         if is_lokr:
             if any(k.startswith("diffusion_model.") for k in state_dict):
-                state_dict = _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict)
+                state_dict = _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict, fuse_qkv=fuse_qkv)
             elif any(k.startswith("lycoris_") for k in state_dict):
                 state_dict = _convert_lycoris_flux2_lokr_to_diffusers(state_dict)
             else:
@@ -5699,6 +5700,8 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
             if metadata is None:
                 metadata = {}
             metadata["is_lokr"] = "true"
+            if fuse_qkv:
+                metadata["fuse_qkv"] = "true"
         else:
             is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
             if is_ai_toolkit:
@@ -5739,6 +5742,10 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
             raise ValueError("Invalid LoRA/LoKR checkpoint. Make sure all param names contain `'lora'` or `'lokr'`.")
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+
+        # Fuse model QKV projections before injection if requested (lossless path for BFL LoKR)
+        if metadata and metadata.get("fuse_qkv") == "true":
+            transformer.fuse_qkv_projections()
 
         self.load_lora_into_transformer(
             state_dict,

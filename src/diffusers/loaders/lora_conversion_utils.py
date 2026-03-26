@@ -2688,11 +2688,15 @@ def _split_lokr_qkv(w1, w2, target_keys, factor):
     return result
 
 
-def _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict):
+def _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict, fuse_qkv=False):
     """Convert BFL-format Flux2 LoKR state dict to peft-compatible diffusers format.
 
-    Handles fused QKV by splitting via Kronecker re-factorization (Van Loan algorithm).
-    Non-QKV modules are remapped directly. Alpha scaling is baked into lokr_w1.
+    Args:
+        state_dict: BFL-format LoKR state dict with ``diffusion_model.`` prefix.
+        fuse_qkv: If True, map fused QKV directly to ``to_qkv``/``to_added_qkv`` targets
+            (lossless, but requires the model's QKV to be fused before injection).
+            If False (default), split fused QKV into separate Q/K/V via Kronecker
+            re-factorization (slightly lossy, no model fusion needed).
     """
     converted_state_dict = {}
 
@@ -2793,11 +2797,17 @@ def _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict):
         tb = f"transformer_blocks.{dl}"
         db = f"double_blocks.{dl}"
 
-        # Split fused QKV into separate Q/K/V via Kronecker re-factorization
-        _remap_lokr_qkv(f"{db}.img_attn.qkv", [f"{tb}.attn.to_q", f"{tb}.attn.to_k", f"{tb}.attn.to_v"])
-        _remap_lokr_qkv(
-            f"{db}.txt_attn.qkv", [f"{tb}.attn.add_q_proj", f"{tb}.attn.add_k_proj", f"{tb}.attn.add_v_proj"]
-        )
+        if fuse_qkv:
+            # Lossless: map directly to fused targets (caller must fuse model QKV first)
+            _remap_lokr_module(f"{db}.img_attn.qkv", f"{tb}.attn.to_qkv")
+            _remap_lokr_module(f"{db}.txt_attn.qkv", f"{tb}.attn.to_added_qkv")
+        else:
+            # Split fused QKV into separate Q/K/V via Kronecker re-factorization
+            _remap_lokr_qkv(f"{db}.img_attn.qkv", [f"{tb}.attn.to_q", f"{tb}.attn.to_k", f"{tb}.attn.to_v"])
+            _remap_lokr_qkv(
+                f"{db}.txt_attn.qkv",
+                [f"{tb}.attn.add_q_proj", f"{tb}.attn.add_k_proj", f"{tb}.attn.add_v_proj"],
+            )
 
         # Projections
         _remap_lokr_module(f"{db}.img_attn.proj", f"{tb}.attn.to_out.0")
