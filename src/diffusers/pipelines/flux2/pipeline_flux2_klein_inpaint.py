@@ -251,7 +251,6 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         )
         self.tokenizer_max_length = 512
         self.default_sample_size = 128
-        self._current_timestep = None
 
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2_klein.Flux2KleinPipeline._get_qwen3_prompt_embeds
@@ -365,9 +364,9 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return latent_ids
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_image_ids
     def _prepare_image_ids(
-        image_latents: list[torch.Tensor],  # [(1, C, H, W), (1, C, H, W), ...]
+        image_latents: list[torch.Tensor],  # list of (B_i, C, H, W) before packing
+        batch_size: int,
         scale: int = 10,
     ):
         r"""
@@ -398,20 +397,34 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         if not isinstance(image_latents, list):
             raise ValueError(f"Expected `image_latents` to be a list, got {type(image_latents)}.")
 
-        # create time offset for each reference image
-        t_coords = [scale + scale * t for t in torch.arange(0, len(image_latents))]
-        t_coords = [t.view(-1) for t in t_coords]
+        all_image_latent_ids = []
+        t_offset = scale
+        for x in image_latents:
+            b_i, _, height, width = x.shape
 
-        image_latent_ids = []
-        for x, t in zip(image_latents, t_coords):
-            x = x.squeeze(0)
-            _, height, width = x.shape
-
+            # Create IDs for a single image at this t_offset
+            t = torch.tensor([t_offset]).view(-1)
             x_ids = torch.cartesian_prod(t, torch.arange(height), torch.arange(width), torch.arange(1))
-            image_latent_ids.append(x_ids)
 
-        image_latent_ids = torch.cat(image_latent_ids, dim=0)
-        image_latent_ids = image_latent_ids.unsqueeze(0)
+            if b_i == 1 or b_i == batch_size:
+                x_ids = x_ids.unsqueeze(0).expand(batch_size, -1, -1)
+                all_image_latent_ids.append(x_ids)
+                t_offset += scale
+            else:
+                # multiple images per sample in the batch
+                item_ids = [x_ids]
+                for _ in range(1, b_i):
+                    t_offset += scale
+                    t = torch.tensor([t_offset]).view(-1)
+                    item_ids.append(
+                        torch.cartesian_prod(t, torch.arange(height), torch.arange(width), torch.arange(1))
+                    )
+                x_ids = torch.cat(item_ids, dim=0)  # (b_i * h * w, 4)
+                x_ids = x_ids.unsqueeze(0).expand(batch_size, -1, -1)
+                all_image_latent_ids.append(x_ids)
+                t_offset += scale
+
+        image_latent_ids = torch.cat(all_image_latent_ids, dim=1)
 
         return image_latent_ids
 
@@ -483,10 +496,9 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         elif isinstance(image, torch.Tensor):
             return image.shape[-2], image.shape[-1]
         elif isinstance(image, np.ndarray):
-            return (
-                image.shape[-3] if image.ndim > 3 else image.shape[-2],
-                image.shape[-2] if image.ndim > 3 else image.shape[-1],
-            )
+            if image.ndim >= 3:
+                return image.shape[-3], image.shape[-2]
+            return image.shape[-2], image.shape[-1]
 
         if hasattr(image, "shape"):
             return image.shape[-2], image.shape[-1]
@@ -619,29 +631,29 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 image_latent = self._encode_vae_image(image=image, generator=generator)
             else:
                 image_latent = self._patchify_latents(image)
-            image_latents.append(image_latent)  # (1, 128, H//2, W//2)
+            image_latents.append(image_latent)
 
-        image_latent_ids = self._prepare_image_ids(image_latents)
+        image_latent_ids = self._prepare_image_ids(image_latents, batch_size)
 
-        # Pack each latent and concatenate
-        packed_latents = []
+        # Pack each latent and combine batch properly
+        final_latents = []
         for latent in image_latents:
-            packed = self._pack_latents(latent)  # (1, seq_len, 128)
-            packed = packed.squeeze(0)  # (seq_len, 128) - remove batch dim
-            packed_latents.append(packed)
+            packed = self._pack_latents(latent)  # (B_i, seq_len, 128)
+            b_i = packed.shape[0]
 
-        # Concatenate all reference tokens along sequence dimension
-        image_latents = torch.cat(packed_latents, dim=0)  # (N*seq_len, 128)
-        image_latents = image_latents.unsqueeze(0)  # (1, N*seq_len, 128)
+            if b_i == 1 and batch_size > 1:
+                packed = packed.repeat(batch_size, 1, 1)
+            elif b_i == batch_size:
+                pass
+            else:
+                # Concatenate all reference tokens along sequence dimension for each sample
+                seq_len = packed.shape[1]
+                packed = packed.reshape(1, b_i * seq_len, -1)
+                if batch_size > 1:
+                    packed = packed.repeat(batch_size, 1, 1)
+            final_latents.append(packed)
 
-        if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
-            additional_per_prompt = batch_size // image_latents.shape[0]
-            image_latents = torch.cat([image_latents] * additional_per_prompt, dim=0)
-            image_latent_ids = torch.cat([image_latent_ids] * additional_per_prompt, dim=0)
-        elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `image_reference` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
-            )
+        image_latents = torch.cat(final_latents, dim=1)  # (batch_size, total_seq_len, 128)
 
         image_latent_ids = image_latent_ids.to(device)
 
@@ -707,6 +719,12 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         padding_mask_crop=None,
         guidance_scale=None,
     ):
+        if image is None:
+            raise ValueError("`image` has to be provided for inpainting.")
+
+        if mask_image is None:
+            raise ValueError("`mask_image` has to be provided for inpainting.")
+
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
@@ -951,6 +969,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
+        self._current_timestep = None
         self._interrupt = False
 
         # 2. Preprocess image
@@ -991,8 +1010,6 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             init_image = self.image_processor.preprocess(
                 image, image_height, image_width, crops_coords=crops_coords, resize_mode=resize_mode
             )
-        else:
-            raise ValueError("image must be provided correctly for inpainting")
 
         init_image = init_image.to(dtype=torch.float32)
 
@@ -1101,17 +1118,16 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             latents,
         )
 
-        ref_images = [init_image[i : i + 1] for i in range(init_image.shape[0])]
+        ref_images = [init_image]
         if processed_image_reference is not None:
-            # Convert preprocessed reference image to list format
-            ref_images += [processed_image_reference[i : i + 1] for i in range(processed_image_reference.shape[0])]
+            ref_images.append(processed_image_reference)
 
         condition_image_latents, condition_image_ids = self.prepare_image_latents(
             ref_images,
             batch_size * num_images_per_prompt,
             generator,
             device,
-            self.vae.dtype,
+            prompt_embeds.dtype,
         )
 
         mask_condition = self.mask_processor.preprocess(

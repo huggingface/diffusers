@@ -28,7 +28,7 @@ class Flux2KleinInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     params = frozenset(
         ["prompt", "image", "image_reference", "mask_image", "height", "width", "guidance_scale", "prompt_embeds"]
     )
-    batch_params = frozenset(["prompt"])
+    batch_params = frozenset(["prompt", "image", "mask_image"])
 
     test_xformers_attention = False
     test_layerwise_casting = True
