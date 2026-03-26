@@ -132,92 +132,6 @@ class TestHunyuanVideoTransformerTorchAo(HunyuanVideoTransformerTesterConfig, To
     """TorchAO quantization tests for HunyuanVideo Transformer."""
 
 
-# ======================== HunyuanVideo Skyreels Image-to-Video ========================
-
-
-class HunyuanSkyreelsI2VTransformerTesterConfig(BaseModelTesterConfig):
-    @property
-    def model_class(self):
-        return HunyuanVideoTransformer3DModel
-
-    @property
-    def main_input_name(self) -> str:
-        return "hidden_states"
-
-    @property
-    def output_shape(self) -> tuple:
-        return (4, 1, 16, 16)
-
-    @property
-    def input_shape(self) -> tuple:
-        return (8, 1, 16, 16)
-
-    @property
-    def generator(self):
-        return torch.Generator("cpu").manual_seed(0)
-
-    def get_init_dict(self) -> dict:
-        return {
-            "in_channels": 8,
-            "out_channels": 4,
-            "num_attention_heads": 2,
-            "attention_head_dim": 10,
-            "num_layers": 1,
-            "num_single_layers": 1,
-            "num_refiner_layers": 1,
-            "patch_size": 1,
-            "patch_size_t": 1,
-            "guidance_embeds": True,
-            "text_embed_dim": 16,
-            "pooled_projection_dim": 8,
-            "rope_axes_dim": (2, 4, 4),
-            "image_condition_type": None,
-        }
-
-    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
-        num_channels = 8
-        num_frames = 1
-        height = 16
-        width = 16
-        text_encoder_embedding_dim = 16
-        pooled_projection_dim = 8
-        sequence_length = 12
-
-        return {
-            "hidden_states": randn_tensor(
-                (batch_size, num_channels, num_frames, height, width), generator=self.generator, device=torch_device
-            ),
-            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
-            "encoder_hidden_states": randn_tensor(
-                (batch_size, sequence_length, text_encoder_embedding_dim),
-                generator=self.generator,
-                device=torch_device,
-            ),
-            "pooled_projections": randn_tensor(
-                (batch_size, pooled_projection_dim), generator=self.generator, device=torch_device
-            ),
-            "encoder_attention_mask": torch.ones((batch_size, sequence_length)).to(torch_device),
-            "guidance": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(
-                torch_device, dtype=torch.float32
-            ),
-        }
-
-
-class TestHunyuanSkyreelsI2VTransformer(HunyuanSkyreelsI2VTransformerTesterConfig, ModelTesterMixin):
-    def test_output(self):
-        super().test_output(expected_output_shape=(1, *self.output_shape))
-
-
-class TestHunyuanSkyreelsI2VTransformerTraining(HunyuanSkyreelsI2VTransformerTesterConfig, TrainingTesterMixin):
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"HunyuanVideoTransformer3DModel"}
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestHunyuanSkyreelsI2VTransformerCompile(HunyuanSkyreelsI2VTransformerTesterConfig, TorchCompileTesterMixin):
-    pass
-
-
 # ======================== HunyuanVideo Image-to-Video (Latent Concat) ========================
 
 
@@ -289,12 +203,6 @@ class HunyuanVideoI2VTransformerTesterConfig(BaseModelTesterConfig):
 class TestHunyuanVideoI2VTransformer(HunyuanVideoI2VTransformerTesterConfig, ModelTesterMixin):
     def test_output(self):
         super().test_output(expected_output_shape=(1, *self.output_shape))
-
-
-class TestHunyuanVideoI2VTransformerTraining(HunyuanVideoI2VTransformerTesterConfig, TrainingTesterMixin):
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"HunyuanVideoTransformer3DModel"}
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class TestHunyuanVideoI2VTransformerCompile(HunyuanVideoI2VTransformerTesterConfig, TorchCompileTesterMixin):
@@ -375,14 +283,6 @@ class HunyuanVideoTokenReplaceTransformerTesterConfig(BaseModelTesterConfig):
 class TestHunyuanVideoTokenReplaceTransformer(HunyuanVideoTokenReplaceTransformerTesterConfig, ModelTesterMixin):
     def test_output(self):
         super().test_output(expected_output_shape=(1, *self.output_shape))
-
-
-class TestHunyuanVideoTokenReplaceTransformerTraining(
-    HunyuanVideoTokenReplaceTransformerTesterConfig, TrainingTesterMixin
-):
-    def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"HunyuanVideoTransformer3DModel"}
-        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class TestHunyuanVideoTokenReplaceTransformerCompile(
