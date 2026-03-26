@@ -15,7 +15,7 @@
 
 import torch
 
-from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
+from diffusers import OvisImageTransformer2DModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -30,10 +30,10 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-class PRXTransformerTesterConfig(BaseModelTesterConfig):
+class OvisImageTransformerTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
-        return PRXTransformer2DModel
+        return OvisImageTransformer2DModel
 
     @property
     def main_input_name(self) -> str:
@@ -41,11 +41,11 @@ class PRXTransformerTesterConfig(BaseModelTesterConfig):
 
     @property
     def output_shape(self) -> tuple:
-        return (16, 16, 16)
+        return (16, 4)
 
     @property
     def input_shape(self) -> tuple:
-        return (16, 16, 16)
+        return (16, 4)
 
     @property
     def generator(self):
@@ -53,43 +53,50 @@ class PRXTransformerTesterConfig(BaseModelTesterConfig):
 
     def get_init_dict(self) -> dict:
         return {
-            "in_channels": 16,
-            "patch_size": 2,
-            "context_in_dim": 1792,
-            "hidden_size": 1792,
-            "mlp_ratio": 3.5,
-            "num_heads": 28,
-            "depth": 4,
-            "axes_dim": [32, 32],
-            "theta": 10_000,
+            "patch_size": 1,
+            "in_channels": 4,
+            "out_channels": 4,
+            "num_layers": 1,
+            "num_single_layers": 1,
+            "attention_head_dim": 16,
+            "num_attention_heads": 2,
+            "joint_attention_dim": 32,
+            "axes_dims_rope": (4, 4, 8),
         }
 
     def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
-        num_latent_channels = 16
-        height = width = 16
-        sequence_length = 16
-        embedding_dim = 1792
+        num_latent_channels = 4
+        num_image_channels = 3
+        height = width = 4
+        sequence_length = 48
+        embedding_dim = 32
 
         return {
             "hidden_states": randn_tensor(
-                (batch_size, num_latent_channels, height, width), generator=self.generator, device=torch_device
+                (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
             ),
             "encoder_hidden_states": randn_tensor(
                 (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+            ),
+            "img_ids": randn_tensor(
+                (height * width, num_image_channels), generator=self.generator, device=torch_device
+            ),
+            "txt_ids": randn_tensor(
+                (sequence_length, num_image_channels), generator=self.generator, device=torch_device
             ),
             "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
         }
 
 
-class TestPRXTransformer(PRXTransformerTesterConfig, ModelTesterMixin):
+class TestOvisImageTransformer(OvisImageTransformerTesterConfig, ModelTesterMixin):
     pass
 
 
-class TestPRXTransformerTraining(PRXTransformerTesterConfig, TrainingTesterMixin):
+class TestOvisImageTransformerTraining(OvisImageTransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"PRXTransformer2DModel"}
+        expected_set = {"OvisImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class TestPRXTransformerCompile(PRXTransformerTesterConfig, TorchCompileTesterMixin):
+class TestOvisImageTransformerCompile(OvisImageTransformerTesterConfig, TorchCompileTesterMixin):
     pass
