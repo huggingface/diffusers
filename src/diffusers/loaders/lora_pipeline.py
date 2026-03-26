@@ -41,10 +41,12 @@ from .lora_base import (  # noqa
 )
 from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
+    _convert_diffusers_flux2_lokr_to_peft,
     _convert_fal_kontext_lora_to_diffusers,
     _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux2_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
+    _convert_lycoris_flux2_lokr_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
     _convert_non_diffusers_flux2_lokr_to_diffusers,
     _convert_non_diffusers_flux2_lora_to_diffusers,
@@ -58,7 +60,6 @@ from .lora_conversion_utils import (
     _convert_non_diffusers_z_image_lora_to_diffusers,
     _convert_xlabs_flux_lora_to_diffusers,
     _maybe_map_sgm_blocks_to_diffusers,
-    _refuse_flux2_lora_state_dict,
 )
 
 
@@ -5687,15 +5688,20 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         if is_peft_format:
             state_dict = {k.replace("base_model.model.", "diffusion_model."): v for k, v in state_dict.items()}
 
-        is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
-        if is_ai_toolkit:
-            is_lokr = any("lokr_" in k for k in state_dict)
-            if is_lokr:
+        is_lokr = any("lokr_" in k for k in state_dict)
+        if is_lokr:
+            if any(k.startswith("diffusion_model.") for k in state_dict):
                 state_dict = _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict)
-                if metadata is None:
-                    metadata = {}
-                metadata["is_lokr"] = "true"
+            elif any(k.startswith("lycoris_") for k in state_dict):
+                state_dict = _convert_lycoris_flux2_lokr_to_diffusers(state_dict)
             else:
+                state_dict = _convert_diffusers_flux2_lokr_to_peft(state_dict)
+            if metadata is None:
+                metadata = {}
+            metadata["is_lokr"] = "true"
+        else:
+            is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
+            if is_ai_toolkit:
                 state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
@@ -5732,18 +5738,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA/LoKR checkpoint. Make sure all param names contain `'lora'` or `'lokr'`.")
 
-        # For LoKR adapters, fuse QKV projections so peft can target the fused modules directly.
-        is_lokr = metadata is not None and metadata.get("is_lokr") == "true"
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
-        if is_lokr:
-            transformer.fuse_qkv_projections()
-        elif (
-            hasattr(transformer, "transformer_blocks")
-            and len(transformer.transformer_blocks) > 0
-            and getattr(transformer.transformer_blocks[0].attn, "fused_projections", False)
-        ):
-            # Model QKV is fused but LoRA targets separate Q/K/V - re-fuse the keys to match.
-            state_dict = _refuse_flux2_lora_state_dict(state_dict)
 
         self.load_lora_into_transformer(
             state_dict,
