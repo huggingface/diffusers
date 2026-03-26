@@ -391,7 +391,7 @@ class StableDiffusionXLModularPipeline(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
-class SD3AutoBlocks(metaclass=DummyObject):
+class StableDiffusion3AutoBlocks(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -406,7 +406,7 @@ class SD3AutoBlocks(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class SD3ModularPipeline(metaclass=DummyObject):
+class StableDiffusion3ModularPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

@@ -20,14 +20,14 @@ from ..modular_pipeline import ModularPipeline
 logger = logging.get_logger(__name__)
 
 
-class SD3ModularPipeline(ModularPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, SD3IPAdapterMixin):
+class StableDiffusion3ModularPipeline(ModularPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, SD3IPAdapterMixin):
     """
     A ModularPipeline for Stable Diffusion 3.
 
     >[!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
-    default_blocks_name = "SD3AutoBlocks"
+    default_blocks_name = "StableDiffusion3AutoBlocks"
 
     @property
     def default_height(self):

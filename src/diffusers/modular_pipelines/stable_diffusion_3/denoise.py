@@ -26,13 +26,13 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import SD3ModularPipeline
+from .modular_pipeline import StableDiffusion3ModularPipeline
 
 
 logger = logging.get_logger(__name__)
 
 
-class SD3LoopDenoiser(ModularPipelineBlocks):
+class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property
@@ -46,7 +46,7 @@ class SD3LoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         return[
-            InputParam("joint_attention_kwargs"),
+            InputParam("joint_attention_kwargs", type_hint=dict),
             InputParam("latents", required=True, type_hint=torch.Tensor),
             InputParam("prompt_embeds", required=True, type_hint=torch.Tensor),
             InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor),
@@ -63,7 +63,7 @@ class SD3LoopDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: SD3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+        self, components: StableDiffusion3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> PipelineState:
         latent_model_input = torch.cat([block_state.latents] * 2) if block_state.do_classifier_free_guidance else block_state.latents
         timestep = t.expand(latent_model_input.shape[0])
@@ -104,7 +104,7 @@ class SD3LoopDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
-class SD3LoopAfterDenoiser(ModularPipelineBlocks):
+class StableDiffusion3LoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property
@@ -116,7 +116,7 @@ class SD3LoopAfterDenoiser(ModularPipelineBlocks):
         return[OutputParam("latents", type_hint=torch.Tensor)]
 
     @torch.no_grad()
-    def __call__(self, components: SD3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(self, components: StableDiffusion3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred,
@@ -131,7 +131,7 @@ class SD3LoopAfterDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
-class SD3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+class StableDiffusion3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property
@@ -149,7 +149,7 @@ class SD3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.num_warmup_steps = max(len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0)
 
@@ -163,6 +163,6 @@ class SD3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         return components, state
 
 
-class SD3DenoiseStep(SD3DenoiseLoopWrapper):
-    block_classes = [SD3LoopDenoiser, SD3LoopAfterDenoiser]
+class StableDiffusion3DenoiseStep(StableDiffusion3DenoiseLoopWrapper):
+    block_classes = [StableDiffusion3LoopDenoiser, StableDiffusion3LoopAfterDenoiser]
     block_names = ["denoiser", "after_denoiser"]

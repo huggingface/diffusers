@@ -22,7 +22,7 @@ from ...models import AutoencoderKL
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import SD3ModularPipeline
+from .modular_pipeline import StableDiffusion3ModularPipeline
 
 
 logger = logging.get_logger(__name__)
@@ -52,7 +52,7 @@ def encode_vae_image(vae: AutoencoderKL, image: torch.Tensor, generator: torch.G
     image_latents = (image_latents - vae.config.shift_factor) * vae.config.scaling_factor
     return image_latents
 
-class SD3ProcessImagesInputStep(ModularPipelineBlocks):
+class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property
@@ -87,7 +87,7 @@ class SD3ProcessImagesInputStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * patch_size} but is {width}")
 
     @torch.no_grad()
-    def __call__(self, components: SD3ModularPipeline, state: PipelineState):
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
         if block_state.resized_image is None and block_state.image is None:
@@ -110,7 +110,7 @@ class SD3ProcessImagesInputStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
-class SD3VaeEncoderStep(ModularPipelineBlocks):
+class StableDiffusion3VaeEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     def __init__(self, input_name: str = "processed_image", output_name: str = "image_latents", sample_mode: str = "sample"):
@@ -138,7 +138,7 @@ class SD3VaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         image = getattr(block_state, self._image_input_name)
 
@@ -156,7 +156,7 @@ class SD3VaeEncoderStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
-class SD3TextEncoderStep(ModularPipelineBlocks):
+class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property
@@ -261,11 +261,11 @@ class SD3TextEncoderStep(ModularPipelineBlocks):
             prompt_2 = block_state.prompt_2 or prompt
             prompt_3 = block_state.prompt_3 or prompt
 
-            prompt_embed, pooled_embed = SD3TextEncoderStep._get_clip_prompt_embeds(components, prompt, device, block_state.clip_skip, 0)
-            prompt_2_embed, pooled_2_embed = SD3TextEncoderStep._get_clip_prompt_embeds(components, prompt_2, device, block_state.clip_skip, 1)
+            prompt_embed, pooled_embed = StableDiffusion3TextEncoderStep._get_clip_prompt_embeds(components, prompt, device, block_state.clip_skip, 0)
+            prompt_2_embed, pooled_2_embed = StableDiffusion3TextEncoderStep._get_clip_prompt_embeds(components, prompt_2, device, block_state.clip_skip, 1)
             clip_prompt_embeds = torch.cat([prompt_embed, prompt_2_embed], dim=-1)
 
-            t5_prompt_embed = SD3TextEncoderStep._get_t5_prompt_embeds(components, prompt_3, block_state.max_sequence_length, device)
+            t5_prompt_embed = StableDiffusion3TextEncoderStep._get_t5_prompt_embeds(components, prompt_3, block_state.max_sequence_length, device)
             clip_prompt_embeds = torch.nn.functional.pad(clip_prompt_embeds, (0, t5_prompt_embed.shape[-1] - clip_prompt_embeds.shape[-1]))
 
             prompt_embeds = torch.cat([clip_prompt_embeds, t5_prompt_embed], dim=-2)
@@ -284,11 +284,11 @@ class SD3TextEncoderStep(ModularPipelineBlocks):
             neg_prompt_2 = batch_size * [neg_prompt_2] if isinstance(neg_prompt_2, str) else neg_prompt_2
             neg_prompt_3 = batch_size * [neg_prompt_3] if isinstance(neg_prompt_3, str) else neg_prompt_3
 
-            neg_embed, neg_pooled_embed = SD3TextEncoderStep._get_clip_prompt_embeds(components, neg_prompt, device, None, 0)
-            neg_2_embed, neg_2_pooled_embed = SD3TextEncoderStep._get_clip_prompt_embeds(components, neg_prompt_2, device, None, 1)
+            neg_embed, neg_pooled_embed = StableDiffusion3TextEncoderStep._get_clip_prompt_embeds(components, neg_prompt, device, None, 0)
+            neg_2_embed, neg_2_pooled_embed = StableDiffusion3TextEncoderStep._get_clip_prompt_embeds(components, neg_prompt_2, device, None, 1)
             neg_clip_embeds = torch.cat([neg_embed, neg_2_embed], dim=-1)
 
-            t5_neg_embed = SD3TextEncoderStep._get_t5_prompt_embeds(components, neg_prompt_3, block_state.max_sequence_length, device)
+            t5_neg_embed = StableDiffusion3TextEncoderStep._get_t5_prompt_embeds(components, neg_prompt_3, block_state.max_sequence_length, device)
             neg_clip_embeds = torch.nn.functional.pad(neg_clip_embeds, (0, t5_neg_embed.shape[-1] - neg_clip_embeds.shape[-1]))
 
             negative_prompt_embeds = torch.cat([neg_clip_embeds, t5_neg_embed], dim=-2)
@@ -303,7 +303,7 @@ class SD3TextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 

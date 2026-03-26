@@ -26,7 +26,7 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 logger = logging.get_logger(__name__)
 
 
-class SD3DecodeStep(ModularPipelineBlocks):
+class StableDiffusion3DecodeStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property

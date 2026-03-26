@@ -21,8 +21,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modular_blocks_stable_diffusion_3"] = ["SD3AutoBlocks"]
-    _import_structure["modular_pipeline"] = ["SD3ModularPipeline"]
+    _import_structure["modular_blocks_stable_diffusion_3"] = ["StableDiffusion3AutoBlocks"]
+    _import_structure["modular_pipeline"] = ["StableDiffusion3ModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -31,8 +31,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modular_blocks_stable_diffusion_3 import SD3AutoBlocks
-        from .modular_pipeline import SD3ModularPipeline
+        from .modular_blocks_stable_diffusion_3 import StableDiffusion3AutoBlocks
+        from .modular_pipeline import StableDiffusion3ModularPipeline
 else:
     import sys
 

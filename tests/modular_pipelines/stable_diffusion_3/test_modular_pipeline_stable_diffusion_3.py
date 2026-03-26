@@ -20,7 +20,7 @@ import PIL
 import torch
 
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.modular_pipelines.stable_diffusion_3 import SD3AutoBlocks, SD3ModularPipeline
+from diffusers.modular_pipelines.stable_diffusion_3 import StableDiffusion3AutoBlocks, StableDiffusion3ModularPipeline
 
 from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
@@ -28,18 +28,18 @@ from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 SD3_TEXT2IMAGE_WORKFLOWS = {
     "text2image":[
-        ("text_encoder", "SD3TextEncoderStep"),
-        ("denoise.input", "SD3TextInputStep"),
-        ("denoise.before_denoise.prepare_latents", "SD3PrepareLatentsStep"),
-        ("denoise.before_denoise.set_timesteps", "SD3SetTimestepsStep"),
-        ("denoise.denoise", "SD3DenoiseStep"),
-        ("decode", "SD3DecodeStep"),
+        ("text_encoder", "StableDiffusion3TextEncoderStep"),
+        ("denoise.input", "StableDiffusion3TextInputStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusion3PrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusion3SetTimestepsStep"),
+        ("denoise.denoise", "StableDiffusion3DenoiseStep"),
+        ("decode", "StableDiffusion3DecodeStep"),
     ]
 }
 
-class TestSD3ModularPipelineFast(ModularPipelineTesterMixin):
-    pipeline_class = SD3ModularPipeline
-    pipeline_blocks_class = SD3AutoBlocks
+class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
+    pipeline_class = StableDiffusion3ModularPipeline
+    pipeline_blocks_class = StableDiffusion3AutoBlocks
     pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
@@ -95,22 +95,22 @@ class TestSD3ModularPipelineFast(ModularPipelineTesterMixin):
 
 SD3_IMAGE2IMAGE_WORKFLOWS = {
     "image2image":[
-        ("text_encoder", "SD3TextEncoderStep"),
-        ("vae_encoder.preprocess", "SD3ProcessImagesInputStep"),
-        ("vae_encoder.encode", "SD3VaeEncoderStep"),
-        ("denoise.input.text_inputs", "SD3TextInputStep"),
-        ("denoise.input.additional_inputs", "SD3AdditionalInputsStep"),
-        ("denoise.before_denoise.prepare_latents", "SD3PrepareLatentsStep"),
-        ("denoise.before_denoise.set_timesteps", "SD3Img2ImgSetTimestepsStep"),
-        ("denoise.before_denoise.prepare_img2img_latents", "SD3Img2ImgPrepareLatentsStep"),
-        ("denoise.denoise", "SD3DenoiseStep"),
-        ("decode", "SD3DecodeStep"),
+        ("text_encoder", "StableDiffusion3TextEncoderStep"),
+        ("vae_encoder.preprocess", "StableDiffusion3ProcessImagesInputStep"),
+        ("vae_encoder.encode", "StableDiffusion3VaeEncoderStep"),
+        ("denoise.input.text_inputs", "StableDiffusion3TextInputStep"),
+        ("denoise.input.additional_inputs", "StableDiffusion3AdditionalInputsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusion3PrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusion3Img2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_img2img_latents", "StableDiffusion3Img2ImgPrepareLatentsStep"),
+        ("denoise.denoise", "StableDiffusion3DenoiseStep"),
+        ("decode", "StableDiffusion3DecodeStep"),
     ]
 }
 
-class TestSD3Img2ImgModularPipelineFast(ModularPipelineTesterMixin):
-    pipeline_class = SD3ModularPipeline
-    pipeline_blocks_class = SD3AutoBlocks
+class TestStableDiffusion3Img2ImgModularPipelineFast(ModularPipelineTesterMixin):
+    pipeline_class = StableDiffusion3ModularPipeline
+    pipeline_blocks_class = StableDiffusion3AutoBlocks
     pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])

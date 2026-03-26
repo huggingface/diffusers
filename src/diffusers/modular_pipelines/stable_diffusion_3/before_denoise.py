@@ -15,52 +15,16 @@
 
 import torch
 
+from ...pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import calculate_shift, retrieve_timesteps
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import SD3ModularPipeline
+from .modular_pipeline import StableDiffusion3ModularPipeline
 
 
 logger = logging.get_logger(__name__)
-
-
-def retrieve_timesteps(
-    scheduler,
-    num_inference_steps: int | None = None,
-    device: str | torch.device | None = None,
-    timesteps: list[int] | None = None,
-    sigmas: list[float] | None = None,
-    **kwargs,
-):
-    if timesteps is not None and sigmas is not None:
-        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
-    if timesteps is not None:
-        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    elif sigmas is not None:
-        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
-
-
-def calculate_shift(
-    image_seq_len,
-    base_seq_len: int = 256,
-    max_seq_len: int = 4096,
-    base_shift: float = 0.5,
-    max_shift: float = 1.15,
-):
-    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
-    b = base_shift - m * base_seq_len
-    mu = image_seq_len * m + b
-    return mu
 
 
 def _get_initial_timesteps_and_optionals(
@@ -95,7 +59,7 @@ def _get_initial_timesteps_and_optionals(
     return timesteps, num_inference_steps
 
 
-class SD3SetTimestepsStep(ModularPipelineBlocks):
+class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property
@@ -125,7 +89,7 @@ class SD3SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -149,7 +113,7 @@ class SD3SetTimestepsStep(ModularPipelineBlocks):
         return components, state
 
 
-class SD3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
+class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property
@@ -189,7 +153,7 @@ class SD3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
         return timesteps, num_inference_steps - t_start
 
     @torch.no_grad()
-    def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -217,7 +181,7 @@ class SD3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
         return components, state
 
 
-class SD3PrepareLatentsStep(ModularPipelineBlocks):
+class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property
@@ -241,7 +205,7 @@ class SD3PrepareLatentsStep(ModularPipelineBlocks):
         return[OutputParam("latents", type_hint=torch.Tensor)]
 
     @torch.no_grad()
-    def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
         batch_size = block_state.batch_size * block_state.num_images_per_prompt
@@ -261,7 +225,7 @@ class SD3PrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-class SD3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
+class StableDiffusion3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property
@@ -281,7 +245,7 @@ class SD3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
         return [OutputParam("initial_noise", type_hint=torch.Tensor)]
 
     @torch.no_grad()
-    def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         latent_timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])
         block_state.initial_noise = block_state.latents

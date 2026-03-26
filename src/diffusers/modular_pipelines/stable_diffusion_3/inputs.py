@@ -18,12 +18,12 @@ from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import InputParam, OutputParam
 from ..qwenimage.inputs import calculate_dimension_from_latents, repeat_tensor_to_batch_size
-from .modular_pipeline import SD3ModularPipeline
+from .modular_pipeline import StableDiffusion3ModularPipeline
 
 
 logger = logging.get_logger(__name__)
 
-class SD3TextInputStep(ModularPipelineBlocks):
+class StableDiffusion3TextInputStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     @property
@@ -55,7 +55,7 @@ class SD3TextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -89,7 +89,7 @@ class SD3TextInputStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
-class SD3AdditionalInputsStep(ModularPipelineBlocks):
+class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     def __init__(self, image_latent_inputs: list[str] = ["image_latents"], additional_batch_inputs: list[str] =[]):
@@ -120,7 +120,7 @@ class SD3AdditionalInputsStep(ModularPipelineBlocks):
             OutputParam("image_width", type_hint=int),
         ]
 
-    def __call__(self, components: SD3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         for input_name in self._image_latent_inputs:
