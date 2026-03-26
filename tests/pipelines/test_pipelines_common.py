@@ -1534,14 +1534,18 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         pipe.to("cpu")
-        model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
+        model_devices = [
+            component.device.type for component in components.values() if getattr(component, "device", None)
+        ]
         self.assertTrue(all(device == "cpu" for device in model_devices))
 
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
         pipe.to(torch_device)
-        model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
+        model_devices = [
+            component.device.type for component in components.values() if getattr(component, "device", None)
+        ]
         self.assertTrue(all(device == torch_device for device in model_devices))
 
         output_device = pipe(**self.get_dummy_inputs(torch_device))[0]
@@ -1552,11 +1556,11 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
 
-        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
+        model_dtypes = [component.dtype for component in components.values() if getattr(component, "dtype", None)]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
         pipe.to(dtype=torch.float16)
-        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
+        model_dtypes = [component.dtype for component in components.values() if getattr(component, "dtype", None)]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
     def test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):

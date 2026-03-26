@@ -446,6 +446,10 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoder_kl_hunyuan_video15
         title: AutoencoderKLHunyuanVideo15
+      - local: api/models/autoencoder_kl_kvae
+        title: AutoencoderKLKVAE
+      - local: api/models/autoencoder_kl_kvae_video
+        title: AutoencoderKLKVAEVideo
       - local: api/models/autoencoderkl_audio_ltx_2
         title: AutoencoderKLLTX2Audio
       - local: api/models/autoencoderkl_ltx_2
@@ -667,6 +671,10 @@
         title: Z-Image
       title: Image
     - sections:
+      - local: api/pipelines/llada2
+        title: LLaDA2
+      title: Text
+    - sections:
       - local: api/pipelines/allegro
         title: Allegro
       - local: api/pipelines/chronoedit
@@ -714,6 +722,8 @@
   - sections:
     - local: api/schedulers/overview
       title: Overview
+    - local: api/schedulers/block_refinement
+      title: BlockRefinementScheduler
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
     - local: api/schedulers/ddim_cogvideox
