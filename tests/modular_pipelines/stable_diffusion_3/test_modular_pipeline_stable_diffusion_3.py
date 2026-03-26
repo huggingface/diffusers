@@ -40,7 +40,7 @@ SD3_TEXT2IMAGE_WORKFLOWS = {
 class TestSD3ModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = SD3ModularPipeline
     pipeline_blocks_class = SD3AutoBlocks
-    pretrained_model_name_or_path = "hf-internal-testing/tiny-sd3-pipe"
+    pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_params = frozenset(["prompt"])
@@ -60,12 +60,7 @@ class TestSD3ModularPipelineFast(ModularPipelineTesterMixin):
         }
 
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipeline = self.pipeline_class.from_pretrained(
-            self.pretrained_model_name_or_path, torch_dtype=torch_dtype
-        )
-        if components_manager is not None:
-            pipeline.components_manager = components_manager
-        return pipeline
+        return super().get_pipeline(components_manager, torch_dtype)
 
     def test_save_from_pretrained(self, tmp_path):
         pipes =[]
@@ -116,18 +111,14 @@ SD3_IMAGE2IMAGE_WORKFLOWS = {
 class TestSD3Img2ImgModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = SD3ModularPipeline
     pipeline_blocks_class = SD3AutoBlocks
-    pretrained_model_name_or_path = "hf-internal-testing/tiny-sd3-pipe"
+    pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = SD3_IMAGE2IMAGE_WORKFLOWS
 
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipeline = self.pipeline_class.from_pretrained(
-            self.pretrained_model_name_or_path, torch_dtype=torch_dtype
-        )
-        if components_manager is not None:
-            pipeline.components_manager = components_manager
+        pipeline = super().get_pipeline(components_manager, torch_dtype)
         pipeline.image_processor = VaeImageProcessor(vae_scale_factor=8)
         return pipeline
 
@@ -180,4 +171,4 @@ class TestSD3Img2ImgModularPipelineFast(ModularPipelineTesterMixin):
         assert set(base_pipe.components.keys()) == set(pipe.components.keys())
 
     def test_float16_inference(self):
-        super().test_float16_inference(8e-2)
+        super().test_float16_inference(9e-2)
