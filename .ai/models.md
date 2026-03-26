@@ -9,15 +9,9 @@ Linked from `AGENTS.md`, `skills/model-integration/SKILL.md`, and `review-rules.
 - Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations and any other patterns that can break `torch.compile` compatibility with `fullgraph=True`.
 - No new mandatory dependency without discussion (e.g. `einops`). Optional deps guarded with `is_X_available()` and a dummy in `utils/dummy_*.py`.
 
-## Common diffusers conventions
+## Common model conventions
 
 - Models use `ModelMixin` with `register_to_config` for config serialization
-- Pipelines inherit from `DiffusionPipeline`
-- Schedulers use `SchedulerMixin` with `ConfigMixin`
-- Use `@torch.no_grad()` on pipeline `__call__`
-- Support `output_type="latent"` for skipping VAE decode
-- Support `generator` parameter for reproducibility
-- Use `self.progress_bar(timesteps)` for progress tracking
 
 ## Attention pattern
 
@@ -62,11 +56,6 @@ class MyModelAttention(nn.Module, AttentionModuleMixin):
 ```
 
 Consult the implementations in `src/diffusers/models/transformers/` if you need further references.
-
-## Implementation rules
-
-1. **Pipelines must inherit from `DiffusionPipeline`.** Consult implementations in `src/diffusers/pipelines` in case you need references.
-2. **Don't subclass an existing pipeline for a variant.** DO NOT use an existing pipeline class (e.g., `FluxPipeline`) to override another pipeline (e.g., `FluxImg2ImgPipeline`) which will be a part of the core codebase (`src`).
 
 ## Gotchas
 
