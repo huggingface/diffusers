@@ -265,12 +265,12 @@ def weight_space_svd(lokr_path, lokr_name, ranks, no_offload=False):
             if lora_a_key not in lora_sd or lora_b_key not in lora_sd:
                 continue
 
-            lora_a = lora_sd[lora_a_key].float()
-            lora_b = lora_sd[lora_b_key].float()
+            lora_a = lora_sd[lora_a_key].float().cpu()
+            lora_b = lora_sd[lora_b_key].float().cpu()
             delta_lora = lora_b @ lora_a
 
             orig_norm = delta_ref.norm().item()
-            abs_err = (delta_ref - delta_lora).norm().item()
+            abs_err = (delta_ref.cpu() - delta_lora).norm().item()
             rel_err = abs_err / orig_norm if orig_norm > 0 else 0.0
 
             short_name = module_path.replace("transformer.", "")
