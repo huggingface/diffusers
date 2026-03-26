@@ -52,10 +52,6 @@ class HunyuanVideoTransformerTesterConfig(BaseModelTesterConfig):
         return "hidden_states"
 
     @property
-    def uses_custom_attn_processor(self) -> bool:
-        return True
-
-    @property
     def output_shape(self) -> tuple:
         return (4, 1, 16, 16)
 
@@ -149,10 +145,6 @@ class HunyuanSkyreelsI2VTransformerTesterConfig(BaseModelTesterConfig):
         return "hidden_states"
 
     @property
-    def uses_custom_attn_processor(self) -> bool:
-        return True
-
-    @property
     def output_shape(self) -> tuple:
         return (4, 1, 16, 16)
 
@@ -239,10 +231,6 @@ class HunyuanVideoI2VTransformerTesterConfig(BaseModelTesterConfig):
         return "hidden_states"
 
     @property
-    def uses_custom_attn_processor(self) -> bool:
-        return True
-
-    @property
     def output_shape(self) -> tuple:
         return (4, 1, 16, 16)
 
@@ -324,10 +312,6 @@ class HunyuanVideoTokenReplaceTransformerTesterConfig(BaseModelTesterConfig):
     @property
     def main_input_name(self) -> str:
         return "hidden_states"
-
-    @property
-    def uses_custom_attn_processor(self) -> bool:
-        return True
 
     @property
     def output_shape(self) -> tuple:

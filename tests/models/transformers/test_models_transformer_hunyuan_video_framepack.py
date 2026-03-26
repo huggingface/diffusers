@@ -38,10 +38,6 @@ class HunyuanVideoFramepackTransformerTesterConfig(BaseModelTesterConfig):
         return "hidden_states"
 
     @property
-    def uses_custom_attn_processor(self) -> bool:
-        return True
-
-    @property
     def model_split_percents(self) -> list:
         return [0.5, 0.7, 0.9]
 
