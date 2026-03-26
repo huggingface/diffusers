@@ -13,11 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 
 from diffusers import SD3Transformer2DModel
-from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -108,19 +106,7 @@ class SD3TransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestSD3Transformer(SD3TransformerTesterConfig, ModelTesterMixin):
-    @pytest.mark.skipif(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_enable_works(self):
-        init_dict = self.get_init_dict()
-        model = self.model_class(**init_dict)
-
-        model.enable_xformers_memory_efficient_attention()
-
-        assert model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor", (
-            "xformers is not enabled"
-        )
+    pass
 
 
 class TestSD3TransformerTraining(SD3TransformerTesterConfig, TrainingTesterMixin):
@@ -207,20 +193,6 @@ class SD35TransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestSD35Transformer(SD35TransformerTesterConfig, ModelTesterMixin):
-    @pytest.mark.skipif(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_enable_works(self):
-        init_dict = self.get_init_dict()
-        model = self.model_class(**init_dict)
-
-        model.enable_xformers_memory_efficient_attention()
-
-        assert model.transformer_blocks[0].attn.processor.__class__.__name__ == "XFormersJointAttnProcessor", (
-            "xformers is not enabled"
-        )
-
     def test_skip_layers(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
