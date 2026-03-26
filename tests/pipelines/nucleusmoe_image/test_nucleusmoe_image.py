@@ -12,10 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import unittest
 
+import numpy as np
 import torch
 from transformers import Qwen3VLConfig, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
+
+from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 
 from diffusers import (
     AutoencoderKLQwenImage,
@@ -135,7 +139,8 @@ class NucleusMoEImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "negative_prompt": "bad quality",
             "generator": generator,
             "num_inference_steps": 2,
-            "true_cfg_scale": 1.0,
+            "return_index": -1,
+            "guidance_scale": 1.0,
             "height": 32,
             "width": 32,
             "max_sequence_length": 16,
@@ -168,7 +173,7 @@ class NucleusMoEImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["true_cfg_scale"] = 4.0
+        inputs["guidance_scale"] = 4.0
         inputs["negative_prompt"] = "low quality"
         image = pipe(**inputs).images
         self.assertEqual(image[0].shape, (3, 32, 32))
@@ -195,3 +200,141 @@ class NucleusMoEImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         image = pipe(**inputs_with_embeds).images
         self.assertEqual(image[0].shape, (3, 32, 32))
+
+    def test_attention_slicing_forward_pass(
+        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
+    ):
+        # PipelineTesterMixin compares outputs with assert_mean_pixel_difference, which assumes HWC numpy/PIL layout.
+        # With output_type="pt", tensors are CHW; numpy_to_pil then fails. Match QwenImage: only assert max diff.
+        if not self.test_attention_slicing:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        output_without_slicing = pipe(**inputs)[0]
+
+        pipe.enable_attention_slicing(slice_size=1)
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_slicing1 = pipe(**inputs)[0]
+
+        pipe.enable_attention_slicing(slice_size=2)
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_slicing2 = pipe(**inputs)[0]
+
+        if test_max_difference:
+            max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
+            max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
+            self.assertLess(
+                max(max_diff1, max_diff2),
+                expected_max_diff,
+                "Attention slicing should not affect the inference results",
+            )
+
+    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
+        # PipelineTesterMixin only keeps components whose keys contain "text" or "tokenizer"; this pipeline also
+        # needs `processor` for encode_prompt (apply_chat_template). Mirror the mixin with that key included.
+        if not hasattr(self.pipeline_class, "encode_prompt"):
+            return
+
+        components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
+
+        def _is_text_stack_component(k):
+            return "text" in k or "tokenizer" in k or k == "processor"
+
+        components_with_text_encoders = {}
+        for k in components:
+            if _is_text_stack_component(k):
+                components_with_text_encoders[k] = components[k]
+            else:
+                components_with_text_encoders[k] = None
+        pipe_with_just_text_encoder = self.pipeline_class(**components_with_text_encoders)
+        pipe_with_just_text_encoder = pipe_with_just_text_encoder.to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        encode_prompt_signature = inspect.signature(pipe_with_just_text_encoder.encode_prompt)
+        encode_prompt_parameters = list(encode_prompt_signature.parameters.values())
+
+        required_params = []
+        for param in encode_prompt_parameters:
+            if param.name == "self" or param.name == "kwargs":
+                continue
+            if param.default is inspect.Parameter.empty:
+                required_params.append(param.name)
+
+        encode_prompt_param_names = [p.name for p in encode_prompt_parameters if p.name != "self"]
+        input_keys = list(inputs.keys())
+        encode_prompt_inputs = {k: inputs.pop(k) for k in input_keys if k in encode_prompt_param_names}
+
+        pipe_call_signature = inspect.signature(pipe_with_just_text_encoder.__call__)
+        pipe_call_parameters = pipe_call_signature.parameters
+
+        for required_param_name in required_params:
+            if required_param_name not in encode_prompt_inputs:
+                pipe_call_param = pipe_call_parameters.get(required_param_name, None)
+                if pipe_call_param is not None and pipe_call_param.default is not inspect.Parameter.empty:
+                    encode_prompt_inputs[required_param_name] = pipe_call_param.default
+                elif extra_required_param_value_dict is not None and isinstance(extra_required_param_value_dict, dict):
+                    encode_prompt_inputs[required_param_name] = extra_required_param_value_dict[required_param_name]
+                else:
+                    raise ValueError(
+                        f"Required parameter '{required_param_name}' in "
+                        f"encode_prompt has no default in either encode_prompt or __call__."
+                    )
+
+        with torch.no_grad():
+            encoded_prompt_outputs = pipe_with_just_text_encoder.encode_prompt(**encode_prompt_inputs)
+
+        ast_visitor = ReturnNameVisitor()
+        encode_prompt_tree = ast_visitor.get_ast_tree(cls=self.pipeline_class)
+        ast_visitor.visit(encode_prompt_tree)
+        prompt_embed_kwargs = ast_visitor.return_names
+        prompt_embeds_kwargs = dict(zip(prompt_embed_kwargs, encoded_prompt_outputs))
+
+        adapted_prompt_embeds_kwargs = {
+            k: prompt_embeds_kwargs.pop(k) for k in list(prompt_embeds_kwargs.keys()) if k in pipe_call_parameters
+        }
+
+        components_with_text_encoders = {}
+        for k in components:
+            if _is_text_stack_component(k):
+                components_with_text_encoders[k] = None
+            else:
+                components_with_text_encoders[k] = components[k]
+        pipe_without_text_encoders = self.pipeline_class(**components_with_text_encoders).to(torch_device)
+
+        pipe_without_tes_inputs = {**inputs, **adapted_prompt_embeds_kwargs}
+        if (
+            pipe_call_parameters.get("negative_prompt", None) is not None
+            and pipe_call_parameters.get("negative_prompt").default is not None
+        ):
+            pipe_without_tes_inputs.update({"negative_prompt": None})
+
+        if (
+            pipe_call_parameters.get("prompt", None) is not None
+            and pipe_call_parameters.get("prompt").default is inspect.Parameter.empty
+            and pipe_call_parameters.get("prompt_embeds", None) is not None
+            and pipe_call_parameters.get("prompt_embeds").default is None
+        ):
+            pipe_without_tes_inputs.update({"prompt": None})
+
+        pipe_out = pipe_without_text_encoders(**pipe_without_tes_inputs)[0]
+
+        full_pipe = self.pipeline_class(**components).to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        pipe_out_2 = full_pipe(**inputs)[0]
+
+        if isinstance(pipe_out, np.ndarray) and isinstance(pipe_out_2, np.ndarray):
+            self.assertTrue(np.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol))
+        elif isinstance(pipe_out, torch.Tensor) and isinstance(pipe_out_2, torch.Tensor):
+            self.assertTrue(torch.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol))

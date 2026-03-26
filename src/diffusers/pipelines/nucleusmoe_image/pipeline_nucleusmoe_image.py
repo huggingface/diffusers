@@ -220,6 +220,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                 Maximum token length for the encoded prompt.
         """
         device = device or self._execution_device
+        return_index = return_index or self.default_return_index
 
         if prompt_embeds is None:
             prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -266,7 +267,9 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         width,
         negative_prompt=None,
         prompt_embeds=None,
+        prompt_embeds_mask=None,
         negative_prompt_embeds=None,
+        negative_prompt_embeds_mask=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
         return_index=None,
@@ -361,6 +364,10 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width, patch_size)
         return latents
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
 
     @property
     def attention_kwargs(self):
@@ -462,7 +469,6 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         width = width or self.default_sample_size * self.vae_scale_factor
 
         max_sequence_length = max_sequence_length or self.default_max_sequence_length
-        return_index = return_index or self.default_return_index
 
         self.check_inputs(
             prompt,
@@ -470,14 +476,15 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             width,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
             prompt_embeds_mask=prompt_embeds_mask,
+            negative_prompt_embeds=negative_prompt_embeds,
             negative_prompt_embeds_mask=negative_prompt_embeds_mask,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
             return_index=return_index,
         )
 
+        self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs or {}
         self._current_timestep = None
         self._interrupt = False
