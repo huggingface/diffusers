@@ -584,6 +584,10 @@ NLTK_IMPORT_ERROR = """
 """
 
 
+TORCH_NEURONX_IMPORT_ERROR = """
+{0} requires the torch_neuronx library (AWS Neuron SDK) but it was not found in your environment. Please install it following the AWS Neuron documentation: https://awsdocs-neuron.readthedocs-hosted.com/en/latest/
+"""
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
@@ -614,6 +618,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
         ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
         ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
+        ("torch_neuronx", (is_torch_neuronx_available, TORCH_NEURONX_IMPORT_ERROR)),
     ]
 )
 

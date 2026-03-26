@@ -93,7 +93,7 @@ if is_torch_available():
         "xpu": getattr(torch.xpu, "synchronize", None),
         "cpu": None,
         "mps": None,
-        "neuron": None,
+        "neuron": lambda: getattr(getattr(torch, "neuron", None), "synchronize", lambda: None)(),
         "default": None,
     }
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

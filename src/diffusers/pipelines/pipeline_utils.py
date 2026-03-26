@@ -2273,6 +2273,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
         requires_backends(self, "torch_neuronx")
         import torch_neuronx  # noqa: F401 — registers neuron backend
+        from torch_neuronx.neuron_dynamo_backend import set_model_name
 
         if cache_dir is not None:
             os.environ["TORCH_NEURONX_NEFF_CACHE_DIR"] = cache_dir
@@ -2286,6 +2287,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             component = getattr(self, name, None)
             if isinstance(component, torch.nn.Module) and not is_compiled_module(component):
                 logger.info(f"Compiling {name} with backend='neuron'")
+                set_model_name(name)
                 setattr(self, name, torch.compile(component, backend="neuron", fullgraph=fullgraph))
 
     def neuron_warmup(self, *args, **kwargs) -> None:
