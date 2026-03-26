@@ -5691,7 +5691,8 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
 
         is_lokr = any("lokr_" in k for k in state_dict)
         if is_lokr:
-            if any(k.startswith("diffusion_model.") for k in state_dict):
+            is_bfl_format = any(k.startswith("diffusion_model.") for k in state_dict)
+            if is_bfl_format:
                 state_dict = _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict, fuse_qkv=fuse_qkv)
             elif any(k.startswith("lycoris_") for k in state_dict):
                 state_dict = _convert_lycoris_flux2_lokr_to_diffusers(state_dict)
@@ -5700,7 +5701,8 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
             if metadata is None:
                 metadata = {}
             metadata["is_lokr"] = "true"
-            if fuse_qkv:
+            # Only fuse model QKV for BFL format (which has fused QKV keys to map 1:1)
+            if fuse_qkv and is_bfl_format:
                 metadata["fuse_qkv"] = "true"
         else:
             is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)

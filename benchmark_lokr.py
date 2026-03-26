@@ -162,8 +162,9 @@ def main():
         img.save(path)
         print(f"  Saved: {path}")
 
-    # Tier 1: Fuse-first (lossless, BFL only)
+    # Tier 1: Fuse-first (lossless, BFL format only - identical to tier 2 for other formats)
     if 1 in args.tiers:
+        print("\n  Note: Tier 1 only differs from tier 2 for BFL-format LoKR (fused QKV).")
         img = benchmark_tier1_fuse_first(pipe, args.prompt, args.seed, args.lokr_path, args.lokr_name)
         path = os.path.join(OUTPUT_DIR, "tier1_fuse_lossless.png")
         img.save(path)
