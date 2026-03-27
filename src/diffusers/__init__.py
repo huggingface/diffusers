@@ -193,6 +193,8 @@ else:
             "AutoencoderKLHunyuanImageRefiner",
             "AutoencoderKLHunyuanVideo",
             "AutoencoderKLHunyuanVideo15",
+            "AutoencoderKLKVAE",
+            "AutoencoderKLKVAEVideo",
             "AutoencoderKLLTX2Audio",
             "AutoencoderKLLTX2Video",
             "AutoencoderKLLTXVideo",
@@ -342,6 +344,8 @@ else:
     _import_structure["schedulers"].extend(
         [
             "AmusedScheduler",
+            "BlockRefinementScheduler",
+            "BlockRefinementSchedulerOutput",
             "CMStochasticIterativeScheduler",
             "CogVideoXDDIMScheduler",
             "CogVideoXDPMScheduler",
@@ -578,6 +582,8 @@ else:
             "LDMTextToImagePipeline",
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
+            "LLaDA2Pipeline",
+            "LLaDA2PipelineOutput",
             "LongCatImageEditPipeline",
             "LongCatImagePipeline",
             "LTX2ConditionPipeline",
@@ -975,6 +981,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanImageRefiner,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
+            AutoencoderKLKVAE,
+            AutoencoderKLKVAEVideo,
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
             AutoencoderKLLTXVideo,
@@ -1120,6 +1128,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers import DiffusersQuantizer
         from .schedulers import (
             AmusedScheduler,
+            BlockRefinementScheduler,
+            BlockRefinementSchedulerOutput,
             CMStochasticIterativeScheduler,
             CogVideoXDDIMScheduler,
             CogVideoXDPMScheduler,
@@ -1335,6 +1345,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMTextToImagePipeline,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
+            LLaDA2Pipeline,
+            LLaDA2PipelineOutput,
             LongCatImageEditPipeline,
             LongCatImagePipeline,
             LTX2ConditionPipeline,
