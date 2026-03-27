@@ -9,7 +9,7 @@ We want to uncover CPU overhead, CPU-GPU sync points, and other bottlenecks in p
 | Pipeline | Type | Checkpoint | Steps |
 |----------|------|-----------|-------|
 | `FluxPipeline` | text-to-image | `black-forest-labs/FLUX.1-dev` | 4 |
-| `Flux2Pipeline` | text-to-image | `black-forest-labs/FLUX.2-dev` | 4 |
+| `Flux2KleinPipeline` | text-to-image | `black-forest-labs/FLUX.2-klein-base-9B` | 4 |
 | `WanPipeline` | text-to-video | `Wan-AI/Wan2.1-T2V-14B-Diffusers` | 4 |
 | `LTX2Pipeline` | text-to-video | `Lightricks/LTX-2` | 4 |
 | `QwenImagePipeline` | text-to-image | `Qwen/Qwen-Image` | 4 |
@@ -74,7 +74,7 @@ This is non-invasive — it monkey-patches bound methods without modifying sourc
 | Pipeline | Resolution | Frames | Steps | Extra |
 |----------|-----------|--------|-------|-------|
 | Flux | 1024x1024 | — | 4 | `guidance_scale=3.5` |
-| Flux2 | 1024x1024 | — | 4 | `guidance_scale=3.5` |
+| Flux2Klein | 1024x1024 | — | 4 | `guidance_scale=3.5` |
 | Wan | 480x832 | 81 | 4 | — |
 | LTX2 | 768x512 | 121 | 4 | `guidance_scale=4.0` |
 | QwenImage | 1024x1024 | — | 4 | `true_cfg_scale=4.0` |
