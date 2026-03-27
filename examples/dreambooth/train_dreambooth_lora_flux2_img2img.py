@@ -1003,8 +1003,7 @@ class BucketBatchSampler(BatchSampler):
                 self.sampler_len += 1  # Count the number of batches
 
     def __iter__(self):
-        # Shuffle the order of the batches each epoch
-        random.shuffle(self.batches)
+        # Keep the precomputed batch order stable so step-indexed caches stay aligned.
         for batch in self.batches:
             yield batch
 
