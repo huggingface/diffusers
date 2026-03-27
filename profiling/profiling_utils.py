@@ -89,6 +89,9 @@ class PipelineProfiler:
                 logger.info(f"Full compilation with kwargs: {self.config.compile_kwargs}")
                 pipe.transformer.compile(**self.config.compile_kwargs)
 
+        # Disable tqdm progress bar to avoid CPU overhead / IO between steps
+        pipe.set_progress_bar_config(disable=True)
+
         annotate_pipeline(pipe)
         return pipe
 
