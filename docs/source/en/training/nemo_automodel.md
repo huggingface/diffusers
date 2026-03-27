@@ -247,6 +247,8 @@ checkpoint:
 
 ### Config field reference
 
+The table below lists the minimal required configs. See the [NeMo Automodel examples](https://github.com/NVIDIA-NeMo/Automodel/tree/main/examples/diffusion/finetune) have full example configs for all models.
+
 | Section | Required? | What to Change |
 |---------|-----------|----------------|
 | `model` | Yes | Set `pretrained_model_name_or_path` to the Hugging Face model ID. Set `mode: finetune` or `mode: pretrain`. |
