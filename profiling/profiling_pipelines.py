@@ -27,7 +27,7 @@ PROMPT = "A cat holding a sign that says hello world"
 
 def build_registry():
     """Build the pipeline config registry. Imports are deferred to avoid loading all pipelines upfront."""
-    from diffusers import FluxPipeline, Flux2Pipeline, WanPipeline, LTX2Pipeline, QwenImagePipeline
+    from diffusers import FluxPipeline, Flux2KleinPipeline, WanPipeline, LTX2Pipeline, QwenImagePipeline
 
     return {
         "flux": PipelineProfilingConfig(
@@ -48,7 +48,7 @@ def build_registry():
         ),
         "flux2": PipelineProfilingConfig(
             name="flux2",
-            pipeline_cls=Flux2Pipeline,
+            pipeline_cls=Flux2KleinPipeline,
             pipeline_init_kwargs={
                 "pretrained_model_name_or_path": "black-forest-labs/FLUX.2-klein-base-9B",
                 "torch_dtype": torch.bfloat16,
