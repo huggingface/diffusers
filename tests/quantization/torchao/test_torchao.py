@@ -119,7 +119,7 @@ class TorchAoConfigTest(unittest.TestCase):
         """
         Check that there is no error in the repr
         """
-        quantization_config = TorchAoConfig(Int8WeightOnlyConfig(), modules_to_not_convert=["conv"])
+        quantization_config = TorchAoConfig(Int8WeightOnlyConfig(version=2), modules_to_not_convert=["conv"])
         quantization_repr = repr(quantization_config)
         self.assertIn("TorchAoConfig", quantization_repr)
         self.assertIn("torchao", quantization_repr)
