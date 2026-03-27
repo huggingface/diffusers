@@ -131,7 +131,7 @@ Preprocessing produces a cache directory organized by resolution bucket. NeMo Au
 
 Fine-tuning is driven by two components:
 
-1. **A recipe script** (e.g., [`finetune.py`](https://github.com/NVIDIA-NeMo/Automodel/blob/main/examples/diffusion/finetune/finetune.py)) — the Python entry point that orchestrates the training loop: loading the model, building the dataloader, running forward/backward passes, computing the flow matching loss, checkpointing, and logging.
+1. A recipe script ([finetune.py](https://github.com/NVIDIA-NeMo/Automodel/blob/main/examples/diffusion/finetune/finetune.py)) is a Python entry point that contains the training loop: loading the model, building the dataloader, running forward/backward passes, computing the flow matching loss, checkpointing, and logging.
 2. **A YAML configuration file** — specifies all settings the recipe uses: which model to fine-tune, where the data lives, optimizer hyperparameters, parallelism strategy, and more. You customize training by editing this file rather than modifying code, allowing you to scale from 1 to hundreds of GPUs seamlessly.
 
 Any YAML field can also be overridden from the CLI:
