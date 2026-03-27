@@ -99,7 +99,7 @@ class TorchAoConfigTest(unittest.TestCase):
         """
         Makes sure the config format is properly set
         """
-        quantization_config = TorchAoConfig(Int4WeightOnlyConfig())
+        quantization_config = TorchAoConfig(Int4WeightOnlyConfig(version=2))
         torchao_orig_config = quantization_config.to_dict()
         self.assertIn("quant_type", torchao_orig_config)
         self.assertIn("quant_method", torchao_orig_config)
