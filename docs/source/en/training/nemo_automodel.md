@@ -261,8 +261,6 @@ The table below lists the minimal required configs. See the [NeMo Automodel exam
 | `checkpoint` | Recommended | Set `checkpoint_dir` to a persistent path, especially in Docker. Use `restore_from` to resume from a previous checkpoint. |
 | `wandb` | Optional | Configure to enable Weights & Biases experiment tracking. Set `mode: disabled` to turn off. |
 
-> [!NOTE]
-> NeMo Automodel also supports **pretraining** diffusion models from randomly initialized weights. Set `mode: pretrain` in the model config. Pretraining example configs are available in the [NeMo Automodel examples](https://github.com/NVIDIA-NeMo/Automodel/tree/main/examples/diffusion/pretrain).
 
 
 ## Launch training
