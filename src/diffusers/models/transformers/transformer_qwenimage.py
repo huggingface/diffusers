@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 import math
 from math import prod
 from typing import Any
@@ -25,7 +24,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale, deprecate, logging
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -307,7 +306,7 @@ class QwenEmbedRope(nn.Module):
 
         return vid_freqs, txt_freqs
 
-    @functools.lru_cache(maxsize=128)
+    @lru_cache_unless_export(maxsize=128)
     def _compute_video_freqs(
         self, frame: int, height: int, width: int, idx: int = 0, device: torch.device = None
     ) -> torch.Tensor:
@@ -428,7 +427,7 @@ class QwenEmbedLayer3DRope(nn.Module):
 
         return vid_freqs, txt_freqs
 
-    @functools.lru_cache(maxsize=None)
+    @lru_cache_unless_export(maxsize=None)
     def _compute_video_freqs(self, frame, height, width, idx=0, device: torch.device = None):
         seq_lens = frame * height * width
         pos_freqs = self.pos_freqs.to(device) if device is not None else self.pos_freqs
@@ -450,7 +449,7 @@ class QwenEmbedLayer3DRope(nn.Module):
         freqs = torch.cat([freqs_frame, freqs_height, freqs_width], dim=-1).reshape(seq_lens, -1)
         return freqs.clone().contiguous()
 
-    @functools.lru_cache(maxsize=None)
+    @lru_cache_unless_export(maxsize=None)
     def _compute_condition_freqs(self, frame, height, width, device: torch.device = None):
         seq_lens = frame * height * width
         pos_freqs = self.pos_freqs.to(device) if device is not None else self.pos_freqs
@@ -934,6 +933,7 @@ class QwenImageTransformer2DModel(
             batch_size, image_seq_len = hidden_states.shape[:2]
             image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
             joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
+            joint_attention_mask = joint_attention_mask[:, None, None, :]
             block_attention_kwargs["attention_mask"] = joint_attention_mask
 
         for index_block, block in enumerate(self.transformer_blocks):
