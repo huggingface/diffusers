@@ -280,6 +280,10 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         global_step = 0
         x_accum: torch.LongTensor = prompt_ids
 
+        # Initialize KV cache for cross-block context
+        if hasattr(self.model, "reset_kv_cache"):
+            self.model.reset_kv_cache(eval_batch_size=batch_size)
+
         block_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy()
         block_progress_bar_config["position"] = 0
         block_progress_bar_config["desc"] = "Blocks"
@@ -310,6 +314,7 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                     move_chance_t = self.scheduler._compute_move_chance(t_tensor)
                     sigma_t = torch.min(-torch.log(1.0 - move_chance_t), sigma_max).float()
 
+                    # Pass current block to model in sample_mode (KV cache provides cross-block context).
                     model_input = x_accum[:, -block_length:]
                     model_output = self.model(
                         input_ids=model_input,
@@ -332,8 +337,7 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                     x_accum = scheduler_output.prev_sample
                     p_x0_cache = scheduler_output.p_x0_cache
                 else:
-                    # Cache is valid — reuse p_x0. We still need to run the scheduler step
-                    # but with the cached logits. Convert p_x0_cache back to logits.
+                    # Cache is valid — reuse p_x0. Run scheduler step with cached distribution.
                     logits = p_x0_cache.log()
 
                     scheduler_output = self.scheduler.step(
@@ -361,6 +365,19 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 progress_bar.update(1)
 
             progress_bar.close()
+
+            # Store denoised block's KVs into cache for cross-block context
+            if hasattr(self.model, "reset_kv_cache"):
+                denoised_block = x_accum[:, -block_length:]
+                t_tensor = self.scheduler.timesteps[0].unsqueeze(0).expand(batch_size).to(torch.float64)
+                move_chance_t = self.scheduler._compute_move_chance(t_tensor)
+                sigma_store = torch.min(-torch.log(1.0 - move_chance_t), sigma_max).float()
+                self.model(
+                    input_ids=denoised_block,
+                    timesteps=sigma_store.to(denoised_block.device),
+                    sample_mode=True,
+                    store_kv=True,
+                )
 
             # EOS early stopping
             if eos_early_stop and eos_token_id is not None:

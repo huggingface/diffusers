@@ -234,10 +234,22 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         mask_prob = move_chance_s / move_chance_t  # (batch, 1)
 
         # ------------------------------------------------------------------
-        # Convert model logits -> p(x_0) with nucleus filtering
+        # Apply subs parameterization and convert to p(x_0)
         # ------------------------------------------------------------------
         logits = model_output[:, -block_size:].to(dtype=torch.float64)
-        p_x0 = torch.softmax(logits, dim=-1)
+
+        # Subs parameterization: mask token gets -inf, then log_softmax normalizes.
+        # For unmasked positions, the distribution is forced to be the identity.
+        logits[..., mask_token_id] = -1e9
+        logits = logits - torch.logsumexp(logits, dim=-1, keepdim=True)
+
+        x_current_block = sample[:, -block_size:]
+        unmasked = x_current_block != mask_token_id
+        logits[unmasked] = -1e9
+        logits[unmasked, x_current_block[unmasked]] = 0.0
+
+        # Convert log-probs to probs and apply nucleus filtering
+        p_x0 = logits.exp()
         p_x0 = self._nucleus_filtering(p_x0, nucleus_p)
 
         # ------------------------------------------------------------------
