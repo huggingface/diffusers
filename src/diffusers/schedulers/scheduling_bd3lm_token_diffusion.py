@@ -340,8 +340,73 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         return noisy_samples
 
     # ------------------------------------------------------------------
-    # Stopping criterion
+    # Sigma computation (for model input)
     # ------------------------------------------------------------------
+
+    def compute_sigma(self, t: float | torch.Tensor, batch_size: int = 1) -> torch.Tensor:
+        """
+        Compute the sigma value (noise level) for a given timestep.
+
+        Sigma is derived from the noise schedule's move chance: ``sigma = -log(1 - move_chance)``, clamped at
+        ``sigma_max = -log(eps)`` where ``eps = 1e-3``.
+
+        Args:
+            t (`float` or `torch.Tensor`):
+                Continuous timestep value in [0, 1].
+            batch_size (`int`):
+                Batch size for expanding the result.
+
+        Returns:
+            `torch.Tensor`: Sigma values of shape ``(batch_size,)`` in float32.
+        """
+        if not isinstance(t, torch.Tensor):
+            t = torch.tensor([t], dtype=torch.float64)
+        t = t.to(dtype=torch.float64)
+        if t.dim() == 0:
+            t = t.unsqueeze(0)
+        t = t.expand(batch_size)
+
+        eps = 1e-3
+        sigma_max = -torch.log(torch.tensor(eps, device=t.device, dtype=torch.float64))
+        move_chance = self._compute_move_chance(t)
+        sigma = torch.min(-torch.log(1.0 - move_chance), sigma_max)
+        return sigma.float()
+
+    # ------------------------------------------------------------------
+    # Stopping criteria
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def check_eos_finished(
+        sequences: torch.LongTensor,
+        prompt_length: int,
+        eos_token_id: int,
+        finished: torch.BoolTensor,
+    ) -> torch.BoolTensor:
+        """
+        Update per-batch finished flags when EOS tokens appear in the generated portion.
+
+        Args:
+            sequences (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Full accumulated sequence including prompt.
+            prompt_length (`int`):
+                Number of prompt tokens at the start.
+            eos_token_id (`int`):
+                EOS token ID.
+            finished (`torch.BoolTensor` of shape `(batch_size,)`):
+                Current per-batch finished flags.
+
+        Returns:
+            `torch.BoolTensor`: Updated finished flags.
+        """
+        batch_size = sequences.shape[0]
+        for b in range(batch_size):
+            if finished[b]:
+                continue
+            generated = sequences[b, prompt_length:]
+            if (generated == eos_token_id).any():
+                finished[b] = True
+        return finished
 
     @staticmethod
     def check_should_stop(sequences: torch.LongTensor, mask_token_id: int) -> bool:

@@ -41,11 +41,11 @@ EXAMPLE_DOC_STRING = """
         >>> tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
         >>> scheduler = BD3LMTokenDiffusionScheduler(
         ...     block_size=model.config.block_size,
-        ...     mask_token_id=model.config.vocab_size,
+        ...     mask_token_id=model.config.vocab_size - 1,
         ... )
 
         >>> pipe = BD3LMPipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
-        >>> output = pipe(gen_length=64, num_inference_steps=64)
+        >>> output = pipe(gen_length=64, num_inference_steps=64, nucleus_p=0.9)
         >>> print(output.texts[0])
         ```
 """
@@ -85,13 +85,14 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler, tokenizer=tokenizer)
 
-        # Resolve mask token ID: model.config.mask_index > model.config.vocab_size > tokenizer
+        # Resolve mask token ID: model.config.mask_index > vocab_size - 1 (BD3LM convention) > tokenizer
         self.mask_token_id: int | None = None
         if hasattr(self.model, "config"):
             self.mask_token_id = getattr(self.model.config, "mask_index", None)
             if self.mask_token_id is None:
-                # BD3LM convention: mask_token_id = vocab_size (appended mask token)
-                self.mask_token_id = getattr(self.model.config, "vocab_size", None)
+                vocab_size = getattr(self.model.config, "vocab_size", None)
+                if vocab_size is not None:
+                    self.mask_token_id = vocab_size - 1
         if self.mask_token_id is None and self.tokenizer is not None:
             self.mask_token_id = getattr(self.tokenizer, "mask_token_id", None)
 
@@ -201,7 +202,7 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
         Examples:
         """
-        # 0. Resolve defaults
+        # 1. Resolve defaults and check inputs early
         if block_length is None:
             block_length = getattr(getattr(self.model, "config", None), "block_size", None)
             if block_length is None:
@@ -217,7 +218,6 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         if eos_token_id is None:
             eos_token_id = self.eos_token_id
 
-        # 1. Handle callbacks
         if callback_on_step_end is not None and isinstance(
             callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
         ):
@@ -254,7 +254,6 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             prompt_ids = prompt_ids.to(device=device)
             batch_size = prompt_ids.shape[0]
         else:
-            # Unconditional generation: start with BOS token.
             batch_size = 1
             bos_id = self._resolve_start_token_id()
             if bos_id is None:
@@ -270,10 +269,6 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         num_strides = (gen_length + block_length - 1) // block_length
         self._num_timesteps = num_inference_steps * num_strides
-
-        # Compute sigma from move_chance for model input
-        noise_eps = 1e-3
-        sigma_max = -torch.log(torch.tensor(noise_eps, device=device, dtype=torch.float64))
 
         # 4. Semi-autoregressive block diffusion loop
         finished = torch.zeros((batch_size,), device=device, dtype=torch.bool)
@@ -300,21 +295,16 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             progress_bar = self.progress_bar(total=num_inference_steps)
 
             for step_idx in range(num_inference_steps):
-                # Check if all mask tokens resolved
+                # Check if all mask tokens in current block are resolved
                 if self.scheduler.check_should_stop(x_accum[:, -block_length:], mask_token_id):
                     progress_bar.update(num_inference_steps - step_idx)
                     break
 
                 t = self.scheduler.timesteps[step_idx]
 
-                # Get model predictions (only if cache was invalidated)
+                # Get model predictions only when p_x0 cache is invalidated
                 if p_x0_cache is None:
-                    # Compute sigma for the model
-                    t_tensor = t.unsqueeze(0).expand(batch_size).to(torch.float64)
-                    move_chance_t = self.scheduler._compute_move_chance(t_tensor)
-                    sigma_t = torch.min(-torch.log(1.0 - move_chance_t), sigma_max).float()
-
-                    # Pass current block to model in sample_mode (KV cache provides cross-block context).
+                    sigma_t = self.scheduler.compute_sigma(t, batch_size)
                     model_input = x_accum[:, -block_length:]
                     model_output = self.model(
                         input_ids=model_input,
@@ -322,36 +312,23 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                         sample_mode=True,
                     )
                     logits = model_output.logits if hasattr(model_output, "logits") else model_output
-
-                    # Scheduler step: DDPM update
-                    scheduler_output = self.scheduler.step(
-                        model_output=logits,
-                        timestep=t,
-                        sample=x_accum,
-                        mask_token_id=mask_token_id,
-                        nucleus_p=nucleus_p,
-                        generator=generator,
-                        return_dict=True,
-                    )
-
-                    x_accum = scheduler_output.prev_sample
-                    p_x0_cache = scheduler_output.p_x0_cache
                 else:
-                    # Cache is valid — reuse p_x0. Run scheduler step with cached distribution.
+                    # Reuse cached p_x0 distribution (convert back to log-probs for scheduler)
                     logits = p_x0_cache.log()
 
-                    scheduler_output = self.scheduler.step(
-                        model_output=logits,
-                        timestep=t,
-                        sample=x_accum,
-                        mask_token_id=mask_token_id,
-                        nucleus_p=nucleus_p,
-                        generator=generator,
-                        return_dict=True,
-                    )
+                # Scheduler step: DDPM update with subs parameterization
+                scheduler_output = self.scheduler.step(
+                    model_output=logits,
+                    timestep=t,
+                    sample=x_accum,
+                    mask_token_id=mask_token_id,
+                    nucleus_p=nucleus_p,
+                    generator=generator,
+                    return_dict=True,
+                )
 
-                    x_accum = scheduler_output.prev_sample
-                    p_x0_cache = scheduler_output.p_x0_cache
+                x_accum = scheduler_output.prev_sample
+                p_x0_cache = scheduler_output.p_x0_cache
 
                 # Callback
                 if callback_on_step_end is not None:
@@ -369,9 +346,7 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             # Store denoised block's KVs into cache for cross-block context
             if hasattr(self.model, "reset_kv_cache"):
                 denoised_block = x_accum[:, -block_length:]
-                t_tensor = self.scheduler.timesteps[0].unsqueeze(0).expand(batch_size).to(torch.float64)
-                move_chance_t = self.scheduler._compute_move_chance(t_tensor)
-                sigma_store = torch.min(-torch.log(1.0 - move_chance_t), sigma_max).float()
+                sigma_store = self.scheduler.compute_sigma(self.scheduler.timesteps[0], batch_size)
                 self.model(
                     input_ids=denoised_block,
                     timesteps=sigma_store.to(denoised_block.device),
@@ -379,12 +354,9 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                     store_kv=True,
                 )
 
-            # EOS early stopping
+            # EOS early stopping (delegated to scheduler)
             if eos_early_stop and eos_token_id is not None:
-                for b in range(batch_size):
-                    generated = x_accum[b, prompt_length:]
-                    if (generated == eos_token_id).any():
-                        finished[b] = True
+                finished = self.scheduler.check_eos_finished(x_accum, prompt_length, eos_token_id, finished)
                 if finished.all():
                     break
 
