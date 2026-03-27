@@ -1447,9 +1447,9 @@ class PipelineTesterMixin:
             elif hasattr(module, "half"):
                 components[name] = module.to(torch_device).half()
 
-            for key in components:
-                if "text_encoder" in key and hasattr(components[key], "eval"):
-                    components[key].eval()
+        for key, component in components.items():
+            if hasattr(component, "eval"):
+                component.eval()
 
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
