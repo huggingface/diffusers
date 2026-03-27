@@ -18,7 +18,7 @@
   <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
 </div>
 
-[LTX-2](https://arxiv.org/abs/2601.03233) is a DiT-based audio-video foundation model designed to generate synchronized video and audio within a single model. It brings together the core building blocks of modern video generation, with open weights and a focus on practical, local execution.
+[LTX-2](https://hf.co/papers/2601.03233) is a DiT-based audio-video foundation model designed to generate synchronized video and audio within a single model. It brings together the core building blocks of modern video generation, with open weights and a focus on practical, local execution.
 
 You can find all the original LTX-Video checkpoints under the [Lightricks](https://huggingface.co/Lightricks) organization.
 
@@ -356,11 +356,11 @@ Because the conditioning is done via latent frames, the 8 data space frames corr
 
 ## Multimodal Guidance
 
-With LTX-2.3 support, the LTX-2.X pipelines now support multimodal guidance. The LTX-2.X multimodal guidance setup is composed of three terms, all using a CFG-style update rule:
+LTX-2.X pipelines support multimodal guidance. It is composed of three terms, all using a CFG-style update rule:
 
-1. **Classifier-Free Guidance (CFG)**: standard [CFG](https://arxiv.org/abs/2207.12598) where the perturbed ("weaker") output is generated using the negative prompt.
-2. **Spatio-Temporal Guidance (STG)**: [STG](https://arxiv.org/pdf/2411.18664) moves away from a perturbed output created by short-cutting self-attention operations by substituting in the attention values instead. The idea is that this creates sharper videos and better spatiotemporal consistency.
-3. **Modality Isolation Guidance**: this moves away from a perturbed output created by disabling cross-modality (audio-to-video and video-to-audio) cross attention. This guidance is more specific to [LTX-2.X](https://arxiv.org/pdf/2601.03233) models, with the idea that this produces better consistency between the generated audio and video.
+1. Classifier-Free Guidance (CFG): standard [CFG](https://huggingface.co/papers/2207.12598) where the perturbed ("weaker") output is generated using the negative prompt.
+2. Spatio-Temporal Guidance (STG): [STG](https://huggingface.co/papers/2411.18664) moves away from a perturbed output created from short-cutting self-attention operations and substitutes in the attention values instead. The idea is that this creates sharper videos and better spatiotemporal consistency.
+3. Modality Isolation Guidance: moves away from a perturbed output created from disabling cross-modality (audio-to-video and video-to-audio) cross attention. This guidance is more specific to [LTX-2.X](https://huggingface.co/papers/2601.03233) models, with the idea that this produces better consistency between the generated audio and video.
 
 These are controlled by the `guidance_scale`, `stg_scale`, and `modality_scale` arguments, respectively, and can be set separately for video and audio. Additionally, for STG, the transformer block indices where self-attention is skipped needs to be specified via the `spatio_temporal_guidance_blocks` argument. In addition, the LTX-2.X pipelines also support [guidance rescaling](https://arxiv.org/abs/2305.08891) to help reduce over-exposure, which can be a problem when the guidance scales are set to high values.
 
@@ -433,7 +433,7 @@ encode_video(
 
 ## Prompt Enhancement
 
-The LTX-2.X models are sensitive to the prompting style used. You can refer to the [official prompting guide](https://ltx.io/model/model-blog/prompting-guide-for-ltx-2) for recommendations on how to write a good prompt. Using prompt enhancement, where the supplied prompts are enhanced using the pipeline's text encoder (by default a [Gemma 3](https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-unquantized) model) given a system prompt, can also improve sample quality. The optional `processor` pipeline component needs to be present to use prompt enhancement. Prompt enhancement can be enabled by supplying a `system_prompt` argument:
+The LTX-2.X models are sensitive to prompting style. Refer to the [official prompting guide](https://ltx.io/model/model-blog/prompting-guide-for-ltx-2) for recommendations on how to write a good prompt. Using prompt enhancement, where the supplied prompts are enhanced using the pipeline's text encoder (by default a [Gemma 3](https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-unquantized) model) given a system prompt, can also improve sample quality. The optional `processor` pipeline component needs to be present to use prompt enhancement. Enable prompt enhancement by supplying a `system_prompt` argument:
 
 
 ```py
