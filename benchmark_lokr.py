@@ -251,7 +251,8 @@ def weight_space_svd(lokr_path, lokr_name, ranks, no_offload=False):
         # Also print the LoKR config for reference
         lokr_cfg = pipe.transformer.peft_config.get(adapter_name)
         if lokr_cfg:
-            print(f"  LoKR config: alpha={lokr_cfg.alpha}, r={lokr_cfg.r}")
+            alpha = getattr(lokr_cfg, "alpha", getattr(lokr_cfg, "lora_alpha", "?"))
+            print(f"  Adapter config: {type(lokr_cfg).__name__}, alpha={alpha}, r={lokr_cfg.r}")
 
         # Compare each module: LoKR delta vs LoRA delta (lora_B @ lora_A)
         results = []
@@ -352,7 +353,8 @@ def benchmark_tier3_svd(pipe, prompt, seed, rank, lokr_path, lokr_name):
     t0 = time.time()
     lokr_cfg = pipe.transformer.peft_config.get(adapter_name)
     if lokr_cfg:
-        print(f"  LoKR config: alpha={lokr_cfg.alpha}, r={lokr_cfg.r}")
+        alpha = getattr(lokr_cfg, "alpha", getattr(lokr_cfg, "lora_alpha", "?"))
+        print(f"  Adapter config: {type(lokr_cfg).__name__}, alpha={alpha}, r={lokr_cfg.r}")
 
     t0 = time.time()
     lora_config, lora_sd = convert_to_lora(pipe.transformer, rank, adapter_name=adapter_name, progressbar=True)
