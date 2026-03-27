@@ -72,7 +72,7 @@ docker run --gpus all -it --rm --shm-size=8g nvcr.io/nvidia/nemo-automodel:26.02
 
 ## Data preparation
 
-Diffusion training in NeMo Automodel operates in latent space. Raw images or videos must be preprocessed into `.meta` files containing VAE latents and text embeddings before training. This avoids re-encoding on every training step.
+NeMo Automodel trains diffusion models in latent space. Raw images or videos must be preprocessed into `.meta` files containing VAE latents and text embeddings before training. This avoids re-encoding on every training step.
 
 Use the built-in preprocessing tool to encode your data. The tool automatically distributes work across all available GPUs.
 
