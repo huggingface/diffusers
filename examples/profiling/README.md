@@ -197,4 +197,54 @@ To inspect this: zoom into a single denoising step, select a CUDA kernel on the 
 
 ## Afterwards
 
-TODO
+To keep the profiling iterations fast, we always used [regional compilation](https://pytorch.org/tutorials/recipes/regional_compilation.html). As one would expect the trace with compilation should show
+fewer kernel launches than its eager counterpart:
+
+TODO: show traces
+
+_(The traces above were obtained with Flux2.)_
+
+### Spotting gaps between launches
+
+Then a reasonable next step is to spot frequent gaps between kernel executions. In the compiled
+case, we don't spot any on the surface. But if we zone in, some become apparent.
+
+TODO: show gaps in a compile trace
+
+So, we provided the profile trace (with compilation) to Claude, asked it to find the instances of
+"cudaStreamSynchronize" and "cudaDeviceSynchronize", and to come up with some potential fixes.
+Claude came back pretty strong:
+
+```
+Issue 1 — Gap between transformer forwards:
+- Root cause: tqdm progress bar update() calls between steps add CPU overhead (I/O, time calculations)
+- Fix: profiling/profiling_utils.py — added pipe.set_progress_bar_config(disable=True) during profiling setup.
+This eliminates the tqdm overhead from the trace. (The remaining gap from scheduler step + Python dispatch is
+inherent to eager-mode execution and should shrink significantly under torch.compile.)
+
+Issue 2 — cudaStreamSynchronize during last transformer forward:
+- Root cause: _unpack_latents_with_ids() (called right after the denoising loop) computes h = torch.max(h_ids) +
+1 and w = torch.max(w_ids) + 1 on GPU tensors, then uses them as shape args for torch.zeros((h * w, ch), ...).
+This triggers an implicit .item() DtoH sync, blocking the CPU while the GPU is still finishing the last
+transformer forward's kernels.
+- Fix: Added height/width parameters to _unpack_latents_with_ids(), pre-computed from the known pixel dimensions
+at the call site.
+```
+
+It still didn't eliminate the gaps as expected so, we fed that back to Claude and it spotted
+something more crucial. TODO: caching context fix.
+
+With the fix applied, the improvements were visible:
+
+TODO: show before and after trace
+
+Before:  
+
+- `_set_context` total: 21.6ms (8 calls)                                                                          
+- cache_context total: 21.7ms                                                                                   
+- CPU gaps: 5,523us / 8,007us / 5,508us                                                                         
+                                                                                                            
+After:                                                                                                          
+- `_set_context` total: 0.0ms (8 calls)                                                                           
+- cache_context total: 0.1ms                                                                                    
+- CPU gaps: 158us / 2,777us / 136us  
