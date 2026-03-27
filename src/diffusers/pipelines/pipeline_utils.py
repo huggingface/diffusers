@@ -22,7 +22,7 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin, get_type_hints
+from typing import Any, Callable, Dict, List, Union, get_args, get_origin, get_type_hints
 
 import httpx
 import numpy as np

@@ -66,10 +66,12 @@ class DFlashTokenDiffusionSchedulerTest(unittest.TestCase):
 
     def test_sample_greedy_batched(self):
         scheduler = self.get_scheduler()
-        logits = torch.tensor([
-            [[10.0, 0.0], [0.0, 10.0]],
-            [[0.0, 10.0], [10.0, 0.0]],
-        ])  # (2, 2, 2)
+        logits = torch.tensor(
+            [
+                [[10.0, 0.0], [0.0, 10.0]],
+                [[0.0, 10.0], [10.0, 0.0]],
+            ]
+        )  # (2, 2, 2)
         tokens = scheduler.sample(logits, temperature=0.0)
         self.assertEqual(tokens.shape, (2, 2))
         self.assertEqual(tokens[0, 0].item(), 0)

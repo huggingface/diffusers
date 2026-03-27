@@ -36,8 +36,16 @@ class _DummyTargetModel(torch.nn.Module):
     def get_output_embeddings(self):
         return self.lm_head
 
-    def forward(self, input_ids, position_ids=None, past_key_values=None,
-                use_cache=False, output_hidden_states=False, logits_to_keep=None, **kwargs):
+    def forward(
+        self,
+        input_ids,
+        position_ids=None,
+        past_key_values=None,
+        use_cache=False,
+        output_hidden_states=False,
+        logits_to_keep=None,
+        **kwargs,
+    ):
         bsz, seq_len = input_ids.shape
         h = self.embed(input_ids)
         # Create hidden_states list: one entry per layer + 1 for the embedding layer
@@ -71,8 +79,16 @@ class _DummyDraftModel(torch.nn.Module):
     def device(self):
         return self._device_anchor.device
 
-    def forward(self, target_hidden, noise_embedding, position_ids=None,
-                past_key_values=None, use_cache=False, is_causal=False, **kwargs):
+    def forward(
+        self,
+        target_hidden,
+        noise_embedding,
+        position_ids=None,
+        past_key_values=None,
+        use_cache=False,
+        is_causal=False,
+        **kwargs,
+    ):
         # Return a tensor with shape (batch, seq_len, hidden_dim)
         bsz = noise_embedding.shape[0]
         seq_len = position_ids.shape[1] if position_ids is not None else noise_embedding.shape[1]
@@ -365,7 +381,9 @@ class DFlashPipelineTest(unittest.TestCase):
     def test_prepare_latents(self):
         pipe = _make_pipeline()
         mask_token_id = 99
-        latents = pipe.prepare_latents(max_length=10, block_size=4, mask_token_id=mask_token_id, device=torch.device("cpu"))
+        latents = pipe.prepare_latents(
+            max_length=10, block_size=4, mask_token_id=mask_token_id, device=torch.device("cpu")
+        )
         self.assertEqual(latents.shape, (1, 14))  # 10 + 4
         self.assertTrue((latents == mask_token_id).all().item())
         self.assertEqual(latents.dtype, torch.long)
