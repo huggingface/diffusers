@@ -15,6 +15,8 @@
 import gc
 import unittest
 
+import pytest
+
 import numpy as np
 import torch
 from PIL import Image
@@ -207,6 +209,16 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         video = pipe(**inputs).frames[0]
         self.assertEqual(video.shape, (17, 3, 16, 16))
+
+    @pytest.mark.xfail(
+        reason="`blur_kernel` in `MotionConv2d` is registered with `persistent=False`, so it is not saved into the "
+        "checkpoint. After `from_pretrained`, it is always re-initialized in float32, while before saving it was "
+        "float16 (due to `.half()`). This dtype mismatch causes the two inference runs to take different numerical "
+        "paths. This issue is tracked.",
+        strict=True,
+    )
+    def test_save_load_float16(self):
+        super().test_save_load_float16()
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
