@@ -2643,8 +2643,8 @@ def _convert_kohya_flux2_lora_to_diffusers(state_dict):
 def _nearest_kronecker_product(matrix, m1, n1, m2, n2):
     """Find the nearest rank-1 Kronecker product approximation (Van Loan & Pitsianis).
 
-    Given matrix M of shape (m1*m2, n1*n2), finds w1 (m1, n1) and w2 (m2, n2)
-    minimizing ||M - kron(w1, w2)||_F via rank-1 SVD of a rearranged matrix.
+    Given matrix M of shape (m1*m2, n1*n2), finds w1 (m1, n1) and w2 (m2, n2) minimizing ||M - kron(w1, w2)||_F via
+    rank-1 SVD of a rearranged matrix.
     """
     # Rearrange M into R of shape (m1*n1, m2*n2)
     # R[i*n1+j, k*n2+l] = M[i*m2+k, j*n2+l]
@@ -2661,8 +2661,8 @@ def _nearest_kronecker_product(matrix, m1, n1, m2, n2):
 def _split_lokr_qkv(w1, w2, target_keys, factor):
     """Split fused LoKR QKV factors into separate per-projection Kronecker factors.
 
-    Materializes kron(w1, w2), chunks along dim=0, and re-factorizes each chunk
-    as a rank-1 Kronecker product using the Van Loan algorithm.
+    Materializes kron(w1, w2), chunks along dim=0, and re-factorizes each chunk as a rank-1 Kronecker product using the
+    Van Loan algorithm.
 
     Args:
         w1: First Kronecker factor, shape (f, f) where f = decompose_factor.
@@ -2694,9 +2694,8 @@ def _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict, fuse_qkv=False):
     Args:
         state_dict: BFL-format LoKR state dict with ``diffusion_model.`` prefix.
         fuse_qkv: If True, map fused QKV directly to ``to_qkv``/``to_added_qkv`` targets
-            (lossless, but requires the model's QKV to be fused before injection).
-            If False (default), split fused QKV into separate Q/K/V via Kronecker
-            re-factorization (slightly lossy, no model fusion needed).
+            (lossless, but requires the model's QKV to be fused before injection). If False (default), split fused QKV
+            into separate Q/K/V via Kronecker re-factorization (slightly lossy, no model fusion needed).
     """
     converted_state_dict = {}
 
@@ -2891,8 +2890,8 @@ def _bake_lokr_alpha(state_dict):
 def _convert_lycoris_flux2_lokr_to_diffusers(state_dict):
     """Convert LyCORIS underscore-format Flux2 LoKR state dict to peft-compatible diffusers format.
 
-    LyCORIS keys use underscore-encoded paths (e.g., lycoris_transformer_blocks_0_attn_to_q.lokr_w1).
-    Decodes these to dotted diffusers paths using a known sub-path lookup table.
+    LyCORIS keys use underscore-encoded paths (e.g., lycoris_transformer_blocks_0_attn_to_q.lokr_w1). Decodes these to
+    dotted diffusers paths using a known sub-path lookup table.
     """
     import re
 
@@ -2938,8 +2937,8 @@ def _convert_lycoris_flux2_lokr_to_diffusers(state_dict):
 def _convert_diffusers_flux2_lokr_to_peft(state_dict):
     """Convert diffusers-native Flux2 LoKR state dict by adding transformer. prefix and baking alpha.
 
-    Diffusers-native keys already use dotted module paths matching the model structure.
-    Only alpha baking and the transformer. prefix are needed.
+    Diffusers-native keys already use dotted module paths matching the model structure. Only alpha baking and the
+    transformer. prefix are needed.
     """
     original_state_dict = dict(state_dict)
     _bake_lokr_alpha(original_state_dict)

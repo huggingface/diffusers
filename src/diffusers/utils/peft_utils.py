@@ -347,13 +347,12 @@ def check_peft_version(min_version: str) -> None:
 def _create_lokr_config(state_dict):
     """Create a peft LoKrConfig from a converted LoKR state dict.
 
-    Infers rank, decompose_both, decompose_factor, and target_modules from the state dict key names
-    and tensor shapes. Alpha scaling is assumed to be already baked into the weights, so config
-    alpha = r (scaling = 1.0).
+    Infers rank, decompose_both, decompose_factor, and target_modules from the state dict key names and tensor shapes.
+    Alpha scaling is assumed to be already baked into the weights, so config alpha = r (scaling = 1.0).
 
-    Peft determines w2 decomposition via ``r < max(out_k, in_n) / 2``. We must set per-module rank
-    values that reproduce the same decomposition pattern as the checkpoint. For modules with full
-    (non-decomposed) lokr_w2, we set rank = max(lokr_w2.shape) so that peft also creates a full w2.
+    Peft determines w2 decomposition via ``r < max(out_k, in_n) / 2``. We must set per-module rank values that
+    reproduce the same decomposition pattern as the checkpoint. For modules with full (non-decomposed) lokr_w2, we set
+    rank = max(lokr_w2.shape) so that peft also creates a full w2.
     """
     from peft import LoKrConfig
 
@@ -431,9 +430,9 @@ def _create_lokr_config(state_dict):
 def _convert_adapter_to_lora(model, rank, adapter_name="default"):
     """Convert a loaded non-LoRA peft adapter (e.g., LoKR) to LoRA via truncated SVD.
 
-    Wraps ``peft.convert_to_lora`` which materializes each adapter layer's delta weight
-    and decomposes it as ``U @ diag(S) @ V ≈ lora_B @ lora_A``. The conversion is lossy:
-    higher ``rank`` preserves more fidelity at the cost of larger LoRA matrices.
+    Wraps ``peft.convert_to_lora`` which materializes each adapter layer's delta weight and decomposes it as ``U @
+    diag(S) @ V ≈ lora_B @ lora_A``. The conversion is lossy: higher ``rank`` preserves more fidelity at the cost of
+    larger LoRA matrices.
 
     Args:
         model: ``nn.Module`` with a peft adapter already injected.
