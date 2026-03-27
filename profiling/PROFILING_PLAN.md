@@ -143,6 +143,7 @@ Our `record_function` annotations (`transformer_forward`, `scheduler_step`, etc.
 Open both traces side by side (two Perfetto tabs). Key differences to look for:
 - **Fewer, wider CUDA kernels** in compile mode (fused ops) vs many small kernels in eager
 - **Smaller CPU gaps** between kernels in compile mode (less Python dispatch overhead)
+- **CUDA kernel count per step**: to compare, zoom into a single `transformer_forward` span on the CUDA row and count the distinct kernel slices within it. In eager mode you'll typically see many narrow slices (one per op); in compile mode these fuse into fewer, wider slices. A quick way to estimate: select a time range covering one denoising step on the CUDA row — Perfetto shows the number of slices in the selection summary at the bottom. If compile mode shows a similar kernel count to eager, fusion isn't happening effectively (likely due to graph breaks).
 - **Graph breaks**: if compile mode still shows many small kernels in a section, that section likely has a graph break — check `TORCH_LOGS="+dynamo"` output for details
 
 **5. Memory timeline**
