@@ -193,3 +193,7 @@ To inspect this: zoom into a single denoising step, select a CUDA kernel on the 
 | Compile effective? | CUDA kernel count per step | Fewer large kernels | Same as eager |
 | Kernel launch latency? | CPU launch → GPU kernel offset | < 10us, CPU ahead of GPU | > 20us or CPU trailing GPU |
 | Memory stable? | Memory counter track | Flat during denoise loop | Growing per step |
+
+## Afterwards
+
+TODO
