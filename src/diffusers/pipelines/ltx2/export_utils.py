@@ -145,7 +145,7 @@ def encode_video(
         # Pipeline output_type="np"
         is_denormalized = np.logical_and(np.zeros_like(video) <= video, video <= np.ones_like(video))
         if np.all(is_denormalized):
-            video = (video * 255).round().astype("uint8")
+            video = (video * 255).astype("uint8")
         else:
             logger.warning(
                 "Supplied `numpy.ndarray` does not have values in [0, 1]. The values will be assumed to be pixel "
