@@ -248,3 +248,10 @@ After:
 - `_set_context` total: 0.0ms (8 calls)                                                                           
 - cache_context total: 0.1ms                                                                                    
 - CPU gaps: 158us / 2,777us / 136us  
+
+### Notes
+
+* As mentioned above, we profiled with regional compilation so it's possible that
+there are still some gaps outside the compiled regions. A full compilation
+will likely mitigate it. In case it doesn't, the above observations could
+be useful to mitigate that.
