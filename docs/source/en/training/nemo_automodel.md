@@ -67,7 +67,7 @@ docker run --gpus all -it --rm --shm-size=8g nvcr.io/nvidia/nemo-automodel:26.02
 ```
 
 > [!WARNING]
-> **Docker users:** Checkpoints are lost when the container exits unless you bind-mount the checkpoint directory to the host. For example, add `-v /host/path/checkpoints:/workspace/checkpoints` to the `docker run` command.
+> Checkpoints are lost when the container exits unless you bind-mount the checkpoint directory to the host. For example, add `-v /host/path/checkpoints:/workspace/checkpoints` to the `docker run` command.
 
 > [!TIP]
 > For the full set of installation methods (including from source), see the [NeMo Automodel installation guide](https://docs.nvidia.com/nemo/automodel/latest/guides/installation.html).
