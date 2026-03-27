@@ -18,7 +18,7 @@
   <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
 </div>
 
-[LTX-2](https://hf.co/papers/2601.03233) is a DiT-based audio-video foundation model designed to generate synchronized video and audio within a single model. It brings together the core building blocks of modern video generation, with open weights and a focus on practical, local execution.
+[LTX-2](https://hf.co/papers/2601.03233) is a DiT-based foundation model designed to generate synchronized video and audio within a single model. It brings together the core building blocks of modern video generation, with open weights and a focus on practical, local execution.
 
 You can find all the original LTX-Video checkpoints under the [Lightricks](https://huggingface.co/Lightricks) organization.
 
@@ -362,7 +362,7 @@ LTX-2.X pipelines support multimodal guidance. It is composed of three terms, al
 2. Spatio-Temporal Guidance (STG): [STG](https://huggingface.co/papers/2411.18664) moves away from a perturbed output created from short-cutting self-attention operations and substitutes in the attention values instead. The idea is that this creates sharper videos and better spatiotemporal consistency.
 3. Modality Isolation Guidance: moves away from a perturbed output created from disabling cross-modality (audio-to-video and video-to-audio) cross attention. This guidance is more specific to [LTX-2.X](https://huggingface.co/papers/2601.03233) models, with the idea that this produces better consistency between the generated audio and video.
 
-These are controlled by the `guidance_scale`, `stg_scale`, and `modality_scale` arguments, respectively, and can be set separately for video and audio. Additionally, for STG, the transformer block indices where self-attention is skipped needs to be specified via the `spatio_temporal_guidance_blocks` argument. In addition, the LTX-2.X pipelines also support [guidance rescaling](https://arxiv.org/abs/2305.08891) to help reduce over-exposure, which can be a problem when the guidance scales are set to high values.
+These are controlled by the `guidance_scale`, `stg_scale`, and `modality_scale` arguments and can be set separately for video and audio. Additionally, for STG the transformer block indices where self-attention is skipped needs to be specified via the `spatio_temporal_guidance_blocks` argument. The LTX-2.X pipelines also support [guidance rescaling](https://huggingface.co/papers/2305.08891) to help reduce over-exposure, which can be a problem when the guidance scales are set to high values.
 
 ```py
 import torch
