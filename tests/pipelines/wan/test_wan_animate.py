@@ -214,7 +214,7 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         reason="`blur_kernel` in `MotionConv2d` is registered with `persistent=False`, so it is not saved into the "
         "checkpoint. After `from_pretrained`, it is always re-initialized in float32, while before saving it was "
         "float16 (due to `.half()`). This dtype mismatch causes the two inference runs to take different numerical "
-        "paths. This issue is tracked.",
+        "paths. This issue is being tracked by PR https://github.com/huggingface/diffusers/pull/13339.",
         strict=True,
     )
     def test_save_load_float16(self):
