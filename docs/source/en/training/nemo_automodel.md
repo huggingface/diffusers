@@ -264,8 +264,6 @@ The table below lists the minimal required configs. See the [NeMo Automodel exam
 > [!NOTE]
 > NeMo Automodel also supports **pretraining** diffusion models from randomly initialized weights. Set `mode: pretrain` in the model config. Pretraining example configs are available in the [NeMo Automodel examples](https://github.com/NVIDIA-NeMo/Automodel/tree/main/examples/diffusion/pretrain).
 
-> [!TIP]
-> Full example configs for all models are available in the [NeMo Automodel examples](https://github.com/NVIDIA-NeMo/Automodel/tree/main/examples/diffusion/finetune).
 
 ## Launch training
 
