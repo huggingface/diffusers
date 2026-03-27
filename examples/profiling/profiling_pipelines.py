@@ -15,7 +15,6 @@ import copy
 import logging
 
 import torch
-
 from profiling_utils import PipelineProfiler, PipelineProfilingConfig
 
 
@@ -27,7 +26,7 @@ PROMPT = "A cat holding a sign that says hello world"
 
 def build_registry():
     """Build the pipeline config registry. Imports are deferred to avoid loading all pipelines upfront."""
-    from diffusers import FluxPipeline, Flux2KleinPipeline, WanPipeline, LTX2Pipeline, QwenImagePipeline
+    from diffusers import Flux2KleinPipeline, FluxPipeline, LTX2Pipeline, QwenImagePipeline, WanPipeline
 
     return {
         "flux": PipelineProfilingConfig(

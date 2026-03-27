@@ -83,7 +83,9 @@ class PipelineProfiler:
 
         if self.config.compile_kwargs:
             if self.config.compile_regional:
-                logger.info(f"Regional compilation (compile_repeated_blocks) with kwargs: {self.config.compile_kwargs}")
+                logger.info(
+                    f"Regional compilation (compile_repeated_blocks) with kwargs: {self.config.compile_kwargs}"
+                )
                 pipe.transformer.compile_repeated_blocks(**self.config.compile_kwargs)
             else:
                 logger.info(f"Full compilation with kwargs: {self.config.compile_kwargs}")

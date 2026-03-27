@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
 done
 NUM_STEPS=2
 # PIPELINES=("flux" "flux2" "wan" "ltx2" "qwenimage")
-PIPELINES=("flux2")
+PIPELINES=("wan")
 MODES=("eager" "compile")
 
 for pipeline in "${PIPELINES[@]}"; do
