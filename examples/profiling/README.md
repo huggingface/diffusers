@@ -249,6 +249,14 @@ After:
 - cache_context total: 0.1ms                                                                                    
 - CPU gaps: 158us / 2,777us / 136us  
 
+We also profiled the Wan model and uncovered problems related to CPU DtoH syncs. Below is an
+overview.
+
+TODO: provide trace outputs and numbers
+
+> [!NOTE]
+> The above-mentioned fixes are available in [this PR](TODO:link).
+
 ### Notes
 
 * As mentioned above, we profiled with regional compilation so it's possible that
