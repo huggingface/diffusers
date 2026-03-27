@@ -10,6 +10,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: read
+  id-token: write
 
 jobs:
   claude-review:
