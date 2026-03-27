@@ -993,6 +993,10 @@ class BucketBatchSampler(BatchSampler):
                 self.batches.append(batch)
                 self.sampler_len += 1  # Count the number of batches
 
+        # Shuffle the precomputed batches once to mix buckets while keeping
+        # the order stable across epochs for step-indexed caches.
+        random.shuffle(self.batches)
+
     def __iter__(self):
         # Keep the precomputed batch order stable so step-indexed caches stay aligned.
         for batch in self.batches:
