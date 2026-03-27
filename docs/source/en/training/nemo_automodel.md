@@ -125,7 +125,7 @@ Preprocessing produces a cache directory organized by resolution bucket. NeMo Au
 ```
 
 > [!TIP]
-> For caption formats, input data requirements, and all available preprocessing arguments, see the [Diffusion Dataset Preparation](https://docs.nvidia.com/nemo/automodel/latest/guides/diffusion/dataset.html) guide.
+> See the [Diffusion Dataset Preparation](https://docs.nvidia.com/nemo/automodel/latest/guides/diffusion/dataset.html) guide for caption formats, input data requirements, and all available preprocessing arguments.
 
 ## Training configuration
 
