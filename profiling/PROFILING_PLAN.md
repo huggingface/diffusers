@@ -115,7 +115,9 @@ The profiling should surface these known/suspected issues:
 
 ## Interpreting Traces in Perfetto UI
 
-Open the exported `.json` trace at [ui.perfetto.dev](https://ui.perfetto.dev/). The trace has two main rows: **CPU** (top) and **CUDA** (bottom).
+Open the exported `.json` trace at [ui.perfetto.dev](https://ui.perfetto.dev/). The trace has two main rows: **CPU** (top) and **CUDA** (bottom). In Perfetto, the CPU row is typically labeled with the process/thread name (e.g., `python (PID)` or `MainThread`) and appears at the top. The CUDA row is labeled `GPU 0` (or similar) and appears below the CPU rows.
+
+**Navigation:** Use `W` to zoom in, `S` to zoom out, and `A`/`D` to pan left/right. You can also scroll to zoom and click-drag to pan. Use `Shift+scroll` to scroll vertically through rows.
 
 ### What to look for
 
@@ -127,7 +129,7 @@ Zoom into the CUDA row during the denoising loop. Ideally, GPU kernels should be
 
 **2. CPU stalls (DtoH syncs)**
 
-Look for long CPU slices labeled `cudaStreamSynchronize` or `cudaDeviceSynchronize`. Click on them — if `with_stack=True` was enabled, the bottom panel shows the Python stack trace pointing to the exact line causing the sync (e.g., a `.item()` call in the scheduler).
+These appear on the **CPU row** (not the CUDA row) — they are CPU-side blocking calls that wait for the GPU to finish. Look for long slices labeled `cudaStreamSynchronize` or `cudaDeviceSynchronize`. To find them: zoom into the CPU row during a denoising step and look for unusually wide slices, or use Perfetto's search bar (press `/`) and type `cudaStreamSynchronize` to jump directly to matching events. Click on a slice — if `with_stack=True` was enabled, the bottom panel ("Current Selection") shows the Python stack trace pointing to the exact line causing the sync (e.g., a `.item()` call in the scheduler).
 
 **3. Annotated regions**
 
@@ -149,7 +151,7 @@ In Perfetto, look for the memory counter track (if `profile_memory=True`). Spike
 
 **6. Kernel launch latency**
 
-Each CUDA kernel is launched from the CPU. In Perfetto, you can see the CPU-side launch call (e.g., `cudaLaunchKernel`) and the corresponding GPU-side kernel execution. The time between the CPU dispatch and the GPU kernel starting should be minimal (single-digit microseconds). If you see consistent delays > 10-20us between launch and execution:
+Each CUDA kernel is launched from the CPU. The CPU-side launch calls (`cudaLaunchKernel`) appear as small slices on the **CPU row** — zoom in closely to a denoising step to see them. The corresponding GPU-side kernel executions appear on the **CUDA row** directly below. You can also use Perfetto's search bar (`/`) and type `cudaLaunchKernel` to find them. The time between the CPU dispatch and the GPU kernel starting should be minimal (single-digit microseconds). If you see consistent delays > 10-20us between launch and execution:
 - The launch queue may be starved because of excessive Python work between ops
 - There may be implicit syncs forcing serialization
 - `torch.compile` should help here by batching launches — compare eager vs compile to confirm
