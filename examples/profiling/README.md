@@ -14,6 +14,7 @@ Thanks to Claude Code for paircoding! We acknowledge the [Claude of OSS](https:/
 * [Approach taken](#approach)
 * [Verification](#verification)
 * [Interpretation](#interpreting-traces-in-perfetto-ui)
+* [Taking profiling-guided steps for improvements](#afterwards)
 
 Jump to the "Verification" section to get started right away.
 
