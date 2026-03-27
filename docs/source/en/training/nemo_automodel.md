@@ -53,7 +53,7 @@ Use the table below to pick the right model for your use case:
 
 ## Installation
 
-Install NeMo Automodel with pip.
+Install NeMo Automodel with pip. For the full set of installation methods (including from source), see the [NeMo Automodel installation guide](https://docs.nvidia.com/nemo/automodel/latest/guides/installation.html).
 
 ```bash
 pip3 install nemo-automodel
