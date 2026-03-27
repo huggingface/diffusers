@@ -285,6 +285,7 @@ else:
         ]
     )
     _import_structure["latte"] = ["LattePipeline"]
+    _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
     _import_structure["ltx"] = [
         "LTXPipeline",
         "LTXImageToVideoPipeline",
@@ -728,6 +729,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
+        from .llada2 import LLaDA2Pipeline, LLaDA2PipelineOutput
         from .longcat_image import LongCatImageEditPipeline, LongCatImagePipeline
         from .ltx import (
             LTXConditionPipeline,
