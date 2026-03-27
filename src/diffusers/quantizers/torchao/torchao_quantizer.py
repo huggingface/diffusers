@@ -20,7 +20,6 @@ https://github.com/huggingface/transformers/blob/3a8eb74668e9c2cc563b2f5c62fac17
 import importlib
 import re
 import types
-from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Any
 
 from packaging import version
@@ -199,13 +198,13 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                     )
 
     def update_torch_dtype(self, torch_dtype):
-        quant_type = self.quantization_config.quant_type
-        if isinstance(quant_type, str) and (quant_type.startswith("int") or quant_type.startswith("uint")):
-            if torch_dtype is not None and torch_dtype != torch.bfloat16:
-                logger.warning(
-                    f"You are trying to set torch_dtype to {torch_dtype} for int4/int8/uintx quantization, but "
-                    f"only bfloat16 is supported right now. Please set `torch_dtype=torch.bfloat16`."
-                )
+        config_name = self.quantization_config.quant_type.__class__.__name__
+        is_int_quant = config_name.startswith("Int") or config_name.startswith("Uint")
+        if is_int_quant and torch_dtype is not None and torch_dtype != torch.bfloat16:
+            logger.warning(
+                f"You are trying to set torch_dtype to {torch_dtype} for integer quantization, but "
+                f"only bfloat16 is supported right now. Please set `torch_dtype=torch.bfloat16`."
+            )
 
         if torch_dtype is None:
             # We need to set the torch_dtype, otherwise we have dtype mismatch when performing the quantized linear op
@@ -219,45 +218,16 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         return torch_dtype
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
-        quant_type = self.quantization_config.quant_type
         from accelerate.utils import CustomDtype
 
-        if isinstance(quant_type, str):
-            if quant_type.startswith("int8"):
-                # Note that int4 weights are created by packing into torch.int8, but since there is no torch.int4, we use torch.int8
-                return torch.int8
-            elif quant_type.startswith("int4"):
-                return CustomDtype.INT4
-            elif quant_type == "uintx_weight_only":
-                return self.quantization_config.quant_type_kwargs.get("dtype", torch.uint8)
-            elif quant_type.startswith("uint"):
-                return {
-                    1: torch.uint1,
-                    2: torch.uint2,
-                    3: torch.uint3,
-                    4: torch.uint4,
-                    5: torch.uint5,
-                    6: torch.uint6,
-                    7: torch.uint7,
-                }[int(quant_type[4])]
-            elif quant_type.startswith("float") or quant_type.startswith("fp"):
-                return torch.bfloat16
+        quant_type = self.quantization_config.quant_type
+        config_name = quant_type.__class__.__name__
+        size_digit = fuzzy_match_size(config_name)
 
-        elif is_torchao_version(">", "0.9.0"):
-            from torchao.core.config import AOBaseConfig
-
-            quant_type = self.quantization_config.quant_type
-            if isinstance(quant_type, AOBaseConfig):
-                # Extract size digit using fuzzy match on the class name
-                config_name = quant_type.__class__.__name__
-                size_digit = fuzzy_match_size(config_name)
-
-                # Map the extracted digit to appropriate dtype
-                if size_digit == "4":
-                    return CustomDtype.INT4
-                else:
-                    # Default to int8
-                    return torch.int8
+        if size_digit == "4":
+            return CustomDtype.INT4
+        else:
+            return torch.int8
 
         if isinstance(target_dtype, SUPPORTED_TORCH_DTYPES_FOR_QUANTIZATION):
             return target_dtype
@@ -337,29 +307,14 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         - Use a division factor of 8 for int4 weights
         - Use a division factor of 4 for int8 weights
         """
-        # Original mapping for non-AOBaseConfig types
-        # For the uint types, this is a best guess. Once these types become more used
-        # we can look into their nuances.
-        if is_torchao_version(">", "0.9.0"):
-            from torchao.core.config import AOBaseConfig
-
-            quant_type = self.quantization_config.quant_type
-            if isinstance(quant_type, AOBaseConfig):
-                # Extract size digit using fuzzy match on the class name
-                config_name = quant_type.__class__.__name__
-                size_digit = fuzzy_match_size(config_name)
-
-                if size_digit == "4":
-                    return 8
-                else:
-                    return 4
-
-        map_to_target_dtype = {"int4_*": 8, "int8_*": 4, "uint*": 8, "float8*": 4}
         quant_type = self.quantization_config.quant_type
-        for pattern, target_dtype in map_to_target_dtype.items():
-            if fnmatch(quant_type, pattern):
-                return target_dtype
-        raise ValueError(f"Unsupported quant_type: {quant_type!r}")
+        config_name = quant_type.__class__.__name__
+        size_digit = fuzzy_match_size(config_name)
+
+        if size_digit == "4":
+            return 8
+        else:
+            return 4
 
     def _process_model_before_weight_loading(
         self,
@@ -415,9 +370,17 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
         return _is_torchao_serializable
 
+    _TRAINABLE_QUANTIZATION_CONFIGS = (
+        "Int8WeightOnlyConfig",
+        "Int8DynamicActivationInt8WeightConfig",
+        "Int8StaticActivationInt8WeightConfig",
+        "Float8WeightOnlyConfig",
+        "Float8DynamicActivationFloat8WeightConfig",
+    )
+
     @property
     def is_trainable(self):
-        return self.quantization_config.quant_type.startswith("int8")
+        return self.quantization_config.quant_type.__class__.__name__ in self._TRAINABLE_QUANTIZATION_CONFIGS
 
     @property
     def is_compileable(self) -> bool:
