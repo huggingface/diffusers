@@ -289,7 +289,12 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         if mask_token_id is None:
             mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
         if mask_token_id is None:
-            raise ValueError("`mask_token_id` must be provided (or available on the tokenizer).")
+            # DFlash models store mask_token_id in config.dflash_config
+            dflash_config = getattr(getattr(self.draft_model, "config", None), "dflash_config", None)
+            if dflash_config is not None:
+                mask_token_id = dflash_config.get("mask_token_id", None)
+        if mask_token_id is None:
+            raise ValueError("`mask_token_id` must be provided (or available on the tokenizer/model config).")
         if input_ids.shape[0] != 1:
             raise ValueError("DFlashPipeline currently supports batch_size=1 input_ids.")
 
