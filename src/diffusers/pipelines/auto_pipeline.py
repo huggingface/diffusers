@@ -123,6 +123,7 @@ from .stable_diffusion_xl import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
+from .ltx2 import LTX2Pipeline
 from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
 from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .z_image import (
@@ -247,6 +248,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
 
 AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
+        ("ltx2", LTX2Pipeline),
         ("wan", WanPipeline),
     ]
 )
