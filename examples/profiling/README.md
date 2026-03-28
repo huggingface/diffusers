@@ -43,10 +43,10 @@ Follow the flux-fast pattern: **annotate key pipeline methods** with `torch.prof
 
 ### New Files
 
-```
-profiling/
-  profiling_utils.py       # Annotation helper + profiler setup
-  profiling_pipelines.py   # CLI entry point with pipeline configs
+```bash
+profiling_utils.py       # Annotation helper + profiler setup
+profiling_pipelines.py   # CLI entry point with pipeline configs
+run_profiling.sh         # Bulk launch runs for multiple pipelines
 ```
 
 ### Step 1: `profiling_utils.py` — Annotation and Profiler Infrastructure
@@ -198,22 +198,44 @@ To inspect this: zoom into a single denoising step, select a CUDA kernel on the 
 ## Afterwards
 
 To keep the profiling iterations fast, we always used [regional compilation](https://pytorch.org/tutorials/recipes/regional_compilation.html). As one would expect the trace with compilation should show
-fewer kernel launches than its eager counterpart:
+fewer kernel launches than its eager counterpart.
 
-TODO: show traces
+_(Unless otherwise specified, the traces below were obtained with **Flux2**.)_
 
-_(The traces above were obtained with Flux2.)_
+<table>
+  <tr>
+    <td align="center">
+      <img src="https://huggingface.co/datasets/sayakpaul/torch-profiling-trace-diffusers/resolve/main/Flux2-Klein/Screenshot%202026-03-27%20at%2011.03.39%E2%80%AFAM.png" alt="Image 1"><br>
+      <em>Without compile</em>
+    </td>
+    <td align="center">
+      <img src="https://huggingface.co/datasets/sayakpaul/torch-profiling-trace-diffusers/resolve/main/Flux2-Klein/Screenshot%202026-03-27%20at%2011.05.06%E2%80%AFAM.png" alt="Image 2"><br>
+      <em>With compile</em>
+    </td>
+  </tr>
+</table>
 
 ### Spotting gaps between launches
 
 Then a reasonable next step is to spot frequent gaps between kernel executions. In the compiled
 case, we don't spot any on the surface. But if we zone in, some become apparent.
 
-TODO: show gaps in a compile trace
+<table>
+  <tr>
+    <td align="center">
+      <img src="https://huggingface.co/datasets/sayakpaul/torch-profiling-trace-diffusers/resolve/main/Flux2-Klein/Screenshot%202026-03-27%20at%2011.16.42%E2%80%AFAM.png" alt="Image 1"><br>
+      <em>Very small visible gaps in between compiled regions</em>
+    </td>
+    <td align="center">
+      <img src="https://huggingface.co/datasets/sayakpaul/torch-profiling-trace-diffusers/resolve/main/Flux2-Klein/Screenshot%202026-03-27%20at%2010.24.34%E2%80%AFAM.png" alt="Image 2"><br>
+      <em>Gaps become more visible when zoomed in</em>
+    </td>
+  </tr>
+</table>
 
-So, we provided the profile trace (with compilation) to Claude, asked it to find the instances of
+So, we provided the profile trace file (with compilation) to Claude, asked it to find the instances of
 "cudaStreamSynchronize" and "cudaDeviceSynchronize", and to come up with some potential fixes.
-Claude came back pretty strong:
+Claude came back with the following:
 
 ```
 Issue 1 — Gap between transformer forwards:
@@ -231,31 +253,59 @@ transformer forward's kernels.
 at the call site.
 ```
 
-It still didn't eliminate the gaps as expected so, we fed that back to Claude and it spotted
-something more crucial. TODO: caching context fix.
+The changes looke reasonable based on our past experience. So, we asked Claude to apply these changes to [`pipeline_flux2_klein.py`](../../src/diffusers/pipelines/flux2/pipeline_flux2_klein.py). We then profiled
+the updated pipeline. It still didn't eliminate the gaps as expected so, we fed that back to Claude and
+it spotted something more crucial.
 
-With the fix applied, the improvements were visible:
+Under the [`cache_context`](https://github.com/huggingface/diffusers/blob/f2be8bd6b3dc4035bd989dc467f15d86bf3c9c12/src/diffusers/pipelines/flux2/pipeline_flux2_klein.py#L842) manager, there is a call to `_set_context()` upon
+enters and exists. It calls `named_modules()` on the entire underlying model (in this case the Flux2 Klein DiT).
+For large models, when they are invoked iteratively like our case, it adds to the latency because it involes traversing hundreds of submodules.
 
-TODO: show before and after trace
+The fix was to build a list of hooked child registries once on the first call and cache it in `_child_registries_cache`. This way, the subsequent calls would return the cached list directly without
+any traversal. With the fix applied, the improvements were visible.
 
-Before:  
-
-- `_set_context` total: 21.6ms (8 calls)                                                                          
+Before:                                                                                                         
+- _set_context total: 21.6ms (8 calls)                                                                          
 - cache_context total: 21.7ms                                                                                   
 - CPU gaps: 5,523us / 8,007us / 5,508us                                                                         
                                                                                                             
 After:                                                                                                          
-- `_set_context` total: 0.0ms (8 calls)                                                                           
+- _set_context total: 0.0ms (8 calls)                                                                           
 - cache_context total: 0.1ms                                                                                    
-- CPU gaps: 158us / 2,777us / 136us  
-
-We also profiled the Wan model and uncovered problems related to CPU DtoH syncs. Below is an
-overview.
-
-TODO: provide trace outputs and numbers
+- CPU gaps: 158us / 2,777us / 136us
 
 > [!NOTE]
-> The above-mentioned fixes are available in [this PR](TODO:link).
+> The fixes mentioned above and below are available in [this PR](TODO:link).
+
+### DtoH syncs
+
+We also profiled the **Wan** model and uncovered problems related to CPU DtoH syncs. Below is an
+overview.
+
+First, there was a dynamo cache lookup delay making the GPU idle as reported [in this PR](https://github.com/huggingface/diffusers/pull/11696). So, the fix was to call `self.scheduler.set_begin_index(0)` before
+the denoising loop. This tells the scheduler the starting index is 0, so `_init_step_index()` skips the `nonzero().item()` (which was causing the sync) path entirely. This fix eliminated the below ~2.3s GPU idle time completely:
+
+![GPU idle](https://huggingface.co/datasets/sayakpaul/torch-profiling-trace-diffusers/resolve/main/Wan/Screenshot%202026-03-27%20at%205.56.39%E2%80%AFPM.png)
+
+The UniPC scheduler (used in Wan) creates small constant tensors via `torch.tensor([0.5], dtype=x.dtype, device=device)` during `step()`. This triggers a "cudaMemcpyAsync + cudaStreamSynchronize" to copy
+the value from CPU to GPU. The sync itself is normally fast (~6us), but it forces the CPU to wait
+until all pending GPU kernels finish before proceeding. Under torch.compile, the GPU has many queued
+kernels, so this tiny sync balloons to 2.3s.
+
+**Fix**: Replace with `torch.ones(1, dtype=x.dtype, device=device) * 0.5`. `torch.ones` allocates on GPU via "cudaMemsetAsync" (no sync), and `* 0.5` is a CUDA kernel launch (no sync). Same result, zero CPU-GPU synchronization. The duration of the scheduling step before and after this fix confirms this:
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="https://huggingface.co/datasets/sayakpaul/torch-profiling-trace-diffusers/resolve/main/Wan/Screenshot%25202026-03-27%2520at%25206.04.06%25E2%2580%25AFPM.png" alt="Image 1"><br>
+      <em>CPU<->GPU sync</em>
+    </td>
+    <td align="center">
+      <img src="https://huggingface.co/datasets/sayakpaul/torch-profiling-trace-diffusers/resolve/main/Wan/Screenshot%25202026-03-27%2520at%25206.04.29%25E2%2580%25AFPM.png" alt="Image 2"><br>
+      <em>Almost no sync</em>
+    </td>
+  </tr>
+</table>
 
 ### Notes
 
