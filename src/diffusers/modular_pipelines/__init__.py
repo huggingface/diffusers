@@ -46,7 +46,7 @@ else:
         "InsertableDict",
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
-    _import_structure["stable_diffusion_3"] =["StableDiffusion3AutoBlocks", "StableDiffusion3ModularPipeline"]
+    _import_structure["stable_diffusion_3"] = ["StableDiffusion3AutoBlocks", "StableDiffusion3ModularPipeline"]
     _import_structure["wan"] = [
         "WanBlocks",
         "Wan22Blocks",

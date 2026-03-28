@@ -27,7 +27,7 @@ from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
 SD3_TEXT2IMAGE_WORKFLOWS = {
-    "text2image":[
+    "text2image": [
         ("text_encoder", "StableDiffusion3TextEncoderStep"),
         ("denoise.input", "StableDiffusion3TextInputStep"),
         ("denoise.before_denoise.prepare_latents", "StableDiffusion3PrepareLatentsStep"),
@@ -36,6 +36,7 @@ SD3_TEXT2IMAGE_WORKFLOWS = {
         ("decode", "StableDiffusion3DecodeStep"),
     ]
 }
+
 
 class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = StableDiffusion3ModularPipeline
@@ -63,7 +64,7 @@ class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
         return super().get_pipeline(components_manager, torch_dtype)
 
     def test_save_from_pretrained(self, tmp_path):
-        pipes =[]
+        pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
@@ -73,7 +74,7 @@ class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
         pipe.to(torch_device)
         pipes.append(pipe)
 
-        image_slices =[]
+        image_slices = []
         for p in pipes:
             inputs = self.get_dummy_inputs()
             image = p(**inputs, output="images")
@@ -93,8 +94,9 @@ class TestStableDiffusion3ModularPipelineFast(ModularPipelineTesterMixin):
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
 
+
 SD3_IMAGE2IMAGE_WORKFLOWS = {
-    "image2image":[
+    "image2image": [
         ("text_encoder", "StableDiffusion3TextEncoderStep"),
         ("vae_encoder.preprocess", "StableDiffusion3ProcessImagesInputStep"),
         ("vae_encoder.encode", "StableDiffusion3VaeEncoderStep"),
@@ -107,6 +109,7 @@ SD3_IMAGE2IMAGE_WORKFLOWS = {
         ("decode", "StableDiffusion3DecodeStep"),
     ]
 }
+
 
 class TestStableDiffusion3Img2ImgModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = StableDiffusion3ModularPipeline
@@ -142,7 +145,7 @@ class TestStableDiffusion3Img2ImgModularPipelineFast(ModularPipelineTesterMixin)
         return inputs
 
     def test_save_from_pretrained(self, tmp_path):
-        pipes =[]
+        pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
@@ -153,7 +156,7 @@ class TestStableDiffusion3Img2ImgModularPipelineFast(ModularPipelineTesterMixin)
         pipe.image_processor = VaeImageProcessor(vae_scale_factor=8)
         pipes.append(pipe)
 
-        image_slices =[]
+        image_slices = []
         for p in pipes:
             inputs = self.get_dummy_inputs()
             image = p(**inputs, output="images")

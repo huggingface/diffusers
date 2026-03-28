@@ -39,7 +39,7 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return[
+        return [
             ComponentSpec(
                 "guider",
                 ClassifierFreeGuidance,
@@ -55,7 +55,7 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[tuple[str, Any]]:
-        return[
+        return [
             InputParam("joint_attention_kwargs", type_hint=dict),
             InputParam("latents", required=True, type_hint=torch.Tensor),
             InputParam("prompt_embeds", required=True, type_hint=torch.Tensor),
@@ -110,8 +110,10 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
 
         should_skip_layers = (
             getattr(block_state, "skip_guidance_layers", None) is not None
-            and i > getattr(block_state, "num_inference_steps", 50) * getattr(block_state, "skip_layer_guidance_start", 0.01)
-            and i < getattr(block_state, "num_inference_steps", 50) * getattr(block_state, "skip_layer_guidance_stop", 0.2)
+            and i
+            > getattr(block_state, "num_inference_steps", 50) * getattr(block_state, "skip_layer_guidance_start", 0.01)
+            and i
+            < getattr(block_state, "num_inference_steps", 50) * getattr(block_state, "skip_layer_guidance_stop", 0.2)
         )
 
         if should_skip_layers and block_state.do_classifier_free_guidance:
@@ -125,7 +127,9 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
                 return_dict=False,
                 skip_layers=block_state.skip_guidance_layers,
             )[0]
-            noise_pred = noise_pred + (guider_output.pred_cond - noise_pred_skip_layers) * getattr(block_state, "skip_layer_guidance_scale", 2.8)
+            noise_pred = noise_pred + (guider_output.pred_cond - noise_pred_skip_layers) * getattr(
+                block_state, "skip_layer_guidance_scale", 2.8
+            )
 
         block_state.noise_pred = noise_pred
         return components, block_state
@@ -140,7 +144,7 @@ class StableDiffusion3LoopAfterDenoiser(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return[OutputParam("latents", type_hint=torch.Tensor)]
+        return [OutputParam("latents", type_hint=torch.Tensor)]
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusion3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
@@ -163,14 +167,14 @@ class StableDiffusion3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
     @property
     def loop_expected_components(self) -> list[ComponentSpec]:
-        return[
+        return [
             ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
             ComponentSpec("transformer", SD3Transformer2DModel),
         ]
 
     @property
     def loop_inputs(self) -> list[InputParam]:
-        return[
+        return [
             InputParam("timesteps", required=True, type_hint=torch.Tensor),
             InputParam("num_inference_steps", required=True, type_hint=int),
         ]
@@ -178,12 +182,16 @@ class StableDiffusion3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        block_state.num_warmup_steps = max(len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0)
+        block_state.num_warmup_steps = max(
+            len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0
+        )
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
                 components, block_state = self.loop_step(components, block_state, i=i, t=t)
-                if i == len(block_state.timesteps) - 1 or ((i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0):
+                if i == len(block_state.timesteps) - 1 or (
+                    (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
+                ):
                     progress_bar.update()
 
         self.set_block_state(state, block_state)

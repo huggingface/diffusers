@@ -27,6 +27,7 @@ from .modular_pipeline import StableDiffusion3ModularPipeline
 
 logger = logging.get_logger(__name__)
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
@@ -40,9 +41,10 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
+
 def encode_vae_image(vae: AutoencoderKL, image: torch.Tensor, generator: torch.Generator, sample_mode="sample"):
     if isinstance(generator, list):
-        image_latents =[
+        image_latents = [
             retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i], sample_mode=sample_mode)
             for i in range(image.shape[0])
         ]
@@ -52,6 +54,7 @@ def encode_vae_image(vae: AutoencoderKL, image: torch.Tensor, generator: torch.G
 
     image_latents = (image_latents - vae.config.shift_factor) * vae.config.scaling_factor
     return image_latents
+
 
 # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_t5_prompt_embeds with self -> components
 def _get_t5_prompt_embeds(
@@ -91,7 +94,9 @@ def _get_t5_prompt_embeds(
     untruncated_ids = components.tokenizer_3(prompt, padding="longest", return_tensors="pt").input_ids
 
     if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-        removed_text = components.tokenizer_3.batch_decode(untruncated_ids[:, components.tokenizer_max_length - 1 : -1])
+        removed_text = components.tokenizer_3.batch_decode(
+            untruncated_ids[:, components.tokenizer_max_length - 1 : -1]
+        )
         logger.warning(
             "The following part of your input was truncated because `max_sequence_length` is set to "
             f" {max_sequence_length} tokens: {removed_text}"
@@ -109,6 +114,7 @@ def _get_t5_prompt_embeds(
     prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
     return prompt_embeds
+
 
 # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_clip_prompt_embeds with self -> components
 def _get_clip_prompt_embeds(
@@ -165,6 +171,7 @@ def _get_clip_prompt_embeds(
     pooled_prompt_embeds = pooled_prompt_embeds.view(batch_size * num_images_per_prompt, -1)
 
     return prompt_embeds, pooled_prompt_embeds
+
 
 # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.encode_prompt with self -> components, self._get_clip_prompt_embeds -> _get_clip_prompt_embeds, self._get_t5_prompt_embeds -> _get_t5_prompt_embeds
 def encode_prompt(
@@ -256,7 +263,7 @@ def encode_prompt(
             batch_size * [negative_prompt_2] if isinstance(negative_prompt_2, str) else negative_prompt_2
         )
         negative_prompt_3 = (
-            batch_size *[negative_prompt_3] if isinstance(negative_prompt_3, str) else negative_prompt_3
+            batch_size * [negative_prompt_3] if isinstance(negative_prompt_3, str) else negative_prompt_3
         )
 
         if prompt is not None and type(prompt) is not type(negative_prompt):
@@ -303,7 +310,8 @@ def encode_prompt(
         )
 
         negative_prompt_embeds = torch.cat([negative_clip_prompt_embeds, t5_negative_prompt_embed], dim=-2)
-        negative_pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embed, negative_pooled_prompt_2_embed], dim=-1
+        negative_pooled_prompt_embeds = torch.cat(
+            [negative_pooled_prompt_embed, negative_pooled_prompt_2_embed], dim=-1
         )
 
     if components.text_encoder is not None:
@@ -318,6 +326,7 @@ def encode_prompt(
 
     return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
+
 class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
@@ -327,7 +336,7 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return[
+        return [
             ComponentSpec(
                 "image_processor",
                 VaeImageProcessor,
@@ -338,11 +347,11 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[InputParam("resized_image"), InputParam("image"), InputParam("height"), InputParam("width")]
+        return [InputParam("resized_image"), InputParam("image"), InputParam("height"), InputParam("width")]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return[OutputParam(name="processed_image")]
+        return [OutputParam(name="processed_image")]
 
     @staticmethod
     def check_inputs(height, width, vae_scale_factor, patch_size):
@@ -362,8 +371,10 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
         if block_state.resized_image is None:
             image = block_state.image
             self.check_inputs(
-                height=block_state.height, width=block_state.width,
-                vae_scale_factor=components.vae_scale_factor, patch_size=components.patch_size
+                height=block_state.height,
+                width=block_state.width,
+                vae_scale_factor=components.vae_scale_factor,
+                patch_size=components.patch_size,
             )
             height = block_state.height or components.default_height
             width = block_state.width or components.default_width
@@ -376,10 +387,13 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
+
 class StableDiffusion3VaeEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
-    def __init__(self, input_name: str = "processed_image", output_name: str = "image_latents", sample_mode: str = "sample"):
+    def __init__(
+        self, input_name: str = "processed_image", output_name: str = "image_latents", sample_mode: str = "sample"
+    ):
         self._image_input_name = input_name
         self._image_latents_output_name = output_name
         self.sample_mode = sample_mode
@@ -395,12 +409,16 @@ class StableDiffusion3VaeEncoderStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[InputParam(self._image_input_name), InputParam("generator")]
+        return [InputParam(self._image_input_name), InputParam("generator")]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return[
-            OutputParam(self._image_latents_output_name, type_hint=torch.Tensor, description="The latents representing the reference image")
+        return [
+            OutputParam(
+                self._image_latents_output_name,
+                type_hint=torch.Tensor,
+                description="The latents representing the reference image",
+            )
         ]
 
     @torch.no_grad()
@@ -422,6 +440,7 @@ class StableDiffusion3VaeEncoderStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
+
 class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
@@ -431,7 +450,7 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return[
+        return [
             ComponentSpec("text_encoder", CLIPTextModelWithProjection),
             ComponentSpec("tokenizer", CLIPTokenizer),
             ComponentSpec("text_encoder_2", CLIPTextModelWithProjection),
@@ -442,7 +461,7 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
+        return [
             InputParam("prompt"),
             InputParam("prompt_2"),
             InputParam("prompt_3"),
@@ -461,7 +480,7 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return[
+        return [
             OutputParam("prompt_embeds", type_hint=torch.Tensor),
             OutputParam("negative_prompt_embeds", type_hint=torch.Tensor),
             OutputParam("pooled_prompt_embeds", type_hint=torch.Tensor),
@@ -474,7 +493,9 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
         block_state.device = components._execution_device
 
         do_classifier_free_guidance = block_state.guidance_scale > 1.0
-        lora_scale = block_state.joint_attention_kwargs.get("scale", None) if block_state.joint_attention_kwargs else None
+        lora_scale = (
+            block_state.joint_attention_kwargs.get("scale", None) if block_state.joint_attention_kwargs else None
+        )
 
         prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = encode_prompt(
             components=components,

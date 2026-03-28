@@ -31,14 +31,19 @@ class StableDiffusion3DecodeStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return[
+        return [
             ComponentSpec("vae", AutoencoderKL),
-            ComponentSpec("image_processor", VaeImageProcessor, config=FrozenDict({"vae_scale_factor": 8}), default_creation_method="from_config"),
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 8}),
+                default_creation_method="from_config",
+            ),
         ]
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
+        return [
             InputParam("output_type", default="pil"),
             InputParam("latents", required=True, type_hint=torch.Tensor),
         ]

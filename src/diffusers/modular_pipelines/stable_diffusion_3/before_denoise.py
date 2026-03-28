@@ -64,7 +64,7 @@ class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return[ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
 
     @property
     def description(self) -> str:
@@ -72,7 +72,7 @@ class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
+        return [
             InputParam("num_inference_steps", default=50),
             InputParam("timesteps"),
             InputParam("sigmas"),
@@ -83,7 +83,7 @@ class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return[
+        return [
             OutputParam("timesteps", type_hint=torch.Tensor),
             OutputParam("num_inference_steps", type_hint=int),
         ]
@@ -103,7 +103,7 @@ class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
             block_state.num_inference_steps,
             block_state.sigmas,
             block_state.device,
-            getattr(block_state, "mu", None)
+            getattr(block_state, "mu", None),
         )
 
         block_state.timesteps = timesteps
@@ -118,7 +118,7 @@ class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return[ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
 
     @property
     def description(self) -> str:
@@ -126,7 +126,7 @@ class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
+        return [
             InputParam("num_inference_steps", default=50),
             InputParam("timesteps"),
             InputParam("sigmas"),
@@ -138,7 +138,7 @@ class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return[
+        return [
             OutputParam("timesteps", type_hint=torch.Tensor),
             OutputParam("num_inference_steps", type_hint=int),
         ]
@@ -167,7 +167,7 @@ class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
             block_state.num_inference_steps,
             block_state.sigmas,
             block_state.device,
-            getattr(block_state, "mu", None)
+            getattr(block_state, "mu", None),
         )
 
         timesteps, num_inference_steps = self.get_timesteps(
@@ -190,7 +190,7 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
+        return [
             InputParam("height", type_hint=int),
             InputParam("width", type_hint=int),
             InputParam("latents", type_hint=torch.Tensor | None),
@@ -202,7 +202,7 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return[OutputParam("latents", type_hint=torch.Tensor)]
+        return [OutputParam("latents", type_hint=torch.Tensor)]
 
     @torch.no_grad()
     def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
@@ -219,7 +219,9 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
                 int(block_state.height) // components.vae_scale_factor,
                 int(block_state.width) // components.vae_scale_factor,
             )
-            block_state.latents = randn_tensor(shape, generator=block_state.generator, device=block_state.device, dtype=block_state.dtype)
+            block_state.latents = randn_tensor(
+                shape, generator=block_state.generator, device=block_state.device, dtype=block_state.dtype
+            )
 
         self.set_block_state(state, block_state)
         return components, state
@@ -234,7 +236,7 @@ class StableDiffusion3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
+        return [
             InputParam("latents", required=True, type_hint=torch.Tensor),
             InputParam("image_latents", required=True, type_hint=torch.Tensor),
             InputParam("timesteps", required=True, type_hint=torch.Tensor),
