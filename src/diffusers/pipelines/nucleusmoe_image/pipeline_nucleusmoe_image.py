@@ -306,11 +306,6 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                 f"`negative_prompt_embeds`: {negative_prompt_embeds}. "
                 "Please make sure to only forward one of the two."
             )
-
-        if max_sequence_length is not None and max_sequence_length > self.default_max_sequence_length:
-            raise ValueError(
-                f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}"
-            )
         
         if return_index is not None and abs(return_index) >= self.text_encoder.config.text_config.num_hidden_layers:
             raise ValueError(
