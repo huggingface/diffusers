@@ -396,7 +396,6 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return latents
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._unpack_latents_with_ids
     def _unpack_latents_with_ids(
         x: torch.Tensor, x_ids: torch.Tensor, height: int | None = None, width: int | None = None
     ) -> list[torch.Tensor]:
