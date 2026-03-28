@@ -50,8 +50,8 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
             OutputParam("do_classifier_free_guidance", type_hint=bool),
             OutputParam("prompt_embeds", type_hint=torch.Tensor),
             OutputParam("pooled_prompt_embeds", type_hint=torch.Tensor),
-            OutputParam("original_prompt_embeds", type_hint=torch.Tensor),
-            OutputParam("original_pooled_prompt_embeds", type_hint=torch.Tensor),
+            OutputParam("negative_prompt_embeds", type_hint=torch.Tensor),
+            OutputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor),
         ]
 
     @torch.no_grad()
@@ -69,9 +69,6 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
         pooled_prompt_embeds = block_state.pooled_prompt_embeds.repeat(1, block_state.num_images_per_prompt)
         pooled_prompt_embeds = pooled_prompt_embeds.view(block_state.batch_size * block_state.num_images_per_prompt, -1)
 
-        block_state.original_prompt_embeds = prompt_embeds
-        block_state.original_pooled_prompt_embeds = pooled_prompt_embeds
-
         if block_state.do_classifier_free_guidance and block_state.negative_prompt_embeds is not None:
             _, neg_seq_len, _ = block_state.negative_prompt_embeds.shape
             negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
@@ -80,11 +77,15 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
             negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.repeat(1, block_state.num_images_per_prompt)
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.view(block_state.batch_size * block_state.num_images_per_prompt, -1)
 
-            block_state.prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            block_state.pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
+            block_state.prompt_embeds = prompt_embeds
+            block_state.pooled_prompt_embeds = pooled_prompt_embeds
+            block_state.negative_prompt_embeds = negative_prompt_embeds
+            block_state.negative_pooled_prompt_embeds = negative_pooled_prompt_embeds
         else:
             block_state.prompt_embeds = prompt_embeds
             block_state.pooled_prompt_embeds = pooled_prompt_embeds
+            block_state.negative_prompt_embeds = None
+            block_state.negative_pooled_prompt_embeds = None
 
         self.set_block_state(state, block_state)
         return components, state

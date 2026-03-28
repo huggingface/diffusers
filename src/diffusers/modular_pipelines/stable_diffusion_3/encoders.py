@@ -27,6 +27,7 @@ from .modular_pipeline import StableDiffusion3ModularPipeline
 
 logger = logging.get_logger(__name__)
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
@@ -51,6 +52,271 @@ def encode_vae_image(vae: AutoencoderKL, image: torch.Tensor, generator: torch.G
 
     image_latents = (image_latents - vae.config.shift_factor) * vae.config.scaling_factor
     return image_latents
+
+# Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_t5_prompt_embeds with self -> components
+def _get_t5_prompt_embeds(
+    components,
+    prompt: str | list[str] = None,
+    num_images_per_prompt: int = 1,
+    max_sequence_length: int = 256,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
+):
+    device = device or components._execution_device
+    dtype = dtype or components.text_encoder.dtype
+
+    prompt = [prompt] if isinstance(prompt, str) else prompt
+    batch_size = len(prompt)
+
+    if components.text_encoder_3 is None:
+        return torch.zeros(
+            (
+                batch_size * num_images_per_prompt,
+                max_sequence_length,
+                components.transformer.config.joint_attention_dim,
+            ),
+            device=device,
+            dtype=dtype,
+        )
+
+    text_inputs = components.tokenizer_3(
+        prompt,
+        padding="max_length",
+        max_length=max_sequence_length,
+        truncation=True,
+        add_special_tokens=True,
+        return_tensors="pt",
+    )
+    text_input_ids = text_inputs.input_ids
+    untruncated_ids = components.tokenizer_3(prompt, padding="longest", return_tensors="pt").input_ids
+
+    if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+        removed_text = components.tokenizer_3.batch_decode(untruncated_ids[:, components.tokenizer_max_length - 1 : -1])
+        logger.warning(
+            "The following part of your input was truncated because `max_sequence_length` is set to "
+            f" {max_sequence_length} tokens: {removed_text}"
+        )
+
+    prompt_embeds = components.text_encoder_3(text_input_ids.to(device))[0]
+
+    dtype = components.text_encoder_3.dtype
+    prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+
+    _, seq_len, _ = prompt_embeds.shape
+
+    # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
+    prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+    prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+
+    return prompt_embeds
+
+# Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline._get_clip_prompt_embeds with self -> components
+def _get_clip_prompt_embeds(
+    components,
+    prompt: str | list[str],
+    num_images_per_prompt: int = 1,
+    device: torch.device | None = None,
+    clip_skip: int | None = None,
+    clip_model_index: int = 0,
+):
+    device = device or components._execution_device
+
+    clip_tokenizers = [components.tokenizer, components.tokenizer_2]
+    clip_text_encoders = [components.text_encoder, components.text_encoder_2]
+
+    tokenizer = clip_tokenizers[clip_model_index]
+    text_encoder = clip_text_encoders[clip_model_index]
+
+    prompt = [prompt] if isinstance(prompt, str) else prompt
+    batch_size = len(prompt)
+
+    text_inputs = tokenizer(
+        prompt,
+        padding="max_length",
+        max_length=components.tokenizer_max_length,
+        truncation=True,
+        return_tensors="pt",
+    )
+
+    text_input_ids = text_inputs.input_ids
+    untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+    if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+        removed_text = tokenizer.batch_decode(untruncated_ids[:, components.tokenizer_max_length - 1 : -1])
+        logger.warning(
+            "The following part of your input was truncated because CLIP can only handle sequences up to"
+            f" {components.tokenizer_max_length} tokens: {removed_text}"
+        )
+    prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+    pooled_prompt_embeds = prompt_embeds[0]
+
+    if clip_skip is None:
+        prompt_embeds = prompt_embeds.hidden_states[-2]
+    else:
+        prompt_embeds = prompt_embeds.hidden_states[-(clip_skip + 2)]
+
+    prompt_embeds = prompt_embeds.to(dtype=components.text_encoder.dtype, device=device)
+
+    _, seq_len, _ = prompt_embeds.shape
+    # duplicate text embeddings for each generation per prompt, using mps friendly method
+    prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+    prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+
+    pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt)
+    pooled_prompt_embeds = pooled_prompt_embeds.view(batch_size * num_images_per_prompt, -1)
+
+    return prompt_embeds, pooled_prompt_embeds
+
+# Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.encode_prompt with self -> components, self._get_clip_prompt_embeds -> _get_clip_prompt_embeds, self._get_t5_prompt_embeds -> _get_t5_prompt_embeds
+def encode_prompt(
+    components,
+    prompt: str | list[str],
+    prompt_2: str | list[str],
+    prompt_3: str | list[str],
+    device: torch.device | None = None,
+    num_images_per_prompt: int = 1,
+    do_classifier_free_guidance: bool = True,
+    negative_prompt: str | list[str] | None = None,
+    negative_prompt_2: str | list[str] | None = None,
+    negative_prompt_3: str | list[str] | None = None,
+    prompt_embeds: torch.FloatTensor | None = None,
+    negative_prompt_embeds: torch.FloatTensor | None = None,
+    pooled_prompt_embeds: torch.FloatTensor | None = None,
+    negative_pooled_prompt_embeds: torch.FloatTensor | None = None,
+    clip_skip: int | None = None,
+    max_sequence_length: int = 256,
+    lora_scale: float | None = None,
+):
+    device = device or components._execution_device
+
+    # set lora scale so that monkey patched LoRA
+    # function of text encoder can correctly access it
+    if lora_scale is not None and isinstance(components, SD3LoraLoaderMixin):
+        components._lora_scale = lora_scale
+
+        # dynamically adjust the LoRA scale
+        if components.text_encoder is not None and USE_PEFT_BACKEND:
+            scale_lora_layers(components.text_encoder, lora_scale)
+        if components.text_encoder_2 is not None and USE_PEFT_BACKEND:
+            scale_lora_layers(components.text_encoder_2, lora_scale)
+
+    prompt = [prompt] if isinstance(prompt, str) else prompt
+    if prompt is not None:
+        batch_size = len(prompt)
+    else:
+        batch_size = prompt_embeds.shape[0]
+
+    if prompt_embeds is None:
+        prompt_2 = prompt_2 or prompt
+        prompt_2 = [prompt_2] if isinstance(prompt_2, str) else prompt_2
+
+        prompt_3 = prompt_3 or prompt
+        prompt_3 = [prompt_3] if isinstance(prompt_3, str) else prompt_3
+
+        prompt_embed, pooled_prompt_embed = _get_clip_prompt_embeds(
+            components,
+            prompt=prompt,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            clip_skip=clip_skip,
+            clip_model_index=0,
+        )
+        prompt_2_embed, pooled_prompt_2_embed = _get_clip_prompt_embeds(
+            components,
+            prompt=prompt_2,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            clip_skip=clip_skip,
+            clip_model_index=1,
+        )
+        clip_prompt_embeds = torch.cat([prompt_embed, prompt_2_embed], dim=-1)
+
+        t5_prompt_embed = _get_t5_prompt_embeds(
+            components,
+            prompt=prompt_3,
+            num_images_per_prompt=num_images_per_prompt,
+            max_sequence_length=max_sequence_length,
+            device=device,
+        )
+
+        clip_prompt_embeds = torch.nn.functional.pad(
+            clip_prompt_embeds, (0, t5_prompt_embed.shape[-1] - clip_prompt_embeds.shape[-1])
+        )
+
+        prompt_embeds = torch.cat([clip_prompt_embeds, t5_prompt_embed], dim=-2)
+        pooled_prompt_embeds = torch.cat([pooled_prompt_embed, pooled_prompt_2_embed], dim=-1)
+
+    if do_classifier_free_guidance and negative_prompt_embeds is None:
+        negative_prompt = negative_prompt or ""
+        negative_prompt_2 = negative_prompt_2 or negative_prompt
+        negative_prompt_3 = negative_prompt_3 or negative_prompt
+
+        # normalize str to list
+        negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+        negative_prompt_2 = (
+            batch_size * [negative_prompt_2] if isinstance(negative_prompt_2, str) else negative_prompt_2
+        )
+        negative_prompt_3 = (
+            batch_size *[negative_prompt_3] if isinstance(negative_prompt_3, str) else negative_prompt_3
+        )
+
+        if prompt is not None and type(prompt) is not type(negative_prompt):
+            raise TypeError(
+                f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                f" {type(prompt)}."
+            )
+        elif batch_size != len(negative_prompt):
+            raise ValueError(
+                f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                " the batch size of `prompt`."
+            )
+
+        negative_prompt_embed, negative_pooled_prompt_embed = _get_clip_prompt_embeds(
+            components,
+            negative_prompt,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            clip_skip=None,
+            clip_model_index=0,
+        )
+        negative_prompt_2_embed, negative_pooled_prompt_2_embed = _get_clip_prompt_embeds(
+            components,
+            negative_prompt_2,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            clip_skip=None,
+            clip_model_index=1,
+        )
+        negative_clip_prompt_embeds = torch.cat([negative_prompt_embed, negative_prompt_2_embed], dim=-1)
+
+        t5_negative_prompt_embed = _get_t5_prompt_embeds(
+            components,
+            prompt=negative_prompt_3,
+            num_images_per_prompt=num_images_per_prompt,
+            max_sequence_length=max_sequence_length,
+            device=device,
+        )
+
+        negative_clip_prompt_embeds = torch.nn.functional.pad(
+            negative_clip_prompt_embeds,
+            (0, t5_negative_prompt_embed.shape[-1] - negative_clip_prompt_embeds.shape[-1]),
+        )
+
+        negative_prompt_embeds = torch.cat([negative_clip_prompt_embeds, t5_negative_prompt_embed], dim=-2)
+        negative_pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embed, negative_pooled_prompt_2_embed], dim=-1
+        )
+
+    if components.text_encoder is not None:
+        if isinstance(components, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
+            # Retrieve the original scale by scaling back the LoRA layers
+            unscale_lora_layers(components.text_encoder, lora_scale)
+
+    if components.text_encoder_2 is not None:
+        if isinstance(components, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
+            # Retrieve the original scale by scaling back the LoRA layers
+            unscale_lora_layers(components.text_encoder_2, lora_scale)
+
+    return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
 class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
@@ -202,106 +468,6 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
             OutputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor),
         ]
 
-    @staticmethod
-    def _get_t5_prompt_embeds(components, prompt, max_sequence_length, device):
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
-
-        if components.text_encoder_3 is None:
-            return torch.zeros(
-                (batch_size, max_sequence_length, components.transformer.config.joint_attention_dim),
-                device=device,
-                dtype=components.text_encoder.dtype,
-            )
-
-        text_inputs = components.tokenizer_3(
-            prompt, padding="max_length", max_length=max_sequence_length,
-            truncation=True, add_special_tokens=True, return_tensors="pt",
-        )
-        prompt_embeds = components.text_encoder_3(text_inputs.input_ids.to(device))[0]
-        return prompt_embeds.to(dtype=components.text_encoder_3.dtype, device=device)
-
-    @staticmethod
-    def _get_clip_prompt_embeds(components, prompt, device, clip_skip, clip_model_index):
-        clip_tokenizers = [components.tokenizer, components.tokenizer_2]
-        clip_text_encoders =[components.text_encoder, components.text_encoder_2]
-
-        tokenizer = clip_tokenizers[clip_model_index]
-        text_encoder = clip_text_encoders[clip_model_index]
-
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-        text_inputs = tokenizer(
-            prompt, padding="max_length", max_length=tokenizer.model_max_length,
-            truncation=True, return_tensors="pt",
-        )
-
-        prompt_embeds = text_encoder(text_inputs.input_ids.to(device), output_hidden_states=True)
-        pooled_prompt_embeds = prompt_embeds[0]
-
-        if clip_skip is None:
-            prompt_embeds = prompt_embeds.hidden_states[-2]
-        else:
-            prompt_embeds = prompt_embeds.hidden_states[-(clip_skip + 2)]
-
-        return prompt_embeds.to(dtype=components.text_encoder.dtype, device=device), pooled_prompt_embeds
-
-    @staticmethod
-    def encode_prompt(components, block_state, device, do_classifier_free_guidance, lora_scale):
-        if lora_scale is not None and isinstance(components, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
-            if components.text_encoder is not None:
-                scale_lora_layers(components.text_encoder, lora_scale)
-            if components.text_encoder_2 is not None:
-                scale_lora_layers(components.text_encoder_2, lora_scale)
-
-        prompt_embeds = block_state.prompt_embeds
-        pooled_prompt_embeds = block_state.pooled_prompt_embeds
-
-        if prompt_embeds is None:
-            prompt = [block_state.prompt] if isinstance(block_state.prompt, str) else block_state.prompt
-            prompt_2 = block_state.prompt_2 or prompt
-            prompt_3 = block_state.prompt_3 or prompt
-
-            prompt_embed, pooled_embed = StableDiffusion3TextEncoderStep._get_clip_prompt_embeds(components, prompt, device, block_state.clip_skip, 0)
-            prompt_2_embed, pooled_2_embed = StableDiffusion3TextEncoderStep._get_clip_prompt_embeds(components, prompt_2, device, block_state.clip_skip, 1)
-            clip_prompt_embeds = torch.cat([prompt_embed, prompt_2_embed], dim=-1)
-
-            t5_prompt_embed = StableDiffusion3TextEncoderStep._get_t5_prompt_embeds(components, prompt_3, block_state.max_sequence_length, device)
-            clip_prompt_embeds = torch.nn.functional.pad(clip_prompt_embeds, (0, t5_prompt_embed.shape[-1] - clip_prompt_embeds.shape[-1]))
-
-            prompt_embeds = torch.cat([clip_prompt_embeds, t5_prompt_embed], dim=-2)
-            pooled_prompt_embeds = torch.cat([pooled_embed, pooled_2_embed], dim=-1)
-
-        negative_prompt_embeds = block_state.negative_prompt_embeds
-        negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds
-
-        if do_classifier_free_guidance and negative_prompt_embeds is None:
-            batch_size = prompt_embeds.shape[0]
-            neg_prompt = block_state.negative_prompt or ""
-            neg_prompt_2 = block_state.negative_prompt_2 or neg_prompt
-            neg_prompt_3 = block_state.negative_prompt_3 or neg_prompt
-
-            neg_prompt = batch_size * [neg_prompt] if isinstance(neg_prompt, str) else neg_prompt
-            neg_prompt_2 = batch_size * [neg_prompt_2] if isinstance(neg_prompt_2, str) else neg_prompt_2
-            neg_prompt_3 = batch_size * [neg_prompt_3] if isinstance(neg_prompt_3, str) else neg_prompt_3
-
-            neg_embed, neg_pooled_embed = StableDiffusion3TextEncoderStep._get_clip_prompt_embeds(components, neg_prompt, device, None, 0)
-            neg_2_embed, neg_2_pooled_embed = StableDiffusion3TextEncoderStep._get_clip_prompt_embeds(components, neg_prompt_2, device, None, 1)
-            neg_clip_embeds = torch.cat([neg_embed, neg_2_embed], dim=-1)
-
-            t5_neg_embed = StableDiffusion3TextEncoderStep._get_t5_prompt_embeds(components, neg_prompt_3, block_state.max_sequence_length, device)
-            neg_clip_embeds = torch.nn.functional.pad(neg_clip_embeds, (0, t5_neg_embed.shape[-1] - neg_clip_embeds.shape[-1]))
-
-            negative_prompt_embeds = torch.cat([neg_clip_embeds, t5_neg_embed], dim=-2)
-            negative_pooled_prompt_embeds = torch.cat([neg_pooled_embed, neg_2_pooled_embed], dim=-1)
-
-        if lora_scale is not None and isinstance(components, SD3LoraLoaderMixin) and USE_PEFT_BACKEND:
-            if components.text_encoder is not None:
-                unscale_lora_layers(components.text_encoder, lora_scale)
-            if components.text_encoder_2 is not None:
-                unscale_lora_layers(components.text_encoder_2, lora_scale)
-
-        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
-
     @torch.no_grad()
     def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -310,8 +476,24 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
         do_classifier_free_guidance = block_state.guidance_scale > 1.0
         lora_scale = block_state.joint_attention_kwargs.get("scale", None) if block_state.joint_attention_kwargs else None
 
-        prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = self.encode_prompt(
-            components, block_state, block_state.device, do_classifier_free_guidance, lora_scale
+        prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = encode_prompt(
+            components=components,
+            prompt=block_state.prompt,
+            prompt_2=getattr(block_state, "prompt_2", None),
+            prompt_3=getattr(block_state, "prompt_3", None),
+            device=block_state.device,
+            num_images_per_prompt=getattr(block_state, "num_images_per_prompt", 1),
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            negative_prompt=getattr(block_state, "negative_prompt", None),
+            negative_prompt_2=getattr(block_state, "negative_prompt_2", None),
+            negative_prompt_3=getattr(block_state, "negative_prompt_3", None),
+            prompt_embeds=getattr(block_state, "prompt_embeds", None),
+            negative_prompt_embeds=getattr(block_state, "negative_prompt_embeds", None),
+            pooled_prompt_embeds=getattr(block_state, "pooled_prompt_embeds", None),
+            negative_pooled_prompt_embeds=getattr(block_state, "negative_pooled_prompt_embeds", None),
+            clip_skip=getattr(block_state, "clip_skip", None),
+            max_sequence_length=getattr(block_state, "max_sequence_length", 256),
+            lora_scale=lora_scale,
         )
 
         block_state.prompt_embeds = prompt_embeds

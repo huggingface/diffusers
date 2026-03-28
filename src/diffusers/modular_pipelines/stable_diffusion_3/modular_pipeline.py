@@ -50,6 +50,12 @@ class StableDiffusion3ModularPipeline(ModularPipeline, SD3LoraLoaderMixin, FromS
         return 2
 
     @property
+    def tokenizer_max_length(self):
+        if getattr(self, "tokenizer", None) is not None:
+            return self.tokenizer.model_max_length
+        return 77
+
+    @property
     def vae_scale_factor(self):
         vae_scale_factor = 8
         if getattr(self, "vae", None) is not None:
