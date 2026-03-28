@@ -1,4 +1,4 @@
-# Profiling Plan: Diffusers Pipeline Profiling with torch.profiler
+# Profiling a `DiffusionPipeline` with the PyTorch Profiler
 
 Education materials to strategically profile pipelines to potentially improve their
 runtime with `torch.compile`. To set these pipelines up for success with `torch.compile`,
