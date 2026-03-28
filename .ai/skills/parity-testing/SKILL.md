@@ -13,12 +13,15 @@ Before writing any test code, gather:
 
 1. **Which two implementations** are being compared (e.g. research repo → diffusers, standard → modular, or research → modular). Use `AskUserQuestion` with structured choices if not already clear.
 2. **Two equivalent runnable scripts** — one for each implementation, both expected to produce identical output given the same inputs. These scripts define what "parity" means concretely.
+3. **Test directory**: Ask the user if they have a preferred directory for parity test scripts and artifacts. If not, create `parity-tests/` at the repo root.
+4. **Lab book**: Ask the user if they want to maintain a `lab_book.md` in the test directory to track findings, fixes, and experiment results across sessions. This is especially useful for multi-session debugging where context gets lost.
 
 When invoked from the `model-integration` skill, you already have context: the reference script comes from step 2 of setup, and the diffusers script is the one you just wrote. You just need to make sure both scripts are runnable and use the same inputs/seed/params.
 
-## Test strategy
+## Phase 1: CPU/float32 parity (always run)
 
-**Component parity (CPU/float32) -- always run, as you build.**
+### Component parity — test as you build
+
 Test each component before assembling the pipeline. This is the foundation -- if individual pieces are wrong, the pipeline can't be right. Each component in isolation, strict max_diff < 1e-3.
 
 Test freshly converted checkpoints and saved checkpoints.
@@ -26,6 +29,22 @@ Test freshly converted checkpoints and saved checkpoints.
 - **Saved**: load from saved model on disk, compare against reference (catches stale saves)
 
 Keep component test scripts around -- you will need to re-run them during pipeline debugging with different inputs or config values.
+
+**Write a model interface mapping** as you test each component. This documents every input difference between reference and diffusers models — format, dtype, shape, who computes what. Save it in the test directory (e.g., `parity-tests/model_interface_mapping.md`). This is critical: during pipeline testing, you MUST reference this mapping to verify the pipeline passes inputs in the correct format. Without it, you'll waste time rediscovering differences you already found.
+
+Example mapping (from LTX-2.3):
+```markdown
+| Input | Reference | Diffusers | Notes |
+|---|---|---|---|
+| timestep | per-token bf16 sigma, scaled by 1000 internally | passed as sigma*1000 | shape (B,S) not (B,) |
+| sigma (prompt_adaln) | raw f32 sigma, scaled internally | passed as sigma*1000 in f32 | NOT bf16 |
+| positions/coords | computed inside model preprocessor | passed as kwarg video_coords | cast to model dtype |
+| cross-attn timestep | always cross_modality.sigma | always audio_sigma | not conditional |
+| encoder_attention_mask | None (no mask) | None or all-ones | all-ones triggers different SDPA kernel |
+| RoPE | computed in model dtype (no upcast) | must match — no float32 upcast | cos/sin cast to input dtype |
+| output format | X0Model returns x0 | transformer returns velocity | v→x0: (sample - vel * sigma) |
+| audio output | .squeeze(0).float() | must match | (2,N) float32 not (1,2,N) bf16 |
+```
 
 Template -- one self-contained script per component, reference and diffusers side-by-side:
 ```python
@@ -57,25 +76,25 @@ def test_my_component(mode="fresh", model_path=None):
 ```
 Key points: (a) both reference and diffusers component in one script -- never split into separate scripts that save/load intermediates, (b) deterministic input via seeded generator, (c) load one model at a time to fit in CPU RAM, (d) `.clone()` the reference output before deleting the model.
 
-**E2E visual (GPU/bfloat16) -- once the pipeline is assembled.**
-Both pipelines generate independently with identical seeds/params. Save outputs and compare visually. If outputs look identical, you're done -- no need for deeper testing.
+### Pipeline stage tests — encode, decode, then denoise
 
-**Pipeline stage tests -- only if E2E fails and you need to isolate the bug.**
-If the user already suspects where divergence is, start there. Otherwise, work through stages in order.
+Use the capture-inject checkpoint method (see [checkpoint-mechanism.md](checkpoint-mechanism.md)) to test each pipeline stage independently. This methodology is the same for both CPU/float32 and GPU/bf16.
 
-First, **match noise generation**: the way initial noise/latents are constructed (seed handling, generator, randn call order) often differs between the two scripts. If the noise doesn't match, nothing downstream will match. Check how noise is initialized in the diffusers script — if it doesn't match the reference, temporarily change it to match. Note what you changed so it can be reverted after parity is confirmed.
+Before writing pipeline tests, **review the model interface mapping** from the component test phase and verify them. The mapping tells you which differences between the two models are expected (e.g., reference expects raw sigma but diffusers expects sigma*1000). Without it, you'll waste time investigating differences that are by design, not bugs.
 
-For small models, run on CPU/float32 for strict comparison. For large models (e.g. 22B params), CPU/float32 is impractical -- use GPU/bfloat16 with `enable_model_cpu_offload()` and relax tolerances (max_diff < 1e-1 for bfloat16 is typical for passing tests; cosine similarity > 0.9999 is a good secondary check).
+First, **match noise generation**: the way initial noise/latents are constructed (seed handling, generator, randn call order) often differs between the two scripts. If the noise doesn't match, nothing downstream will match.
 
-Test encode and decode stages first -- they're simpler and bugs there are easier to fix. Only debug the denoising loop if encode and decode both pass.
-
-The challenge: pipelines are monolithic `__call__` methods -- you can't just call "the encode part". See [checkpoint-mechanism.md](checkpoint-mechanism.md) for the checkpoint class that lets you stop, save, or inject tensors at named locations inside the pipeline.
-
-**Stage test order — encode, decode, then denoise:**
+**Stage test order:**
 
 - **`encode`** (test first): Stop both pipelines at `"preloop"`. Compare **every single variable** that will be consumed by the denoising loop -- not just latents and sigmas, but also prompt embeddings, attention masks, positional coordinates, connector outputs, and any conditioning inputs.
-- **`decode`** (test second, before denoise): Run the reference pipeline fully -- checkpoint the post-loop latents AND let it finish to get the decoded output. Then feed those same post-loop latents through the diffusers pipeline's decode path. Compare both numerically AND visually.
-- **`denoise`** (test last): Run both pipelines with realistic `num_steps` (e.g. 30) so the scheduler computes correct sigmas/timesteps, but stop after 2 loop iterations using `after_step_1`. Don't set `num_steps=2` -- that produces unrealistic sigma schedules.
+- **`decode`** (test second): Run the reference pipeline fully -- checkpoint the post-loop latents AND let it finish to get the **final output**. Feed those same post-loop latents through the diffusers decode path. Compare the **final output format** -- not raw tensors, but what the user actually gets:
+  - **Image**: compare PIL.Image pixels
+  - **Video**: compare through the pipeline's export function (e.g. `encode_video`)
+  - **Video+Audio**: compare video frames AND audio waveform through `encode_video`
+  - This catches postprocessing bugs like float→uint8 rounding, audio format, and codec settings.
+- **`denoise`** (test last): Run both pipelines with realistic `num_steps` (e.g. 30) so the scheduler computes correct sigmas/timesteps. For float32, stop after 2 loop iterations using `after_step_1` (don't set `num_steps=2` -- that produces unrealistic sigma schedules). For bf16, run ALL steps (see Phase 2).
+
+Start with coarse checkpoints (`after_step_{i}` — just the denoised latents at each step). If a step diverges, place finer checkpoints within that step (e.g. before/after model call, after CFG, after scheduler step). If the divergence is inside the model forward call, use PyTorch forward hooks (`register_forward_hook`) to capture intermediate outputs from sub-modules (e.g., attention output, feed-forward output) and compare them between the two models to find the first diverging operation.
 
 ```python
 # Encode stage -- stop before the loop, compare ALL inputs:
@@ -94,7 +113,27 @@ compare_tensors("prompt_embeds", ref_data["prompt_embeds"], diff_data["prompt_em
 # ... every single tensor the transformer forward() will receive
 ```
 
-**E2E-injected visual test**: Once you've identified a suspected root cause using stage tests, confirm it with an e2e-injected run -- inject the known-good tensor from reference and generate a full video. If the output looks identical to reference, you've confirmed the root cause.
+### E2E visual — once stages pass
+
+Both pipelines generate independently with identical seeds/params. Save outputs and compare visually. If outputs look identical, Phase 1 is done.
+
+If CPU/float32 stage tests all pass and E2E outputs are identical → Phase 1 is done, move on.
+
+If E2E outputs are NOT identical despite stage tests passing, **ask the user**: "CPU/float32 parity passes at the stage level but E2E output differs. The output in bf16/GPU may look slightly different from the reference due to precision casting, but the quality should be the same. Do you want to just vibe-check the output quality, or do you need 1:1 identical output with the reference in bf16?"
+
+- If the user says quality looks fine → **done**.
+- If the user needs 1:1 identical output in bf16 → Phase 2.
+
+## Phase 2: GPU/bf16 parity (optional — only if user needs 1:1 output)
+
+If CPU/float32 passes, the algorithm is correct. bf16 differences are from precision casting (e.g., float32 vs bf16 in RoPE, CFG arithmetic order, scheduler intermediates), not logic bugs. These can make the output look slightly different from the reference even though the quality is identical. Phase 2 eliminates these casting differences so the diffusers output is **bit-identical** to the reference in bf16.
+
+Phase 2 uses the **exact same stage test methodology** as Phase 1 (encode → decode → denoise with progressive checkpoint refinement), with two differences:
+
+1. **dtype=bf16, device=GPU** instead of float32/CPU
+2. **Run the FULL denoising loop** (all steps, not just 2) — bf16 casting differences accumulate over steps and may only manifest after many iterations
+
+See [pitfalls.md](pitfalls.md) #19-#27 for the catalog of bf16-specific gotchas.
 
 ## Debugging technique: Injection for root-cause isolation
 
@@ -145,6 +184,8 @@ extract_frames(diff_video, [0, 60, 120])
 6. **Diff configs before debugging.** Before investigating any divergence, dump and compare all config values. A 30-second config diff prevents hours of debugging based on wrong assumptions.
 7. **Never modify cached/downloaded model configs directly.** Don't edit files in `~/.cache/huggingface/`. Instead, save to a local directory or open a PR on the upstream repo.
 8. **Compare ALL loop inputs in the encode test.** The preloop checkpoint must capture every single tensor the transformer forward() will receive.
+9. **Don't contaminate test paths.** Each side (reference, diffusers) must use only its own code to generate outputs. For COMPARISON, save both outputs through the SAME function (so codec/format differences don't create false diffs). Example: don't use the reference's `encode_video` for one side and diffusers' for the other.
+10. **Re-test standalone model through the actual pipeline if divergence points to the model.** If pipeline stage tests show the divergence is at the model output (e.g., `cond_x0` differs despite identical inputs), re-run the model comparison using capture-inject with real pipeline-generated inputs. Standalone model tests use manually constructed kwargs which may have wrong config values, dtypes, or shapes — the pipeline generates the real ones.
 
 ## Comparison utilities
 
@@ -164,6 +205,11 @@ def compare_tensors(name: str, a: torch.Tensor, b: torch.Tensor, tol: float = 1e
     return passed
 ```
 Cosine similarity is especially useful for GPU/bfloat16 tests where max_diff can be noisy -- `cos > 0.9999` is a strong signal even when max_diff exceeds tolerance.
+
+## Example scripts
+
+- [examples/test_component_parity_cpu.py](examples/test_component_parity_cpu.py) — Template for CPU/float32 component parity test
+- [examples/test_e2e_bf16_parity.py](examples/test_e2e_bf16_parity.py) — Template for GPU/bf16 E2E parity test with capture-inject
 
 ## Gotchas
 

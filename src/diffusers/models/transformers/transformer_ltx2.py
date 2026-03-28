@@ -1491,7 +1491,9 @@ class LTX2VideoTransformer3DModel(
             temb_prompt = temb_prompt_audio = None
 
         # 3.2. Prepare global modality cross attention modulation parameters
-        video_ca_timestep = audio_sigma.flatten() if use_cross_timestep else timestep.flatten()
+        # Reference always uses cross-modality sigma for cross-attention timestep:
+        # video cross-attn uses audio_sigma, audio cross-attn uses sigma (video sigma).
+        video_ca_timestep = audio_sigma.flatten()
         video_cross_attn_scale_shift, _ = self.av_cross_attn_video_scale_shift(
             video_ca_timestep,
             batch_size=batch_size,
@@ -1507,7 +1509,7 @@ class LTX2VideoTransformer3DModel(
         )
         video_cross_attn_a2v_gate = video_cross_attn_a2v_gate.view(batch_size, -1, video_cross_attn_a2v_gate.shape[-1])
 
-        audio_ca_timestep = sigma.flatten() if use_cross_timestep else audio_timestep.flatten()
+        audio_ca_timestep = sigma.flatten()
         audio_cross_attn_scale_shift, _ = self.av_cross_attn_audio_scale_shift(
             audio_ca_timestep,
             batch_size=batch_size,

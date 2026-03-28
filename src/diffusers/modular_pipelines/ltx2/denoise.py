@@ -57,18 +57,22 @@ class LTX2LoopBeforeDenoiser(ModularPipelineBlocks):
         block_state.latent_model_input = block_state.latents.to(block_state.dtype)
         block_state.audio_latent_model_input = block_state.audio_latents.to(block_state.dtype)
 
-        timestep = t.expand(block_state.latent_model_input.shape[0])
+        batch_size = block_state.latent_model_input.shape[0]
+        num_video_tokens = block_state.latent_model_input.shape[1]
+        num_audio_tokens = block_state.audio_latent_model_input.shape[1]
+
+        video_timestep = t.expand(batch_size, num_video_tokens)
 
         if block_state.conditioning_mask is not None:
-            block_state.video_timestep = timestep.unsqueeze(-1) * (
+            block_state.video_timestep = video_timestep * (
                 1 - block_state.conditioning_mask.squeeze(-1)
             )
         else:
-            block_state.video_timestep = timestep
+            block_state.video_timestep = video_timestep
 
-        block_state.audio_timestep = timestep
-        # Scalar sigma for prompt cross-attention modulation (LTX-2.3)
-        block_state.sigma = timestep
+        block_state.audio_timestep = t.expand(batch_size, num_audio_tokens)
+        # Sigma for prompt_adaln: f32 to match reference's f32(sigma * scale_multiplier)
+        block_state.sigma = torch.tensor([t.item()], dtype=torch.float32)
 
         return components, block_state
 
@@ -186,6 +190,13 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
                 for k, v in cond_kwargs.items()
                 if k in self._guider_input_fields.keys()
             }
+            # Drop all-ones attention masks — they're functionally no-op but trigger
+            # a different SDPA kernel path (masked vs unmasked) with different bf16 rounding.
+            # Reference passes context_mask=None for unmasked attention.
+            for mask_key in ["encoder_attention_mask", "audio_encoder_attention_mask"]:
+                mask = cond_kwargs.get(mask_key)
+                if mask is not None and mask.ndim <= 2 and (mask == 1).all():
+                    cond_kwargs[mask_key] = None
 
             video_timestep = block_state.video_timestep
             audio_timestep = block_state.audio_timestep
@@ -217,7 +228,9 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
                 x0_video = noise_pred_video
                 x0_audio = noise_pred_audio
             else:
-                # Model outputs velocity — convert to x0, cast to latent dtype (bf16) to match reference
+                # Model outputs velocity — convert to x0 matching reference's to_denoised:
+                # (sample.f32 - velocity.f32 * sigma_f32).to(sample.dtype)
+                # Reference uses f32 sigma (from denoise_mask * sigma, both f32).
                 x0_video = self._convert_velocity_to_x0(
                     block_state.latents.float(), noise_pred_video.float(), sigma_val
                 ).to(block_state.latents.dtype)

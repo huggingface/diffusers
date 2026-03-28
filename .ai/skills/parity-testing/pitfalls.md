@@ -114,3 +114,41 @@ When running on GPU/bfloat16, multi-layer encoders (e.g. 8-layer connector trans
 ## 18. Stale test fixtures
 
 When using saved tensors for cross-pipeline comparison, always ensure both sets of tensors were captured from the same run configuration (same seed, same config, same code version). Mixing fixtures from different runs (e.g. reference tensors from yesterday, diffusers tensors from today after a code change) creates phantom divergence that wastes debugging time. Regenerate both sides in a single test script execution.
+
+## 19. RoPE float32 upcast changes bf16 output
+
+If `apply_rotary_emb` upcasts input to float32 for the rotation computation (`x.float() * cos + x_rotated.float() * sin`), but the reference stays in bf16, the results differ after casting back. The float32 intermediate produces different rounding than native bf16 computation.
+
+**Fix**: Remove the float32 upcast. Cast cos/sin to the input dtype instead: `cos, sin = cos.to(x.dtype), sin.to(x.dtype)`, then compute `x * cos + x_rotated * sin` in the model's native dtype.
+
+## 20. CFG formula arithmetic order
+
+`cond + (scale-1) * (cond - uncond)` and `uncond + scale * (cond - uncond)` are mathematically identical but produce different bf16 results because the multiplication factor (3 vs 4 for scale=4) and the base (cond vs uncond) differ. Match the reference's exact formula.
+
+## 21. Scheduler float64 intermediates from numpy
+
+`math.exp(mu) / (math.exp(mu) + (1/t - 1))` where `t` is a numpy float32 array promotes to float64 (because `math.exp` returns Python float64 and numpy promotes). The reference uses torch float32. Fix: compute in `torch.float32` using `torch.as_tensor(t, dtype=torch.float32)`. Same for `np.linspace` vs `torch.linspace` — use `torch.linspace` for float32-native computation.
+
+## 22. Zero-dim tensor type promotion in Euler step
+
+`dt * model_output` where `dt` is a 0-dim float32 tensor and `model_output` is bf16: PyTorch treats the 0-dim tensor as a "scalar" that adapts to the tensor's dtype. Result is **bf16**, not float32. The reference does `velocity.to(float32) * dt` which is float32. Fix: explicitly upcast `model_output.to(sample.dtype) * dt`.
+
+## 23. Per-token vs per-batch timestep shape
+
+Passing timestep as `(B,)` produces temb shape `(B, 1, D)` via the adaln. Passing `(B, S)` produces `(B, S, D)`. For T2V where all tokens share the same sigma, these are mathematically equivalent but use different CUDA kernels with different bf16 rounding. Match the reference's shape — typically per-token `(B, S)`.
+
+## 24. Model config missing fields
+
+The diffusers checkpoint config may be missing fields that the reference model has (e.g. `use_cross_timestep`, `prompt_modulation`). The code falls back to a default that may be wrong. Always check the ACTUAL runtime value, not the code default. Run `getattr(model.config, "field_name", "MISSING")` and compare against the reference model's config.
+
+## 25. Cross-attention timestep conditional
+
+The reference may always use `cross_modality.sigma` for cross-attention timestep (e.g., video cross-attn uses audio sigma), but the diffusers model may conditionally use the main timestep based on `use_cross_timestep`. If the conditional is wrong or the config field is missing, the cross-attention receives a completely different timestep — different shape `(S,)` vs `(1,)`, different value, and different sinusoidal embedding. This is a model-level bug that standalone tests miss because they pass `use_cross_timestep` manually.
+
+## 26. Audio/video output format mismatch
+
+The reference may return audio as `(2, N)` float32 (after `.squeeze(0).float()`), while the diffusers pipeline returns `(1, 2, N)` bf16 from the vocoder. The `_write_audio` function in `encode_video` doesn't handle 3D tensors correctly. Fix: add `.squeeze(0).float()` after the vocoder call in the audio decoder step.
+
+## 27. encode_video float-to-uint8 rounding
+
+The reference converts float video to uint8 via `.to(torch.uint8)` (truncation), but diffusers' `encode_video` may use `(video * 255).round().astype("uint8")` (rounding). This causes 1 pixel diff per channel at ~50% of pixels. Fix: use truncation (`.astype("uint8")`) to match the reference.
