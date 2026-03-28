@@ -14,13 +14,11 @@
 # limitations under the License.
 
 import gc
-import importlib.metadata
 import tempfile
 import unittest
 from typing import List
 
 import numpy as np
-from packaging import version
 from parameterized import parameterized
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
@@ -82,18 +80,17 @@ if is_torchao_available():
         Float8WeightOnlyConfig,
         Int4WeightOnlyConfig,
         Int8DynamicActivationInt8WeightConfig,
+        Int8DynamicActivationIntxWeightConfig,
         Int8WeightOnlyConfig,
+        IntxWeightOnlyConfig,
     )
     from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
     from torchao.utils import get_model_size_in_bytes
 
-    if version.parse(importlib.metadata.version("torchao")) >= version.Version("0.10.0"):
-        from torchao.quantization import Int8DynamicActivationIntxWeightConfig, IntxWeightOnlyConfig
-
 
 @require_torch
 @require_torch_accelerator
-@require_torchao_version_greater_or_equal("0.14.0")
+@require_torchao_version_greater_or_equal("0.15.0")
 class TorchAoConfigTest(unittest.TestCase):
     def test_to_dict(self):
         """
@@ -128,7 +125,7 @@ class TorchAoConfigTest(unittest.TestCase):
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
 @require_torch_accelerator
-@require_torchao_version_greater_or_equal("0.14.0")
+@require_torchao_version_greater_or_equal("0.15.0")
 class TorchAoTest(unittest.TestCase):
     def tearDown(self):
         gc.collect()
@@ -527,7 +524,7 @@ class TorchAoTest(unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         _ = pipe(**inputs)
 
-    @require_torchao_version_greater_or_equal("0.9.0")
+    @require_torchao_version_greater_or_equal("0.15.0")
     def test_aobase_config(self):
         quantization_config = TorchAoConfig(Int8WeightOnlyConfig())
         components = self.get_dummy_components(quantization_config)
@@ -540,7 +537,7 @@ class TorchAoTest(unittest.TestCase):
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
 @require_torch_accelerator
-@require_torchao_version_greater_or_equal("0.14.0")
+@require_torchao_version_greater_or_equal("0.15.0")
 class TorchAoSerializationTest(unittest.TestCase):
     model_name = "hf-internal-testing/tiny-flux-pipe"
 
@@ -650,7 +647,7 @@ class TorchAoSerializationTest(unittest.TestCase):
         self._check_serialization_expected_slice(quant_type, expected_slice, device)
 
 
-@require_torchao_version_greater_or_equal("0.14.0")
+@require_torchao_version_greater_or_equal("0.15.0")
 class TorchAoCompileTest(QuantCompileTests, unittest.TestCase):
     @property
     def quantization_config(self):
@@ -696,7 +693,7 @@ class TorchAoCompileTest(QuantCompileTests, unittest.TestCase):
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
 @require_torch_accelerator
-@require_torchao_version_greater_or_equal("0.14.0")
+@require_torchao_version_greater_or_equal("0.15.0")
 @slow
 @nightly
 class SlowTorchAoTests(unittest.TestCase):
@@ -854,7 +851,7 @@ class SlowTorchAoTests(unittest.TestCase):
 
 @require_torch
 @require_torch_accelerator
-@require_torchao_version_greater_or_equal("0.14.0")
+@require_torchao_version_greater_or_equal("0.15.0")
 @slow
 @nightly
 class SlowTorchAoPreserializedModelTests(unittest.TestCase):
