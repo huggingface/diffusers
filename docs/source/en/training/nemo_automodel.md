@@ -12,46 +12,30 @@ specific language governing permissions and limitations under the License.
 
 # NeMo Automodel
 
-[NeMo Automodel](https://github.com/NVIDIA-NeMo/Automodel) is a PyTorch DTensor-native training library from NVIDIA for fine-tuning and pretraining diffusion models at scale. It uses [flow matching](https://huggingface.co/papers/2210.02747) for training and [FSDP2](https://pytorch.org/docs/stable/fsdp.html) for distributed parallelism on single-node and multi-node setups.
+[NeMo Automodel](https://github.com/NVIDIA-NeMo/Automodel) is a PyTorch DTensor-native training library from NVIDIA for fine-tuning and pretraining diffusion models at scale. It is **Hugging Face native** — train any Diffusers-format model from the Hub with no checkpoint conversion. The same YAML recipe and hackable training script runs on **any scale**, from 1 GPU to hundreds of nodes, with [FSDP2](https://pytorch.org/docs/stable/fsdp.html) distributed training, multiresolution bucketed dataloading, and pre-encoded latent space training for **maximum GPU utilization**. It uses [flow matching](https://huggingface.co/papers/2210.02747) for training and is fully open source (Apache 2.0), NVIDIA-supported, and actively maintained.
 
-NeMo Automodel integrates directly with Diffusers, and doesn't require checkpoint conversion. It loads pretrained models from the Hugging Face Hub using Diffusers model classes and generates outputs with the [`DiffusionPipeline`].
+NeMo Automodel integrates directly with Diffusers. It loads pretrained models from the Hugging Face Hub using Diffusers model classes and generates outputs with the [`DiffusionPipeline`].
 
-### Why NeMo Automodel?
-
-- **Hugging Face native**: Train any Diffusers-format model from the Hub with no checkpoint conversion — day-0 support for new model releases.
-- **Any scale**: The same YAML recipe and training script runs on 1 GPU or across hundreds of nodes. Parallelism is configuration, not code.
-- **High performance**: FSDP2 distributed training with multiresolution bucketed dataloading and pre-encoded latent space training for maximum GPU utilization.
-- **Hackable**: Linear training scripts with YAML configuration files. No hidden trainer abstractions — you can read and modify the entire training loop.
-- **Open source**: Apache 2.0 licensed, NVIDIA-supported, and actively maintained.
-
-### Workflow overview
-
-```text
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│ 1. Install   │───>│ 2. Prepare   │───>│ 3. Configure │───>│  4. Train    │───>│ 5. Generate  │
-│              │    │    Data      │    │              │    │              │    │              │
-│ pip install  │    │ Encode to    │    │ YAML recipe  │    │ torchrun     │    │ Run inference│
-│ or Docker    │    │ .meta files  │    │              │    │              │    │ with ckpt    │
-└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
-```
+The typical workflow is to install NeMo Automodel (pip or Docker), prepare your data by encoding it into `.meta` files, configure a YAML recipe, launch training with `torchrun`, and run inference with the resulting checkpoint.
 
 ## Supported models
 
-| Model | Hugging Face ID | Task | Parameters |
-|-------|----------------|------|------------|
-| Wan 2.1 T2V 1.3B | [`Wan-AI/Wan2.1-T2V-1.3B-Diffusers`](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B-Diffusers) | Text-to-Video | 1.3B |
-| FLUX.1-dev | [`black-forest-labs/FLUX.1-dev`](https://huggingface.co/black-forest-labs/FLUX.1-dev) | Text-to-Image | 12B |
-| HunyuanVideo 1.5 | [`hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-720p_t2v`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-720p_t2v) | Text-to-Video | 13B |
-
-Use the table below to pick the right model for your use case:
-
-| Use Case | Model | Why Choose It |
-|----------|-------|---------------|
-| **Video generation on limited hardware** | Wan 2.1 T2V 1.3B | Smallest model (1.3B params) — fast iteration, fits on a single A100 40GB |
-| **High-quality image generation** | FLUX.1-dev | State-of-the-art text-to-image with 12B params and guidance-based control |
-| **High-quality video generation** | HunyuanVideo 1.5 | Larger video model with condition-latent support for richer motion and detail |
+| Model | Hugging Face ID | Task | Parameters | Use case |
+|-------|----------------|------|------------|----------|
+| Wan 2.1 T2V 1.3B | [Wan-AI/Wan2.1-T2V-1.3B-Diffusers](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B-Diffusers) | Text-to-Video | 1.3B | video generation on limited hardware (fits on single 40GB A100) |
+| FLUX.1-dev | [black-forest-labs/FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev) | Text-to-Image | 12B | high-quality image generation |
+| HunyuanVideo 1.5 | [hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-720p_t2v](https://huggingface.co/hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-720p_t2v) | Text-to-Video | 13B | high-quality video generation |
 
 ## Installation
+
+### Hardware requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| GPU | A100 40GB | A100 80GB / H100 |
+| GPUs | 4 | 8+ |
+| RAM | 128 GB | 256 GB+ |
+| Storage | 500 GB SSD | 2 TB NVMe |
 
 Install NeMo Automodel with pip. For the full set of installation methods (including from source), see the [NeMo Automodel installation guide](https://docs.nvidia.com/nemo/automodel/latest/guides/installation.html).
 
@@ -76,7 +60,12 @@ NeMo Automodel trains diffusion models in latent space. Raw images or videos mus
 
 Use the built-in preprocessing tool to encode your data. The tool automatically distributes work across all available GPUs.
 
-**Video preprocessing (Wan 2.1):**
+<hfoptions id="data-prep">
+<hfoption id="video preprocessing">
+
+The video preprocessing command is the same for both Wan 2.1 and HunyuanVideo, but the flags differ. Wan 2.1 uses `--processor wan` with `--resolution_preset` and `--caption_format sidecar`, while HunyuanVideo uses `--processor hunyuan` with `--target_frames` to set the frame count and `--caption_format meta_json`.
+
+**Wan 2.1:**
 
 ```bash
 python -m tools.diffusion.preprocessing_multiprocess video \
@@ -87,17 +76,7 @@ python -m tools.diffusion.preprocessing_multiprocess video \
     --caption_format sidecar
 ```
 
-**Image preprocessing (FLUX):**
-
-```bash
-python -m tools.diffusion.preprocessing_multiprocess image \
-    --image_dir /data/images \
-    --output_dir /cache \
-    --processor flux \
-    --resolution_preset 512p
-```
-
-**Video preprocessing (HunyuanVideo):**
+**HunyuanVideo:**
 
 ```bash
 python -m tools.diffusion.preprocessing_multiprocess video \
@@ -107,6 +86,20 @@ python -m tools.diffusion.preprocessing_multiprocess video \
     --target_frames 121 \
     --caption_format meta_json
 ```
+
+</hfoption>
+<hfoption id="image preprocessing">
+
+```bash
+python -m tools.diffusion.preprocessing_multiprocess image \
+    --image_dir /data/images \
+    --output_dir /cache \
+    --processor flux \
+    --resolution_preset 512p
+```
+
+</hfoption>
+</hfoptions>
 
 ### Output format
 
@@ -265,7 +258,8 @@ The table below lists the minimal required configs. See the [NeMo Automodel exam
 
 ## Launch training
 
-**Single-node training:**
+<hfoptions id="launch-training">
+<hfoption id="single-node">
 
 ```bash
 torchrun --nproc-per-node=8 \
@@ -273,7 +267,10 @@ torchrun --nproc-per-node=8 \
   -c examples/diffusion/finetune/wan2_1_t2v_flow.yaml
 ```
 
-**Multi-node training** (run on each node, setting `NODE_RANK` accordingly):
+</hfoption>
+<hfoption id="multi-node">
+
+Run the following on each node, setting `NODE_RANK` accordingly:
 
 ```bash
 export MASTER_ADDR=node0.hostname
@@ -293,18 +290,22 @@ torchrun \
 > [!NOTE]
 > For multi-node training, set `fsdp.dp_size` in the YAML to the **total** number of GPUs across all nodes (e.g., 16 for 2 nodes with 8 GPUs each).
 
+</hfoption>
+</hfoptions>
+
 ## Generation
 
 After training, generate videos or images from text prompts using the fine-tuned checkpoint.
 
-**Wan 2.1 (single-GPU):**
+<hfoptions id="generation">
+<hfoption id="Wan 2.1">
 
 ```bash
 python examples/diffusion/generate/generate.py \
   -c examples/diffusion/generate/configs/generate_wan.yaml
 ```
 
-**With a fine-tuned checkpoint:**
+With a fine-tuned checkpoint:
 
 ```bash
 python examples/diffusion/generate/generate.py \
@@ -313,7 +314,42 @@ python examples/diffusion/generate/generate.py \
   --inference.prompts '["A dog running on a beach"]'
 ```
 
-Generation configs are also available for [FLUX](https://github.com/NVIDIA-NeMo/Automodel/blob/main/examples/diffusion/generate/configs/generate_flux.yaml) (images) and [HunyuanVideo](https://github.com/NVIDIA-NeMo/Automodel/blob/main/examples/diffusion/generate/configs/generate_hunyuan.yaml) (videos).
+</hfoption>
+<hfoption id="FLUX">
+
+```bash
+python examples/diffusion/generate/generate.py \
+  -c examples/diffusion/generate/configs/generate_flux.yaml
+```
+
+With a fine-tuned checkpoint:
+
+```bash
+python examples/diffusion/generate/generate.py \
+  -c examples/diffusion/generate/configs/generate_flux.yaml \
+  --model.checkpoint ./checkpoints/step_1000 \
+  --inference.prompts '["A dog running on a beach"]'
+```
+
+</hfoption>
+<hfoption id="HunyuanVideo">
+
+```bash
+python examples/diffusion/generate/generate.py \
+  -c examples/diffusion/generate/configs/generate_hunyuan.yaml
+```
+
+With a fine-tuned checkpoint:
+
+```bash
+python examples/diffusion/generate/generate.py \
+  -c examples/diffusion/generate/configs/generate_hunyuan.yaml \
+  --model.checkpoint ./checkpoints/step_1000 \
+  --inference.prompts '["A dog running on a beach"]'
+```
+
+</hfoption>
+</hfoptions>
 
 ## Diffusers integration
 
@@ -326,15 +362,6 @@ This integration provides several benefits for Diffusers users:
 - **Pipeline-compatible outputs**: fine-tuned checkpoints are saved in a format that can be loaded directly back into Diffusers pipelines for inference, sharing on the Hub, or further optimization with tools like quantization and compilation.
 - **Scalable training for Diffusers models**: NeMo Automodel adds distributed training capabilities (FSDP2, multi-node, multiresolution bucketing) that go beyond what the built-in Diffusers training scripts provide, while keeping the same model and pipeline interfaces.
 - **Shared ecosystem**: any model, LoRA adapter, or pipeline component from the Diffusers ecosystem remains compatible throughout the training and inference workflow.
-
-## Hardware requirements
-
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| GPU | A100 40GB | A100 80GB / H100 |
-| GPUs | 4 | 8+ |
-| RAM | 128 GB | 256 GB+ |
-| Storage | 500 GB SSD | 2 TB NVMe |
 
 ## NVIDIA Team
 
