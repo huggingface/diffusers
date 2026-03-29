@@ -313,3 +313,6 @@ kernels, so this tiny sync balloons to 2.3s.
 there are still some gaps outside the compiled regions. A full compilation
 will likely mitigate it. In case it doesn't, the above observations could
 be useful to mitigate that.
+* Use of CUDA Graphs can also help mitigate CPU overhead related issues. When
+using "reduce-overhead" and "max-autotune" in `torch.compile` triggers the
+use of CUDA Graphs.
