@@ -210,6 +210,9 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
         block_state.device = components._execution_device
         batch_size = block_state.batch_size * block_state.num_images_per_prompt
 
+        block_state.height = block_state.height or components.default_height
+        block_state.width = block_state.width or components.default_width
+
         if block_state.latents is not None:
             block_state.latents = block_state.latents.to(device=block_state.device, dtype=block_state.dtype)
         else:
