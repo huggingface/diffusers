@@ -177,7 +177,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         
-        self.default_sample_size = 64
+        self.default_sample_size = 128
         self.default_max_sequence_length = 1024
         self.default_return_index = -8
 

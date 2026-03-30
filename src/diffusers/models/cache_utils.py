@@ -118,7 +118,7 @@ class CacheMixin:
         from ..hooks.mag_cache import _MAG_CACHE_BLOCK_HOOK, _MAG_CACHE_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
         from ..hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
-        from ..hooks.text_kv_cache import _TEXT_KV_CACHE_HOOK
+        from ..hooks.text_kv_cache import _TEXT_KV_CACHE_BLOCK_HOOK, _TEXT_KV_CACHE_TRANSFORMER_HOOK
 
         if self._cache_config is None:
             logger.warning("Caching techniques have not been enabled, so there's nothing to disable.")
@@ -137,7 +137,8 @@ class CacheMixin:
         elif isinstance(self._cache_config, PyramidAttentionBroadcastConfig):
             registry.remove_hook(_PYRAMID_ATTENTION_BROADCAST_HOOK, recurse=True)
         elif isinstance(self._cache_config, TextKVCacheConfig):
-            registry.remove_hook(_TEXT_KV_CACHE_HOOK, recurse=True)
+            registry.remove_hook(_TEXT_KV_CACHE_TRANSFORMER_HOOK, recurse=True)
+            registry.remove_hook(_TEXT_KV_CACHE_BLOCK_HOOK, recurse=True)
         elif isinstance(self._cache_config, TaylorSeerCacheConfig):
             registry.remove_hook(_TAYLORSEER_CACHE_HOOK, recurse=True)
         else:
