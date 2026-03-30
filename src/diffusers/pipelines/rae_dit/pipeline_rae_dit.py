@@ -249,7 +249,7 @@ class RAEDiTPipeline(DiffusionPipeline):
         if output_type == "latent":
             output = latents
         else:
-            images = self.vae.decode(latents).sample.clamp(0, 1)
+            images = self.vae.decode(latents.to(dtype=self.vae.dtype)).sample.clamp(0, 1)
             output = self.image_processor.postprocess(images, output_type=output_type)
 
         self.maybe_free_model_hooks()

@@ -184,6 +184,14 @@ def build_scheduler_config(config: dict[str, Any]) -> tuple[FlowMatchEulerDiscre
     misc = _resolve_section(config, "misc")
 
     transport_params = transport.get("params", {})
+    path_type = str(transport_params.get("path_type", "Linear"))
+    prediction = str(transport_params.get("prediction", "velocity"))
+    if path_type.lower() != "linear" or prediction.lower() != "velocity":
+        raise ValueError(
+            "Only `transport.params.path_type=Linear` with `transport.params.prediction=velocity` is "
+            "supported by this converter because it always saves a `FlowMatchEulerDiscreteScheduler`."
+        )
+
     latent_size = misc.get("latent_size", None)
     if latent_size is None:
         raise KeyError("Config must define `misc.latent_size` for scheduler conversion.")
@@ -200,8 +208,8 @@ def build_scheduler_config(config: dict[str, Any]) -> tuple[FlowMatchEulerDiscre
     metadata = {
         "num_train_timesteps": scheduler.config.num_train_timesteps,
         "shift": scheduler.config.shift,
-        "path_type": transport_params.get("path_type", "Linear"),
-        "prediction": transport_params.get("prediction", "velocity"),
+        "path_type": path_type,
+        "prediction": prediction,
         "time_dist_type": transport_params.get("time_dist_type", "uniform"),
     }
     return scheduler, metadata
@@ -307,19 +315,26 @@ def write_metadata(output_path: Path, metadata: dict[str, Any]) -> None:
 
 
 def resolve_input_path(accessor: RepoAccessor, path: str) -> Path:
+    expanded_path = Path(path).expanduser()
+    if expanded_path.is_absolute():
+        if expanded_path.is_file():
+            return expanded_path
+        raise FileNotFoundError(f"Absolute path does not exist: {expanded_path}")
+
     candidates = [path]
     if path.startswith("models/"):
         candidates.append(path[len("models/") :])
 
     for candidate in candidates:
-        local_path = Path(candidate)
-        if local_path.is_file():
-            return local_path
-
         try:
             return accessor.fetch(candidate)
         except FileNotFoundError:
             continue
+
+    for candidate in candidates:
+        local_path = Path(candidate).expanduser()
+        if local_path.is_file():
+            return local_path
 
     raise FileNotFoundError(f"Could not resolve `{path}` from `{accessor.repo_or_path}`.")
 

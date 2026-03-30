@@ -13,12 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import tempfile
+from pathlib import Path
 
+import pytest
 import torch
 
 from diffusers import AutoencoderRAE
 from scripts.convert_rae_stage2_to_diffusers import (
+    RepoAccessor,
+    build_scheduler_config,
+    resolve_input_path,
     translate_transformer_state_dict,
     unwrap_state_dict,
 )
@@ -76,6 +82,48 @@ def test_translate_transformer_state_dict_maps_gelu_keys():
 
     assert torch.equal(translated["blocks.0.mlp.net.0.proj.weight"], fc1_weight)
     assert torch.equal(translated["blocks.0.mlp.net.2.weight"], fc2_weight)
+
+
+def test_build_scheduler_config_rejects_non_linear_or_non_velocity_transport():
+    with pytest.raises(ValueError):
+        build_scheduler_config(
+            {
+                "transport": {"params": {"path_type": "VP", "prediction": "velocity"}},
+                "misc": {"latent_size": [768, 16, 16]},
+            }
+        )
+
+    with pytest.raises(ValueError):
+        build_scheduler_config(
+            {
+                "transport": {"params": {"path_type": "Linear", "prediction": "epsilon"}},
+                "misc": {"latent_size": [768, 16, 16]},
+            }
+        )
+
+
+def test_resolve_input_path_prefers_repo_accessor_for_relative_paths():
+    original_cwd = Path.cwd()
+
+    with tempfile.TemporaryDirectory() as repo_tmpdir, tempfile.TemporaryDirectory() as cwd_tmpdir:
+        repo_root = Path(repo_tmpdir)
+        cwd_root = Path(cwd_tmpdir)
+
+        repo_config = repo_root / "configs" / "sample.yaml"
+        repo_config.parent.mkdir(parents=True, exist_ok=True)
+        repo_config.write_text("repo: true\n", encoding="utf-8")
+
+        cwd_config = cwd_root / "configs" / "sample.yaml"
+        cwd_config.parent.mkdir(parents=True, exist_ok=True)
+        cwd_config.write_text("cwd: true\n", encoding="utf-8")
+
+        os.chdir(cwd_root)
+        try:
+            resolved = resolve_input_path(RepoAccessor(str(repo_root)), "configs/sample.yaml")
+        finally:
+            os.chdir(original_cwd)
+
+    assert resolved == repo_config
 
 
 def test_autoencoder_rae_from_pretrained_loads_local_checkpoint():

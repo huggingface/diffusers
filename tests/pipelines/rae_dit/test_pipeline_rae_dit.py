@@ -188,6 +188,20 @@ class RAEDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-4)
 
+    def test_inference_casts_latents_to_vae_dtype_before_decode(self):
+        components = self.get_dummy_components()
+        components["vae"] = components["vae"].to(dtype=torch.float64)
+        pipe = self.pipeline_class(**components).to("cpu")
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs("cpu")
+        inputs["output_type"] = "pt"
+
+        images = pipe(**inputs).images
+
+        self.assertEqual(images.shape, (1, 3, 4, 4))
+        self.assertTrue(torch.isfinite(images).all().item())
+
     def test_inference_classifier_free_guidance(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to("cpu")
         pipe.set_progress_bar_config(disable=None)
