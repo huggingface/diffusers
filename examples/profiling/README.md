@@ -275,7 +275,7 @@ After:
 - CPU gaps: 158us / 2,777us / 136us
 
 > [!NOTE]
-> The fixes mentioned above and below are available in [this PR](TODO:link).
+> The fixes mentioned above and below are available in [this PR](https://github.com/huggingface/diffusers/pull/13356).
 
 ### DtoH syncs
 
