@@ -764,7 +764,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         from_flax = kwargs.pop("from_flax", False)
-        torch_dtype = kwargs.pop("torch_dtype", None)
+        torch_dtype = kwargs.pop("torch_dtype", torch.float32)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
         provider = kwargs.pop("provider", None)
