@@ -730,19 +730,17 @@ class TestAutoModelLoadIdTagging:
     def test_load_components_loads_local_single_file_path(self, tmp_path):
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
 
-        local_ckpt_path = hf_hub_download(
-            repo_id="lllyasviel/ControlNet-v1-1",
-            filename="control_v11p_sd15_canny.pth",
-            local_dir=str(tmp_path),
-        )
+        model = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+        model.save_pretrained(tmp_path)
+
+        local_ckpt_path = str(tmp_path / "diffusion_pytorch_model.safetensors")
 
         pipe._component_specs["controlnet"] = ComponentSpec(
             name="controlnet",
             type_hint=ControlNetModel,
             pretrained_model_name_or_path=local_ckpt_path,
         )
-
-        pipe.load_components(names="controlnet")
+        pipe.load_components(names="controlnet", config=str(tmp_path))
 
         assert pipe.controlnet is not None
         assert isinstance(pipe.controlnet, ControlNetModel)
