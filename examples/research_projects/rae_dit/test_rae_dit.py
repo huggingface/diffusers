@@ -37,8 +37,11 @@ from train_rae_dit import (  # noqa: E402
     build_transforms,
     collate_fn,
     compute_resume_offsets,
+    compute_training_schedule,
+    is_training_complete,
     maybe_load_resumed_scheduler,
     should_skip_resumed_batch,
+    validate_args,
 )
 
 
@@ -248,6 +251,47 @@ class RAEDiT(ExamplesTestsAccelerate):
 
         consumed_microbatches = resume_global_step * gradient_accumulation_steps
         self.assertEqual(resumed_trace, baseline_trace[consumed_microbatches:])
+
+    def test_compute_training_schedule_preserves_explicit_max_train_steps_after_sharding(self):
+        num_update_steps_per_epoch, max_train_steps, num_train_epochs = compute_training_schedule(
+            train_dataloader_length=4,
+            gradient_accumulation_steps=2,
+            num_train_epochs=10,
+            max_train_steps=6,
+        )
+
+        self.assertEqual(num_update_steps_per_epoch, 2)
+        self.assertEqual(max_train_steps, 6)
+        self.assertEqual(num_train_epochs, 3)
+
+    def test_compute_training_schedule_recomputes_derived_max_train_steps_after_sharding(self):
+        num_update_steps_per_epoch, max_train_steps, num_train_epochs = compute_training_schedule(
+            train_dataloader_length=4,
+            gradient_accumulation_steps=2,
+            num_train_epochs=3,
+            max_train_steps=None,
+        )
+
+        self.assertEqual(num_update_steps_per_epoch, 2)
+        self.assertEqual(max_train_steps, 6)
+        self.assertEqual(num_train_epochs, 3)
+
+    def test_is_training_complete_when_resume_checkpoint_already_meets_budget(self):
+        self.assertTrue(is_training_complete(global_step=3, max_train_steps=3))
+        self.assertTrue(is_training_complete(global_step=4, max_train_steps=3))
+        self.assertFalse(is_training_complete(global_step=2, max_train_steps=3))
+
+    def test_validate_args_rejects_validation_steps_without_class_label(self):
+        args = SimpleNamespace(
+            validation_class_label=None,
+            validation_steps=10,
+            num_validation_images=1,
+            validation_num_inference_steps=2,
+            validation_guidance_scale=1.0,
+        )
+
+        with self.assertRaises(ValueError):
+            validate_args(args)
 
     def test_maybe_load_resumed_scheduler_prefers_checkpoint_config(self):
         args = SimpleNamespace(num_train_timesteps=999, flow_shift=2.5)

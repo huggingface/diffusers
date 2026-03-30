@@ -271,6 +271,21 @@ def collate_fn(examples):
     return {"pixel_values": pixel_values, "class_labels": class_labels}
 
 
+def compute_training_schedule(
+    train_dataloader_length: int,
+    gradient_accumulation_steps: int,
+    num_train_epochs: int,
+    max_train_steps: int | None,
+) -> tuple[int, int, int]:
+    num_update_steps_per_epoch = math.ceil(train_dataloader_length / gradient_accumulation_steps)
+
+    if max_train_steps is None:
+        max_train_steps = num_train_epochs * num_update_steps_per_epoch
+
+    num_train_epochs = math.ceil(max_train_steps / num_update_steps_per_epoch)
+    return num_update_steps_per_epoch, max_train_steps, num_train_epochs
+
+
 def compute_resume_offsets(
     global_step: int, num_update_steps_per_epoch: int, gradient_accumulation_steps: int
 ) -> tuple[int, int]:
@@ -278,6 +293,10 @@ def compute_resume_offsets(
     resume_global_step = global_step * gradient_accumulation_steps
     resume_step = resume_global_step % (num_update_steps_per_epoch * gradient_accumulation_steps)
     return first_epoch, resume_step
+
+
+def is_training_complete(global_step: int, max_train_steps: int) -> bool:
+    return global_step >= max_train_steps
 
 
 def should_skip_resumed_batch(should_resume: bool, epoch: int, first_epoch: int, step: int, resume_step: int) -> bool:
@@ -358,6 +377,8 @@ def validate_args(args):
 
     if validation_enabled and args.validation_steps is None:
         raise ValueError("`--validation_steps` must be provided when `--validation_class_label` is set.")
+    if args.validation_steps is not None and args.validation_class_label is None:
+        raise ValueError("`--validation_class_label` must be provided when `--validation_steps` is set.")
     if args.validation_steps is not None and args.validation_steps < 1:
         raise ValueError(f"`--validation_steps` must be >= 1, but got {args.validation_steps}.")
     if args.validation_class_label is not None and args.validation_class_label < 0:
@@ -560,11 +581,13 @@ def main():
         eps=args.adam_epsilon,
     )
 
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
+    overrode_max_train_steps = args.max_train_steps is None
+    num_update_steps_per_epoch, args.max_train_steps, _ = compute_training_schedule(
+        train_dataloader_length=len(train_dataloader),
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        num_train_epochs=args.num_train_epochs,
+        max_train_steps=args.max_train_steps,
+    )
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
@@ -613,10 +636,12 @@ def main():
 
     autoencoder.to(accelerator.device, dtype=weight_dtype)
 
-    if overrode_max_train_steps:
-        num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+    num_update_steps_per_epoch, args.max_train_steps, args.num_train_epochs = compute_training_schedule(
+        train_dataloader_length=len(train_dataloader),
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        num_train_epochs=args.num_train_epochs,
+        max_train_steps=None if overrode_max_train_steps else args.max_train_steps,
+    )
 
     global_step = 0
     first_epoch = 0
@@ -677,12 +702,23 @@ def main():
 
     progress_bar = tqdm(
         range(0, args.max_train_steps),
-        initial=initial_global_step,
+        initial=min(initial_global_step, args.max_train_steps),
         desc="Steps",
         disable=not accelerator.is_local_main_process,
     )
 
+    if is_training_complete(global_step, args.max_train_steps):
+        logger.info(
+            "Checkpoint already reached the requested training budget: global_step=%s, max_train_steps=%s. "
+            "Skipping further optimizer steps.",
+            global_step,
+            args.max_train_steps,
+        )
+
     for epoch in range(first_epoch, args.num_train_epochs):
+        if is_training_complete(global_step, args.max_train_steps):
+            break
+
         transformer.train()
         if hasattr(train_dataloader, "set_epoch"):
             train_dataloader.set_epoch(epoch)
@@ -781,10 +817,10 @@ def main():
                     )
                     accelerator.wait_for_everyone()
 
-            if global_step >= args.max_train_steps:
+            if is_training_complete(global_step, args.max_train_steps):
                 break
 
-        if global_step >= args.max_train_steps:
+        if is_training_complete(global_step, args.max_train_steps):
             break
 
     accelerator.wait_for_everyone()
