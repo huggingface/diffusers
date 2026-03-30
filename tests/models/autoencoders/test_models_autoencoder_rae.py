@@ -253,21 +253,23 @@ class TestAutoEncoderRAE(AutoencoderRAETesterConfig, ModelTesterMixin):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             model.save_pretrained(tmpdir, safe_serialization=False)
-            loaded_model, loading_info = AutoencoderRAE.from_pretrained(
-                tmpdir, low_cpu_mem_usage=False, output_loading_info=True
-            )
 
-        loaded_model = loaded_model.to(torch_device).eval()
+            for low_cpu_mem_usage in [False, True]:
+                loaded_model, loading_info = AutoencoderRAE.from_pretrained(
+                    tmpdir, low_cpu_mem_usage=low_cpu_mem_usage, output_loading_info=True
+                )
 
-        with torch.no_grad():
-            expected = model.encode(x).latent
-            actual = loaded_model.encode(x).latent
+                loaded_model = loaded_model.to(torch_device).eval()
 
-        assert loading_info["missing_keys"] == []
-        assert loading_info["unexpected_keys"] == []
-        assert loading_info["mismatched_keys"] == []
-        assert loading_info["error_msgs"] == []
-        assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-5)
+                with torch.no_grad():
+                    expected = model.encode(x).latent
+                    actual = loaded_model.encode(x).latent
+
+                assert loading_info["missing_keys"] == []
+                assert loading_info["unexpected_keys"] == []
+                assert loading_info["mismatched_keys"] == []
+                assert loading_info["error_msgs"] == []
+                assert torch.allclose(actual, expected, atol=1e-6, rtol=1e-5)
 
 
 class TestAutoEncoderRAESlicingTiling(AutoencoderRAETesterConfig, AutoencoderTesterMixin):
