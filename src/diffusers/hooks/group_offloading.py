@@ -172,6 +172,13 @@ class ModuleGroup:
             else torch.cuda
         )
 
+    @staticmethod
+    def _to_cpu(tensor, low_cpu_mem_usage):
+        # For TorchAO tensors, `.data` returns an incomplete wrapper without internal attributes
+        # (e.g. `.qdata`, `.scale`), so we must call `.cpu()` on the tensor directly.
+        t = tensor.cpu() if _is_torchao_tensor(tensor) else tensor.data.cpu()
+        return t if low_cpu_mem_usage else t.pin_memory()
+
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
         if self.stream is None:
@@ -179,17 +186,15 @@ class ModuleGroup:
 
         for module in self.modules:
             for param in module.parameters():
-                cpu_param_dict[param] = param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
+                cpu_param_dict[param] = self._to_cpu(param, self.low_cpu_mem_usage)
             for buffer in module.buffers():
-                cpu_param_dict[buffer] = (
-                    buffer.data.cpu() if self.low_cpu_mem_usage else buffer.data.cpu().pin_memory()
-                )
+                cpu_param_dict[buffer] = self._to_cpu(buffer, self.low_cpu_mem_usage)
 
         for param in self.parameters:
-            cpu_param_dict[param] = param.data.cpu() if self.low_cpu_mem_usage else param.data.cpu().pin_memory()
+            cpu_param_dict[param] = self._to_cpu(param, self.low_cpu_mem_usage)
 
         for buffer in self.buffers:
-            cpu_param_dict[buffer] = buffer.data.cpu() if self.low_cpu_mem_usage else buffer.data.cpu().pin_memory()
+            cpu_param_dict[buffer] = self._to_cpu(buffer, self.low_cpu_mem_usage)
 
         return cpu_param_dict
 
@@ -319,13 +324,13 @@ class ModuleGroup:
                 group_module.to(self.offload_device, non_blocking=False)
             for param in self.parameters:
                 if _is_torchao_tensor(param):
-                    moved = param.data.to(self.offload_device, non_blocking=False)
+                    moved = param.to(self.offload_device, non_blocking=False)
                     _swap_torchao_tensor(param, moved)
                 else:
                     param.data = param.data.to(self.offload_device, non_blocking=False)
             for buffer in self.buffers:
                 if _is_torchao_tensor(buffer):
-                    moved = buffer.data.to(self.offload_device, non_blocking=False)
+                    moved = buffer.to(self.offload_device, non_blocking=False)
                     _swap_torchao_tensor(buffer, moved)
                 else:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=False)
