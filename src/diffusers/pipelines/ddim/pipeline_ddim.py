@@ -129,6 +129,12 @@ class DDIMPipeline(DiffusionPipeline):
         else:
             image_shape = (batch_size, self.unet.config.in_channels, *self.unet.config.sample_size)
 
+        if not 0.0 <= eta <= 1.0:
+            raise ValueError(
+                f"`eta` must be between 0 and 1 (inclusive), but received {eta}. "
+                "A value of 0 corresponds to DDIM and 1 corresponds to DDPM."
+            )
+
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
