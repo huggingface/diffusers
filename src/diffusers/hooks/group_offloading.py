@@ -238,7 +238,19 @@ class ModuleGroup:
             source = pinned_memory[buffer] if pinned_memory else buffer.data
             self._transfer_tensor_to_device(buffer, source, default_stream)
 
+    def _check_disk_offload_torchao(self):
+        all_tensors = list(self.tensor_to_key.keys())
+        has_torchao = any(_is_torchao_tensor(t) for t in all_tensors)
+        if has_torchao:
+            raise ValueError(
+                "Disk offloading is not supported for TorchAO quantized tensors because safetensors "
+                "cannot serialize TorchAO subclass tensors. Use memory offloading instead by not "
+                "setting `offload_to_disk_path`."
+            )
+
     def _onload_from_disk(self):
+        self._check_disk_offload_torchao()
+
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
             self.stream.synchronize()
@@ -281,6 +293,8 @@ class ModuleGroup:
                 self._process_tensors_from_modules(None)
 
     def _offload_to_disk(self):
+        self._check_disk_offload_torchao()
+
         # TODO: we can potentially optimize this code path by checking if the _all_ the desired
         # safetensor files exist on the disk and if so, skip this step entirely, reducing IO
         # overhead. Currently, we just check if the given `safetensors_file_path` exists and if not
