@@ -13,24 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import pytest
 
 from diffusers import AutoencoderDC
 
 from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, floats_tensor, torch_device
-from ..test_modeling_common import ModelTesterMixin
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
 from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderDCTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderDC
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderDCTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderDC
 
-    def get_autoencoder_dc_config(self):
+    @property
+    def output_shape(self):
+        return (3, 32, 32)
+
+    def get_init_dict(self):
         return {
             "in_channels": 3,
             "latent_channels": 4,
@@ -56,33 +60,33 @@ class AutoencoderDCTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Test
             "scaling_factor": 0.41407,
         }
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self):
         batch_size = 4
         num_channels = 3
         sizes = (32, 32)
-
         image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-
         return {"sample": image}
 
-    @property
-    def input_shape(self):
-        return (3, 32, 32)
-
-    @property
-    def output_shape(self):
-        return (3, 32, 32)
-
+    # Bridge for AutoencoderTesterMixin which still uses the old interface
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_dc_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+        return self.get_init_dict(), self.get_dummy_inputs()
 
-    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
-    def test_layerwise_casting_inference(self):
-        super().test_layerwise_casting_inference()
 
-    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+class TestAutoencoderDC(AutoencoderDCTesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
+
+
+class TestAutoencoderDCTraining(AutoencoderDCTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderDC."""
+
+
+class TestAutoencoderDCMemory(AutoencoderDCTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderDC."""
+
+    @pytest.mark.skipif(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
     def test_layerwise_casting_memory(self):
         super().test_layerwise_casting_memory()
+
+
+class TestAutoencoderDCSlicingTiling(AutoencoderDCTesterConfig, AutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderDC."""
