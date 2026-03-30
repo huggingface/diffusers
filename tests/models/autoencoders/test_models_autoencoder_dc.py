@@ -14,10 +14,11 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 from diffusers import AutoencoderDC
 
-from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, floats_tensor, torch_device
+from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
 from .testing_utils import AutoencoderTesterMixin
 
@@ -60,11 +61,12 @@ class AutoencoderDCTesterConfig(BaseModelTesterConfig):
             "scaling_factor": 0.41407,
         }
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self, seed=0):
+        torch.manual_seed(seed)
         batch_size = 4
         num_channels = 3
         sizes = (32, 32)
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        image = torch.randn(batch_size, num_channels, *sizes).to(torch_device)
         return {"sample": image}
 
     # Bridge for AutoencoderTesterMixin which still uses the old interface
