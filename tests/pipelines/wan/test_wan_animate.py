@@ -16,7 +16,6 @@ import gc
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from PIL import Image
 from transformers import (
