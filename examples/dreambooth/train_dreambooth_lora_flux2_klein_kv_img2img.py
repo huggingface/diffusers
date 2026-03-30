@@ -894,6 +894,7 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
+        example["index"] = index  # expose index for order-independent cache keying
         instance_image, bucket_idx = self.pixel_values[index % self.num_instance_images]
         example["instance_images"] = instance_image
         example["bucket_idx"] = bucket_idx
@@ -959,6 +960,7 @@ def collate_fn(examples):
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
     batch = {"pixel_values": pixel_values, "prompts": prompts}
+    batch["indices"] = [example["index"] for example in examples]  # propagate indices for cache keying
     if any("cond_images" in example for example in examples):
         cond_pixel_values = [example["cond_images"] for example in examples]
         cond_pixel_values = torch.stack(cond_pixel_values)
@@ -1467,32 +1469,36 @@ def main(args):
     # if cache_latents is set to True, we encode images to latents and store them.
     # Similar to pre-encoding in the case of a single instance prompt, if custom prompts are provided
     # we encode them in advance as well.
+    #
+    # Caches are keyed by frozenset(batch_indices) so that lookup is independent of
+    # iteration order — the sampler can reshuffle freely between epochs.
     precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
     if precompute_latents:
-        prompt_embeds_cache = []
-        text_ids_cache = []
-        latents_cache = []
-        cond_latents_cache = []
+        prompt_embeds_cache = {}
+        text_ids_cache = {}
+        latents_cache = {}
+        cond_latents_cache = {}
         for batch in tqdm(train_dataloader, desc="Caching latents"):
+            cache_key = frozenset(batch["indices"])
             with torch.no_grad():
                 if args.cache_latents:
                     with offload_models(vae, device=accelerator.device, offload=args.offload):
                         batch["pixel_values"] = batch["pixel_values"].to(
                             accelerator.device, non_blocking=True, dtype=vae.dtype
                         )
-                        latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
+                        latents_cache[cache_key] = vae.encode(batch["pixel_values"]).latent_dist
                         batch["cond_pixel_values"] = batch["cond_pixel_values"].to(
                             accelerator.device, non_blocking=True, dtype=vae.dtype
                         )
-                        cond_latents_cache.append(vae.encode(batch["cond_pixel_values"]).latent_dist)
+                        cond_latents_cache[cache_key] = vae.encode(batch["cond_pixel_values"]).latent_dist
                 if train_dataset.custom_instance_prompts:
                     if args.fsdp_text_encoder:
                         prompt_embeds, text_ids = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
                     else:
                         with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
                             prompt_embeds, text_ids = compute_text_embeddings(batch["prompts"], text_encoding_pipeline)
-                    prompt_embeds_cache.append(prompt_embeds)
-                    text_ids_cache.append(text_ids)
+                    prompt_embeds_cache[cache_key] = prompt_embeds
+                    text_ids_cache[cache_key] = text_ids
 
     # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
     if args.cache_latents:
@@ -1616,11 +1622,12 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             models_to_accumulate = [transformer]
             prompts = batch["prompts"]
+            cache_key = frozenset(batch["indices"])
 
             with accelerator.accumulate(models_to_accumulate):
                 if train_dataset.custom_instance_prompts:
-                    prompt_embeds = prompt_embeds_cache[step]
-                    text_ids = text_ids_cache[step]
+                    prompt_embeds = prompt_embeds_cache[cache_key]
+                    text_ids = text_ids_cache[cache_key]
                 else:
                     num_repeat_elements = len(prompts)
                     prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
@@ -1628,8 +1635,8 @@ def main(args):
 
                 # Convert images to latent space
                 if args.cache_latents:
-                    model_input = latents_cache[step].mode()
-                    cond_model_input = cond_latents_cache[step].mode()
+                    model_input = latents_cache[cache_key].mode()
+                    cond_model_input = cond_latents_cache[cache_key].mode()
                 else:
                     with offload_models(vae, device=accelerator.device, offload=args.offload):
                         pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
