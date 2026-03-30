@@ -337,15 +337,18 @@ def _is_moe_layer(strategy: str, layer_idx: int, num_layers: int) -> bool:
 
 class SwiGLUExperts(nn.Module):
     """
-    Packed SwiGLU feed-forward experts for MoE: ``out = (silu(x @ w1) * (x @ w3)) @ w2``.
+    Packed SwiGLU feed-forward experts for MoE:
+    ``gate, up = (x @ gate_up_proj).chunk(2); out = (silu(gate) * up) @ down_proj``.
 
-    Weights are stored pre-transposed relative to the standard linear-layer convention
-    so that matmuls can be issued without a transpose at runtime.
+    Gate and up projections are fused into a single weight ``gate_up_proj`` so
+    that only two grouped matmuls are needed at runtime (gate+up combined, then down).
+
+    Weights are stored pre-transposed relative to the standard linear-layer
+    convention so that matmuls can be issued without a transpose at runtime.
 
     Weight shapes:
-        w1: (num_experts, hidden_size, moe_intermediate_dim)  -- gate projection (SiLU applied)
-        w2: (num_experts, moe_intermediate_dim, hidden_size)  -- down projection
-        w3: (num_experts, hidden_size, moe_intermediate_dim)  -- up projection (no activation)
+        gate_up_proj: (num_experts, hidden_size, 2 * moe_intermediate_dim)  -- fused gate + up projection
+        down_proj:    (num_experts, moe_intermediate_dim, hidden_size)      -- down projection
     """
 
     def __init__(
@@ -361,9 +364,8 @@ class SwiGLUExperts(nn.Module):
         self.hidden_size = hidden_size
         self.use_grouped_mm = use_grouped_mm
 
-        self.w1 = nn.Parameter(torch.empty(num_experts, hidden_size, moe_intermediate_dim))
-        self.w2 = nn.Parameter(torch.empty(num_experts, moe_intermediate_dim, hidden_size))
-        self.w3 = nn.Parameter(torch.empty(num_experts, hidden_size, moe_intermediate_dim))
+        self.gate_up_proj = nn.Parameter(torch.empty(num_experts, hidden_size, 2 * moe_intermediate_dim))
+        self.down_proj = nn.Parameter(torch.empty(num_experts, moe_intermediate_dim, hidden_size))
 
     def _run_experts_for_loop(
         self,
@@ -390,8 +392,8 @@ class SwiGLUExperts(nn.Module):
 
         SwiGLU formula::
 
-            h   = silu(x @ w1) * (x @ w3)   # gate ⊙ up
-            out = h @ w2                     # down projection
+            gate, up = (x @ gate_up_proj).chunk(2)
+            out      = (silu(gate) * up) @ down_proj
 
         Args:
             x (Tensor): Pre-permuted input tokens of shape
@@ -422,12 +424,9 @@ class SwiGLUExperts(nn.Module):
 
         expert_outputs = []
         for expert_idx, x_expert in enumerate(x_per_expert):
-            # Gate path: linear projection + SiLU.  shape: (tokens_this_expert, I)
-            gate = F.silu(torch.matmul(x_expert, self.w1[expert_idx]))
-            # Up path: linear projection, no activation.  shape: (tokens_this_expert, I)
-            up = torch.matmul(x_expert, self.w3[expert_idx])
-            # Down projection.  shape: (tokens_this_expert, H)
-            out_expert = torch.matmul(gate * up, self.w2[expert_idx])
+            gate_up = torch.matmul(x_expert, self.gate_up_proj[expert_idx])
+            gate, up = gate_up.chunk(2, dim=-1)
+            out_expert = torch.matmul(F.silu(gate) * up, self.down_proj[expert_idx])
             expert_outputs.append(out_expert)
 
         # Concatenate real-token outputs, then re-append zero rows for the padding.
@@ -448,19 +447,17 @@ class SwiGLUExperts(nn.Module):
         :meth:`_run_experts_for_loop`.
 
         This method is fully device-resident (no host-device sync) and is compatible
-        with ``torch.compile``.  It requires CUDA and ``torch._grouped_mm``, available
-        in PyTorch ≥ 2.5, which operates on bfloat16 inputs.  All activations are cast to
-        bfloat16 internally; the output is cast back to the dtype of ``x``.
+        with ``torch.compile``.
 
-        ``torch._grouped_mm`` is called with *exclusive end* offsets: ``offsets[k]`` is
+        ``F.grouped_mm`` is called with *exclusive end* offsets: ``offsets[k]`` is
         the exclusive end index of expert ``k``'s token range in ``x`` (equivalently the
         inclusive start of expert ``k+1``'s range).  This is the cumulative sum of
         ``num_tokens_per_expert``.
 
         SwiGLU formula::
 
-            h   = silu(x @ w1) * (x @ w3)   # gate ⊙ up
-            out = h @ w2                     # down projection
+            gate, up = (x @ gate_up_proj).chunk(2)
+            out      = (silu(gate) * up) @ down_proj
 
         Args:
             x (Tensor): Pre-permuted input tokens of shape
@@ -472,20 +469,13 @@ class SwiGLUExperts(nn.Module):
         Returns:
             Tensor of shape ``(total_tokens, hidden_dim)`` with dtype matching ``x``.
         """
-        # Exclusive end offsets: offsets[k] is the first row of expert k+1's tokens,
-        # i.e. the exclusive end of expert k's token range.
         offsets = torch.cumsum(num_tokens_per_expert, dim=0, dtype=torch.int32)
 
-        # Gate path: grouped GEMM + SiLU.  shape: (total_tokens, I)
-        gate = F.silu(
-            torch._grouped_mm(x.bfloat16(), self.w1.bfloat16(), offs=offsets)
-        )
-        # Up path: grouped GEMM, no activation.  shape: (total_tokens, I)
-        up = torch._grouped_mm(x.bfloat16(), self.w3.bfloat16(), offs=offsets)
-        # Down projection; cast output back to input dtype.  shape: (total_tokens, H)
-        out = torch._grouped_mm(gate * up, self.w2.bfloat16(), offs=offsets).type_as(x)
+        gate_up = F.grouped_mm(x, self.gate_up_proj, offs=offsets)
+        gate, up = gate_up.chunk(2, dim=-1)
+        out = F.grouped_mm(F.silu(gate) * up, self.down_proj, offs=offsets)
 
-        return out
+        return out.type_as(x)
 
     def forward(self, x: torch.Tensor, num_tokens_per_expert: torch.Tensor) -> torch.Tensor:
         if self.use_grouped_mm:
@@ -497,7 +487,7 @@ class NucleusMoELayer(nn.Module):
     """
     Mixture-of-Experts layer with expert-choice routing and a shared expert.
 
-    Routed expert weights live in :class:`SwiGLUExperts` (packed w1, w2, w3). The router
+    Routed expert weights live in :class:`SwiGLUExperts`. The router
     concatenates a timestep embedding
     with the (unmodulated) hidden state to produce per-token affinity scores, then
     selects the top-C tokens per expert (expert-choice routing). A shared expert
