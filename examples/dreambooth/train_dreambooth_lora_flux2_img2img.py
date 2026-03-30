@@ -973,7 +973,11 @@ def collate_fn(examples):
 
 class BucketBatchSampler(BatchSampler):
     def __init__(
-        self, dataset: DreamBoothDataset, batch_size: int, drop_last: bool = False, shuffle_batches_each_epoch: bool = True
+        self,
+        dataset: DreamBoothDataset,
+        batch_size: int,
+        drop_last: bool = False,
+        shuffle_batches_each_epoch: bool = True,
     ):
         if not isinstance(batch_size, int) or batch_size <= 0:
             raise ValueError("batch_size should be a positive integer value, but got batch_size={}".format(batch_size))
