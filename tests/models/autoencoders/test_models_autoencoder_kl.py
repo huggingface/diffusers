@@ -25,7 +25,6 @@ from diffusers.utils.import_utils import is_xformers_available
 from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
-    floats_tensor,
     load_hf_numpy,
     require_torch_accelerator,
     require_torch_accelerator_with_fp16,
@@ -35,7 +34,7 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..testing_utils import BaseModelTesterConfig, ModelTesterMixin
+from ..testing_utils import BaseModelTesterConfig, ModelTesterMixin, TrainingTesterMixin
 from .testing_utils import AutoencoderTesterMixin
 
 
@@ -64,11 +63,12 @@ class AutoencoderKLTesterConfig(BaseModelTesterConfig):
             "norm_num_groups": norm_num_groups,
         }
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self, seed=0):
+        torch.manual_seed(seed)
         batch_size = 4
         num_channels = 3
         sizes = (32, 32)
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        image = torch.randn(batch_size, num_channels, *sizes).to(torch_device)
         return {"sample": image}
 
     # Bridge for AutoencoderTesterMixin which still uses the old interface
@@ -76,7 +76,7 @@ class AutoencoderKLTesterConfig(BaseModelTesterConfig):
         return self.get_init_dict(), self.get_dummy_inputs()
 
 
-class TestAutoencoderKL(AutoencoderKLTesterConfig, ModelTesterMixin):
+class TestAutoencoderKL(AutoencoderKLTesterConfig, ModelTesterMixin, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Decoder", "Encoder", "UNetMidBlock2D"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
