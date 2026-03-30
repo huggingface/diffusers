@@ -44,6 +44,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [ControlNet with Stable Diffusion XL](controlnet_sdxl) | text2image |
 | [ControlNet-XS](controlnetxs) | text2image |
 | [ControlNet-XS with Stable Diffusion XL](controlnetxs_sdxl) | text2image |
+| [Cosmos](cosmos) | text2video, video2video |
 | [Dance Diffusion](dance_diffusion) | unconditional audio generation |
 | [DDIM](ddim) | unconditional image generation |
 | [DDPM](ddpm) | unconditional image generation |
@@ -62,6 +63,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Latent Diffusion](latent_diffusion) | text2image, super-resolution |
 | [Latte](latte) | text2image |
 | [LEDITS++](ledits_pp) | image editing |
+| [LLaDA2](llada2) | text2text |
 | [Lumina-T2X](lumina) | text2image |
 | [Marigold](marigold) | depth-estimation, normals-estimation, intrinsic-decomposition |
 | [MultiDiffusion](panorama) | text2image |
