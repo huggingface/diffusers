@@ -34,7 +34,7 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..testing_utils import BaseModelTesterConfig, ModelTesterMixin, TrainingTesterMixin
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
 from .testing_utils import AutoencoderTesterMixin
 
 
@@ -162,6 +162,10 @@ class TestAutoencoderKL(AutoencoderKLTesterConfig, ModelTesterMixin, TrainingTes
             )
 
         assert torch_all_close(output_slice, expected_output_slice, rtol=1e-2)
+
+
+class TestAutoencoderKLMemory(AutoencoderKLTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderKL."""
 
 
 class TestAutoencoderKLSlicingTiling(AutoencoderKLTesterConfig, AutoencoderTesterMixin):
