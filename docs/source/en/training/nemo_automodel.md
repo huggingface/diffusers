@@ -103,7 +103,7 @@ python -m tools.diffusion.preprocessing_multiprocess image \
 
 ### Output format
 
-Preprocessing produces a cache directory organized by resolution bucket. NeMo Automodel supports multi-resolution training through bucketed sampling, Samples are grouped by spatial resolution so each batch contains same-size samples, avoiding padding waste.
+Preprocessing produces a cache directory organized by resolution bucket. NeMo Automodel supports multi-resolution training through bucketed sampling. Samples are grouped by spatial resolution so each batch contains same-size samples, avoiding padding waste.
 
 ```
 /cache/
