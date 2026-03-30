@@ -210,10 +210,10 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(video.shape, (17, 3, 16, 16))
 
     @pytest.mark.xfail(
-        reason="`blur_kernel` in `MotionConv2d` is registered with `persistent=False`, so it is not saved into the "
-        "checkpoint. After `from_pretrained`, it is always re-initialized in float32, while before saving it was "
-        "float16 (due to `.half()`). This dtype mismatch causes the two inference runs to take different numerical "
-        "paths. This issue is being tracked by PR https://github.com/huggingface/diffusers/pull/13339.",
+        reason="`rope.freqs_cos/freqs_sin` in `WanRotaryPosEmbed` are registered with `persistent=False` and created "
+        "with an explicit high-precision dtype. After `from_pretrained`, they are re-initialized in float32, while "
+        "before saving they were float16. This dtype mismatch causes the two inference runs to take different "
+        "numerical paths. This issue is being tracked by PR https://github.com/huggingface/diffusers/pull/13339.",
         strict=True,
     )
     def test_save_load_float16(self):
