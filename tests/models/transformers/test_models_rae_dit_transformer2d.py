@@ -131,6 +131,27 @@ class TestRAEDiT2DModel(RAEDiT2DTesterConfig, ModelTesterMixin):
 
         assert output.shape == inputs_dict[self.main_input_name].shape
 
+    def test_precomputed_conditioning_hidden_states_match_model_dtype_with_identity_projector(self):
+        init_dict = self.get_init_dict()
+        init_dict["hidden_size"] = (32, 32)
+        inputs_dict = self.get_dummy_inputs()
+        model_dtype = torch.float16 if torch_device.startswith("cuda") else torch.bfloat16
+        model = self.model_class(**init_dict).to(device=torch_device, dtype=model_dtype).eval()
+
+        batch_size = inputs_dict[self.main_input_name].shape[0]
+        num_patches = (init_dict["sample_size"] // init_dict["patch_size"]) ** 2
+        conditioning_hidden_states = randn_tensor(
+            (batch_size, num_patches, init_dict["hidden_size"][0]), generator=self.generator, device=torch_device
+        ).float()
+
+        inputs_dict["hidden_states"] = inputs_dict["hidden_states"].to(dtype=model_dtype)
+
+        with torch.no_grad():
+            output = model(**inputs_dict, conditioning_hidden_states=conditioning_hidden_states).sample
+
+        assert output.shape == inputs_dict[self.main_input_name].shape
+        assert output.dtype == model_dtype
+
     def test_precomputed_conditioning_matches_internal_encoder_path(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -197,6 +218,18 @@ class TestRAEDiT2DModel(RAEDiT2DTesterConfig, ModelTesterMixin):
             ]
         )
         assert torch.equal(repeated, expected)
+
+    def test_initialize_weights_preserves_unspecialized_linear_layers(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        sentinel_weight = torch.full_like(model.s_projector.weight, 0.1234)
+        sentinel_bias = torch.full_like(model.s_projector.bias, -0.4321)
+        model.s_projector.weight.data.copy_(sentinel_weight)
+        model.s_projector.bias.data.copy_(sentinel_bias)
+
+        model.initialize_weights()
+
+        assert torch.equal(model.s_projector.weight, sentinel_weight)
+        assert torch.equal(model.s_projector.bias, sentinel_bias)
 
     def test_expand_conditioning_tokens_broadcasts_global_conditioning(self):
         hidden_states = torch.tensor([[[1.0, 2.0]]])

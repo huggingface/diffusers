@@ -437,14 +437,6 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
         self.initialize_weights()
 
     def initialize_weights(self):
-        def _basic_init(module):
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-
-        self.apply(_basic_init)
-
         nn.init.xavier_uniform_(self.x_embedder.proj.weight.view(self.x_embedder.proj.weight.shape[0], -1))
         nn.init.constant_(self.x_embedder.proj.bias, 0)
         nn.init.xavier_uniform_(self.s_embedder.proj.weight.view(self.s_embedder.proj.weight.shape[0], -1))
@@ -532,12 +524,9 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
 
             conditioning_hidden_states = F.silu(timestep_emb.unsqueeze(1) + conditioning_hidden_states)
 
-        projector_dtype = conditioning_hidden_states.dtype
-        projector_param = next(self.s_projector.parameters(), None)
-        if projector_param is not None:
-            projector_dtype = projector_param.dtype
-
-        conditioning_hidden_states = conditioning_hidden_states.to(device=hidden_states.device, dtype=projector_dtype)
+        conditioning_hidden_states = conditioning_hidden_states.to(
+            device=hidden_states.device, dtype=hidden_states.dtype
+        )
         conditioning_hidden_states = self.s_projector(conditioning_hidden_states)
 
         hidden_states = self.x_embedder(hidden_states)
