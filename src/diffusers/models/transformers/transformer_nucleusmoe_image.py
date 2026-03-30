@@ -335,15 +335,176 @@ def _is_moe_layer(strategy: str, layer_idx: int, num_layers: int) -> bool:
     return True
 
 
+class SwiGLUExperts(nn.Module):
+    """
+    Packed SwiGLU feed-forward experts for MoE: ``out = (silu(x @ w1) * (x @ w3)) @ w2``.
+
+    Weights are stored pre-transposed relative to the standard linear-layer convention
+    so that matmuls can be issued without a transpose at runtime.
+
+    Weight shapes:
+        w1: (num_experts, hidden_size, moe_intermediate_dim)  -- gate projection (SiLU applied)
+        w2: (num_experts, moe_intermediate_dim, hidden_size)  -- down projection
+        w3: (num_experts, hidden_size, moe_intermediate_dim)  -- up projection (no activation)
+    """
+
+    def __init__(
+        self,
+        hidden_size: int,
+        moe_intermediate_dim: int,
+        num_experts: int,
+        use_grouped_mm: bool = False,
+    ):
+        super().__init__()
+        self.num_experts = num_experts
+        self.moe_intermediate_dim = moe_intermediate_dim
+        self.hidden_size = hidden_size
+        self.use_grouped_mm = use_grouped_mm
+
+        self.w1 = nn.Parameter(torch.empty(num_experts, hidden_size, moe_intermediate_dim))
+        self.w2 = nn.Parameter(torch.empty(num_experts, moe_intermediate_dim, hidden_size))
+        self.w3 = nn.Parameter(torch.empty(num_experts, hidden_size, moe_intermediate_dim))
+
+    def _run_experts_for_loop(
+        self,
+        x: torch.Tensor,
+        num_tokens_per_expert: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute SwiGLU MoE expert outputs using a sequential per-expert for loop.
+
+        Tokens in ``x`` must be pre-sorted so that all tokens assigned to expert 0 come
+        first, followed by expert 1, and so on — i.e. the layout produced by a standard
+        token-permutation step (e.g. ``generate_permute_indices``).
+
+        ``x`` may contain trailing padding rows appended by the permutation utility to
+        reach a length that is a multiple of some alignment requirement.  The padding rows
+        are stripped before expert computation and re-appended as zeros so that the output
+        shape matches ``x.shape``, keeping downstream scatter/gather indices valid.
+
+        .. note::
+            ``num_tokens_per_expert.tolist()`` synchronises the device with the host.
+            This is acceptable for the loop path but means the method introduces a
+            pipeline bubble.  Use :meth:`forward` with ``use_grouped_mm=True`` when a fully
+            device-resident kernel is required (e.g. inside ``torch.compile``).
+
+        SwiGLU formula::
+
+            h   = silu(x @ w1) * (x @ w3)   # gate ⊙ up
+            out = h @ w2                     # down projection
+
+        Args:
+            x (Tensor): Pre-permuted input tokens of shape
+                ``(total_tokens_including_padding, hidden_dim)``.
+            num_tokens_per_expert (Tensor): 1-D integer tensor of length
+                ``num_experts`` giving the number of real (non-padding) tokens
+                assigned to each expert.  Values may differ across experts to support
+                load-imbalanced routing.
+
+        Returns:
+            Tensor of shape ``(total_tokens_including_padding, hidden_dim)``.
+            Positions corresponding to padding rows contain zeros.
+        """
+        # .tolist() triggers a host-device sync; see docstring note above.
+        num_tokens_per_expert_list = num_tokens_per_expert.tolist()
+
+        # x may be padded to a larger buffer size by the permutation utility.
+        # Track the padding count so we can restore the original buffer shape.
+        num_real_tokens = sum(num_tokens_per_expert_list)
+        num_padding = x.shape[0] - num_real_tokens
+
+        # Split the real-token prefix of x into per-expert slices (variable length).
+        x_per_expert = torch.split(
+            x[:num_real_tokens],
+            split_size_or_sections=num_tokens_per_expert_list,
+            dim=0,
+        )
+
+        expert_outputs = []
+        for expert_idx, x_expert in enumerate(x_per_expert):
+            # Gate path: linear projection + SiLU.  shape: (tokens_this_expert, I)
+            gate = F.silu(torch.matmul(x_expert, self.w1[expert_idx]))
+            # Up path: linear projection, no activation.  shape: (tokens_this_expert, I)
+            up = torch.matmul(x_expert, self.w3[expert_idx])
+            # Down projection.  shape: (tokens_this_expert, H)
+            out_expert = torch.matmul(gate * up, self.w2[expert_idx])
+            expert_outputs.append(out_expert)
+
+        # Concatenate real-token outputs, then re-append zero rows for the padding.
+        out = torch.cat(expert_outputs, dim=0)
+        out = torch.vstack((out, out.new_zeros((num_padding, out.shape[-1]))))
+        return out
+
+    def _run_experts_grouped_mm(
+        self,
+        x: torch.Tensor,
+        num_tokens_per_expert: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute SwiGLU MoE expert outputs using fused grouped GEMM kernels.
+
+        Tokens in ``x`` must be pre-sorted so that all tokens assigned to expert 0 come
+        first, followed by expert 1, and so on — the same layout required by
+        :meth:`_run_experts_for_loop`.
+
+        This method is fully device-resident (no host-device sync) and is compatible
+        with ``torch.compile``.  It requires CUDA and ``torch._grouped_mm``, available
+        in PyTorch ≥ 2.5, which operates on bfloat16 inputs.  All activations are cast to
+        bfloat16 internally; the output is cast back to the dtype of ``x``.
+
+        ``torch._grouped_mm`` is called with *exclusive end* offsets: ``offsets[k]`` is
+        the exclusive end index of expert ``k``'s token range in ``x`` (equivalently the
+        inclusive start of expert ``k+1``'s range).  This is the cumulative sum of
+        ``num_tokens_per_expert``.
+
+        SwiGLU formula::
+
+            h   = silu(x @ w1) * (x @ w3)   # gate ⊙ up
+            out = h @ w2                     # down projection
+
+        Args:
+            x (Tensor): Pre-permuted input tokens of shape
+                ``(total_tokens, hidden_dim)``.  No padding rows expected;
+                ``total_tokens`` must equal ``num_tokens_per_expert.sum()``.
+            num_tokens_per_expert (Tensor): 1-D integer tensor of length
+                ``num_experts`` giving the number of tokens assigned to each expert.
+
+        Returns:
+            Tensor of shape ``(total_tokens, hidden_dim)`` with dtype matching ``x``.
+        """
+        # Exclusive end offsets: offsets[k] is the first row of expert k+1's tokens,
+        # i.e. the exclusive end of expert k's token range.
+        offsets = torch.cumsum(num_tokens_per_expert, dim=0, dtype=torch.int32)
+
+        # Gate path: grouped GEMM + SiLU.  shape: (total_tokens, I)
+        gate = F.silu(
+            torch._grouped_mm(x.bfloat16(), self.w1.bfloat16(), offs=offsets)
+        )
+        # Up path: grouped GEMM, no activation.  shape: (total_tokens, I)
+        up = torch._grouped_mm(x.bfloat16(), self.w3.bfloat16(), offs=offsets)
+        # Down projection; cast output back to input dtype.  shape: (total_tokens, H)
+        out = torch._grouped_mm(gate * up, self.w2.bfloat16(), offs=offsets).type_as(x)
+
+        return out
+
+    def forward(self, x: torch.Tensor, num_tokens_per_expert: torch.Tensor) -> torch.Tensor:
+        if self.use_grouped_mm:
+            return self._run_experts_grouped_mm(x, num_tokens_per_expert)
+        return self._run_experts_for_loop(x, num_tokens_per_expert)
+
+
 class NucleusMoELayer(nn.Module):
     """
     Mixture-of-Experts layer with expert-choice routing and a shared expert.
 
-    Each expert is a separate ``FeedForward`` module stored in an ``nn.ModuleList``.
-    The router concatenates a timestep embedding with the (unmodulated) hidden state
-    to produce per-token affinity scores, then selects the top-C tokens per expert
-    (expert-choice routing). A shared expert processes all tokens in parallel and its
-    output is combined with the routed expert outputs via scatter-add.
+    Routed expert weights live in :class:`SwiGLUExperts` (packed w1, w2, w3). The router
+    concatenates a timestep embedding
+    with the (unmodulated) hidden state to produce per-token affinity scores, then
+    selects the top-C tokens per expert (expert-choice routing). A shared expert
+    processes all tokens in parallel and its output is combined with the routed
+    expert outputs via scatter-add.
+
+    SwiGLU expert computation is implemented by :class:`SwiGLUExperts`.
     """
 
     def __init__(
@@ -354,32 +515,28 @@ class NucleusMoELayer(nn.Module):
         capacity_factor: float,
         use_sigmoid: bool,
         route_scale: float,
+        use_grouped_mm: bool = False,
     ):
         super().__init__()
         self.num_experts = num_experts
+        self.moe_intermediate_dim = moe_intermediate_dim
+        self.hidden_size = hidden_size
         self.capacity_factor = capacity_factor
         self.use_sigmoid = use_sigmoid
         self.route_scale = route_scale
 
         self.gate = nn.Linear(hidden_size * 2, num_experts, bias=False)
-        self.experts = nn.ModuleList(
-            [
-                FeedForward(
-                    dim=hidden_size,
-                    dim_out=hidden_size,
-                    inner_dim=moe_intermediate_dim,
-                    activation_fn="swiglu",
-                    bias=False,
-                )
-                for _ in range(num_experts)
-            ]
+
+        self.experts = SwiGLUExperts(
+            hidden_size=hidden_size,
+            moe_intermediate_dim=moe_intermediate_dim,
+            num_experts=num_experts,
+            use_grouped_mm=use_grouped_mm,
         )
+
         self.shared_expert = FeedForward(
-            dim=hidden_size,
-            dim_out=hidden_size,
-            inner_dim=moe_intermediate_dim,
-            activation_fn="swiglu",
-            bias=False,
+            dim=hidden_size, dim_out=hidden_size,
+            inner_dim=moe_intermediate_dim, activation_fn="swiglu", bias=False,
         )
 
     def forward(
@@ -423,14 +580,11 @@ class NucleusMoELayer(nn.Module):
         routed_input = x_flat[global_token_indices]
 
         tokens_per_expert = bs * capacity
-        routed_output_parts = []
-        for i, expert in enumerate(self.experts):
-            start = i * tokens_per_expert
-            end = start + tokens_per_expert
-            expert_out = expert(routed_input[start:end])
-            routed_output_parts.append(expert_out)
-
-        routed_output = torch.cat(routed_output_parts, dim=0)
+        num_tokens_per_expert = torch.full(
+            (self.num_experts,), tokens_per_expert,
+            device=hidden_states.device, dtype=torch.long,
+        )
+        routed_output = self.experts(routed_input, num_tokens_per_expert)
         routed_output = (routed_output.float() * gating_flat.unsqueeze(-1)).to(hidden_states.dtype)
 
         out = self.shared_expert(hidden_states).reshape(bs * slen, dim)
@@ -465,6 +619,7 @@ class NucleusMoEImageTransformerBlock(nn.Module):
         capacity_factor: float = 8.0,
         use_sigmoid: bool = False,
         route_scale: float = 2.5,
+        use_grouped_mm: bool = False,
     ):
         super().__init__()
         self.dim = dim
@@ -504,6 +659,7 @@ class NucleusMoEImageTransformerBlock(nn.Module):
                 capacity_factor=capacity_factor,
                 use_sigmoid=use_sigmoid,
                 route_scale=route_scale,
+                use_grouped_mm=use_grouped_mm,
             )
         else:
             mlp_inner_dim = int(dim * mlp_ratio * 2 / 3) // 128 * 128
@@ -528,7 +684,6 @@ class NucleusMoEImageTransformerBlock(nn.Module):
         gate1 = gate1.clamp(min=-2.0, max=2.0)
         gate2 = gate2.clamp(min=-2.0, max=2.0)
 
-        # Skip encoder_proj when text K/V are already cached — context won't be used by the processor
         attn_kwargs = attention_kwargs or {}
         context = None if attn_kwargs.get("cached_txt_key") is not None else self.encoder_proj(encoder_hidden_states)
 
@@ -630,6 +785,7 @@ class NucleusMoEImageTransformer2DModel(
         capacity_factors: float | list[float] = 8.0,
         use_sigmoid: bool = False,
         route_scale: float = 2.5,
+        use_grouped_mm: bool = False,
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -658,6 +814,7 @@ class NucleusMoEImageTransformer2DModel(
                     capacity_factor=capacity_factors[idx],
                     use_sigmoid=use_sigmoid,
                     route_scale=route_scale,
+                    use_grouped_mm=use_grouped_mm,
                 )
                 for idx in range(num_layers)
             ]
