@@ -214,7 +214,7 @@ def log_validation(
             image = pipeline(
                 image=pipeline_args["image"],
                 prompt_embeds=pipeline_args["prompt_embeds"],
-                negative_prompt_embeds=pipeline_args["negative_prompt_embeds"],
+                # negative_prompt_embeds=pipeline_args["negative_prompt_embeds"],
                 generator=generator,
             ).images[0]
             images.append(image)
