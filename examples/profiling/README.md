@@ -264,15 +264,11 @@ For large models, when they are invoked iteratively like our case, it adds to th
 The fix was to build a list of hooked child registries once on the first call and cache it in `_child_registries_cache`. This way, the subsequent calls would return the cached list directly without
 any traversal. With the fix applied, the improvements were visible.
 
-Before:                                                                                                         
-- _set_context total: 21.6ms (8 calls)                                                                          
-- cache_context total: 21.7ms                                                                                   
-- CPU gaps: 5,523us / 8,007us / 5,508us                                                                         
-                                                                                                            
-After:                                                                                                          
-- _set_context total: 0.0ms (8 calls)                                                                           
-- cache_context total: 0.1ms                                                                                    
-- CPU gaps: 158us / 2,777us / 136us
+|                        | Before                       | After                       |
+|------------------------|------------------------------|-----------------------------|
+| `_set_context` total   | 21.6ms (8 calls)             | 0.0ms (8 calls)             |
+| `cache_context` total  | 21.7ms                       | 0.1ms                       |
+| CPU gaps               | 5,523us / 8,007us / 5,508us  | 158us / 2,777us / 136us     |
 
 > [!NOTE]
 > The fixes mentioned above and below are available in [this PR](https://github.com/huggingface/diffusers/pull/13356).
