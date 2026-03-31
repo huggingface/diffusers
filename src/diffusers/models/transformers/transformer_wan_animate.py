@@ -1028,6 +1028,7 @@ class WanAnimateTransformer3DModel(
         "norm2",
         "norm3",
         "motion_synthesis_weight",
+        "rope",
     ]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["WanTransformerBlock"]
