@@ -588,6 +588,17 @@ def parse_args(input_args=None):
         help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
     )
     parser.add_argument(
+        "--caption_dropout_rate",
+        type=float,
+        default=0.05,
+        help=(
+            "Probability of replacing a caption with an empty string during training. "
+            "A small value like 0.05 (5%%) forces the model to learn the visual transformation "
+            "not solely contingent on the text, improving robustness to prompt variation at "
+            "inference."
+        ),
+    )
+    parser.add_argument(
         "--optimizer",
         type=str,
         default="AdamW",
@@ -1536,6 +1547,15 @@ def main(args):
 
     # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
     text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+
+    # Pre-compute empty prompt embeddings for caption dropout (must happen before TE is freed)
+    empty_prompt_embeds = None
+    empty_text_ids = None
+    if args.caption_dropout_rate > 0.0:
+        logger.info("Pre-computing empty prompt embeddings for caption dropout...")
+        with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
+            empty_prompt_embeds, empty_text_ids = compute_text_embeddings("", text_encoding_pipeline)
+
     del text_encoder, tokenizer
     free_memory()
 
@@ -1645,6 +1665,17 @@ def main(args):
             sigma = sigma.unsqueeze(-1)
         return sigma
 
+    # Pre-compute empty prompt embeddings for caption dropout.
+    # When caption dropout triggers, we replace the real prompt embedding with this.
+    # Note: empty_prompt_embeds and empty_text_ids are computed above before the text encoder is freed.
+    if args.caption_dropout_rate > 0.0:
+        if empty_prompt_embeds is None:
+            raise RuntimeError(
+                "Caption dropout requires empty prompt embeddings, but they were not pre-computed. "
+                "This is a bug — empty embeddings should be computed before the text encoder is freed."
+            )
+        logger.info(f"Caption dropout enabled: rate={args.caption_dropout_rate}")
+
     for epoch in range(first_epoch, args.num_train_epochs):
         transformer.train()
 
@@ -1661,6 +1692,36 @@ def main(args):
                     num_repeat_elements = len(prompts)
                     prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
                     text_ids = text_ids.repeat(num_repeat_elements, 1, 1)
+
+                # Caption dropout: randomly replace prompt embeddings with empty embeddings.
+                if args.caption_dropout_rate > 0.0 and empty_prompt_embeds is not None:
+                    bsz_prompts = prompt_embeds.shape[0]
+                    dropout_mask = torch.rand(bsz_prompts) < args.caption_dropout_rate
+                    if dropout_mask.any():
+                        # Expand empty embeddings to match batch dimensions
+                        empty_pe = empty_prompt_embeds.expand(bsz_prompts, -1, -1).to(
+                            device=prompt_embeds.device, dtype=prompt_embeds.dtype
+                        )
+                        empty_ti = empty_text_ids.expand(bsz_prompts, -1, -1).to(
+                            device=text_ids.device, dtype=text_ids.dtype
+                        )
+                        # For each sample in the batch, replace with empty if dropout triggered.
+                        # Handle potential sequence length mismatch by padding/truncating.
+                        for i in range(bsz_prompts):
+                            if dropout_mask[i]:
+                                # Pad or truncate empty embeddings to match the expected seq length
+                                seq_len = prompt_embeds.shape[1]
+                                empty_seq_len = empty_pe.shape[1]
+                                if empty_seq_len >= seq_len:
+                                    prompt_embeds[i] = empty_pe[i, :seq_len]
+                                    text_ids[i] = empty_ti[i, :seq_len]
+                                else:
+                                    prompt_embeds[i] = torch.nn.functional.pad(
+                                        empty_pe[i], (0, 0, 0, seq_len - empty_seq_len)
+                                    )
+                                    text_ids[i] = torch.nn.functional.pad(
+                                        empty_ti[i], (0, 0, 0, seq_len - empty_seq_len)
+                                    )
 
                 # Convert images to latent space
                 if args.cache_latents:
