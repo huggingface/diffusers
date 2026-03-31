@@ -19,14 +19,13 @@ import numpy as np
 import torch
 from transformers import Qwen3VLConfig, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
-from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
-
 from diffusers import (
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
     NucleusMoEImagePipeline,
     NucleusMoEImageTransformer2DModel,
 )
+from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -115,9 +114,7 @@ class NucleusMoEImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             },
         )
         text_encoder = Qwen3VLForConditionalGeneration(config).eval()
-        processor = Qwen3VLProcessor.from_pretrained(
-            "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration"
-        )
+        processor = Qwen3VLProcessor.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
         components = {
             "transformer": transformer,

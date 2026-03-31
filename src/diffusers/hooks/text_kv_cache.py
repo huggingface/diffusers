@@ -27,10 +27,9 @@ _TEXT_KV_CACHE_BLOCK_HOOK = "text_kv_cache_block"
 class TextKVCacheConfig:
     """Enable exact (lossless) text K/V caching for transformer models.
 
-    Pre-computes per-block text key and value projections once before the
-    denoising loop and reuses them across all steps. Positive and negative
-    prompts are distinguished via a stable cache key captured by a
-    transformer-level hook before any intermediate tensor allocations.
+    Pre-computes per-block text key and value projections once before the denoising loop and reuses them across all
+    steps. Positive and negative prompts are distinguished via a stable cache key captured by a transformer-level hook
+    before any intermediate tensor allocations.
     """
 
     pass
@@ -39,9 +38,8 @@ class TextKVCacheConfig:
 class TextKVCacheState(BaseState):
     """Shared state between the transformer-level and block-level hooks.
 
-    The transformer hook writes the stable ``encoder_hidden_states``
-    ``data_ptr()`` (captured *before* ``txt_norm``) so that block hooks
-    can use it as a reliable cache key across denoising steps.
+    The transformer hook writes the stable ``encoder_hidden_states`` ``data_ptr()`` (captured *before* ``txt_norm``) so
+    that block hooks can use it as a reliable cache key across denoising steps.
     """
 
     def __init__(self):

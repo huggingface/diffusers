@@ -22,7 +22,7 @@ from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLQwenImage, NucleusMoEImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import NucleusMoEImagePipelineOutput
@@ -38,9 +38,7 @@ else:
 
 logger = logging.get_logger(__name__)
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are an image generation assistant. Follow the user's prompt literally. Pay careful attention to spatial layout: objects described as on the left must appear on the left, on the right on the right. Match exact object counts and assign colors to the correct objects."
-)
+DEFAULT_SYSTEM_PROMPT = "You are an image generation assistant. Follow the user's prompt literally. Pay careful attention to spatial layout: objects described as on the left must appear on the left, on the right on the right. Match exact object counts and assign colors to the correct objects."
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -48,9 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import NucleusMoEImagePipeline
 
-        >>> pipe = NucleusMoEImagePipeline.from_pretrained(
-        ...     "NucleusAI/NucleusMoE-Image", torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = NucleusMoEImagePipeline.from_pretrained("NucleusAI/NucleusMoE-Image", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> image = pipe(prompt, num_inference_steps=50).images[0]
@@ -102,8 +98,8 @@ def retrieve_timesteps(
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and
-        the second element is the number of inference steps.
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
         raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
@@ -137,8 +133,8 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using NucleusMoE.
 
-    This pipeline uses a single-stream DiT with Mixture-of-Experts feed-forward layers,
-    cross-attention to a Qwen3-VL text encoder, and a flow-matching Euler discrete scheduler.
+    This pipeline uses a single-stream DiT with Mixture-of-Experts feed-forward layers, cross-attention to a Qwen3-VL
+    text encoder, and a flow-matching Euler discrete scheduler.
 
     Args:
         transformer ([`NucleusMoEImageTransformer2DModel`]):
@@ -172,11 +168,9 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             text_encoder=text_encoder,
             processor=processor,
         )
-        self.vae_scale_factor = (
-            2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
-        )
+        self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
-        
+
         self.default_sample_size = 128
         self.default_max_sequence_length = 1024
         self.default_return_index = -8
@@ -188,9 +182,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": [{"type": "text", "text": prompt}]},
         ]
-        return self.processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
+        return self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
     def encode_prompt(
         self,
@@ -238,9 +230,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
 
             prompt_embeds_mask = inputs.attention_mask
 
-            outputs = self.text_encoder(
-                **inputs, use_cache=False, return_dict=True, output_hidden_states=True
-            )
+            outputs = self.text_encoder(**inputs, use_cache=False, return_dict=True, output_hidden_states=True)
             prompt_embeds = outputs.hidden_states[return_index]
             prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
         else:
@@ -251,9 +241,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         if num_images_per_prompt > 1:
             prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
             if prompt_embeds_mask is not None:
-                prompt_embeds_mask = prompt_embeds_mask.repeat_interleave(
-                    num_images_per_prompt, dim=0
-                )
+                prompt_embeds_mask = prompt_embeds_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
         if prompt_embeds_mask is not None and prompt_embeds_mask.all():
             prompt_embeds_mask = None
@@ -294,9 +282,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                 "Please make sure to only forward one of the two."
             )
         elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both undefined."
-            )
+            raise ValueError("Provide either `prompt` or `prompt_embeds`. Cannot leave both undefined.")
         elif prompt is not None and not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
@@ -306,19 +292,22 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                 f"`negative_prompt_embeds`: {negative_prompt_embeds}. "
                 "Please make sure to only forward one of the two."
             )
-        
+
         if return_index is not None and abs(return_index) >= self.text_encoder.config.text_config.num_hidden_layers:
             raise ValueError(
                 f"absolute value of `return_index` cannot be >= {self.text_encoder.config.text_config.num_hidden_layers} "
                 f"but is {abs(return_index)}"
             )
 
-
     @staticmethod
     def _pack_latents(latents, batch_size, num_channels_latents, height, width, patch_size):
-        latents = latents.view(batch_size, num_channels_latents, height // patch_size, patch_size, width // patch_size, patch_size)
+        latents = latents.view(
+            batch_size, num_channels_latents, height // patch_size, patch_size, width // patch_size, patch_size
+        )
         latents = latents.permute(0, 2, 4, 1, 3, 5)
-        latents = latents.reshape(batch_size, (height // patch_size) * (width // patch_size), num_channels_latents * patch_size * patch_size)
+        latents = latents.reshape(
+            batch_size, (height // patch_size) * (width // patch_size), num_channels_latents * patch_size * patch_size
+        )
         return latents
 
     @staticmethod
@@ -326,7 +315,14 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
         batch_size, num_patches, channels = latents.shape
         height = patch_size * (int(height) // (vae_scale_factor * patch_size))
         width = patch_size * (int(width) // (vae_scale_factor * patch_size))
-        latents = latents.view(batch_size, height // patch_size, width // patch_size, channels // (patch_size * patch_size), patch_size, patch_size)
+        latents = latents.view(
+            batch_size,
+            height // patch_size,
+            width // patch_size,
+            channels // (patch_size * patch_size),
+            patch_size,
+            patch_size,
+        )
         latents = latents.permute(0, 3, 1, 4, 2, 5)
         latents = latents.reshape(batch_size, channels // (patch_size * patch_size), 1, height, width)
         return latents
@@ -413,8 +409,8 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
             negative_prompt (`str` or `list[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, an empty string is used
-                when `true_cfg_scale > 1`.
+                The prompt or prompts not to guide the image generation. If not defined, an empty string is used when
+                `true_cfg_scale > 1`.
             true_cfg_scale (`float`, *optional*, defaults to 4.0):
                 Classifier-free guidance scale. Values greater than 1 enable CFG.
             height (`int`, *optional*, defaults to `self.default_sample_size * self.vae_scale_factor`):
@@ -456,8 +452,8 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
 
         Returns:
             [`NucleusMoEImagePipelineOutput`] or `tuple`:
-                [`NucleusMoEImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple` where the first
-                element is a list with the generated images.
+                [`NucleusMoEImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple` where the first element
+                is a list with the generated images.
         """
 
         height = height or self.default_sample_size * self.vae_scale_factor
@@ -536,15 +532,11 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
             latents,
         )
 
-        img_shapes = [(
-            1, 
-            height // self.vae_scale_factor // patch_size, 
-            width // self.vae_scale_factor // patch_size
-        )] * (batch_size * num_images_per_prompt)
+        img_shapes = [
+            (1, height // self.vae_scale_factor // patch_size, width // self.vae_scale_factor // patch_size)
+        ] * (batch_size * num_images_per_prompt)
 
-        sigmas = (
-            np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
-        )
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
             image_seq_len,
@@ -619,9 +611,7 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
 
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
                 if XLA_AVAILABLE:
@@ -639,11 +629,8 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
                 .to(latents.device, latents.dtype)
             )
-            latents_std = (
-                1.0
-                / torch.tensor(self.vae.config.latents_std)
-                .view(1, self.vae.config.z_dim, 1, 1, 1)
-                .to(latents.device, latents.dtype)
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                latents.device, latents.dtype
             )
             latents = latents / latents_std + latents_mean
             image = self.vae.decode(latents, return_dict=False)[0][:, :, 0]

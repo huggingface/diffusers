@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
 
 import torch
 
@@ -129,6 +128,7 @@ class TestNucleusMoEImageTransformer(NucleusMoEImageTransformerTesterConfig, Mod
             output = model(**inputs)
 
         assert output.sample.shape[1] == inputs["hidden_states"].shape[1]
+
 
 class TestNucleusMoEImageTransformerMemory(NucleusMoEImageTransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for NucleusMoE Image Transformer."""

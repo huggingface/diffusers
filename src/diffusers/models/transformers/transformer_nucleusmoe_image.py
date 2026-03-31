@@ -14,7 +14,7 @@
 
 import functools
 import math
-from typing import Any, List
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -98,7 +98,9 @@ class NucleusMoETimestepProjEmbeddings(nn.Module):
     def __init__(self, embedding_dim, use_additional_t_cond=False):
         super().__init__()
 
-        self.time_proj = Timesteps(num_channels=embedding_dim, flip_sin_to_cos=True, downscale_freq_shift=0, scale=1000)
+        self.time_proj = Timesteps(
+            num_channels=embedding_dim, flip_sin_to_cos=True, downscale_freq_shift=0, scale=1000
+        )
         self.timestep_embedder = TimestepEmbedding(
             in_channels=embedding_dim, time_embed_dim=4 * embedding_dim, out_dim=embedding_dim
         )
@@ -238,9 +240,9 @@ class NucleusMoEEmbedRope(nn.Module):
 
 class NucleusMoEAttnProcessor2_0:
     """
-    Attention processor for the NucleusMoE architecture. Image queries attend to concatenated
-    image+text keys/values (cross-attention style, no text query). Supports grouped-query
-    attention (GQA) when num_key_value_heads is set on the Attention module.
+    Attention processor for the NucleusMoE architecture. Image queries attend to concatenated image+text keys/values
+    (cross-attention style, no text query). Supports grouped-query attention (GQA) when num_key_value_heads is set on
+    the Attention module.
     """
 
     _attention_backend = None
@@ -341,18 +343,18 @@ def _is_moe_layer(strategy: str, layer_idx: int, num_layers: int) -> bool:
 
 class SwiGLUExperts(nn.Module):
     """
-    Packed SwiGLU feed-forward experts for MoE:
-    ``gate, up = (x @ gate_up_proj).chunk(2); out = (silu(gate) * up) @ down_proj``.
+    Packed SwiGLU feed-forward experts for MoE: ``gate, up = (x @ gate_up_proj).chunk(2); out = (silu(gate) * up) @
+    down_proj``.
 
-    Gate and up projections are fused into a single weight ``gate_up_proj`` so
-    that only two grouped matmuls are needed at runtime (gate+up combined, then down).
+    Gate and up projections are fused into a single weight ``gate_up_proj`` so that only two grouped matmuls are needed
+    at runtime (gate+up combined, then down).
 
-    Weights are stored pre-transposed relative to the standard linear-layer
-    convention so that matmuls can be issued without a transpose at runtime.
+    Weights are stored pre-transposed relative to the standard linear-layer convention so that matmuls can be issued
+    without a transpose at runtime.
 
     Weight shapes:
-        gate_up_proj: (num_experts, hidden_size, 2 * moe_intermediate_dim)  -- fused gate + up projection
-        down_proj:    (num_experts, moe_intermediate_dim, hidden_size)      -- down projection
+        gate_up_proj: (num_experts, hidden_size, 2 * moe_intermediate_dim) -- fused gate + up projection down_proj:
+        (num_experts, moe_intermediate_dim, hidden_size) -- down projection
     """
 
     def __init__(
@@ -379,37 +381,32 @@ class SwiGLUExperts(nn.Module):
         """
         Compute SwiGLU MoE expert outputs using a sequential per-expert for loop.
 
-        Tokens in ``x`` must be pre-sorted so that all tokens assigned to expert 0 come
-        first, followed by expert 1, and so on — i.e. the layout produced by a standard
-        token-permutation step (e.g. ``generate_permute_indices``).
+        Tokens in ``x`` must be pre-sorted so that all tokens assigned to expert 0 come first, followed by expert 1,
+        and so on — i.e. the layout produced by a standard token-permutation step (e.g. ``generate_permute_indices``).
 
-        ``x`` may contain trailing padding rows appended by the permutation utility to
-        reach a length that is a multiple of some alignment requirement.  The padding rows
-        are stripped before expert computation and re-appended as zeros so that the output
-        shape matches ``x.shape``, keeping downstream scatter/gather indices valid.
+        ``x`` may contain trailing padding rows appended by the permutation utility to reach a length that is a
+        multiple of some alignment requirement. The padding rows are stripped before expert computation and re-appended
+        as zeros so that the output shape matches ``x.shape``, keeping downstream scatter/gather indices valid.
 
         .. note::
-            ``num_tokens_per_expert.tolist()`` synchronises the device with the host.
-            This is acceptable for the loop path but means the method introduces a
-            pipeline bubble.  Use :meth:`forward` with ``use_grouped_mm=True`` when a fully
-            device-resident kernel is required (e.g. inside ``torch.compile``).
+            ``num_tokens_per_expert.tolist()`` synchronises the device with the host. This is acceptable for the loop
+            path but means the method introduces a pipeline bubble. Use :meth:`forward` with ``use_grouped_mm=True``
+            when a fully device-resident kernel is required (e.g. inside ``torch.compile``).
 
         SwiGLU formula::
 
-            gate, up = (x @ gate_up_proj).chunk(2)
-            out      = (silu(gate) * up) @ down_proj
+            gate, up = (x @ gate_up_proj).chunk(2) out = (silu(gate) * up) @ down_proj
 
         Args:
             x (Tensor): Pre-permuted input tokens of shape
                 ``(total_tokens_including_padding, hidden_dim)``.
             num_tokens_per_expert (Tensor): 1-D integer tensor of length
-                ``num_experts`` giving the number of real (non-padding) tokens
-                assigned to each expert.  Values may differ across experts to support
-                load-imbalanced routing.
+                ``num_experts`` giving the number of real (non-padding) tokens assigned to each expert. Values may
+                differ across experts to support load-imbalanced routing.
 
         Returns:
-            Tensor of shape ``(total_tokens_including_padding, hidden_dim)``.
-            Positions corresponding to padding rows contain zeros.
+            Tensor of shape ``(total_tokens_including_padding, hidden_dim)``. Positions corresponding to padding rows
+            contain zeros.
         """
         # .tolist() triggers a host-device sync; see docstring note above.
         num_tokens_per_expert_list = num_tokens_per_expert.tolist()
@@ -446,27 +443,23 @@ class SwiGLUExperts(nn.Module):
         """
         Compute SwiGLU MoE expert outputs using fused grouped GEMM kernels.
 
-        Tokens in ``x`` must be pre-sorted so that all tokens assigned to expert 0 come
-        first, followed by expert 1, and so on — the same layout required by
-        :meth:`_run_experts_for_loop`.
+        Tokens in ``x`` must be pre-sorted so that all tokens assigned to expert 0 come first, followed by expert 1,
+        and so on — the same layout required by :meth:`_run_experts_for_loop`.
 
-        This method is fully device-resident (no host-device sync) and is compatible
-        with ``torch.compile``.
+        This method is fully device-resident (no host-device sync) and is compatible with ``torch.compile``.
 
-        ``F.grouped_mm`` is called with *exclusive end* offsets: ``offsets[k]`` is
-        the exclusive end index of expert ``k``'s token range in ``x`` (equivalently the
-        inclusive start of expert ``k+1``'s range).  This is the cumulative sum of
-        ``num_tokens_per_expert``.
+        ``F.grouped_mm`` is called with *exclusive end* offsets: ``offsets[k]`` is the exclusive end index of expert
+        ``k``'s token range in ``x`` (equivalently the inclusive start of expert ``k+1``'s range). This is the
+        cumulative sum of ``num_tokens_per_expert``.
 
         SwiGLU formula::
 
-            gate, up = (x @ gate_up_proj).chunk(2)
-            out      = (silu(gate) * up) @ down_proj
+            gate, up = (x @ gate_up_proj).chunk(2) out = (silu(gate) * up) @ down_proj
 
         Args:
             x (Tensor): Pre-permuted input tokens of shape
-                ``(total_tokens, hidden_dim)``.  No padding rows expected;
-                ``total_tokens`` must equal ``num_tokens_per_expert.sum()``.
+                ``(total_tokens, hidden_dim)``. No padding rows expected; ``total_tokens`` must equal
+                ``num_tokens_per_expert.sum()``.
             num_tokens_per_expert (Tensor): 1-D integer tensor of length
                 ``num_experts`` giving the number of tokens assigned to each expert.
 
@@ -491,12 +484,10 @@ class NucleusMoELayer(nn.Module):
     """
     Mixture-of-Experts layer with expert-choice routing and a shared expert.
 
-    Routed expert weights live in :class:`SwiGLUExperts`. The router
-    concatenates a timestep embedding
-    with the (unmodulated) hidden state to produce per-token affinity scores, then
-    selects the top-C tokens per expert (expert-choice routing). A shared expert
-    processes all tokens in parallel and its output is combined with the routed
-    expert outputs via scatter-add.
+    Routed expert weights live in :class:`SwiGLUExperts`. The router concatenates a timestep embedding with the
+    (unmodulated) hidden state to produce per-token affinity scores, then selects the top-C tokens per expert
+    (expert-choice routing). A shared expert processes all tokens in parallel and its output is combined with the
+    routed expert outputs via scatter-add.
 
     SwiGLU expert computation is implemented by :class:`SwiGLUExperts`.
     """
@@ -529,8 +520,11 @@ class NucleusMoELayer(nn.Module):
         )
 
         self.shared_expert = FeedForward(
-            dim=hidden_size, dim_out=hidden_size,
-            inner_dim=moe_intermediate_dim, activation_fn="swiglu", bias=False,
+            dim=hidden_size,
+            dim_out=hidden_size,
+            inner_dim=moe_intermediate_dim,
+            activation_fn="swiglu",
+            bias=False,
         )
 
     def forward(
@@ -575,8 +569,10 @@ class NucleusMoELayer(nn.Module):
 
         tokens_per_expert = bs * capacity
         num_tokens_per_expert = torch.full(
-            (self.num_experts,), tokens_per_expert,
-            device=hidden_states.device, dtype=torch.long,
+            (self.num_experts,),
+            tokens_per_expert,
+            device=hidden_states.device,
+            dtype=torch.long,
         )
         routed_output = self.experts(routed_input, num_tokens_per_expert)
         routed_output = (routed_output.float() * gating_flat.unsqueeze(-1)).to(hidden_states.dtype)
@@ -592,9 +588,8 @@ class NucleusMoELayer(nn.Module):
 
 class NucleusMoEImageTransformerBlock(nn.Module):
     """
-    Single-stream DiT block with optional Mixture-of-Experts MLP. Only the image
-    stream receives adaptive modulation; the text context is projected per-block
-    and used as cross-attention keys/values.
+    Single-stream DiT block with optional Mixture-of-Experts MLP. Only the image stream receives adaptive modulation;
+    the text context is projected per-block and used as cross-attention keys/values.
     """
 
     def __init__(
@@ -714,8 +709,8 @@ class NucleusMoEImageTransformer2DModel(
     ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
 ):
     """
-    Nucleus MoE Transformer for image generation. Single-stream DiT with
-    cross-attention to text and optional Mixture-of-Experts feed-forward layers.
+    Nucleus MoE Transformer for image generation. Single-stream DiT with cross-attention to text and optional
+    Mixture-of-Experts feed-forward layers.
 
     Args:
         patch_size (`int`, defaults to `2`):

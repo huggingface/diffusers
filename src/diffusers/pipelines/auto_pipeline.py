@@ -76,6 +76,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .lumina import LuminaPipeline
 from .lumina2 import Lumina2Pipeline
+from .nucleusmoe_image import NucleusMoEImagePipeline
 from .ovis_image import OvisImagePipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
@@ -96,7 +97,6 @@ from .pag import (
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
 from .prx import PRXPipeline
-from .nucleusmoe_image import NucleusMoEImagePipeline
 from .qwenimage import (
     QwenImageControlNetPipeline,
     QwenImageEditInpaintPipeline,
