@@ -152,7 +152,8 @@ Zoom into the CUDA row during the denoising loop. Ideally, GPU kernels should be
 - Python overhead between ops (visible as CPU slices in the CPU row during the gap)
 - DtoH sync (`.item()`, `.cpu()`) forcing the GPU to drain before the CPU can proceed
 
-No bubbles/gaps is ideal, but for small shapes (small model, small batch size, or both) some bubbles could be unavoidable.
+> [!IMPORTANT]
+> No bubbles/gaps is ideal, but for small shapes (small model, small batch size, or both) some bubbles could be unavoidable.
 
 **2. CPU stalls (DtoH syncs)**
 
