@@ -424,14 +424,23 @@ def parse_args(input_args=None):
             " resolution"
         ),
     )
+    # Default bucket set to cover common aspect ratios (1:1, 4:3, 3:4, 16:9, 9:16, etc.) at ~1 megapixel.
+    DEFAULT_BUCKETS = (
+        "1024,1024;768,1360;1360,768;"
+        "832,1248;1248,832;880,1168;1168,880;"
+        "768,1024;1024,768;896,1152;1152,896;"
+        "640,1536;1536,640;768,1280;1280,768"
+    )
     parser.add_argument(
         "--aspect_ratio_buckets",
         type=str,
-        default=None,
+        default=DEFAULT_BUCKETS,
         help=(
             "Aspect ratio buckets to use for training. Define as a string of 'h1,w1;h2,w2;...'. "
-            "e.g. '1024,1024;768,1360;1360,768;880,1168;1168,880;1248,832;832,1248'"
-            "Images will be resized and cropped to fit the nearest bucket. If provided, --resolution is ignored."
+            "e.g. '1024,1024;768,1360;1360,768;880,1168;1168,880;1248,832;832,1248'. "
+            "Images will be resized (and optionally cropped) to fit the nearest bucket. "
+            "A sensible default set of ~1MP Flux-friendly buckets is provided. "
+            "Pass 'none' to disable buckets and fall back to a single square resolution from --resolution."
         ),
     )
     parser.add_argument(
@@ -444,9 +453,24 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--no_crop",
+        default=False,
+        action="store_true",
+        help=(
+            "Whether to skip cropping entirely and instead resize images directly to the bucket dimensions. "
+            "This preserves all spatial information which can be critical "
+            "for editing tasks. When enabled, --center_crop is ignored. Minor aspect ratio distortion may "
+            "occur but should be minimal when using aspect ratio buckets."
+        ),
+    )
+    parser.add_argument(
         "--random_flip",
         action="store_true",
-        help="whether to randomly flip images horizontally",
+        help=(
+            "Whether to randomly flip images horizontally. Disabled by default. "
+            "WARNING: for some editing tasks, e.g. with directional prompts (e.g. 'move left'), "
+            "flipping can create a mismatch between the visual and the caption."
+        ),
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -871,6 +895,7 @@ class DreamBoothDataset(Dataset):
                 size=self.size,
                 center_crop=args.center_crop,
                 random_flip=args.random_flip,
+                no_crop=args.no_crop,
             )
             self.pixel_values.append((image, bucket_idx))
             if dest_image is not None:
@@ -913,25 +938,33 @@ class DreamBoothDataset(Dataset):
 
         return example
 
-    def paired_transform(self, image, dest_image=None, size=(224, 224), center_crop=False, random_flip=False):
-        # 1. Resize (deterministic)
-        resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
-        image = resize(image)
-        if dest_image is not None:
-            dest_image = resize(dest_image)
+    def paired_transform(self, image, dest_image=None, size=(224, 224), center_crop=False, random_flip=False, no_crop=False):
+        target_h, target_w = size
 
-        # 2. Crop: either center or SAME random crop
-        if center_crop:
-            crop = transforms.CenterCrop(size)
-            image = crop(image)
+        if no_crop:
+            # Resize directly to exact bucket dimensions — no cropping.
+            image = image.resize((target_w, target_h), Image.BILINEAR)
             if dest_image is not None:
-                dest_image = crop(dest_image)
+                dest_image = dest_image.resize((target_w, target_h), Image.BILINEAR)
         else:
-            # get_params returns (i, j, h, w)
-            i, j, h, w = transforms.RandomCrop.get_params(image, output_size=size)
-            image = TF.crop(image, i, j, h, w)
+            # 1. Resize shortest side to match bucket (may leave one dim larger)
+            resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+            image = resize(image)
             if dest_image is not None:
-                dest_image = TF.crop(dest_image, i, j, h, w)
+                dest_image = resize(dest_image)
+
+            # 2. Crop: either center or SAME random crop
+            if center_crop:
+                crop = transforms.CenterCrop(size)
+                image = crop(image)
+                if dest_image is not None:
+                    dest_image = crop(dest_image)
+            else:
+                # get_params returns (i, j, h, w)
+                i, j, h, w = transforms.RandomCrop.get_params(image, output_size=size)
+                image = TF.crop(image, i, j, h, w)
+                if dest_image is not None:
+                    dest_image = TF.crop(dest_image, i, j, h, w)
 
         # 3. Random horizontal flip with the SAME coin flip
         if random_flip:
@@ -1393,11 +1426,11 @@ def main(args):
             safeguard_warmup=args.prodigy_safeguard_warmup,
         )
 
-    if args.aspect_ratio_buckets is not None:
+    if args.aspect_ratio_buckets is not None and args.aspect_ratio_buckets.lower() != "none":
         buckets = parse_buckets_string(args.aspect_ratio_buckets)
     else:
         buckets = [(args.resolution, args.resolution)]
-    logger.info(f"Using parsed aspect ratio buckets: {buckets}")
+    logger.info(f"Using aspect ratio buckets: {buckets}")
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
