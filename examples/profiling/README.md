@@ -152,6 +152,8 @@ Zoom into the CUDA row during the denoising loop. Ideally, GPU kernels should be
 - Python overhead between ops (visible as CPU slices in the CPU row during the gap)
 - DtoH sync (`.item()`, `.cpu()`) forcing the GPU to drain before the CPU can proceed
 
+No bubbles/gaps is ideal, but for small shapes (small model, small batch size, or both) some bubbles could be unavoidable.
+
 **2. CPU stalls (DtoH syncs)**
 
 These appear on the **CPU row** (not the CUDA row) — they are CPU-side blocking calls that wait for the GPU to finish. Look for long slices labeled `cudaStreamSynchronize` or `cudaDeviceSynchronize`. To find them: zoom into the CPU row during a denoising step and look for unusually wide slices, or use Perfetto's search bar (press `/`) and type `cudaStreamSynchronize` to jump directly to matching events. Click on a slice — if `with_stack=True` was enabled, the bottom panel ("Current Selection") shows the Python stack trace pointing to the exact line causing the sync (e.g., a `.item()` call in the scheduler).
