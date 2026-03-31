@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
+
 import torch
 
 from ...models import UNet2DModel
@@ -130,9 +132,12 @@ class DDIMPipeline(DiffusionPipeline):
             image_shape = (batch_size, self.unet.config.in_channels, *self.unet.config.sample_size)
 
         if not 0.0 <= eta <= 1.0:
-            raise ValueError(
-                f"`eta` must be between 0 and 1 (inclusive), but received {eta}. "
-                "A value of 0 corresponds to DDIM and 1 corresponds to DDPM."
+            warnings.warn(
+                f"`eta` should be between 0 and 1 (inclusive), but received {eta}. "
+                "A value of 0 corresponds to DDIM and 1 corresponds to DDPM. "
+                "Unexpected results may occur for values outside this range.",
+                UserWarning,
+                stacklevel=2,
             )
 
         if isinstance(generator, list) and len(generator) != batch_size:
