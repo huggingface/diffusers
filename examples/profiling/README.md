@@ -112,6 +112,7 @@ All configs use `output_type="latent"` by default (skip VAE decode for cleaner d
 - `--num_steps N` (override, default 4)
 - `--full_decode` (switch output_type from `"latent"` to `"pil"` to include VAE)
 - `--compile_mode default|reduce-overhead|max-autotune`
+- `--compile_regional` flag (uses [regional compilation](https://pytorch.org/tutorials/recipes/regional_compilation.html) to compile only the transformer forward pass instead of the full pipeline — faster compile times, ideal for iterative profiling)
 - `--compile_fullgraph` flag
 
 **Output:** `{output_dir}/{pipeline}_{mode}.json` Chrome trace + stdout summary.
