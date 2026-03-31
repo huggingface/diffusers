@@ -44,9 +44,9 @@ class AutoencoderTesterMixin:
             if isinstance(output, dict):
                 output = output.to_tuple()[0]
 
-        self.assertIsNotNone(output)
+        assert output is not None
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        assert output.shape == expected_shape, "Input and output shapes do not match"
 
     def test_enable_disable_tiling(self):
         if not hasattr(self.model_class, "enable_tiling"):
