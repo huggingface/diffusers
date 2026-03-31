@@ -1820,7 +1820,6 @@ def main(args):
                     u = (u * mu) / (1 + (mu - 1) * u)
 
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
-                indices = indices.clamp(0, noise_scheduler_copy.config.num_train_timesteps - 1)
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
                 # Add noise according to flow matching.
