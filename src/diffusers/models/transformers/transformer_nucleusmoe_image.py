@@ -190,19 +190,24 @@ class NucleusMoEEmbedRope(nn.Module):
             video_fhw = [video_fhw]
 
         vid_freqs = []
-        max_vid_index = 0
         for idx, fhw in enumerate(video_fhw):
             frame, height, width = fhw
             video_freq = self._compute_video_freqs(frame, height, width, idx, device)
             vid_freqs.append(video_freq)
 
+            max_txt_seq_len_int = int(max_txt_seq_len)
             if self.scale_rope:
-                max_vid_index = max(height // 2, width // 2, max_vid_index)
+                max_vid_index = torch.maximum(
+                    torch.tensor(height // 2, device=device, dtype=torch.long),
+                    torch.tensor(width // 2, device=device, dtype=torch.long),
+                )
             else:
-                max_vid_index = max(height, width, max_vid_index)
+                max_vid_index = torch.maximum(
+                    torch.tensor(height, device=device, dtype=torch.long),
+                    torch.tensor(width, device=device, dtype=torch.long),
+                )
 
-        max_txt_seq_len_int = int(max_txt_seq_len)
-        txt_freqs = self.pos_freqs.to(device)[max_vid_index : max_vid_index + max_txt_seq_len_int, ...]
+        txt_freqs = self.pos_freqs.to(device)[max_vid_index + torch.arange(max_txt_seq_len_int, device=device)]
         vid_freqs = torch.cat(vid_freqs, dim=0)
 
         return vid_freqs, txt_freqs
