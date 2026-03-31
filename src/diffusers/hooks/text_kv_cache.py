@@ -48,7 +48,7 @@ class _SharedCacheKey:
         self.key: int | None = None
 
 
-class _TextKVCacheTransformerHook(ModelHook):
+class TextKVCacheTransformerHook(ModelHook):
     """Captures ``encoder_hidden_states.data_ptr()`` before ``txt_norm``
     and writes it to shared state for the block hooks to read."""
 
