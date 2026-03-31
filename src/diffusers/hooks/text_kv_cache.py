@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import torch
 
-from .hooks import HookRegistry, ModelHook
+from .hooks import BaseState, HookRegistry, ModelHook, StateManager
 
 
 _TEXT_KV_CACHE_TRANSFORMER_HOOK = "text_kv_cache_transformer"
@@ -36,7 +36,7 @@ class TextKVCacheConfig:
     pass
 
 
-class _SharedCacheKey:
+class TextKVCacheState(BaseState):
     """Shared state between the transformer-level and block-level hooks.
 
     The transformer hook writes the stable ``encoder_hidden_states``
@@ -47,6 +47,9 @@ class _SharedCacheKey:
     def __init__(self):
         self.key: int | None = None
 
+    def reset(self):
+        self.key = None
+
 
 class TextKVCacheTransformerHook(ModelHook):
     """Captures ``encoder_hidden_states.data_ptr()`` before ``txt_norm``
@@ -54,18 +57,22 @@ class TextKVCacheTransformerHook(ModelHook):
 
     _is_stateful = True
 
-    def __init__(self, shared: _SharedCacheKey):
+    def __init__(self, state_manager: StateManager):
         super().__init__()
-        self._shared = shared
+        self.state_manager = state_manager
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
+        if self.state_manager._current_context is None:
+            self.state_manager.set_context("inference")
+
         encoder_hidden_states = kwargs.get("encoder_hidden_states")
         if encoder_hidden_states is not None:
-            self._shared.key = encoder_hidden_states.data_ptr()
+            state: TextKVCacheState = self.state_manager.get_state()
+            state.key = encoder_hidden_states.data_ptr()
         return self.fn_ref.original_forward(*args, **kwargs)
 
     def reset_state(self, module: torch.nn.Module):
-        self._shared.key = None
+        self.state_manager.reset()
         return module
 
 
@@ -75,13 +82,16 @@ class TextKVCacheBlockHook(ModelHook):
 
     _is_stateful = True
 
-    def __init__(self, shared: _SharedCacheKey):
+    def __init__(self, state_manager: StateManager):
         super().__init__()
-        self._shared = shared
+        self.state_manager = state_manager
         self.kv_cache: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         from ..models.transformers.transformer_nucleusmoe_image import _apply_rotary_emb_nucleus
+
+        if self.state_manager._current_context is None:
+            self.state_manager.set_context("inference")
 
         if "encoder_hidden_states" in kwargs:
             encoder_hidden_states = kwargs["encoder_hidden_states"]
@@ -95,7 +105,8 @@ class TextKVCacheBlockHook(ModelHook):
         else:
             image_rotary_emb = None
 
-        cache_key = self._shared.key
+        state: TextKVCacheState = self.state_manager.get_state()
+        cache_key = state.key
 
         if cache_key not in self.kv_cache:
             context = module.encoder_proj(encoder_hidden_states)
@@ -133,14 +144,16 @@ class TextKVCacheBlockHook(ModelHook):
 def apply_text_kv_cache(module: torch.nn.Module, config: TextKVCacheConfig) -> None:
     from ..models.transformers.transformer_nucleusmoe_image import NucleusMoEImageTransformerBlock
 
-    shared = _SharedCacheKey()
+    HookRegistry.check_if_exists_or_initialize(module)
 
-    transformer_hook = TextKVCacheTransformerHook(shared)
+    state_manager = StateManager(TextKVCacheState)
+
+    transformer_hook = TextKVCacheTransformerHook(state_manager)
     registry = HookRegistry.check_if_exists_or_initialize(module)
     registry.register_hook(transformer_hook, _TEXT_KV_CACHE_TRANSFORMER_HOOK)
 
     for _, submodule in module.named_modules():
         if isinstance(submodule, NucleusMoEImageTransformerBlock):
-            hook = TextKVCacheBlockHook(shared)
+            hook = TextKVCacheBlockHook(state_manager)
             block_registry = HookRegistry.check_if_exists_or_initialize(submodule)
             block_registry.register_hook(hook, _TEXT_KV_CACHE_BLOCK_HOOK)
