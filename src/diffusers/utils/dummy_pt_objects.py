@@ -287,6 +287,21 @@ class TaylorSeerCacheConfig(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class TextKVCacheConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 def apply_faster_cache(*args, **kwargs):
     requires_backends(apply_faster_cache, ["torch"])
 
@@ -313,21 +328,6 @@ def apply_taylorseer_cache(*args, **kwargs):
 
 def apply_text_kv_cache(*args, **kwargs):
     requires_backends(apply_text_kv_cache, ["torch"])
-
-
-class TextKVCacheConfig(metaclass=DummyObject):
-    _backends = ["torch"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
 
 
 class AllegroTransformer3DModel(metaclass=DummyObject):
@@ -1545,6 +1545,21 @@ class PRXTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class NucleusMoEImageTransformer2DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class QwenImageControlNetModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1561,21 +1576,6 @@ class QwenImageControlNetModel(metaclass=DummyObject):
 
 
 class QwenImageMultiControlNetModel(metaclass=DummyObject):
-    _backends = ["torch"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-
-class NucleusMoEImageTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
