@@ -69,7 +69,7 @@ class _TextKVCacheTransformerHook(ModelHook):
         return module
 
 
-class _TextKVCacheBlockHook(ModelHook):
+class TextKVCacheBlockHook(ModelHook):
     """Caches ``(txt_key, txt_value)`` per block per unique prompt using
     the stable cache key from the shared state."""
 
