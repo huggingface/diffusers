@@ -122,7 +122,6 @@ class NucleusMoETimestepProjEmbeddings(nn.Module):
         return self.norm(conditioning)
 
 
-# Copied from diffusers.models.transformers.transformer_qwenimage.QwenEmbedRope with Qwen->NucleusMoE
 class NucleusMoEEmbedRope(nn.Module):
     def __init__(self, theta: int, axes_dim: list[int], scale_rope=False):
         super().__init__()
