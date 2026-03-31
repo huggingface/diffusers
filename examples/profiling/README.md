@@ -316,3 +316,4 @@ be useful to mitigate that.
 * Use of CUDA Graphs can also help mitigate CPU overhead related issues. When
 using "reduce-overhead" and "max-autotune" in `torch.compile` triggers the
 use of CUDA Graphs.
+* Diffusers' integration of `torch.compile` is documented [here](https://huggingface.co/docs/diffusers/main/en/optimization/fp16#torchcompile).
