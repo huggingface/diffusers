@@ -34,8 +34,8 @@ We want to uncover CPU overhead, CPU-GPU sync points, and other bottlenecks in p
 
 > [!NOTE]
 > We use realistic inference call hyperparameters that mimic how these pipelines will be actually used. This
-> include using classifier-free guidance (where applicable), reasonable dimensions such 1024x1024, etc.
-> But we keep the overall running time to a bare minimum (hence 2 `num_inference_steps`). 
+> includes using classifier-free guidance (where applicable), reasonable dimensions such 1024x1024, etc.
+> But we keep the number of inference steps to a bare minimum. 
 
 ## Approach
 
@@ -197,7 +197,7 @@ To inspect this: zoom into a single denoising step, select a CUDA kernel on the 
 
 ## Afterwards
 
-To keep the profiling iterations fast, we always used [regional compilation](https://pytorch.org/tutorials/recipes/regional_compilation.html). As one would expect the trace with compilation should show
+To keep the profiling iterations fast, we always use [regional compilation](https://pytorch.org/tutorials/recipes/regional_compilation.html). As one would expect the trace with compilation should show
 fewer kernel launches than its eager counterpart.
 
 _(Unless otherwise specified, the traces below were obtained with **Flux2**.)_
@@ -253,12 +253,12 @@ transformer forward's kernels.
 at the call site.
 ```
 
-The changes looke reasonable based on our past experience. So, we asked Claude to apply these changes to [`pipeline_flux2_klein.py`](../../src/diffusers/pipelines/flux2/pipeline_flux2_klein.py). We then profiled
+The changes looked reasonable based on our past experience. So, we asked Claude to apply these changes to [`pipeline_flux2_klein.py`](../../src/diffusers/pipelines/flux2/pipeline_flux2_klein.py). We then profiled
 the updated pipeline. It still didn't eliminate the gaps as expected so, we fed that back to Claude and
 it spotted something more crucial.
 
 Under the [`cache_context`](https://github.com/huggingface/diffusers/blob/f2be8bd6b3dc4035bd989dc467f15d86bf3c9c12/src/diffusers/pipelines/flux2/pipeline_flux2_klein.py#L842) manager, there is a call to `_set_context()` upon
-enters and exists. It calls `named_modules()` on the entire underlying model (in this case the Flux2 Klein DiT).
+enters and exits. It calls `named_modules()` on the entire underlying model (in this case the Flux2 Klein DiT).
 For large models, when they are invoked iteratively like our case, it adds to the latency because it involes traversing hundreds of submodules.
 
 The fix was to build a list of hooked child registries once on the first call and cache it in `_child_registries_cache`. This way, the subsequent calls would return the cached list directly without
