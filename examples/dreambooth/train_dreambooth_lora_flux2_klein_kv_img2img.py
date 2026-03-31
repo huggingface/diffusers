@@ -1501,9 +1501,6 @@ def main(args):
     # if cache_latents is set to True, we encode images to latents and store them.
     # Similar to pre-encoding in the case of a single instance prompt, if custom prompts are provided
     # we encode them in advance as well.
-    #
-    # Caches are keyed by frozenset(batch_indices) so that lookup is independent of
-    # iteration order — the sampler can reshuffle freely between epochs.
     precompute_latents = args.cache_latents or train_dataset.custom_instance_prompts
     if precompute_latents:
         prompt_embeds_cache = {}
