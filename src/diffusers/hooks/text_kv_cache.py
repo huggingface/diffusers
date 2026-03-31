@@ -141,6 +141,6 @@ def apply_text_kv_cache(module: torch.nn.Module, config: TextKVCacheConfig) -> N
 
     for _, submodule in module.named_modules():
         if isinstance(submodule, NucleusMoEImageTransformerBlock):
-            hook = _TextKVCacheBlockHook(shared)
+            hook = TextKVCacheBlockHook(shared)
             block_registry = HookRegistry.check_if_exists_or_initialize(submodule)
             block_registry.register_hook(hook, _TEXT_KV_CACHE_BLOCK_HOOK)
