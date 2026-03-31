@@ -36,8 +36,10 @@ jobs:
         with:
           fetch-depth: 1
           ref: refs/pull/${{ github.event.issue.number || github.event.pull_request.number }}/head
-      - name: Restore review rules from base branch
-        run: git checkout origin/${{ github.event.repository.default_branch }} -- .ai/review-rules.md CLAUDE.md
+      - name: Restore base branch config and sanitize Claude settings
+        run: |
+          rm -rf .claude/
+          git checkout origin/${{ github.event.repository.default_branch }} -- .ai/
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
