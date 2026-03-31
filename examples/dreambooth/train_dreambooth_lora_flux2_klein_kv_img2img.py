@@ -588,6 +588,20 @@ def parse_args(input_args=None):
         help="Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.",
     )
     parser.add_argument(
+        "--shift_timesteps",
+        action="store_true",
+        default=False,
+        help=(
+            "Apply resolution-adaptive timestep shifting, replicating ai-toolkit's 'shift' "
+            "timestep_type (the default for Flux 2 / Flex2 training). Timesteps are first "
+            "sampled via sigmoid(randn()), then warped with a resolution-dependent shift: "
+            "t_shifted = (t * mu) / (1 + (mu - 1) * t), where mu is computed from the "
+            "image's latent sequence length. Higher resolution images get a larger mu, "
+            "biasing toward higher-noise timesteps where compositional structure is learned. "
+            "When enabled, --weighting_scheme is ignored for timestep sampling."
+        ),
+    )
+    parser.add_argument(
         "--caption_dropout_rate",
         type=float,
         default=0.05,
@@ -1667,6 +1681,35 @@ def main(args):
             sigma = sigma.unsqueeze(-1)
         return sigma
 
+    def calculate_shift(
+        image_seq_len,
+        base_seq_len=256,
+        max_seq_len=4096,
+        base_shift=0.5,
+        max_shift=1.16,
+    ):
+        """Compute resolution-adaptive logit_mean for timestep sampling.
+
+        Replicates ai-toolkit's 'shift' timestep_type: higher resolution images
+        (more latent tokens) get a larger shift, biasing training toward higher-noise
+        timesteps where compositional structure is learned. This matches how Flux models
+        are designed to handle different resolutions at inference time.
+
+        Args:
+            image_seq_len: Number of latent tokens (H/2 * W/2 after patchification).
+            base_seq_len: Sequence length at which shift equals base_shift (default 256).
+            max_seq_len: Sequence length at which shift equals max_shift (default 4096).
+            base_shift: Minimum shift value (default 0.5).
+            max_shift: Maximum shift value (default 1.16).
+
+        Returns:
+            mu (float): The dynamic logit_mean to use with logit_normal sampling.
+        """
+        m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
+        b = base_shift - m * base_seq_len
+        mu = image_seq_len * m + b
+        return mu
+
     # Pre-compute empty prompt embeddings for caption dropout.
     # When caption dropout triggers, we replace the real prompt embedding with this.
     # Note: empty_prompt_embeds and empty_text_ids are computed above before the text encoder is freed.
@@ -1688,8 +1731,13 @@ def main(args):
 
             with accelerator.accumulate(models_to_accumulate):
                 if train_dataset.custom_instance_prompts:
-                    prompt_embeds = prompt_embeds_cache[cache_key]
-                    text_ids = text_ids_cache[cache_key]
+                    # Clone when caption dropout is active to avoid mutating the cache.
+                    if args.caption_dropout_rate > 0.0:
+                        prompt_embeds = prompt_embeds_cache[cache_key].clone()
+                        text_ids = text_ids_cache[cache_key].clone()
+                    else:
+                        prompt_embeds = prompt_embeds_cache[cache_key]
+                        text_ids = text_ids_cache[cache_key]
                 else:
                     num_repeat_elements = len(prompts)
                     prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
@@ -1756,8 +1804,7 @@ def main(args):
                 noise = torch.randn_like(model_input)
                 bsz = model_input.shape[0]
 
-                # Sample a random timestep for each image
-                # for weighting schemes where we sample timesteps non-uniformly
+                # Sample a random timestep for each image.
                 u = compute_density_for_timestep_sampling(
                     weighting_scheme=args.weighting_scheme,
                     batch_size=bsz,
@@ -1765,7 +1812,15 @@ def main(args):
                     logit_std=args.logit_std,
                     mode_scale=args.mode_scale,
                 )
+                # Apply resolution-adaptive shift warp (ai-toolkit 'shift' mode).
+                # Biases timesteps toward higher noise for higher resolution images.
+                if args.shift_timesteps:
+                    image_seq_len = model_input.shape[1]
+                    mu = calculate_shift(image_seq_len)
+                    u = (u * mu) / (1 + (mu - 1) * u)
+
                 indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
+                indices = indices.clamp(0, noise_scheduler_copy.config.num_train_timesteps - 1)
                 timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
 
                 # Add noise according to flow matching.
