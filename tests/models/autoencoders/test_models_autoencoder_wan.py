@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 from diffusers import AutoencoderKLWan
 
@@ -43,12 +44,13 @@ class AutoencoderKLWanTesterConfig(BaseModelTesterConfig):
             "temperal_downsample": [False, True, True],
         }
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self, seed=0):
+        torch.manual_seed(seed)
         batch_size = 2
         num_frames = 9
         num_channels = 3
         sizes = (16, 16)
-        image = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
+        image = torch.randn(batch_size, num_channels, num_frames, *sizes).to(torch_device)
         return {"sample": image}
 
     # Bridge for AutoencoderTesterMixin which still uses the old interface
