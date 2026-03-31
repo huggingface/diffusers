@@ -117,7 +117,7 @@ class LTX2Blocks(SequentialPipelineBlocks):
 
     @property
     def outputs(self):
-        return [OutputParam("videos"), OutputParam("audio")]
+        return [OutputParam("videos"), OutputParam("audio"), OutputParam("audio_sample_rate")]
 
 
 # ====================
@@ -302,17 +302,12 @@ class LTX2Stage2FullDenoiseStep(LTX2DenoiseLoopWrapper):
     block_classes = [
         LTX2LoopBeforeDenoiser,
         LTX2LoopDenoiser(
-            guider_name="stage2_guider",
-            guider_config=FrozenDict({"guidance_scale": 1.0}),
-            guider_input_fields={
-                "encoder_hidden_states": ("connector_prompt_embeds", "connector_negative_prompt_embeds"),
-                "audio_encoder_hidden_states": (
-                    "connector_audio_prompt_embeds",
-                    "connector_audio_negative_prompt_embeds",
-                ),
-                "encoder_attention_mask": ("connector_attention_mask", "connector_negative_attention_mask"),
-                "audio_encoder_attention_mask": ("connector_attention_mask", "connector_negative_attention_mask"),
-            },
+            guider_config=FrozenDict({
+                **LTX2LoopDenoiser._default_guider_config,
+                "guidance_scale": 1.0,
+                "audio_guidance_scale": 1.0,
+                "modality_guidance_scale": 1.0,
+            }),
         ),
         LTX2LoopAfterDenoiser,
     ]

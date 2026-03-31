@@ -273,7 +273,7 @@ class SkipLayerGuidance(BaseGuidance):
         if self._num_inference_steps is not None:
             skip_start_step = int(self.skip_layer_guidance_start * self._num_inference_steps)
             skip_stop_step = int(self.skip_layer_guidance_stop * self._num_inference_steps)
-            is_within_range = skip_start_step < self._step < skip_stop_step
+            is_within_range = skip_start_step <= self._step < skip_stop_step
 
         is_zero = math.isclose(self.skip_layer_guidance_scale, 0.0)
 

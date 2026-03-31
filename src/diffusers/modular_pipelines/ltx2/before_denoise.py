@@ -318,9 +318,9 @@ class LTX2PrepareLatentsStep(ModularPipelineBlocks):
         latent_height = height // vae_spatial_compression_ratio
         latent_width = width // vae_spatial_compression_ratio
 
-        condition_latents = getattr(block_state, "condition_latents", None) or []
-        condition_strengths = getattr(block_state, "condition_strengths", None) or []
-        condition_indices = getattr(block_state, "condition_indices", None) or []
+        condition_latents = block_state.condition_latents or []
+        condition_strengths = block_state.condition_strengths or []
+        condition_indices = block_state.condition_indices or []
         has_conditions = len(condition_latents) > 0
 
         if block_state.latents is not None:

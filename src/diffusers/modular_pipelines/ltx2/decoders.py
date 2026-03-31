@@ -199,6 +199,7 @@ class LTX2AudioDecoderStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("audio", description="The decoded audio waveforms"),
+            OutputParam("audio_sample_rate", description="The sampling rate of the decoded audio"),
         ]
 
     @torch.no_grad()
@@ -223,6 +224,8 @@ class LTX2AudioDecoderStep(ModularPipelineBlocks):
             generated_mel_spectrograms = components.audio_vae.decode(audio_latents, return_dict=False)[0]
             # Squeeze batch dim and cast to float32 to match reference's decode_audio output format
             block_state.audio = components.vocoder(generated_mel_spectrograms).squeeze(0).float()
+
+        block_state.audio_sample_rate = components.vocoder.config.output_sampling_rate
 
         self.set_block_state(state, block_state)
         return components, state

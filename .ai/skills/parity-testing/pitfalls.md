@@ -152,3 +152,19 @@ The reference may return audio as `(2, N)` float32 (after `.squeeze(0).float()`)
 ## 27. encode_video float-to-uint8 rounding
 
 The reference converts float video to uint8 via `.to(torch.uint8)` (truncation), but diffusers' `encode_video` may use `(video * 255).round().astype("uint8")` (rounding). This causes 1 pixel diff per channel at ~50% of pixels. Fix: use truncation (`.astype("uint8")`) to match the reference.
+
+## 28. Using the wrong encode/save function for reference output
+
+**Symptom**: Audio duration is 4x video duration, or video has wrong codec artifacts, but only in your test — the reference CLI output is fine.
+
+**Cause**: You used diffusers' `encode_video`/save function to write the reference pipeline's output. Different `encode_video` implementations handle postprocessing differently — e.g., the reference's av-based muxer trims audio to video duration, diffusers' version may not.
+
+**Fix**: Each side saves through its own code. For the reference, let its pipeline write the output file directly (or call its own `encode_video`). For comparison, read both output files back and diff them.
+
+## 29. Rewriting reference pipeline logic instead of using the official script
+
+**Symptom**: Parity test shows differences that don't exist when running the reference CLI directly.
+
+**Cause**: You rewrote the reference denoising loop, guider setup, or audio/video decode instead of calling their official pipeline API. The rewrite introduced subtle bugs (wrong audio frame count, missing postprocessing, different call order) that look like parity failures but are actually test bugs.
+
+**Fix**: Run the reference repo's CLI (e.g. `python -m ltx_pipelines.ti2vid_one_stage --args...`) as ground truth. If you need programmatic access (e.g. for checkpoints), call their highest-level API (e.g. `TI2VidOneStagePipeline(...)`) and validate it matches the CLI output before using it for parity.

@@ -17,7 +17,7 @@ from typing import Any
 import torch
 
 from ...configuration_utils import FrozenDict
-from ...guiders import ClassifierFreeGuidance
+from ...guiders import LTX2MultiModalGuidance
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
@@ -72,7 +72,7 @@ class LTX2LoopBeforeDenoiser(ModularPipelineBlocks):
 
         block_state.audio_timestep = t.expand(batch_size, num_audio_tokens)
         # Sigma for prompt_adaln: f32 to match reference's f32(sigma * scale_multiplier)
-        block_state.sigma = torch.tensor([t.item()], dtype=torch.float32)
+        block_state.sigma = torch.tensor([t.item()], dtype=torch.float32, device=t.device)
 
         return components, block_state
 
@@ -80,24 +80,30 @@ class LTX2LoopBeforeDenoiser(ModularPipelineBlocks):
 class LTX2LoopDenoiser(ModularPipelineBlocks):
     model_name = "ltx2"
 
+    _default_guider_config = FrozenDict({
+        "guidance_scale": 3.0,
+        "audio_guidance_scale": 7.0,
+        "skip_layer_guidance_scale": 1.0,
+        "spatio_temporal_guidance_blocks": [28],
+        "modality_guidance_scale": 3.0,
+        "guidance_rescale": 0.7,
+    })
+
     def __init__(
         self,
         guider_input_fields: dict[str, Any] = None,
-        guider_name: str = "guider",
         guider_config: FrozenDict = None,
     ):
         """Initialize a denoiser block for LTX2 that handles dual video+audio outputs.
 
+        Uses [`LTX2MultiModalGuidance`] which handles CFG, STG (via hook-based attention
+        skip), modality isolation, and rescaling — with separate scales for video and audio.
+
         Args:
             guider_input_fields: Dictionary mapping transformer argument names to block_state field names.
                 Values can be tuples (conditional, unconditional) or strings (same for both).
-            guider_name: Name of the guider component to use (default: "guider").
-            guider_config: Config for the guider component (default: guidance_scale=4.0).
+            guider_config: Config for the LTX2MultiModalGuidance guider.
         """
-        self._guider_name = guider_name
-        if guider_config is None:
-            guider_config = FrozenDict({"guidance_scale": 4.0})
-        self._guider_config = guider_config
         if guider_input_fields is None:
             guider_input_fields = {
                 "encoder_hidden_states": ("connector_prompt_embeds", "connector_negative_prompt_embeds"),
@@ -111,14 +117,15 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
         if not isinstance(guider_input_fields, dict):
             raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
         self._guider_input_fields = guider_input_fields
+        self._guider_config = guider_config or self._default_guider_config
         super().__init__()
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
-                self._guider_name,
-                ClassifierFreeGuidance,
+                "guider",
+                LTX2MultiModalGuidance,
                 config=self._guider_config,
                 default_creation_method="from_config",
             ),
@@ -146,7 +153,6 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             InputParam("frame_rate", default=24.0, type_hint=float),
             InputParam("video_coords", required=True, type_hint=torch.Tensor),
             InputParam("audio_coords", required=True, type_hint=torch.Tensor),
-            InputParam("guidance_rescale", default=0.0, type_hint=float),
             InputParam("sigma", type_hint=torch.Tensor),
         ]
         guider_input_names = []
@@ -170,18 +176,34 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
-        guider = getattr(components, self._guider_name)
+        guider = components.guider
         guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
         guider_state = guider.prepare_inputs_from_block_state(block_state, self._guider_input_fields)
 
-        use_cross_timestep = getattr(components.transformer.config, "use_cross_timestep", False)
         sigma_val = components.scheduler.sigmas[i]
+        use_cross_timestep = getattr(components.transformer.config, "use_cross_timestep", False)
 
-        # Pass raw sigma to wrapper if available (avoids timestep/1000 round-trip precision loss)
-        if hasattr(components.transformer, "_raw_sigma"):
-            components.transformer._raw_sigma = sigma_val
+        transformer_kwargs = dict(
+            hidden_states=block_state.latent_model_input.to(block_state.dtype),
+            audio_hidden_states=block_state.audio_latent_model_input.to(block_state.dtype),
+            timestep=block_state.video_timestep,
+            audio_timestep=block_state.audio_timestep,
+            sigma=block_state.sigma,
+            num_frames=block_state.latent_num_frames,
+            height=block_state.latent_height,
+            width=block_state.latent_width,
+            fps=block_state.frame_rate,
+            audio_num_frames=block_state.audio_num_frames,
+            video_coords=block_state.video_coords,
+            audio_coords=block_state.audio_coords,
+            use_cross_timestep=use_cross_timestep,
+            attention_kwargs=block_state.attention_kwargs,
+            return_dict=False,
+        )
 
+        # --- Passes 1-4: Cond + Uncond + STG + Modality (all via guider) ---
+        # The guider handles hooks: STG (attention skip) and modality (cross-attn skip).
         for guider_state_batch in guider_state:
             guider.prepare_models(components.transformer)
             cond_kwargs = guider_state_batch.as_dict()
@@ -190,121 +212,32 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
                 for k, v in cond_kwargs.items()
                 if k in self._guider_input_fields.keys()
             }
-            # Drop all-ones attention masks — they're functionally no-op but trigger
-            # a different SDPA kernel path (masked vs unmasked) with different bf16 rounding.
-            # Reference passes context_mask=None for unmasked attention.
-            for mask_key in ["encoder_attention_mask", "audio_encoder_attention_mask"]:
-                mask = cond_kwargs.get(mask_key)
-                if mask is not None and mask.ndim <= 2 and (mask == 1).all():
-                    cond_kwargs[mask_key] = None
+            # Drop all-ones attention masks — they trigger a different SDPA kernel with different bf16 rounding.
+            if cond_kwargs.get("encoder_attention_mask") is not None and cond_kwargs["encoder_attention_mask"].ndim <= 2 and (cond_kwargs["encoder_attention_mask"] == 1).all():
+                cond_kwargs["encoder_attention_mask"] = None
+            if cond_kwargs.get("audio_encoder_attention_mask") is not None and cond_kwargs["audio_encoder_attention_mask"].ndim <= 2 and (cond_kwargs["audio_encoder_attention_mask"] == 1).all():
+                cond_kwargs["audio_encoder_attention_mask"] = None
 
-            video_timestep = block_state.video_timestep
-            audio_timestep = block_state.audio_timestep
+            model_kwargs = getattr(guider_state_batch, "_model_kwargs", {})
 
             with components.transformer.cache_context("cond_uncond"):
-                noise_pred_video, noise_pred_audio = components.transformer(
-                    hidden_states=block_state.latent_model_input.to(block_state.dtype),
-                    audio_hidden_states=block_state.audio_latent_model_input.to(block_state.dtype),
-                    timestep=video_timestep,
-                    audio_timestep=audio_timestep,
-                    sigma=block_state.sigma,
-                    num_frames=block_state.latent_num_frames,
-                    height=block_state.latent_height,
-                    width=block_state.latent_width,
-                    fps=block_state.frame_rate,
-                    audio_num_frames=block_state.audio_num_frames,
-                    video_coords=block_state.video_coords,
-                    audio_coords=block_state.audio_coords,
-                    use_cross_timestep=use_cross_timestep,
-                    attention_kwargs=block_state.attention_kwargs,
-                    return_dict=False,
-                    **cond_kwargs,
-                )
+                noise_pred_video, noise_pred_audio = components.transformer(**transformer_kwargs, **cond_kwargs, **model_kwargs)
 
-            # Convert to x0 for guidance.
-            prediction_type = getattr(components.transformer, "prediction_type", "velocity")
-            if prediction_type == "x0":
-                # Model already outputs x0 — no conversion needed
-                x0_video = noise_pred_video
-                x0_audio = noise_pred_audio
-            else:
-                # Model outputs velocity — convert to x0 matching reference's to_denoised:
-                # (sample.f32 - velocity.f32 * sigma_f32).to(sample.dtype)
-                # Reference uses f32 sigma (from denoise_mask * sigma, both f32).
-                x0_video = self._convert_velocity_to_x0(
-                    block_state.latents.float(), noise_pred_video.float(), sigma_val
-                ).to(block_state.latents.dtype)
-                x0_audio = self._convert_velocity_to_x0(
-                    block_state.audio_latents.float(), noise_pred_audio.float(), sigma_val
-                ).to(block_state.audio_latents.dtype)
-
-            guider_state_batch.noise_pred = x0_video
-            guider_state_batch.noise_pred_audio = x0_audio
-
-            # Sub-step checkpoint: save/load x0 per condition
-            _ckpts = getattr(block_state, "_checkpoints", None)
-            if _ckpts:
-                from diffusers.modular_pipelines.ltx2._checkpoint_utils import _maybe_checkpoint
-                cond_label = "cond" if guider_state_batch is guider_state[0] else "uncond"
-                _maybe_checkpoint(_ckpts, f"step_{i}_{cond_label}_x0", {
-                    "video": x0_video, "audio": x0_audio,
-                })
-                # Load support: inject reference x0 for this condition
-                ckpt = _ckpts.get(f"step_{i}_{cond_label}_x0")
-                if ckpt is not None and ckpt.load:
-                    x0_video = ckpt.data["video"].to(x0_video)
-                    x0_audio = ckpt.data["audio"].to(x0_audio)
-                    guider_state_batch.noise_pred = x0_video
-                    guider_state_batch.noise_pred_audio = x0_audio
+            guider_state_batch.noise_pred = self._convert_velocity_to_x0(
+                block_state.latents.float(), noise_pred_video.float(), sigma_val
+            ).to(block_state.latents.dtype)
+            guider_state_batch.noise_pred_audio = self._convert_velocity_to_x0(
+                block_state.audio_latents.float(), noise_pred_audio.float(), sigma_val
+            ).to(block_state.audio_latents.dtype)
 
             guider.cleanup_models(components.transformer)
 
-        # Apply guidance in x0 space using reference formula:
-        # cond + (scale - 1) * (cond - uncond)
-        # This is mathematically equivalent to uncond + scale * (cond - uncond)
-        # but produces different bf16 rounding.
-        if len(guider_state) == 2:
-            guidance_scale = guider.guidance_scale
-            x0_video_cond = guider_state[0].noise_pred
-            x0_video_uncond = guider_state[1].noise_pred
-            guided_x0_video = x0_video_cond + (guidance_scale - 1) * (x0_video_cond - x0_video_uncond)
-
-            x0_audio_cond = guider_state[0].noise_pred_audio
-            x0_audio_uncond = guider_state[1].noise_pred_audio
-            guided_x0_audio = x0_audio_cond + (guidance_scale - 1) * (x0_audio_cond - x0_audio_uncond)
-
-            if block_state.guidance_rescale > 0:
-                guided_x0_video = self._rescale_noise_cfg(
-                    guided_x0_video,
-                    guider_state[0].noise_pred,
-                    block_state.guidance_rescale,
-                )
-                guided_x0_audio = self._rescale_noise_cfg(
-                    guided_x0_audio,
-                    x0_audio_cond,
-                    block_state.guidance_rescale,
-                )
-        else:
-            guided_x0_video = guider_state[0].noise_pred
-            guided_x0_audio = guider_state[0].noise_pred_audio
-
-        # Sub-step checkpoint: save/load guided x0
-        _ckpts = getattr(block_state, "_checkpoints", None)
-        if _ckpts:
-            from diffusers.modular_pipelines.ltx2._checkpoint_utils import _maybe_checkpoint
-            _maybe_checkpoint(_ckpts, f"step_{i}_guided_x0", {
-                "video": guided_x0_video, "audio": guided_x0_audio,
-            })
-            # Load support: inject reference guided x0
-            ckpt = _ckpts.get(f"step_{i}_guided_x0")
-            if ckpt is not None and ckpt.load:
-                guided_x0_video = ckpt.data["video"].to(guided_x0_video)
-                guided_x0_audio = ckpt.data["audio"].to(guided_x0_audio)
+        # --- Combine via guider (guider owns the formula) ---
+        output = guider(guider_state)
+        guided_x0_video = output.pred
+        guided_x0_audio = output.pred_audio
 
         # Convert guided x0 back to velocity for the scheduler.
-        # Use sigma_val.item() (Python float) to match reference's to_velocity which
-        # does sigma.to(float32).item() — dividing by Python float vs 0-dim tensor
-        # uses different CUDA kernels and can produce different results at specific values.
         sigma_scalar = sigma_val.item()
         block_state.noise_pred_video = self._convert_x0_to_velocity(
             block_state.latents.float(), guided_x0_video, sigma_scalar
@@ -314,14 +247,6 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
         ).to(block_state.audio_latents.dtype)
 
         return components, block_state
-
-    @staticmethod
-    def _rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
-        std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
-        std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
-        noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
-        noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
-        return noise_cfg
 
 
 class LTX2LoopAfterDenoiser(ModularPipelineBlocks):

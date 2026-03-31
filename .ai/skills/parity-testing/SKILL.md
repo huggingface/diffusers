@@ -89,9 +89,9 @@ First, **match noise generation**: the way initial noise/latents are constructed
 - **`encode`** (test first): Stop both pipelines at `"preloop"`. Compare **every single variable** that will be consumed by the denoising loop -- not just latents and sigmas, but also prompt embeddings, attention masks, positional coordinates, connector outputs, and any conditioning inputs.
 - **`decode`** (test second): Run the reference pipeline fully -- checkpoint the post-loop latents AND let it finish to get the **final output**. Feed those same post-loop latents through the diffusers decode path. Compare the **final output format** -- not raw tensors, but what the user actually gets:
   - **Image**: compare PIL.Image pixels
-  - **Video**: compare through the pipeline's export function (e.g. `encode_video`)
-  - **Video+Audio**: compare video frames AND audio waveform through `encode_video`
-  - This catches postprocessing bugs like float→uint8 rounding, audio format, and codec settings.
+  - **Video**: each side saves through its own `encode_video`; compare by reading both MP4s back with `imageio`
+  - **Video+Audio**: same — each side saves with its own code. Compare video frames via readback, audio via `ffprobe` duration + raw waveform tensors (not AAC-encoded audio from MP4, which is lossy)
+  - This catches postprocessing bugs like float→uint8 rounding, audio trimming, and codec settings. Using the wrong side's `encode_video` can mask these bugs (see Pitfall #28).
 - **`denoise`** (test last): Run both pipelines with realistic `num_steps` (e.g. 30) so the scheduler computes correct sigmas/timesteps. For float32, stop after 2 loop iterations using `after_step_1` (don't set `num_steps=2` -- that produces unrealistic sigma schedules). For bf16, run ALL steps (see Phase 2).
 
 Start with coarse checkpoints (`after_step_{i}` — just the denoised latents at each step). If a step diverges, place finer checkpoints within that step (e.g. before/after model call, after CFG, after scheduler step). If the divergence is inside the model forward call, use PyTorch forward hooks (`register_forward_hook`) to capture intermediate outputs from sub-modules (e.g., attention output, feed-forward output) and compare them between the two models to find the first diverging operation.
@@ -176,7 +176,7 @@ extract_frames(diff_video, [0, 60, 120])
 
 ## Testing rules
 
-1. **Never use reference code in the diffusers test path.** Each side must use only its own code.
+1. **Use the reference repo's official script as ground truth.** For the reference side, prefer running their CLI directly (e.g., `python -m ltx_pipelines.ti2vid_one_stage --args...`) and capturing the output file. If you must call their API programmatically (e.g., for checkpoint capture), first validate that your programmatic call produces the same output as their CLI with the same args.
 2. **Never monkey-patch model internals in tests.** Do not replace `model.forward` or patch internal methods.
 3. **Debugging instrumentation must be non-destructive.** Checkpoint captures for debugging are fine, but must not alter control flow or outputs.
 4. **Prefer CPU/float32 for numerical comparison when practical.** Float32 avoids bfloat16 precision noise that obscures real bugs. But for large models (22B+), GPU/bfloat16 with `enable_model_cpu_offload()` is necessary -- use relaxed tolerances and cosine similarity as a secondary metric.
@@ -184,8 +184,9 @@ extract_frames(diff_video, [0, 60, 120])
 6. **Diff configs before debugging.** Before investigating any divergence, dump and compare all config values. A 30-second config diff prevents hours of debugging based on wrong assumptions.
 7. **Never modify cached/downloaded model configs directly.** Don't edit files in `~/.cache/huggingface/`. Instead, save to a local directory or open a PR on the upstream repo.
 8. **Compare ALL loop inputs in the encode test.** The preloop checkpoint must capture every single tensor the transformer forward() will receive.
-9. **Don't contaminate test paths.** Each side (reference, diffusers) must use only its own code to generate outputs. For COMPARISON, save both outputs through the SAME function (so codec/format differences don't create false diffs). Example: don't use the reference's `encode_video` for one side and diffusers' for the other.
+9. **Don't cross-contaminate output paths.** Each side must save its output using only its own code. Do NOT use diffusers' `encode_video` to save reference output or vice versa — different implementations may handle postprocessing differently (e.g., audio trimming, codec settings). For pixel-level comparison, compare the final output files (e.g., read both MP4s back with `imageio` and diff the frames).
 10. **Re-test standalone model through the actual pipeline if divergence points to the model.** If pipeline stage tests show the divergence is at the model output (e.g., `cond_x0` differs despite identical inputs), re-run the model comparison using capture-inject with real pipeline-generated inputs. Standalone model tests use manually constructed kwargs which may have wrong config values, dtypes, or shapes — the pipeline generates the real ones.
+11. **Validate any reference code modifications.** If you instrument the reference code (e.g., adding checkpoint support), run the instrumented version and the clean CLI with the same args and verify the output files are identical before using the instrumented version for parity testing. Instrumentation that looks non-destructive can still alter behavior (e.g., `.cpu().clone()` in checkpoint saves can change timing, memory pressure can change CUDA kernel selection).
 
 ## Comparison utilities
 

@@ -382,6 +382,8 @@ class LTX2Attention(torch.nn.Module, AttentionModuleMixin):
         else:
             self.to_gate_logits = None
 
+        self.is_cross_attention = cross_attention_dim is not None
+
         if processor is None:
             processor = self._default_processor_cls()
         self.set_processor(processor)

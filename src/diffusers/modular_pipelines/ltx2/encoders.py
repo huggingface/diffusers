@@ -19,8 +19,6 @@ import PIL.Image
 import torch
 from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
 
-from ...configuration_utils import FrozenDict
-from ...guiders import ClassifierFreeGuidance
 from ...models.autoencoders import AutoencoderKLLTX2Video
 from ...pipelines.ltx2.connectors import LTX2TextConnectors
 from ...utils import logging
@@ -132,12 +130,6 @@ class LTX2TextEncoderStep(ModularPipelineBlocks):
         return [
             ComponentSpec("text_encoder", Gemma3ForConditionalGeneration),
             ComponentSpec("tokenizer", GemmaTokenizerFast),
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 4.0}),
-                default_creation_method="from_config",
-            ),
         ]
 
     @property
@@ -312,12 +304,6 @@ class LTX2ConnectorStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("connectors", LTX2TextConnectors),
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 4.0}),
-                default_creation_method="from_config",
-            ),
         ]
 
     @property
@@ -379,31 +365,18 @@ class LTX2ConnectorStep(ModularPipelineBlocks):
         negative_prompt_embeds = block_state.negative_prompt_embeds
         negative_prompt_attention_mask = block_state.negative_prompt_attention_mask
 
-        do_cfg = negative_prompt_embeds is not None
-
-        if do_cfg:
-            combined_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            combined_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
-        else:
-            combined_embeds = prompt_embeds
-            combined_mask = prompt_attention_mask
-
-        connector_embeds, connector_audio_embeds, connector_mask = components.connectors(
-            combined_embeds, combined_mask
+        # Process positive and negative prompts separately (batch=1 each) to match the
+        # reference pipeline. The video connector's self-attention + learnable registers
+        # produce different results when batched vs separate.
+        block_state.connector_prompt_embeds, block_state.connector_audio_prompt_embeds, block_state.connector_attention_mask = (
+            components.connectors(prompt_embeds, prompt_attention_mask)
         )
 
-        if do_cfg:
-            batch_size = prompt_embeds.shape[0]
-            block_state.connector_negative_prompt_embeds = connector_embeds[:batch_size]
-            block_state.connector_prompt_embeds = connector_embeds[batch_size:]
-            block_state.connector_audio_negative_prompt_embeds = connector_audio_embeds[:batch_size]
-            block_state.connector_audio_prompt_embeds = connector_audio_embeds[batch_size:]
-            block_state.connector_negative_attention_mask = connector_mask[:batch_size]
-            block_state.connector_attention_mask = connector_mask[batch_size:]
+        if negative_prompt_embeds is not None:
+            block_state.connector_negative_prompt_embeds, block_state.connector_audio_negative_prompt_embeds, block_state.connector_negative_attention_mask = (
+                components.connectors(negative_prompt_embeds, negative_prompt_attention_mask)
+            )
         else:
-            block_state.connector_prompt_embeds = connector_embeds
-            block_state.connector_audio_prompt_embeds = connector_audio_embeds
-            block_state.connector_attention_mask = connector_mask
             block_state.connector_negative_prompt_embeds = None
             block_state.connector_audio_negative_prompt_embeds = None
             block_state.connector_negative_attention_mask = None
