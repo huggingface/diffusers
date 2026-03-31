@@ -135,7 +135,7 @@ def apply_text_kv_cache(module: torch.nn.Module, config: TextKVCacheConfig) -> N
 
     shared = _SharedCacheKey()
 
-    transformer_hook = _TextKVCacheTransformerHook(shared)
+    transformer_hook = TextKVCacheTransformerHook(shared)
     registry = HookRegistry.check_if_exists_or_initialize(module)
     registry.register_hook(transformer_hook, _TEXT_KV_CACHE_TRANSFORMER_HOOK)
 
