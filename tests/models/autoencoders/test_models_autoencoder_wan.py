@@ -13,24 +13,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import pytest
 
 from diffusers import AutoencoderKLWan
 
 from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_modeling_common import ModelTesterMixin
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
 from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLWanTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
-    model_class = AutoencoderKLWan
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderKLWanTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderKLWan
 
-    def get_autoencoder_kl_wan_config(self):
+    @property
+    def output_shape(self):
+        return (3, 9, 16, 16)
+
+    def get_init_dict(self):
         return {
             "base_dim": 3,
             "z_dim": 16,
@@ -39,8 +43,7 @@ class AutoencoderKLWanTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.T
             "temperal_downsample": [False, True, True],
         }
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self):
         batch_size = 2
         num_frames = 9
         num_channels = 3
@@ -48,45 +51,42 @@ class AutoencoderKLWanTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.T
         image = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
         return {"sample": image}
 
-    @property
-    def dummy_input_tiling(self):
+    # Bridge for AutoencoderTesterMixin which still uses the old interface
+    def prepare_init_args_and_inputs_for_common(self):
+        return self.get_init_dict(), self.get_dummy_inputs()
+
+    def prepare_init_args_and_inputs_for_tiling(self):
         batch_size = 2
         num_frames = 9
         num_channels = 3
         sizes = (128, 128)
         image = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
-        return {"sample": image}
+        return self.get_init_dict(), {"sample": image}
 
-    @property
-    def input_shape(self):
-        return (3, 9, 16, 16)
 
-    @property
-    def output_shape(self):
-        return (3, 9, 16, 16)
+class TestAutoencoderKLWan(AutoencoderKLWanTesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_kl_wan_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
-    def prepare_init_args_and_inputs_for_tiling(self):
-        init_dict = self.get_autoencoder_kl_wan_config()
-        inputs_dict = self.dummy_input_tiling
-        return init_dict, inputs_dict
+class TestAutoencoderKLWanTraining(AutoencoderKLWanTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderKLWan."""
 
-    @unittest.skip("Gradient checkpointing has not been implemented yet")
+    @pytest.mark.skip(reason="Gradient checkpointing has not been implemented yet")
     def test_gradient_checkpointing_is_applied(self):
         pass
 
-    @unittest.skip("Test not supported")
-    def test_forward_with_norm_groups(self):
+
+class TestAutoencoderKLWanMemory(AutoencoderKLWanTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderKLWan."""
+
+    @pytest.mark.skip(reason="RuntimeError: fill_out not implemented for 'Float8_e4m3fn'")
+    def test_layerwise_casting_memory(self):
         pass
 
-    @unittest.skip("RuntimeError: fill_out not implemented for 'Float8_e4m3fn'")
-    def test_layerwise_casting_inference(self):
-        pass
-
-    @unittest.skip("RuntimeError: fill_out not implemented for 'Float8_e4m3fn'")
+    @pytest.mark.skip(reason="RuntimeError: fill_out not implemented for 'Float8_e4m3fn'")
     def test_layerwise_casting_training(self):
         pass
+
+
+class TestAutoencoderKLWanSlicingTiling(AutoencoderKLWanTesterConfig, AutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderKLWan."""
