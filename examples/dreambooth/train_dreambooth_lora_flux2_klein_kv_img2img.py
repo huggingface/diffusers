@@ -938,7 +938,9 @@ class DreamBoothDataset(Dataset):
 
         return example
 
-    def paired_transform(self, image, dest_image=None, size=(224, 224), center_crop=False, random_flip=False, no_crop=False):
+    def paired_transform(
+        self, image, dest_image=None, size=(224, 224), center_crop=False, random_flip=False, no_crop=False
+    ):
         target_h, target_w = size
 
         if no_crop:
