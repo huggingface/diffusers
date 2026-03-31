@@ -10,7 +10,6 @@ permissions:
   contents: write
   pull-requests: write
   issues: read
-  id-token: write
 
 jobs:
   claude-review:
@@ -43,6 +42,7 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: |
             --append-system-prompt "You are a strict code reviewer for the diffusers library (huggingface/diffusers).
 
