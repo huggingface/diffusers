@@ -199,7 +199,7 @@ To inspect this: zoom into a single denoising step, select a CUDA kernel on the 
 | Kernel launch latency? | CPU launch → GPU kernel offset | < 10us, CPU ahead of GPU | > 20us or CPU trailing GPU |
 | Memory stable? | Memory counter track | Flat during denoise loop | Growing per step |
 
-## Afterwards
+## What Profiling Revealed and Fixes
 
 To keep the profiling iterations fast, we always use [regional compilation](https://pytorch.org/tutorials/recipes/regional_compilation.html). As one would expect the trace with compilation should show
 fewer kernel launches than its eager counterpart.
