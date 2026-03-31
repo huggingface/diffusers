@@ -11,7 +11,7 @@ Thanks to Claude Code for paircoding! We acknowledge the [Claude of OSS](https:/
 
 * [Context](#context)
 * [Target pipelines](#target-pipelines)
-* [Approach taken](#approach)
+* [How the tooling works](#how-the-tooling-works)
 * [Verification](#verification)
 * [Interpretation](#interpreting-traces-in-perfetto-ui)
 * [Taking profiling-guided steps for improvements](#afterwards)
@@ -37,7 +37,7 @@ We want to uncover CPU overhead, CPU-GPU sync points, and other bottlenecks in p
 > includes using classifier-free guidance (where applicable), reasonable dimensions such 1024x1024, etc.
 > But we keep the number of inference steps to a bare minimum. 
 
-## Approach
+## How the Tooling Works
 
 Follow the flux-fast pattern: **annotate key pipeline methods** with `torch.profiler.record_function` wrappers, then run the pipeline under `torch.profiler.profile` and export a Chrome trace.
 
