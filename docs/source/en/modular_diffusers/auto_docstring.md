@@ -26,7 +26,7 @@ class FluxTextEncoderStep(SequentialPipelineBlocks):
     ...
 ```
 
-After adding the marker, run the following command to generate and insert the docstrings.
+Run the following command to generate and insert the docstrings.
 
 ```bash
 python utils/modular_auto_docstring.py --fix_and_overwrite
