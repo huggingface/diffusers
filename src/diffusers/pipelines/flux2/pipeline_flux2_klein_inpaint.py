@@ -611,9 +611,9 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             latents = noise
 
         noise = self._pack_latents(noise)
-        image_latents = self._pack_latents(image_latents)
+        packed_image_latents = self._pack_latents(image_latents)
         latents = self._pack_latents(latents)
-        return latents, noise, image_latents, latent_image_ids
+        return latents, noise, packed_image_latents, image_latents, latent_image_ids
 
     def prepare_image_latents(
         self,
@@ -627,10 +627,10 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         for image in images:
             image = image.to(device=device, dtype=dtype)
 
-            if image.shape[1] != self.latent_channels:
+            if image.shape[1] != self.latent_channels * 4:
                 image_latent = self._encode_vae_image(image=image, generator=generator)
             else:
-                image_latent = self._patchify_latents(image)
+                image_latent = image
             image_latents.append(image_latent)
 
         image_latent_ids = self._prepare_image_ids(image_latents, batch_size)
@@ -1105,7 +1105,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         # 6. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
 
-        latents, noise, image_latents, latent_image_ids = self.prepare_latents(
+        latents, noise, image_latents, image_latents_encoded, latent_image_ids = self.prepare_latents(
             init_image,
             latent_timestep,
             batch_size * num_images_per_prompt,
@@ -1118,7 +1118,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             latents,
         )
 
-        ref_images = [init_image]
+        ref_images = [image_latents_encoded]
         if processed_image_reference is not None:
             ref_images.append(processed_image_reference)
 
