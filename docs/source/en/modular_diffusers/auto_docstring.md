@@ -102,7 +102,7 @@ InputParam.template("prompt")
 #            description="The prompt or prompts to guide image generation.")
 ```
 
-Templates set the `name`, `type_hint`, `default`, `required`, and `description` automatically. You can override any field or append context with the `note` parameter.
+Templates set `name`, `type_hint`, `default`, `required`, and `description` automatically. Override any field or add context with the `note` parameter.
 
 ```py
 # Override the default value
