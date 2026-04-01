@@ -46,6 +46,27 @@ No other text."""
 
 USER_TEMPLATE = "Title: {title}\n\nBody:\n{body}"
 
+VALID_LABELS = {
+    "bug",
+    "feature-request",
+    "pipelines",
+    "models",
+    "schedulers",
+    "modular-pipelines",
+    "quantization",
+    "compile",
+    "attention-backends",
+    "context-parallel",
+    "group-offloading",
+    "lora",
+    "single-file",
+    "gguf",
+    "torchao",
+    "bitsandbytes",
+    "needs-code-example",
+    "new-pipeline/model",
+}
+
 
 def get_existing_components():
     pipelines_dir = os.path.join("src", "diffusers", "pipelines")
@@ -80,17 +101,17 @@ def main():
         response = completion.choices[0].message.content.strip()
         result = json.loads(response)
 
-        labels = result["labels"]
+        labels = [l for l in result["labels"] if l in VALID_LABELS]
         model_name = result.get("model_name")
 
         if model_name:
             existing = get_existing_components()
             if not any(model_name.lower() in name for name in existing):
-                labels.append("New pipeline/model")
+                labels.append("new-pipeline/model")
 
         print(json.dumps(labels))
-    except Exception as e:
-        print(f"Labeling failed: {e}", file=sys.stderr)
+    except Exception:
+        print("Labeling failed", file=sys.stderr)
 
 
 if __name__ == "__main__":
