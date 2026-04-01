@@ -254,3 +254,209 @@ class LTXDenoiseStep(LTXDenoiseLoopWrapper):
             " - `LTXLoopAfterDenoiser`\n"
             "This block supports text-to-video tasks."
         )
+
+
+class LTXImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
+    model_name = "ltx"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the i2v denoising loop that prepares the latent input and modulates "
+            "the timestep with the conditioning mask."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("latents", required=True, type_hint=torch.Tensor),
+            InputParam("conditioning_mask", required=True, type_hint=torch.Tensor),
+            InputParam("dtype", required=True, type_hint=torch.dtype),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        block_state.latent_model_input = block_state.latents.to(block_state.dtype)
+        block_state.timestep_adjusted = t.expand(block_state.latent_model_input.shape[0]).unsqueeze(-1) * (
+            1 - block_state.conditioning_mask
+        )
+        return components, block_state
+
+
+class LTXImage2VideoLoopDenoiser(ModularPipelineBlocks):
+    model_name = "ltx"
+
+    def __init__(
+        self,
+        guider_input_fields: dict[str, Any] = {
+            "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+            "encoder_attention_mask": ("prompt_attention_mask", "negative_prompt_attention_mask"),
+        },
+    ):
+        if not isinstance(guider_input_fields, dict):
+            raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
+        self._guider_input_fields = guider_input_fields
+        super().__init__()
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        from ...configuration_utils import FrozenDict
+        from ...guiders import ClassifierFreeGuidance
+        return [
+            ComponentSpec(
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 3.0}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec("transformer", LTXVideoTransformer3DModel),
+        ]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the i2v denoising loop that denoises the latents with guidance "
+            "using timestep modulated by the conditioning mask."
+        )
+
+    @property
+    def inputs(self) -> list[tuple[str, Any]]:
+        inputs = [
+            InputParam("attention_kwargs"),
+            InputParam("num_inference_steps", required=True, type_hint=int),
+            InputParam("rope_interpolation_scale", type_hint=tuple),
+            InputParam("height", type_hint=int),
+            InputParam("width", type_hint=int),
+            InputParam("num_frames", type_hint=int),
+        ]
+        guider_input_names = []
+        for value in self._guider_input_fields.values():
+            if isinstance(value, tuple):
+                guider_input_names.extend(value)
+            else:
+                guider_input_names.append(value)
+        for name in guider_input_names:
+            inputs.append(InputParam(name=name, required=True, type_hint=torch.Tensor))
+        return inputs
+
+    @torch.no_grad()
+    def __call__(
+        self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> PipelineState:
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+
+        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+
+        guider_state = components.guider.prepare_inputs_from_block_state(block_state, self._guider_input_fields)
+
+        for guider_state_batch in guider_state:
+            components.guider.prepare_models(components.transformer)
+            cond_kwargs = guider_state_batch.as_dict()
+            cond_kwargs = {
+                k: v.to(block_state.dtype) if isinstance(v, torch.Tensor) else v
+                for k, v in cond_kwargs.items()
+                if k in self._guider_input_fields.keys()
+            }
+
+            guider_state_batch.noise_pred = components.transformer(
+                hidden_states=block_state.latent_model_input,
+                timestep=block_state.timestep_adjusted,
+                num_frames=latent_num_frames,
+                height=latent_height,
+                width=latent_width,
+                rope_interpolation_scale=block_state.rope_interpolation_scale,
+                attention_kwargs=block_state.attention_kwargs,
+                return_dict=False,
+                **cond_kwargs,
+            )[0]
+            components.guider.cleanup_models(components.transformer)
+
+        block_state.noise_pred = components.guider(guider_state)[0]
+
+        return components, block_state
+
+
+class LTXImage2VideoLoopAfterDenoiser(ModularPipelineBlocks):
+    model_name = "ltx"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+        ]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the i2v denoising loop that updates the latents, "
+            "applying the scheduler step only to frames after the first (conditioned) frame."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam("height", type_hint=int),
+            InputParam("width", type_hint=int),
+            InputParam("num_frames", type_hint=int),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        from ...pipelines.ltx.pipeline_ltx import LTXPipeline
+
+        latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        latent_height = block_state.height // components.vae_spatial_compression_ratio
+        latent_width = block_state.width // components.vae_spatial_compression_ratio
+
+        noise_pred = LTXPipeline._unpack_latents(
+            block_state.noise_pred,
+            latent_num_frames, latent_height, latent_width,
+            components.transformer_spatial_patch_size,
+            components.transformer_temporal_patch_size,
+        )
+        latents = LTXPipeline._unpack_latents(
+            block_state.latents,
+            latent_num_frames, latent_height, latent_width,
+            components.transformer_spatial_patch_size,
+            components.transformer_temporal_patch_size,
+        )
+
+        noise_pred = noise_pred[:, :, 1:]
+        noise_latents = latents[:, :, 1:]
+        pred_latents = components.scheduler.step(noise_pred, t, noise_latents, return_dict=False)[0]
+
+        latents = torch.cat([latents[:, :, :1], pred_latents], dim=2)
+        block_state.latents = LTXPipeline._pack_latents(
+            latents,
+            components.transformer_spatial_patch_size,
+            components.transformer_temporal_patch_size,
+        )
+
+        return components, block_state
+
+
+class LTXImage2VideoDenoiseStep(LTXDenoiseLoopWrapper):
+    block_classes = [
+        LTXImage2VideoLoopBeforeDenoiser,
+        LTXImage2VideoLoopDenoiser(
+            guider_input_fields={
+                "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+                "encoder_attention_mask": ("prompt_attention_mask", "negative_prompt_attention_mask"),
+            }
+        ),
+        LTXImage2VideoLoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step for image-to-video that iteratively denoises the latents.\n"
+            "The first frame is kept fixed via a conditioning mask.\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
+            " - `LTXImage2VideoLoopBeforeDenoiser`\n"
+            " - `LTXImage2VideoLoopDenoiser`\n"
+            " - `LTXImage2VideoLoopAfterDenoiser`"
+        )

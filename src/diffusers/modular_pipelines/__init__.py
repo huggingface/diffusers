@@ -90,6 +90,8 @@ else:
     ]
     _import_structure["ltx"] = [
         "LTXBlocks",
+        "LTXImage2VideoBlocks",
+        "LTXImage2VideoModularPipeline",
         "LTXModularPipeline",
     ]
     _import_structure["z_image"] = [
@@ -145,7 +147,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageModularPipeline,
         )
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
-        from .ltx import LTXBlocks, LTXModularPipeline
+        from .ltx import LTXBlocks, LTXImage2VideoBlocks, LTXImage2VideoModularPipeline, LTXModularPipeline
         from .wan import (
             Wan22Blocks,
             Wan22Image2VideoBlocks,

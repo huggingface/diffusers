@@ -16,12 +16,13 @@ from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
+    LTXImage2VideoPrepareLatentsStep,
     LTXPrepareLatentsStep,
     LTXSetTimestepsStep,
     LTXTextInputStep,
 )
 from .decoders import LTXVaeDecoderStep
-from .denoise import LTXDenoiseStep
+from .denoise import LTXDenoiseStep, LTXImage2VideoDenoiseStep
 from .encoders import LTXTextEncoderStep
 
 
@@ -47,6 +48,25 @@ class LTXCoreDenoiseStep(SequentialPipelineBlocks):
         return [OutputParam.template("latents")]
 
 
+class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
+    model_name = "ltx"
+    block_classes = [
+        LTXTextInputStep,
+        LTXSetTimestepsStep,
+        LTXImage2VideoPrepareLatentsStep,
+        LTXImage2VideoDenoiseStep,
+    ]
+    block_names = ["input", "set_timesteps", "prepare_latents", "denoise"]
+
+    @property
+    def description(self):
+        return "Denoise block for image-to-video that takes encoded conditions and an image, and runs the denoising process."
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("latents")]
+
+
 class LTXBlocks(SequentialPipelineBlocks):
     model_name = "ltx"
     block_classes = [
@@ -58,7 +78,25 @@ class LTXBlocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return "Modular pipeline blocks for LTX Video."
+        return "Modular pipeline blocks for LTX Video text-to-video."
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("videos")]
+
+
+class LTXImage2VideoBlocks(SequentialPipelineBlocks):
+    model_name = "ltx"
+    block_classes = [
+        LTXTextEncoderStep,
+        LTXImage2VideoCoreDenoiseStep,
+        LTXVaeDecoderStep,
+    ]
+    block_names = ["text_encoder", "denoise", "decode"]
+
+    @property
+    def description(self):
+        return "Modular pipeline blocks for LTX Video image-to-video."
 
     @property
     def outputs(self):

@@ -444,6 +444,8 @@ else:
             "HeliosPyramidDistilledAutoBlocks",
             "HeliosPyramidDistilledModularPipeline",
             "LTXBlocks",
+            "LTXImage2VideoBlocks",
+            "LTXImage2VideoModularPipeline",
             "LTXModularPipeline",
             "HeliosPyramidModularPipeline",
             "QwenImageAutoBlocks",

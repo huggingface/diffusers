@@ -62,3 +62,13 @@ class LTXModularPipeline(
         if hasattr(self, "guider") and self.guider is not None:
             return self.guider._enabled and self.guider.num_conditions > 1
         return False
+
+
+class LTXImage2VideoModularPipeline(LTXModularPipeline):
+    """
+    A ModularPipeline for LTX Video image-to-video.
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "LTXImage2VideoBlocks"
