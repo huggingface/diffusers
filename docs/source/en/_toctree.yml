@@ -112,6 +112,8 @@
     title: ModularPipeline
   - local: modular_diffusers/components_manager
     title: ComponentsManager
+  - local: modular_diffusers/auto_docstring
+    title: Auto Docstring and Parameter Templates
   - local: modular_diffusers/custom_blocks
     title: Building Custom Blocks
   - local: modular_diffusers/mellon
