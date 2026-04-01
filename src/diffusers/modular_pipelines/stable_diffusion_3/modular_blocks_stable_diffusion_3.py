@@ -37,12 +37,14 @@ from .inputs import (
 logger = logging.get_logger(__name__)
 
 
+# auto_docstring
 class StableDiffusion3Img2ImgVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "stable-diffusion-3"
     block_classes = [StableDiffusion3ProcessImagesInputStep(), StableDiffusion3VaeEncoderStep()]
     block_names = ["preprocess", "encode"]
 
 
+# auto_docstring
 class StableDiffusion3AutoVaeEncoderStep(AutoPipelineBlocks):
     model_name = "stable-diffusion-3"
     block_classes = [StableDiffusion3Img2ImgVaeEncoderStep]
@@ -50,12 +52,14 @@ class StableDiffusion3AutoVaeEncoderStep(AutoPipelineBlocks):
     block_trigger_inputs = ["image"]
 
 
+# auto_docstring
 class StableDiffusion3BeforeDenoiseStep(SequentialPipelineBlocks):
     model_name = "stable-diffusion-3"
     block_classes = [StableDiffusion3PrepareLatentsStep(), StableDiffusion3SetTimestepsStep()]
     block_names = ["prepare_latents", "set_timesteps"]
 
 
+# auto_docstring
 class StableDiffusion3Img2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
     model_name = "stable-diffusion-3"
     block_classes = [
@@ -66,6 +70,7 @@ class StableDiffusion3Img2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
     block_names = ["prepare_latents", "set_timesteps", "prepare_img2img_latents"]
 
 
+# auto_docstring
 class StableDiffusion3AutoBeforeDenoiseStep(AutoPipelineBlocks):
     model_name = "stable-diffusion-3"
     block_classes = [StableDiffusion3Img2ImgBeforeDenoiseStep, StableDiffusion3BeforeDenoiseStep]
@@ -73,12 +78,14 @@ class StableDiffusion3AutoBeforeDenoiseStep(AutoPipelineBlocks):
     block_trigger_inputs = ["image_latents", None]
 
 
+# auto_docstring
 class StableDiffusion3Img2ImgInputStep(SequentialPipelineBlocks):
     model_name = "stable-diffusion-3"
     block_classes = [StableDiffusion3TextInputStep(), StableDiffusion3AdditionalInputsStep()]
     block_names = ["text_inputs", "additional_inputs"]
 
 
+# auto_docstring
 class StableDiffusion3AutoInputStep(AutoPipelineBlocks):
     model_name = "stable-diffusion-3"
     block_classes = [StableDiffusion3Img2ImgInputStep, StableDiffusion3TextInputStep]
@@ -86,6 +93,7 @@ class StableDiffusion3AutoInputStep(AutoPipelineBlocks):
     block_trigger_inputs = ["image_latents", None]
 
 
+# auto_docstring
 class StableDiffusion3CoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "stable-diffusion-3"
     block_classes = [StableDiffusion3AutoInputStep, StableDiffusion3AutoBeforeDenoiseStep, StableDiffusion3DenoiseStep]
@@ -106,6 +114,7 @@ AUTO_BLOCKS = InsertableDict(
 )
 
 
+# auto_docstring
 class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
     model_name = "stable-diffusion-3"
     block_classes = AUTO_BLOCKS.values()

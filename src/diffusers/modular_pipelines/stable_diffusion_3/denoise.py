@@ -62,9 +62,7 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
             InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor),
             InputParam("negative_prompt_embeds", type_hint=torch.Tensor),
             InputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor),
-            InputParam("do_classifier_free_guidance", type_hint=bool),
             InputParam("guidance_scale", default=7.0),
-            InputParam("skip_guidance_layers", type_hint=list),
             InputParam("skip_layer_guidance_scale", default=2.8),
             InputParam("skip_layer_guidance_stop", default=0.2),
             InputParam("skip_layer_guidance_start", default=0.01),
@@ -86,7 +84,15 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
             ),
         }
 
-        components.guider.guidance_scale = block_state.guidance_scale
+        if hasattr(components.guider, "guidance_scale"):
+            components.guider.guidance_scale = block_state.guidance_scale
+        if hasattr(components.guider, "skip_layer_guidance_scale"):
+            components.guider.skip_layer_guidance_scale = block_state.skip_layer_guidance_scale
+        if hasattr(components.guider, "skip_layer_guidance_start"):
+            components.guider.skip_layer_guidance_start = block_state.skip_layer_guidance_start
+        if hasattr(components.guider, "skip_layer_guidance_stop"):
+            components.guider.skip_layer_guidance_stop = block_state.skip_layer_guidance_stop
+
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         guider_state = components.guider.prepare_inputs(guider_inputs)
 
@@ -106,32 +112,8 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
             components.guider.cleanup_models(components.transformer)
 
         guider_output = components.guider(guider_state)
-        noise_pred = guider_output.pred
+        block_state.noise_pred = guider_output.pred
 
-        should_skip_layers = (
-            getattr(block_state, "skip_guidance_layers", None) is not None
-            and i
-            > getattr(block_state, "num_inference_steps", 50) * getattr(block_state, "skip_layer_guidance_start", 0.01)
-            and i
-            < getattr(block_state, "num_inference_steps", 50) * getattr(block_state, "skip_layer_guidance_stop", 0.2)
-        )
-
-        if should_skip_layers and block_state.do_classifier_free_guidance:
-            timestep_skip = t.expand(block_state.latents.shape[0])
-            noise_pred_skip_layers = components.transformer(
-                hidden_states=block_state.latents,
-                timestep=timestep_skip,
-                encoder_hidden_states=getattr(block_state, "prompt_embeds", None),
-                pooled_projections=getattr(block_state, "pooled_prompt_embeds", None),
-                joint_attention_kwargs=getattr(block_state, "joint_attention_kwargs", None),
-                return_dict=False,
-                skip_layers=block_state.skip_guidance_layers,
-            )[0]
-            noise_pred = noise_pred + (guider_output.pred_cond - noise_pred_skip_layers) * getattr(
-                block_state, "skip_layer_guidance_scale", 2.8
-            )
-
-        block_state.noise_pred = noise_pred
         return components, block_state
 
 
@@ -198,6 +180,7 @@ class StableDiffusion3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class StableDiffusion3DenoiseStep(StableDiffusion3DenoiseLoopWrapper):
     block_classes = [StableDiffusion3LoopDenoiser, StableDiffusion3LoopAfterDenoiser]
     block_names = ["denoiser", "after_denoiser"]
