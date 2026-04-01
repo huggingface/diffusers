@@ -40,3 +40,24 @@ jobs:
           else
             gh pr edit "$PR_NUMBER" --remove-label "missing-tests" 2>/dev/null || true
           fi
+
+  size-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label PR by diff size
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          DIFF_SIZE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.additions + .deletions')
+          for label in size/S size/M size/L; do
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label "$label" 2>/dev/null || true
+          done
+          if [ "$DIFF_SIZE" -lt 50 ]; then
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "size/S"
+          elif [ "$DIFF_SIZE" -lt 200 ]; then
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "size/M"
+          else
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "size/L"
+          fi
