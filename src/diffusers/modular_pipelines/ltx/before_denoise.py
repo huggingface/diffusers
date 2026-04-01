@@ -371,14 +371,16 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
             image = processor.preprocess(image, height=block_state.height, width=block_state.width)
             image = image.to(device=device, dtype=torch.float32)
 
+        vae_dtype = components.vae.dtype
+
         if isinstance(block_state.generator, list):
             init_latents = [
-                retrieve_latents(components.vae.encode(image[i].unsqueeze(0).unsqueeze(2)), block_state.generator[i])
+                retrieve_latents(components.vae.encode(image[i].unsqueeze(0).unsqueeze(2).to(vae_dtype)), block_state.generator[i])
                 for i in range(batch_size)
             ]
         else:
             init_latents = [
-                retrieve_latents(components.vae.encode(img.unsqueeze(0).unsqueeze(2)), block_state.generator)
+                retrieve_latents(components.vae.encode(img.unsqueeze(0).unsqueeze(2).to(vae_dtype)), block_state.generator)
                 for img in image
             ]
 
