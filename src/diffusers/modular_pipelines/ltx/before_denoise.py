@@ -94,6 +94,7 @@ class LTXTextInputStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_videos_per_prompt", default=1),
+            InputParam("guidance_scale", type_hint=float, default=3.0),
             InputParam("prompt_embeds", required=True, type_hint=torch.Tensor),
             InputParam("prompt_attention_mask", type_hint=torch.Tensor),
             InputParam("negative_prompt_embeds", type_hint=torch.Tensor),
@@ -110,6 +111,11 @@ class LTXTextInputStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+
+        # Set guidance_scale on guider so CFG is configured correctly
+        guidance_scale = getattr(block_state, "guidance_scale", 3.0)
+        if hasattr(components, "guider") and components.guider is not None:
+            components.guider.guidance_scale = guidance_scale
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
         block_state.dtype = block_state.prompt_embeds.dtype
