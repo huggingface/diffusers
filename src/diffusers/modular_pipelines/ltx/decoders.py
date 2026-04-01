@@ -62,6 +62,7 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
             InputParam("decode_noise_scale", default=None),
             InputParam("generator"),
             InputParam("batch_size", type_hint=int, default=1),
+            InputParam("dtype", required=True, type_hint=torch.dtype),
         ]
 
     @property
@@ -105,7 +106,7 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
         latents = LTXPipeline._denormalize_latents(
             latents, vae.latents_mean, vae.latents_std, vae.config.scaling_factor
         )
-        latents = latents.to(block_state.dtype if hasattr(block_state, 'dtype') else torch.float32)
+        latents = latents.to(block_state.dtype)
 
         if not vae.config.timestep_conditioning:
             timestep = None

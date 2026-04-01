@@ -153,12 +153,7 @@ class LTXTextEncoderStep(ModularPipelineBlocks):
             negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
-            if prompt is not None and type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif batch_size != len(negative_prompt):
+            if batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
                     f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
@@ -183,7 +178,9 @@ class LTXTextEncoderStep(ModularPipelineBlocks):
         block_state.device = components._execution_device
 
         # Skip encoding if pre-computed embeddings are provided
-        if getattr(block_state, "prompt_embeds", None) is not None:
+        has_prompt_embeds = getattr(block_state, "prompt_embeds", None) is not None
+        has_negative = getattr(block_state, "negative_prompt_embeds", None) is not None
+        if has_prompt_embeds and (has_negative or not components.requires_unconditional_embeds):
             self.set_block_state(state, block_state)
             return components, state
 

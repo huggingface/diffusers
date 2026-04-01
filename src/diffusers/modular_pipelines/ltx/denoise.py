@@ -63,11 +63,13 @@ class LTXLoopDenoiser(ModularPipelineBlocks):
 
     def __init__(
         self,
-        guider_input_fields: dict[str, Any] = {
-            "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
-            "encoder_attention_mask": ("prompt_attention_mask", "negative_prompt_attention_mask"),
-        },
+        guider_input_fields: dict[str, Any] | None = None,
     ):
+        if guider_input_fields is None:
+            guider_input_fields = {
+                "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+                "encoder_attention_mask": ("prompt_attention_mask", "negative_prompt_attention_mask"),
+            }
         if not isinstance(guider_input_fields, dict):
             raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
         self._guider_input_fields = guider_input_fields
@@ -290,11 +292,13 @@ class LTXImage2VideoLoopDenoiser(ModularPipelineBlocks):
 
     def __init__(
         self,
-        guider_input_fields: dict[str, Any] = {
-            "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
-            "encoder_attention_mask": ("prompt_attention_mask", "negative_prompt_attention_mask"),
-        },
+        guider_input_fields: dict[str, Any] | None = None,
     ):
+        if guider_input_fields is None:
+            guider_input_fields = {
+                "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+                "encoder_attention_mask": ("prompt_attention_mask", "negative_prompt_attention_mask"),
+            }
         if not isinstance(guider_input_fields, dict):
             raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
         self._guider_input_fields = guider_input_fields

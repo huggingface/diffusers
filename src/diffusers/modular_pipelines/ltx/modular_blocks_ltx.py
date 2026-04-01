@@ -29,6 +29,7 @@ from .encoders import LTXTextEncoderStep
 logger = logging.get_logger(__name__)
 
 
+# auto_docstring
 class LTXCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "ltx"
     block_classes = [
@@ -48,6 +49,7 @@ class LTXCoreDenoiseStep(SequentialPipelineBlocks):
         return [OutputParam.template("latents")]
 
 
+# auto_docstring
 class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "ltx"
     block_classes = [
@@ -67,6 +69,7 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
         return [OutputParam.template("latents")]
 
 
+# auto_docstring
 class LTXBlocks(SequentialPipelineBlocks):
     model_name = "ltx"
     block_classes = [
@@ -85,6 +88,7 @@ class LTXBlocks(SequentialPipelineBlocks):
         return [OutputParam.template("videos")]
 
 
+# auto_docstring
 class LTXImage2VideoBlocks(SequentialPipelineBlocks):
     model_name = "ltx"
     block_classes = [
