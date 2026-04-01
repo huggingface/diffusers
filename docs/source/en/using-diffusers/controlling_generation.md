@@ -74,7 +74,7 @@ InstructPix2Pix has been explicitly trained to work well with [InstructGPT](http
 
 [Paper](https://huggingface.co/papers/2301.13826)
 
-[Attend and Excite](../api/pipelines/attend_and_excite) allows subjects in the prompt to be faithfully represented in the final image.
+Attend and Excite allows subjects in the prompt to be faithfully represented in the final image.
 
 A set of token indices are given as input, corresponding to the subjects in the prompt that need to be present in the image. During denoising, each token index is guaranteed to have a minimum attention threshold for at least one patch of the image. The intermediate latents are iteratively optimized during the denoising process to strengthen the attention of the most neglected subject token until the attention threshold is passed for all subject tokens.
 
@@ -84,7 +84,7 @@ Like Pix2Pix Zero, Attend and Excite also involves a mini optimization loop (lea
 
 [Paper](https://huggingface.co/papers/2301.12247)
 
-[SEGA](../api/pipelines/semantic_stable_diffusion) allows applying or removing one or more concepts from an image. The strength of the concept can also be controlled. I.e. the smile concept can be used to incrementally increase or decrease the smile of a portrait.
+SEGA allows applying or removing one or more concepts from an image. The strength of the concept can also be controlled. I.e. the smile concept can be used to incrementally increase or decrease the smile of a portrait.
 
 Similar to how classifier free guidance provides guidance via empty prompt inputs, SEGA provides guidance on conceptual prompts. Multiple of these conceptual prompts can be applied simultaneously. Each conceptual prompt can either add or remove their concept depending on if the guidance is applied positively or negatively.
 
@@ -94,7 +94,7 @@ Unlike Pix2Pix Zero or Attend and Excite, SEGA directly interacts with the diffu
 
 [Paper](https://huggingface.co/papers/2210.00939)
 
-[Self-attention Guidance](../api/pipelines/self_attention_guidance) improves the general quality of images.
+Self-attention Guidance improves the general quality of images.
 
 SAG provides guidance from predictions not conditioned on high-frequency details to fully conditioned images. The high frequency details are extracted out of the UNet self-attention maps.
 
@@ -110,7 +110,7 @@ It conditions on a monocular depth estimate of the original image.
 
 [Paper](https://huggingface.co/papers/2302.08113)
 
-[MultiDiffusion Panorama](../api/pipelines/panorama) defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation methods that can be readily applied to generate high quality and diverse images. Results adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
+MultiDiffusion Panorama defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation methods that can be readily applied to generate high quality and diverse images. Results adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
 MultiDiffusion Panorama allows to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
 
 ## Fine-tuning your own models
@@ -156,7 +156,7 @@ concept(s) of interest.
 
 [Paper](https://huggingface.co/papers/2210.11427)
 
-[DiffEdit](../api/pipelines/diffedit) allows for semantic editing of input images along with
+DiffEdit allows for semantic editing of input images along with
 input prompts while preserving the original input images as much as possible.
 
 ## T2I-Adapter
