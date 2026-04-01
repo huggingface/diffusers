@@ -18,7 +18,7 @@ Every [`~modular_pipelines.ModularPipelineBlocks`] has a `doc` property that is 
 
 Modular pipeline blocks are composable — you can nest them, chain them in sequences, and rearrange them freely. Their docstrings follow the same pattern. When a [`~modular_pipelines.SequentialPipelineBlocks`] aggregates inputs and outputs from its sub-blocks, the documentation should update automatically without manual rewrites.
 
-The `# auto_docstring` marker enables this by generating docstrings from the block's properties. Add `# auto_docstring` above a class definition to mark it for automatic docstring generation.
+The `# auto_docstring` marker generates docstrings from the block's properties. Add it above a class definition to mark the class for automatic docstring generation.
 
 ```py
 # auto_docstring
