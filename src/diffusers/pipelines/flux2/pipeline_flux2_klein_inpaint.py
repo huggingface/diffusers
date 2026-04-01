@@ -1187,7 +1187,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                             encoder_hidden_states=negative_prompt_embeds,
                             txt_ids=negative_text_ids,
                             img_ids=img_ids,
-                            joint_attention_kwargs=self._attention_kwargs,
+                            joint_attention_kwargs=self.attention_kwargs,
                             return_dict=False,
                         )[0]
                     neg_noise_pred = neg_noise_pred[:, : latents.size(1)]
