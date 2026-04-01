@@ -14,19 +14,19 @@ schedulers:
         - any-glob-to-any-file:
             - src/diffusers/schedulers/**
 
-loaders/single file:
+single-file:
     - changed-files:
         - any-glob-to-any-file:
             - src/diffusers/loaders/single_file.py
             - src/diffusers/loaders/single_file_model.py
             - src/diffusers/loaders/single_file_utils.py
 
-loaders/ip adapter:
+ip-adapter:
     - changed-files:
         - any-glob-to-any-file:
             - src/diffusers/loaders/ip_adapter.py
 
-loaders/lora:
+lora:
     - changed-files:
         - any-glob-to-any-file:
             - src/diffusers/loaders/lora_base.py
@@ -60,7 +60,7 @@ guiders:
         - any-glob-to-any-file:
             - src/diffusers/guiders/**
 
-modular pipelines:
+modular-pipelines:
     - changed-files:
         - any-glob-to-any-file:
             - src/diffusers/modular_pipelines/**
