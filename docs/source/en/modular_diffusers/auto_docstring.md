@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Auto Docstring and Parameter Templates
+# Auto docstring and parameter templates
 
 Every [`~modular_pipelines.ModularPipelineBlocks`] has a `doc` property that is automatically generated from its `description`, `inputs`, `intermediate_outputs`, `expected_components`, and `expected_configs`. This guide covers the auto docstring system, which keeps docstrings in sync with the block's actual interface, and the parameter templates that provide standardized descriptions for common pipeline parameters.
 
