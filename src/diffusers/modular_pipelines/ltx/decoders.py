@@ -1,0 +1,137 @@
+# Copyright 2025 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from typing import Any
+
+import numpy as np
+import PIL
+import torch
+
+from ...configuration_utils import FrozenDict
+from ...models import AutoencoderKLLTXVideo
+from ...pipelines.ltx.pipeline_ltx import LTXPipeline
+from ...utils import logging
+from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+
+
+logger = logging.get_logger(__name__)
+
+
+class LTXVaeDecoderStep(ModularPipelineBlocks):
+    model_name = "ltx"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLLTXVideo),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 32}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def description(self) -> str:
+        return "Step that decodes the denoised latents into videos"
+
+    @property
+    def inputs(self) -> list[tuple[str, Any]]:
+        return [
+            InputParam("latents", required=True, type_hint=torch.Tensor),
+            InputParam("output_type", default="np", type_hint=str),
+            InputParam("height", type_hint=int, default=512),
+            InputParam("width", type_hint=int, default=704),
+            InputParam("num_frames", type_hint=int, default=161),
+            InputParam("decode_timestep", default=0.0),
+            InputParam("decode_noise_scale", default=None),
+            InputParam("generator"),
+            InputParam("batch_size", type_hint=int, default=1),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "videos",
+                type_hint=list[list[PIL.Image.Image]] | list[torch.Tensor] | list[np.ndarray],
+                description="The generated videos",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        vae = components.vae
+
+        latents = block_state.latents
+
+        if block_state.output_type == "latent":
+            block_state.videos = latents
+            self.set_block_state(state, block_state)
+            return components, state
+
+        height = block_state.height
+        width = block_state.width
+        num_frames = block_state.num_frames
+
+        latent_num_frames = (num_frames - 1) // components.vae_temporal_compression_ratio + 1
+        latent_height = height // components.vae_spatial_compression_ratio
+        latent_width = width // components.vae_spatial_compression_ratio
+
+        latents = LTXPipeline._unpack_latents(
+            latents,
+            latent_num_frames,
+            latent_height,
+            latent_width,
+            components.transformer_spatial_patch_size,
+            components.transformer_temporal_patch_size,
+        )
+        latents = LTXPipeline._denormalize_latents(
+            latents, vae.latents_mean, vae.latents_std, vae.config.scaling_factor
+        )
+        latents = latents.to(block_state.dtype if hasattr(block_state, 'dtype') else torch.float32)
+
+        if not vae.config.timestep_conditioning:
+            timestep = None
+        else:
+            device = latents.device
+            batch_size = block_state.batch_size
+            decode_timestep = block_state.decode_timestep
+            decode_noise_scale = block_state.decode_noise_scale
+
+            noise = randn_tensor(latents.shape, generator=block_state.generator, device=device, dtype=latents.dtype)
+            if not isinstance(decode_timestep, list):
+                decode_timestep = [decode_timestep] * batch_size
+            if decode_noise_scale is None:
+                decode_noise_scale = decode_timestep
+            elif not isinstance(decode_noise_scale, list):
+                decode_noise_scale = [decode_noise_scale] * batch_size
+
+            timestep = torch.tensor(decode_timestep, device=device, dtype=latents.dtype)
+            decode_noise_scale = torch.tensor(decode_noise_scale, device=device, dtype=latents.dtype)[
+                :, None, None, None, None
+            ]
+            latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
+
+        latents = latents.to(vae.dtype)
+        video = vae.decode(latents, timestep, return_dict=False)[0]
+        block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
+
+        self.set_block_state(state, block_state)
+        return components, state
