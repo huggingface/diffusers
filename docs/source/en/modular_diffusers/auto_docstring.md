@@ -64,7 +64,7 @@ python utils/modular_auto_docstring.py src/diffusers/modular_pipelines/flux/
 
 ## Parameter templates
 
-`InputParam` and `OutputParam` define the inputs and outputs of a block. You can create them directly or use `.template()` to reuse standardized definitions for parameters that are common across many pipelines, like `prompt`, `num_inference_steps`, or `latents`.
+`InputParam` and `OutputParam` define a block's inputs and outputs. Create them directly or use `.template()` for standardized definitions of common parameters like `prompt`, `num_inference_steps`, or `latents`.
 
 ### InputParam
 
