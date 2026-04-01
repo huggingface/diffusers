@@ -16,7 +16,7 @@ Every [`~modular_pipelines.ModularPipelineBlocks`] has a `doc` property that is 
 
 ## Auto docstring
 
-Modular pipeline blocks are composable — you can nest them, chain them in sequences, and rearrange them freely. Their docstrings should be composable too. When a [`~modular_pipelines.SequentialPipelineBlocks`] aggregates inputs and outputs from its sub-blocks, the documentation should follow automatically without having to rewrite it by hand.
+Modular pipeline blocks are composable — you can nest them, chain them in sequences, and rearrange them freely. Their docstrings follow the same pattern. When a [`~modular_pipelines.SequentialPipelineBlocks`] aggregates inputs and outputs from its sub-blocks, the documentation should update automatically without manual rewrites.
 
 The `# auto_docstring` marker enables this by generating docstrings from the block's properties. Add `# auto_docstring` above a class definition to mark it for automatic docstring generation.
 
