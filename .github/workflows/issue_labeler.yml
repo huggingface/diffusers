@@ -22,9 +22,10 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          LABELS=$(python utils/check_issue_labels.py)
+          LABELS=$(python utils/label_issues.py)
           echo "labels=$LABELS" >> "$GITHUB_OUTPUT"
       - name: Apply labels
+        if: steps.get-labels.outputs.labels != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
