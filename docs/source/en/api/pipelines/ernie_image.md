@@ -16,26 +16,26 @@ specific language governing permissions and limitations under the License.
   <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
 </div>
 
-[Ernie-Image](https://huggingface.co/papers/2511.22699) is a powerful and highly efficient image generation model with 6B parameters. Currently there's only one model with two more to be released:
+[ERNIE-Image] is a powerful and highly efficient image generation model with 8B parameters. Currently there's only one model with two more to be released:
 
 |Model|Hugging Face|
 |---|---|
-|Ernie-Image|https://huggingface.co/Tongyi-MAI/Ernie-Image-Turbo|
+|ERNIE-Image-Turbo|https://huggingface.co/baidu/ERNIE-Image-Turbo|
 
 ## Ernie-Image
 
-Ernie-Image-Turbo is a distilled version of Ernie-Image that matches or exceeds leading competitors with only 8 NFEs (Number of Function Evaluations). It offers sub-second inference latency on enterprise-grade H800 GPUs and fits comfortably within 16G VRAM consumer devices. It excels in photorealistic image generation, bilingual text rendering (English & Chinese), and robust instruction adherence.
+ERNIE-Image-Turbo is a distilled version of ERNIE-Image that matches or exceeds leading competitors with only 8 NFEs (Number of Function Evaluations). It offers sub-second inference latency on enterprise-grade H800 GPUs and fits comfortably within 16G VRAM consumer devices. It excels in photorealistic image generation, bilingual text rendering (English & Chinese), and robust instruction adherence.
 
-## ZImagePipeline
+## ErnieImagePipeline
 
-Use [`ZImageImg2ImgPipeline`] to transform an existing image based on a text prompt.
+Use [`ErnieImagePipeline`] to generate an image based on a text prompt.
 
 ```python
 import torch
 from diffusers import ErnieImagePipeline
 from diffusers.utils import load_image
 
-pipe = ErnieImagePipeline.from_pretrained("Tongyi-MAI/Ernie-Image-Turbo", torch_dtype=torch.bfloat16)
+pipe = ErnieImagePipeline.from_pretrained("baidu/ERNIE-Image-Turbo", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
 prompt = "一只黑白相间的中华田园犬"
@@ -43,15 +43,9 @@ images = pipe(
     prompt=prompt,
     height=1024,
     width=1024,
-    num_inference_steps=50,
+    num_inference_steps=8,
     guidance_scale=5.0,
     generator=generator,
 ).images
-images[0].save("ernie-image-output.png")
+images[0].save("ernie-image-turbo-output.png")
 ```
-
-## ZImagePipeline
-
-[[autodoc]] ErnieImagePipeline
-	- all
-	- __call__

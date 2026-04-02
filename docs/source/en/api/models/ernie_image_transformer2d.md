@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # ErnieImageTransformer2DModel
 
-A Transformer model for image-like data from [Ernie-Image](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo).
+A Transformer model for image-like data from [ERNIE-Image-Turbo](https://huggingface.co/baidu/ERNIE-Image-Turbo).
 
 ## ErnieImageTransformer2DModel
 
