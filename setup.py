@@ -99,6 +99,7 @@ _deps = [
     "accelerate>=0.31.0",
     "compel==0.1.8",
     "datasets",
+    "einops",
     "filelock",
     "flax>=0.4.1",
     "ftfy",

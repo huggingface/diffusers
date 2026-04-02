@@ -299,6 +299,7 @@ else:
         "LTX2ImageToVideoPipeline",
         "LTX2LatentUpsamplePipeline",
     ]
+    _import_structure["joyimage"] = ["JoyImageEditPipeline"]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
@@ -740,6 +741,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .ltx2 import LTX2ConditionPipeline, LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2Pipeline
         from .lucy import LucyEditPipeline
+        from .joyimage import JoyImageEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
         from .marigold import (
