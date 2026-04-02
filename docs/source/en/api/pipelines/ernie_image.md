@@ -28,7 +28,7 @@ ERNIE-Image-Turbo is a distilled version of ERNIE-Image that matches or exceeds 
 
 ## ErnieImagePipeline
 
-Use [`ErnieImagePipeline`] to generate an image based on a text prompt.
+Use [`ErnieImagePipeline`] to generate an image based on a text prompt. If you do not want to use PE, please set use_pe=False.
 
 ```python
 import torch
