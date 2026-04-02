@@ -329,7 +329,7 @@ def apply_taylorseer_cache(*args, **kwargs):
 def apply_text_kv_cache(*args, **kwargs):
     requires_backends(apply_text_kv_cache, ["torch"])
 
-    
+
 class InpaintProcessor(metaclass=DummyObject):
     _backends = ["torch"]
 

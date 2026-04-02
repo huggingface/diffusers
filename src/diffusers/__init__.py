@@ -180,13 +180,12 @@ else:
         ]
     )
     _import_structure["image_processor"] = [
-        "IPAdapterMaskProcessor",
         "InpaintProcessor",
+        "IPAdapterMaskProcessor",
         "PixArtImageProcessor",
         "VaeImageProcessor",
         "VaeImageProcessorLDM3D",
     ]
-    _import_structure["video_processor"] = ["VideoProcessor"]
     _import_structure["models"].extend(
         [
             "AllegroTransformer3DModel",
@@ -399,6 +398,7 @@ else:
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
+    _import_structure["video_processor"] = ["VideoProcessor"]
 
 try:
     if not (is_torch_available() and is_scipy_available()):
