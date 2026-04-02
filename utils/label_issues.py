@@ -95,6 +95,7 @@ def main():
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": USER_TEMPLATE.format(title=title, body=body)},
             ],
+            response_format={"type": "json_object"},
             temperature=0,
         )
 
