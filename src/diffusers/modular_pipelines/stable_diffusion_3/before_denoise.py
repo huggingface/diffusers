@@ -15,14 +15,16 @@
 
 import torch
 
-from ...pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import calculate_shift, retrieve_timesteps
+from ...pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import (
+    calculate_shift,
+    retrieve_timesteps,
+)
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import StableDiffusion3ModularPipeline
-
 
 logger = logging.get_logger(__name__)
 
@@ -41,7 +43,9 @@ def _get_initial_timesteps_and_optionals(
 ):
     scheduler_kwargs = {}
     if scheduler.config.get("use_dynamic_shifting", None) and mu is None:
-        image_seq_len = (height // vae_scale_factor // patch_size) * (width // vae_scale_factor // patch_size)
+        image_seq_len = (height // vae_scale_factor // patch_size) * (
+            width // vae_scale_factor // patch_size
+        )
         mu = calculate_shift(
             image_seq_len,
             scheduler.config.get("base_image_seq_len", 256),
@@ -73,12 +77,33 @@ class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("num_inference_steps", default=50),
-            InputParam("timesteps"),
-            InputParam("sigmas"),
-            InputParam("height", type_hint=int),
-            InputParam("width", type_hint=int),
-            InputParam("mu", type_hint=float),
+            InputParam(
+                "num_inference_steps",
+                default=50,
+                description="The number of denoising steps.",
+            ),
+            InputParam(
+                "timesteps",
+                description="Custom timesteps to use for the denoising process.",
+            ),
+            InputParam(
+                "sigmas", description="Custom sigmas to use for the denoising process."
+            ),
+            InputParam(
+                "height",
+                type_hint=int,
+                description="The height in pixels of the generated image.",
+            ),
+            InputParam(
+                "width",
+                type_hint=int,
+                description="The width in pixels of the generated image.",
+            ),
+            InputParam(
+                "mu",
+                type_hint=float,
+                description="The mu value used for dynamic shifting. If not provided, it is dynamically calculated.",
+            ),
         ]
 
     @property
@@ -89,7 +114,9 @@ class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -127,13 +154,38 @@ class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("num_inference_steps", default=50),
-            InputParam("timesteps"),
-            InputParam("sigmas"),
-            InputParam("strength", default=0.6),
-            InputParam("height", type_hint=int),
-            InputParam("width", type_hint=int),
-            InputParam("mu", type_hint=float),
+            InputParam(
+                "num_inference_steps",
+                default=50,
+                description="The number of denoising steps.",
+            ),
+            InputParam(
+                "timesteps",
+                description="Custom timesteps to use for the denoising process.",
+            ),
+            InputParam(
+                "sigmas", description="Custom sigmas to use for the denoising process."
+            ),
+            InputParam(
+                "strength",
+                default=0.6,
+                description="Indicates extent to transform the reference image.",
+            ),
+            InputParam(
+                "height",
+                type_hint=int,
+                description="The height in pixels of the generated image.",
+            ),
+            InputParam(
+                "width",
+                type_hint=int,
+                description="The width in pixels of the generated image.",
+            ),
+            InputParam(
+                "mu",
+                type_hint=float,
+                description="The mu value used for dynamic shifting. If not provided, it is dynamically calculated.",
+            ),
         ]
 
     @property
@@ -153,7 +205,9 @@ class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
         return timesteps, num_inference_steps - t_start
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -191,13 +245,42 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("height", type_hint=int),
-            InputParam("width", type_hint=int),
-            InputParam("latents", type_hint=torch.Tensor | None),
-            InputParam("num_images_per_prompt", type_hint=int, default=1),
-            InputParam("generator"),
-            InputParam("batch_size", required=True, type_hint=int),
-            InputParam("dtype", type_hint=torch.dtype),
+            InputParam(
+                "height",
+                type_hint=int,
+                description="The height in pixels of the generated image.",
+            ),
+            InputParam(
+                "width",
+                type_hint=int,
+                description="The width in pixels of the generated image.",
+            ),
+            InputParam(
+                "latents",
+                type_hint=torch.Tensor | None,
+                description="Pre-generated noisy latents to be used as inputs for image generation.",
+            ),
+            InputParam(
+                "num_images_per_prompt",
+                type_hint=int,
+                default=1,
+                description="The number of images to generate per prompt.",
+            ),
+            InputParam(
+                "generator",
+                description="One or a list of torch generator(s) to make generation deterministic.",
+            ),
+            InputParam(
+                "batch_size",
+                required=True,
+                type_hint=int,
+                description="The batch size for latent generation.",
+            ),
+            InputParam(
+                "dtype",
+                type_hint=torch.dtype,
+                description="The data type for the latents.",
+            ),
         ]
 
     @property
@@ -205,7 +288,9 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
         return [OutputParam("latents", type_hint=torch.Tensor)]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
         batch_size = block_state.batch_size * block_state.num_images_per_prompt
@@ -214,7 +299,9 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
         block_state.width = block_state.width or components.default_width
 
         if block_state.latents is not None:
-            block_state.latents = block_state.latents.to(device=block_state.device, dtype=block_state.dtype)
+            block_state.latents = block_state.latents.to(
+                device=block_state.device, dtype=block_state.dtype
+            )
         else:
             shape = (
                 batch_size,
@@ -223,7 +310,10 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
                 int(block_state.width) // components.vae_scale_factor,
             )
             block_state.latents = randn_tensor(
-                shape, generator=block_state.generator, device=block_state.device, dtype=block_state.dtype
+                shape,
+                generator=block_state.generator,
+                device=block_state.device,
+                dtype=block_state.dtype,
             )
 
         self.set_block_state(state, block_state)
@@ -240,9 +330,24 @@ class StableDiffusion3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("image_latents", required=True, type_hint=torch.Tensor),
-            InputParam("timesteps", required=True, type_hint=torch.Tensor),
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial latents to be scaled by the scheduler.",
+            ),
+            InputParam(
+                "image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The image latents encoded by the VAE.",
+            ),
+            InputParam(
+                "timesteps",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The timesteps schedule.",
+            ),
         ]
 
     @property
@@ -250,7 +355,9 @@ class StableDiffusion3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
         return [OutputParam("initial_noise", type_hint=torch.Tensor)]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         latent_timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])
         block_state.initial_noise = block_state.latents

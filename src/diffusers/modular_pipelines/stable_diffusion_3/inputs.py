@@ -35,14 +35,14 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [
-            InputParam("num_images_per_prompt", default=1),
-            InputParam("guidance_scale", default=7.0),
-            InputParam("skip_guidance_layers", type_hint=list),
-            InputParam("prompt_embeds", required=True, type_hint=torch.Tensor),
-            InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor),
-            InputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor),
+        return[
+            InputParam("num_images_per_prompt", default=1, description="The number of images to generate per prompt."),
+            InputParam("guidance_scale", default=7.0, description="Guidance scale as defined in Classifier-Free Diffusion Guidance."),
+            InputParam("skip_guidance_layers", type_hint=list, description="A list of integers that specify layers to skip during guidance."),
+            InputParam("prompt_embeds", required=True, type_hint=torch.Tensor, description="Pre-generated text embeddings."),
+            InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor, description="Pre-generated pooled text embeddings."),
+            InputParam("negative_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated negative text embeddings."),
+            InputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated negative pooled text embeddings."),
         ]
 
     @property
@@ -120,14 +120,14 @@ class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        inputs = [
-            InputParam("num_images_per_prompt", default=1),
-            InputParam("batch_size", required=True),
-            InputParam("height"),
-            InputParam("width"),
+        inputs =[
+            InputParam("num_images_per_prompt", default=1, description="The number of images to generate per prompt."),
+            InputParam("batch_size", required=True, description="The batch size."),
+            InputParam("height", description="The height in pixels of the generated image."),
+            InputParam("width", description="The width in pixels of the generated image."),
         ]
         for name in self._image_latent_inputs + self._additional_batch_inputs:
-            inputs.append(InputParam(name))
+            inputs.append(InputParam(name, description=f"Latent input {name} to be processed."))
         return inputs
 
     @property

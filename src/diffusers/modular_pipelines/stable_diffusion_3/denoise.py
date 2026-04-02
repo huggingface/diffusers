@@ -55,18 +55,18 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[tuple[str, Any]]:
-        return [
-            InputParam("joint_attention_kwargs", type_hint=dict),
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("prompt_embeds", required=True, type_hint=torch.Tensor),
-            InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor),
-            InputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor),
-            InputParam("guidance_scale", default=7.0),
-            InputParam("skip_layer_guidance_scale", default=2.8),
-            InputParam("skip_layer_guidance_stop", default=0.2),
-            InputParam("skip_layer_guidance_start", default=0.01),
-            InputParam("num_inference_steps", type_hint=int),
+        return[
+            InputParam("joint_attention_kwargs", type_hint=dict, description="A kwargs dictionary passed along to the AttentionProcessor."),
+            InputParam("latents", required=True, type_hint=torch.Tensor, description="The initial latents to use for the denoising process."),
+            InputParam("prompt_embeds", required=True, type_hint=torch.Tensor, description="Text embeddings for guidance."),
+            InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor, description="Pooled text embeddings for guidance."),
+            InputParam("negative_prompt_embeds", type_hint=torch.Tensor, description="Negative text embeddings for guidance."),
+            InputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor, description="Negative pooled text embeddings for guidance."),
+            InputParam("guidance_scale", default=7.0, description="Guidance scale as defined in Classifier-Free Diffusion Guidance."),
+            InputParam("skip_layer_guidance_scale", default=2.8, description="The scale of the guidance for the skipped layers."),
+            InputParam("skip_layer_guidance_stop", default=0.2, description="The step fraction at which the guidance for skipped layers stops."),
+            InputParam("skip_layer_guidance_start", default=0.01, description="The step fraction at which the guidance for skipped layers starts."),
+            InputParam("num_inference_steps", type_hint=int, description="The number of denoising steps."),
         ]
 
     @torch.no_grad()

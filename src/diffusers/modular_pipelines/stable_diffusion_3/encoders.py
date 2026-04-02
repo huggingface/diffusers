@@ -347,7 +347,12 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [InputParam("resized_image"), InputParam("image"), InputParam("height"), InputParam("width")]
+        return[
+            InputParam("resized_image", description="The pre-resized image input."),
+            InputParam("image", description="The input image to be used as the starting point for the image-to-image process."),
+            InputParam("height", description="The height in pixels of the generated image."),
+            InputParam("width", description="The width in pixels of the generated image.")
+        ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
@@ -409,7 +414,10 @@ class StableDiffusion3VaeEncoderStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [InputParam(self._image_input_name), InputParam("generator")]
+        return[
+            InputParam(self._image_input_name, description="The processed image input to be encoded."),
+            InputParam("generator", description="One or a list of torch generator(s) to make generation deterministic.")
+        ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
@@ -461,21 +469,21 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [
-            InputParam("prompt"),
-            InputParam("prompt_2"),
-            InputParam("prompt_3"),
-            InputParam("negative_prompt"),
-            InputParam("negative_prompt_2"),
-            InputParam("negative_prompt_3"),
-            InputParam("prompt_embeds", type_hint=torch.Tensor),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor),
-            InputParam("pooled_prompt_embeds", type_hint=torch.Tensor),
-            InputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor),
-            InputParam("guidance_scale", default=7.0),
-            InputParam("clip_skip", type_hint=int),
-            InputParam("max_sequence_length", type_hint=int, default=256),
-            InputParam("joint_attention_kwargs"),
+        return[
+            InputParam("prompt", description="The prompt or prompts to guide the image generation."),
+            InputParam("prompt_2", description="The prompt or prompts to be sent to tokenizer_2 and text_encoder_2."),
+            InputParam("prompt_3", description="The prompt or prompts to be sent to tokenizer_3 and text_encoder_3."),
+            InputParam("negative_prompt", description="The prompt or prompts not to guide the image generation."),
+            InputParam("negative_prompt_2", description="The prompt or prompts not to guide the image generation for tokenizer_2."),
+            InputParam("negative_prompt_3", description="The prompt or prompts not to guide the image generation for tokenizer_3."),
+            InputParam("prompt_embeds", type_hint=torch.Tensor, description="Pre-generated text embeddings."),
+            InputParam("negative_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated negative text embeddings."),
+            InputParam("pooled_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated pooled text embeddings."),
+            InputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated negative pooled text embeddings."),
+            InputParam("guidance_scale", default=7.0, description="Guidance scale as defined in Classifier-Free Diffusion Guidance."),
+            InputParam("clip_skip", type_hint=int, description="Number of layers to be skipped from CLIP while computing the prompt embeddings."),
+            InputParam("max_sequence_length", type_hint=int, default=256, description="Maximum sequence length to use with the prompt."),
+            InputParam("joint_attention_kwargs", description="A kwargs dictionary passed along to the AttentionProcessor."),
         ]
 
     @property

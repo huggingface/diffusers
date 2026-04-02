@@ -43,9 +43,9 @@ class StableDiffusion3DecodeStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [
-            InputParam("output_type", default="pil"),
-            InputParam("latents", required=True, type_hint=torch.Tensor),
+        return[
+            InputParam("output_type", default="pil", description="The output format of the generated image (e.g., 'pil', 'pt', 'np')."),
+            InputParam("latents", required=True, type_hint=torch.Tensor, description="The denoised latents to be decoded."),
         ]
 
     @property
