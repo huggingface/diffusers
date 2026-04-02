@@ -43,6 +43,22 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
     The scheduler exposes:
     - `add_noise(...)` for forward corruption
     - `step(...)` for reverse updates using the model's predicted token distribution
+
+    Args:
+        vocab_size (`int`):
+            Size of the token vocabulary.
+        mask_token_id (`int`):
+            Token ID used as the absorbing/mask state.
+        num_train_timesteps (`int`, defaults to `1000`):
+            Number of discrete training timesteps.
+        t_eps (`float`, defaults to `1e-4`):
+            Small epsilon to avoid numerical issues at `t=0` and `t=1`.
+        p_uniform (`float`, defaults to `0.0`):
+            Baseline uniform mixing probability.
+        clip_noise (`float`, defaults to `20.0`):
+            Clipping threshold for log-space noise parameters.
+        gamma (`float`, defaults to `1.0`):
+            Exponent controlling the shape of the beta schedule.
     """
 
     order = 1
@@ -69,26 +85,21 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         if gamma <= 0:
             raise ValueError(f"`gamma` must be > 0, got {gamma}.")
 
-        self.vocab_size = int(vocab_size)
-        self.mask_token_id = int(mask_token_id)
-        self.num_train_timesteps = int(num_train_timesteps)
-        self.t_eps = float(t_eps)
-
-        p_uniform = max(math.exp(-float(clip_noise)), float(p_uniform))
-        log_B = float(gamma) * math.log(2.0) + math.log(p_uniform) - math.log(1.0 - p_uniform)
-        log_B = float(np.clip(log_B, -float(clip_noise), float(clip_noise)))
-        self.log_B = float(log_B)
-        self.log_gamma = float(math.log(float(gamma)))
+        p_uniform = max(math.exp(-clip_noise), p_uniform)
+        log_B = gamma * math.log(2.0) + math.log(p_uniform) - math.log(1.0 - p_uniform)
+        log_B = np.clip(log_B, -clip_noise, clip_noise)
+        self.log_B = log_B
+        self.log_gamma = math.log(gamma)
 
         self.num_inference_steps = None
         self.timesteps = None
         self._timesteps_with_end = None
 
-        mask = torch.zeros(self.vocab_size, dtype=torch.float32)
-        mask[self.mask_token_id] = 1.0
+        mask = torch.zeros(vocab_size, dtype=torch.float32)
+        mask[mask_token_id] = 1.0
         self.mask = mask
 
-        unif = (1.0 - mask) / max(self.vocab_size - 1, 1)
+        unif = (1.0 - mask) / max(vocab_size - 1, 1)
         self.unif = unif
 
     def sample_prior(
@@ -114,15 +125,15 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.LongTensor` of shape `shape` with `mask_token_id`.
         """
-        return torch.full(shape, self.mask_token_id, device=device, dtype=torch.long)
+        return torch.full(shape, self.config.mask_token_id, device=device, dtype=torch.long)
 
     def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
         self.num_inference_steps = int(num_inference_steps)
 
-        t0 = 1.0 - float(self.t_eps)
-        t1 = float(self.t_eps)
+        t0 = 1.0 - self.config.t_eps
+        t1 = self.config.t_eps
         timesteps = torch.linspace(t0, t1, self.num_inference_steps + 1, dtype=torch.float32, device=device)
         self._timesteps_with_end = timesteps
         self.timesteps = timesteps[:-1]
@@ -133,14 +144,14 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
     def _to_continuous_t(self, timesteps: torch.Tensor, device: torch.device) -> torch.Tensor:
         if timesteps.dtype in (torch.float16, torch.float32, torch.float64, torch.bfloat16):
             t = timesteps.to(device=device, dtype=torch.float32)
-            return t.clamp(float(self.t_eps), 1.0 - float(self.t_eps))
+            return t.clamp(self.config.t_eps, 1.0 - self.config.t_eps)
 
         if timesteps.dtype not in (torch.int32, torch.int64):
             raise ValueError(f"`timesteps` must be float or int, got dtype={timesteps.dtype}.")
 
-        t = timesteps.to(device=device, dtype=torch.float32) / float(self.num_train_timesteps - 1)
-        t = (1.0 - 2.0 * float(self.t_eps)) * t + float(self.t_eps)
-        return t.clamp(float(self.t_eps), 1.0 - float(self.t_eps))
+        t = timesteps.to(device=device, dtype=torch.float32) / float(self.config.num_train_timesteps - 1)
+        t = (1.0 - 2.0 * self.config.t_eps) * t + self.config.t_eps
+        return t.clamp(self.config.t_eps, 1.0 - self.config.t_eps)
 
     def _get_alpha_betapi(self, t: torch.Tensor, eps: float = 1e-6) -> tuple[torch.Tensor, torch.Tensor]:
         t = t.view(-1, 1)
@@ -186,7 +197,7 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         device = original_samples.device
         t = self._to_continuous_t(timesteps.to(device=device), device=device)
-        onehot = F.one_hot(original_samples, num_classes=self.vocab_size).to(dtype=torch.float32)
+        onehot = F.one_hot(original_samples, num_classes=self.config.vocab_size).to(dtype=torch.float32)
         probs = self._probs_at_t(onehot, t)
         return self._sample_categorical(probs, generator=None)
 
@@ -212,9 +223,9 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
     ) -> HybridTokenDiffusionSchedulerOutput | tuple[torch.LongTensor]:
         if sample.dtype != torch.long:
             raise ValueError(f"`sample` must be int64 token IDs, got dtype={sample.dtype}.")
-        if model_output.ndim != 3 or model_output.shape[-1] != self.vocab_size:
+        if model_output.ndim != 3 or model_output.shape[-1] != self.config.vocab_size:
             raise ValueError(
-                f"`model_output` must have shape [batch, seq_len, vocab_size={self.vocab_size}], got {tuple(model_output.shape)}."
+                f"`model_output` must have shape [batch, seq_len, vocab_size={self.config.vocab_size}], got {tuple(model_output.shape)}."
             )
         if model_output.shape[0] != sample.shape[0] or model_output.shape[1] != sample.shape[1]:
             raise ValueError(
@@ -236,7 +247,7 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         logits = model_output.to(dtype=torch.float32)
         logits = logits.clone()
-        logits[..., self.mask_token_id] = torch.finfo(logits.dtype).min
+        logits[..., self.config.mask_token_id] = torch.finfo(logits.dtype).min
         probs = logits.softmax(dim=-1)
 
         q_s = self._probs_at_t(probs, s)
@@ -249,7 +260,7 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         alpha_ts = (alpha_t / alpha_s).clamp_min(torch.finfo(torch.float32).eps)
         beta_pi_ts = beta_pi_t - (alpha_t / alpha_s) * beta_pi_s
 
-        vz_t = F.one_hot(sample, num_classes=self.vocab_size).to(dtype=torch.float32)
+        vz_t = F.one_hot(sample, num_classes=self.config.vocab_size).to(dtype=torch.float32)
         beta_pi_ts_at_zt = beta_pi_ts.unsqueeze(1).expand_as(vz_t).gather(-1, sample.unsqueeze(-1))
         q_ts = alpha_ts.view(batch_size, 1, 1) * vz_t + beta_pi_ts_at_zt
 

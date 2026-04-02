@@ -112,25 +112,15 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         if forward_process not in {"absorbing", "uniform"}:
             raise ValueError(f"`forward_process` must be one of {{'absorbing','uniform'}}, got {forward_process!r}.")
 
-        self.vocab_size = int(vocab_size)
-        self.mask_token_id = int(mask_token_id)
-        self.num_train_timesteps = int(num_train_timesteps)
-        self.alpha_schedule = alpha_schedule
-        self.eps = float(eps)
-        self.sigma_min = float(sigma_min)
-        self.sigma_max = float(sigma_max)
-        self.forward_process = str(forward_process)
-        self.exclude_mask_from_uniform = bool(exclude_mask_from_uniform)
-
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
         self.alphas = None
         self._step_index_map = None
 
     def _effective_vocab_size(self) -> int:
-        if self.forward_process == "uniform" and self.exclude_mask_from_uniform:
-            return self.vocab_size - 1
-        return self.vocab_size
+        if self.config.forward_process == "uniform" and self.config.exclude_mask_from_uniform:
+            return self.config.vocab_size - 1
+        return self.config.vocab_size
 
     def _sample_uniform_tokens(
         self, shape: torch.Size, device: torch.device, dtype: torch.dtype, generator: torch.Generator | None = None
@@ -138,16 +128,16 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         """
         Sample uniform token IDs, optionally excluding `mask_token_id` (by shifting indices around it).
         """
-        if self.forward_process != "uniform":
+        if self.config.forward_process != "uniform":
             raise ValueError("Uniform token sampling is only valid for `forward_process='uniform'`.")
 
-        if not self.exclude_mask_from_uniform:
-            return torch.randint(0, self.vocab_size, shape, device=device, dtype=dtype, generator=generator)
+        if not self.config.exclude_mask_from_uniform:
+            return torch.randint(0, self.config.vocab_size, shape, device=device, dtype=dtype, generator=generator)
 
         # Sample in [0, vocab_size-1) and shift around mask_token_id.
-        v_eff = self.vocab_size - 1
+        v_eff = self.config.vocab_size - 1
         draw = torch.randint(0, v_eff, shape, device=device, dtype=dtype, generator=generator)
-        return torch.where(draw >= self.mask_token_id, draw + 1, draw)
+        return torch.where(draw >= self.config.mask_token_id, draw + 1, draw)
 
     def sample_prior(
         self,
@@ -172,9 +162,9 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.LongTensor` of shape `shape` with sampled prior token IDs.
         """
-        if self.forward_process == "uniform":
+        if self.config.forward_process == "uniform":
             return self._sample_uniform_tokens(shape, device=device, dtype=torch.long, generator=generator)
-        return torch.full(shape, self.mask_token_id, device=device, dtype=torch.long)
+        return torch.full(shape, self.config.mask_token_id, device=device, dtype=torch.long)
 
     def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         """
@@ -189,12 +179,12 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         # Standard diffusers behavior: map inference steps onto training step indices.
         timesteps = torch.linspace(
-            self.num_train_timesteps - 1, 0, self.num_inference_steps, dtype=torch.float32
+            self.config.num_train_timesteps - 1, 0, self.num_inference_steps, dtype=torch.float32
         ).round()
         self.timesteps = timesteps.to(dtype=torch.long, device=device)
 
         # Pre-compute alpha(t) for every inference timestep.
-        t_continuous = timesteps / float(self.num_train_timesteps - 1)
+        t_continuous = timesteps / float(self.config.num_train_timesteps - 1)
         t_continuous = t_continuous.clamp_(0.0, 1.0)
         self.alphas = self._alpha_t(t_continuous).to(dtype=torch.float32, device=device)
 
@@ -212,7 +202,7 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             t_idx = timestep.to(device=device, dtype=torch.float32)
         else:
             t_idx = torch.tensor(float(timestep), device=device, dtype=torch.float32)
-        denom = float(self.num_train_timesteps - 1)
+        denom = float(self.config.num_train_timesteps - 1)
         return (t_idx / denom).clamp_(0.0, 1.0)
 
     def _alpha_t(self, t: torch.Tensor) -> torch.Tensor:
@@ -221,53 +211,53 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         The returned tensor is expected to be in (0, 1] and monotone decreasing in `t`.
         """
-        if self.alpha_schedule == "log_linear":
+        if self.config.alpha_schedule == "log_linear":
             # alpha(t) = 1 - (1 - eps) * t
-            return 1.0 - (1.0 - self.eps) * t
+            return 1.0 - (1.0 - self.config.eps) * t
 
-        if self.alpha_schedule == "linear":
+        if self.config.alpha_schedule == "linear":
             # alpha(t) = (1 - 2*eps) * (1 - t) + eps
-            return (1.0 - 2.0 * self.eps) * (1.0 - t) + self.eps
+            return (1.0 - 2.0 * self.config.eps) * (1.0 - t) + self.config.eps
 
-        if self.alpha_schedule == "cosine":
+        if self.config.alpha_schedule == "cosine":
             # alpha_base(t) = 1 - cos(pi/2 * (1 - t))
             # alpha(t) = (1 - 2*eps) * alpha_base(t) + eps
             base = 1.0 - torch.cos(torch.pi / 2.0 * (1.0 - t))
-            return (1.0 - 2.0 * self.eps) * base + self.eps
+            return (1.0 - 2.0 * self.config.eps) * base + self.config.eps
 
-        if self.alpha_schedule == "geometric":
+        if self.config.alpha_schedule == "geometric":
             # total_noise(t) = sigma_min^(1-t) * sigma_max^t
             # alpha(t) = exp(-total_noise(t))
-            sigma_min = torch.as_tensor(self.sigma_min, device=t.device, dtype=t.dtype)
-            sigma_max = torch.as_tensor(self.sigma_max, device=t.device, dtype=t.dtype)
+            sigma_min = torch.as_tensor(self.config.sigma_min, device=t.device, dtype=t.dtype)
+            sigma_max = torch.as_tensor(self.config.sigma_max, device=t.device, dtype=t.dtype)
             total_noise = (sigma_min ** (1.0 - t)) * (sigma_max**t)
             return (-total_noise).exp()
 
-        raise ValueError(f"Unsupported alpha schedule: {self.alpha_schedule!r}")
+        raise ValueError(f"Unsupported alpha schedule: {self.config.alpha_schedule!r}")
 
     def _alpha_prime_t(self, t: torch.Tensor) -> torch.Tensor:
         """
         Compute d/dt alpha(t) for the configured schedule.
         """
-        if self.alpha_schedule == "log_linear":
-            return -(1.0 - self.eps) * torch.ones_like(t)
+        if self.config.alpha_schedule == "log_linear":
+            return -(1.0 - self.config.eps) * torch.ones_like(t)
 
-        if self.alpha_schedule == "linear":
-            return -(1.0 - 2.0 * self.eps) * torch.ones_like(t)
+        if self.config.alpha_schedule == "linear":
+            return -(1.0 - 2.0 * self.config.eps) * torch.ones_like(t)
 
-        if self.alpha_schedule == "cosine":
+        if self.config.alpha_schedule == "cosine":
             base_prime = -(torch.pi / 2.0) * torch.sin(torch.pi / 2.0 * (1.0 - t))
-            return (1.0 - 2.0 * self.eps) * base_prime
+            return (1.0 - 2.0 * self.config.eps) * base_prime
 
-        if self.alpha_schedule == "geometric":
-            sigma_min = torch.as_tensor(self.sigma_min, device=t.device, dtype=t.dtype)
-            sigma_max = torch.as_tensor(self.sigma_max, device=t.device, dtype=t.dtype)
+        if self.config.alpha_schedule == "geometric":
+            sigma_min = torch.as_tensor(self.config.sigma_min, device=t.device, dtype=t.dtype)
+            sigma_max = torch.as_tensor(self.config.sigma_max, device=t.device, dtype=t.dtype)
             total_noise = (sigma_min ** (1.0 - t)) * (sigma_max**t)
             alpha = (-total_noise).exp()
             rate = total_noise * (sigma_max.log() - sigma_min.log())
             return -alpha * rate
 
-        raise ValueError(f"Unsupported alpha schedule: {self.alpha_schedule!r}")
+        raise ValueError(f"Unsupported alpha schedule: {self.config.alpha_schedule!r}")
 
     def get_mdlm_loss_weights(self, timesteps: torch.LongTensor) -> torch.Tensor:
         """
@@ -380,43 +370,19 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         rand = torch.rand((batch_size, seq_len), device=device, dtype=torch.float32)
         replace_positions = rand < p_replace
 
-        if self.forward_process == "absorbing":
-            replacement = torch.full_like(original_samples, self.mask_token_id)
-        elif self.forward_process == "uniform":
+        if self.config.forward_process == "absorbing":
+            replacement = torch.full_like(original_samples, self.config.mask_token_id)
+        elif self.config.forward_process == "uniform":
             replacement = self._sample_uniform_tokens(
                 original_samples.shape, device=device, dtype=original_samples.dtype, generator=None
             )
         else:
-            raise ValueError(f"Unsupported forward process: {self.forward_process!r}")
+            raise ValueError(f"Unsupported forward process: {self.config.forward_process!r}")
 
         noised = torch.where(replace_positions, replacement, original_samples)
         if block_mask is not None:
             noised = torch.where(block_mask.to(device=device), noised, original_samples)
         return noised
-
-    def enforce_fixed_masks(
-        self,
-        sample: torch.LongTensor,
-        fixed_mask: torch.BoolTensor,
-        fixed_values: torch.LongTensor,
-    ) -> torch.LongTensor:
-        """
-        Re-apply fixed token values at positions indicated by `fixed_mask`.
-
-        This is used by the pipeline to enforce prefix / infill conditioning after each scheduler step.
-
-        Args:
-            sample (`torch.LongTensor` of shape `(batch_size, seq_len)`):
-                Current token IDs after a scheduler step.
-            fixed_mask (`torch.BoolTensor` of shape `(batch_size, seq_len)`):
-                Boolean mask where `True` indicates a position whose value must be restored.
-            fixed_values (`torch.LongTensor` of shape `(batch_size, seq_len)`):
-                Token IDs to restore at the fixed positions.
-
-        Returns:
-            `torch.LongTensor`: Token IDs with fixed positions restored.
-        """
-        return torch.where(fixed_mask, fixed_values, sample)
 
     def step(
         self,
@@ -439,9 +405,9 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         """
         if sample.dtype != torch.long:
             raise ValueError(f"`sample` must be int64 token IDs, got dtype={sample.dtype}.")
-        if model_output.ndim != 3 or model_output.shape[-1] != self.vocab_size:
+        if model_output.ndim != 3 or model_output.shape[-1] != self.config.vocab_size:
             raise ValueError(
-                f"`model_output` must have shape [batch, seq_len, vocab_size={self.vocab_size}], got {tuple(model_output.shape)}."
+                f"`model_output` must have shape [batch, seq_len, vocab_size={self.config.vocab_size}], got {tuple(model_output.shape)}."
             )
         if model_output.shape[0] != sample.shape[0] or model_output.shape[1] != sample.shape[1]:
             raise ValueError(
@@ -493,23 +459,23 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
                 t_prev = self._t_from_timestep(prev_timestep_int, device=device)
                 alpha_prev = self._alpha_t(t_prev).to(dtype=torch.float32)
 
-        if self.forward_process == "uniform":
+        if self.config.forward_process == "uniform":
             # Convert logits to probabilities for x0; optionally forbid mask token.
             logits = model_output.to(dtype=torch.float32)
-            if self.exclude_mask_from_uniform:
+            if self.config.exclude_mask_from_uniform:
                 logits = logits.clone()
-                logits[..., self.mask_token_id] = torch.finfo(logits.dtype).min
+                logits[..., self.config.mask_token_id] = torch.finfo(logits.dtype).min
             p_x0 = logits.softmax(dim=-1)
 
-            V = self.vocab_size
+            V = self.config.vocab_size
             x = sample
             xt_one_hot = F.one_hot(x, V).to(dtype=p_x0.dtype)
 
             alpha_ts = (alpha_t / alpha_prev).clamp_min(torch.finfo(torch.float32).eps)
 
-            if self.exclude_mask_from_uniform:
+            if self.config.exclude_mask_from_uniform:
                 limiting = torch.full((V,), 1.0 / float(V - 1), device=device, dtype=p_x0.dtype)
-                limiting[self.mask_token_id] = 0.0
+                limiting[self.config.mask_token_id] = 0.0
             else:
                 limiting = torch.full((V,), 1.0 / float(V), device=device, dtype=p_x0.dtype)
             limiting = limiting.view(1, 1, -1)
@@ -534,18 +500,18 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
             x_prev = _gumbel_argmax(torch.log(q_xs), generator=generator).to(dtype=torch.long)
 
-        elif self.forward_process == "absorbing":
+        elif self.config.forward_process == "absorbing":
             # p_denoise = (alpha_prev - alpha_t) / (1 - alpha_t)
             denom = (1.0 - alpha_t).clamp_min(torch.finfo(torch.float32).eps)
             p_denoise = ((alpha_prev - alpha_t) / denom).clamp(0.0, 1.0)
 
             # Sample x0 predictions (never sample the mask token).
             logits = model_output.to(dtype=torch.float32)
-            logits[..., self.mask_token_id] = torch.finfo(logits.dtype).min
+            logits[..., self.config.mask_token_id] = torch.finfo(logits.dtype).min
             sampled_x0 = _gumbel_argmax(logits, generator=generator).to(dtype=torch.long)
 
             # Only masked positions can change.
-            is_masked = sample == self.mask_token_id
+            is_masked = sample == self.config.mask_token_id
 
             # Bernoulli draw for whether to denoise at this step (only matters on masked positions).
             rand = torch.rand((batch_size, seq_len), device=device, dtype=torch.float32, generator=generator)
@@ -554,7 +520,7 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             x_prev = torch.where(is_masked & should_denoise, sampled_x0, sample)
 
         else:
-            raise ValueError(f"Unsupported forward process for `step()`: {self.forward_process!r}")
+            raise ValueError(f"Unsupported forward process for `step()`: {self.config.forward_process!r}")
 
         if block_mask is not None:
             x_prev = torch.where(block_mask.to(device=device), x_prev, sample)

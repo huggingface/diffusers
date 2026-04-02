@@ -107,7 +107,7 @@ class DFlashTokenDiffusionSchedulerTest(unittest.TestCase):
         logits[:, 2, 3] = 10.0
         logits[:, 3, 5] = 10.0  # last posterior token (next_token candidate)
 
-        out = scheduler.step(draft_tokens, logits, temperature=0.0, return_dict=True)
+        out = scheduler.step(logits, 0, draft_tokens, temperature=0.0, return_dict=True)
 
         self.assertEqual(out.prev_sample.shape, (1, 4))
         self.assertEqual(out.accepted_length.shape, (1,))
@@ -128,7 +128,7 @@ class DFlashTokenDiffusionSchedulerTest(unittest.TestCase):
         logits[:, 2, 3] = 10.0
         logits[:, 3, 4] = 10.0
 
-        out = scheduler.step(draft_tokens, logits, temperature=0.0, return_dict=True)
+        out = scheduler.step(logits, 0, draft_tokens, temperature=0.0, return_dict=True)
 
         self.assertEqual(out.accepted_length[0].item(), 0)
         self.assertEqual(out.next_token[0].item(), 5)  # posterior at index 0
@@ -147,7 +147,7 @@ class DFlashTokenDiffusionSchedulerTest(unittest.TestCase):
         logits[:, 3, 2] = 10.0
         logits[:, 4, 6] = 10.0
 
-        out = scheduler.step(draft_tokens, logits, temperature=0.0, return_dict=True)
+        out = scheduler.step(logits, 0, draft_tokens, temperature=0.0, return_dict=True)
 
         self.assertEqual(out.accepted_length[0].item(), 2)
         self.assertEqual(out.next_token[0].item(), 0)  # posterior at index 2
@@ -159,7 +159,7 @@ class DFlashTokenDiffusionSchedulerTest(unittest.TestCase):
         logits = torch.zeros(1, 1, 8)
         logits[:, 0, 3] = 10.0
 
-        out = scheduler.step(draft_tokens, logits, temperature=0.0, return_dict=True)
+        out = scheduler.step(logits, 0, draft_tokens, temperature=0.0, return_dict=True)
         self.assertEqual(out.accepted_length[0].item(), 0)
         self.assertEqual(out.next_token[0].item(), 3)
 
@@ -171,7 +171,7 @@ class DFlashTokenDiffusionSchedulerTest(unittest.TestCase):
         draft_tokens = torch.tensor([[0, 1, 2]], dtype=torch.long)
         logits = torch.randn(1, 3, 8)
 
-        result = scheduler.step(draft_tokens, logits, temperature=0.0, return_dict=False)
+        result = scheduler.step(logits, 0, draft_tokens, temperature=0.0, return_dict=False)
 
         self.assertIsInstance(result, tuple)
         self.assertEqual(len(result), 4)
@@ -190,7 +190,7 @@ class DFlashTokenDiffusionSchedulerTest(unittest.TestCase):
         draft_tokens = torch.randint(0, vocab_size, (batch_size, block_size))
         logits = torch.randn(batch_size, block_size, vocab_size)
 
-        out = scheduler.step(draft_tokens, logits, temperature=0.0, return_dict=True)
+        out = scheduler.step(logits, 0, draft_tokens, temperature=0.0, return_dict=True)
 
         self.assertEqual(out.prev_sample.shape, (batch_size, block_size))
         self.assertEqual(out.accepted_length.shape, (batch_size,))

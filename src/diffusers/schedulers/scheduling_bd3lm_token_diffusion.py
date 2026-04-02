@@ -21,6 +21,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
+from .scheduling_token_diffusion import _gumbel_argmax
 from .scheduling_utils import SchedulerMixin
 
 
@@ -62,6 +63,7 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         noise_type: str = "loglinear",
         nucleus_p: float = 1.0,
         mask_token_id: int = 32000,
+        eps: float = 1e-3,
     ):
         self.num_inference_steps = num_inference_steps
         self.timesteps: torch.Tensor | None = None
@@ -95,6 +97,10 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         """
         Compute the probability that a token has been masked (move chance) at continuous time *t*.
 
+        The move chance corresponds to ``1 - alpha(t)``, where ``alpha(t)`` is the probability that a token remains
+        clean (i.e. unmasked). This is the same quantity called ``alpha`` in
+        :class:`~diffusers.TokenDiffusionScheduler`, so ``move_chance = 1 - alpha(t)``.
+
         The move chance depends on the configured ``noise_type``:
         - **loglinear**: ``move_chance = t``
         - **cosine**: ``move_chance = 1 - (1 - eps) * cos(t * pi / 2)``
@@ -110,7 +116,7 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             `torch.Tensor`: Move chance at each timestep value, same shape as *t*.
         """
         noise_type = self.config.noise_type
-        eps = 1e-3
+        eps = self.config.eps
         if noise_type == "loglinear":
             return t
         elif noise_type == "cosine":
@@ -220,10 +226,23 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             t = t.unsqueeze(0)
 
         # ------------------------------------------------------------------
-        # Compute move chances at t and s = t - dt
+        # Compute move chances at t and s (next timestep)
         # ------------------------------------------------------------------
+        # Try to get s from the timestep schedule for non-linspace support;
+        # fall back to s = t - dt when the schedule is unavailable.
+        s = None
+        if self.timesteps is not None:
+            t_val = t.item() if t.numel() == 1 else None
+            if t_val is not None:
+                matches = (self.timesteps - t_val).abs()
+                idx = int(matches.argmin().item())
+                if idx + 1 < len(self.timesteps):
+                    s = self.timesteps[idx + 1].to(dtype=torch.float64, device=t.device).unsqueeze(0)
+        if s is None:
+            s = t - dt
+
         move_chance_t = self._compute_move_chance(t).to(dtype=torch.float64)
-        move_chance_s = self._compute_move_chance(t - dt).to(dtype=torch.float64)
+        move_chance_s = self._compute_move_chance(s).to(dtype=torch.float64)
 
         # Expand to (batch, 1) for broadcasting against (batch, seq_len)
         if move_chance_t.dim() == 1:
@@ -240,16 +259,16 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         # Subs parameterization: mask token gets -inf, then log_softmax normalizes.
         # For unmasked positions, the distribution is forced to be the identity.
-        logits[..., mask_token_id] = -1e9
-        logits = logits - torch.logsumexp(logits, dim=-1, keepdim=True)
+        logits[..., mask_token_id] = -torch.inf
+        log_probs = torch.log_softmax(logits, dim=-1)
 
         x_current_block = sample[:, -block_size:]
         unmasked = x_current_block != mask_token_id
-        logits[unmasked] = -1e9
-        logits[unmasked, x_current_block[unmasked]] = 0.0
+        log_probs[unmasked] = -torch.inf
+        log_probs[unmasked, x_current_block[unmasked]] = 0.0
 
         # Convert log-probs to probs and apply nucleus filtering
-        p_x0 = logits.exp()
+        p_x0 = log_probs.exp()
         p_x0 = self._nucleus_filtering(p_x0, nucleus_p)
 
         # ------------------------------------------------------------------
@@ -260,9 +279,7 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         q_xs[..., mask_token_id] = mask_prob.squeeze(-1)
 
         # Gumbel-argmax categorical sampling
-        gumbel_noise = -(torch.rand_like(q_xs, generator=generator) + 1e-10).log()
-        gumbel_noise = (1e-10 + gumbel_noise).clamp(min=1e-30)
-        x_block = (q_xs / gumbel_noise).argmax(dim=-1)
+        x_block = _gumbel_argmax(torch.log(q_xs.clamp_min(1e-30)), generator=generator)
 
         # ------------------------------------------------------------------
         # Copy flag: preserve tokens that are already unmasked
@@ -348,7 +365,7 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         Compute the sigma value (noise level) for a given timestep.
 
         Sigma is derived from the noise schedule's move chance: ``sigma = -log(1 - move_chance)``, clamped at
-        ``sigma_max = -log(eps)`` where ``eps = 1e-3``.
+        ``sigma_max = -log(eps)`` where ``eps`` is the configured epsilon value.
 
         Args:
             t (`float` or `torch.Tensor`):
@@ -366,8 +383,7 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             t = t.unsqueeze(0)
         t = t.expand(batch_size)
 
-        eps = 1e-3
-        sigma_max = -torch.log(torch.tensor(eps, device=t.device, dtype=torch.float64))
+        sigma_max = -torch.log(torch.tensor(self.config.eps, device=t.device, dtype=torch.float64))
         move_chance = self._compute_move_chance(t)
         sigma = torch.min(-torch.log(1.0 - move_chance), sigma_max)
         return sigma.float()

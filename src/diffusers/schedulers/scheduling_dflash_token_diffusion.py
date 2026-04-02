@@ -75,8 +75,9 @@ class DFlashTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        draft_tokens: torch.LongTensor,
-        target_logits: torch.Tensor,
+        model_output: torch.Tensor,
+        timestep: int | torch.Tensor,
+        sample: torch.LongTensor,
         *,
         temperature: float = 0.0,
         return_dict: bool = True,
@@ -84,19 +85,34 @@ class DFlashTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         DFlashTokenDiffusionSchedulerOutput
         | tuple[torch.LongTensor, torch.LongTensor, torch.LongTensor, torch.LongTensor]
     ):
-        posterior = self.sample(target_logits, temperature=temperature)
-        if draft_tokens.shape[1] > 1:
-            matches = draft_tokens[:, 1:] == posterior[:, :-1]
+        """
+        Perform a single speculative decoding verification step.
+
+        Args:
+            model_output (`torch.Tensor` of shape `(batch_size, block_size, vocab_size)`):
+                Raw logits from the target model for the current block.
+            timestep (`int` or `torch.Tensor`):
+                Current step index (unused for single-step DFlash, kept for interface compatibility).
+            sample (`torch.LongTensor` of shape `(batch_size, block_size)`):
+                Draft token IDs proposed by the draft model.
+            temperature (`float`):
+                Sampling temperature for the target posterior.
+            return_dict (`bool`):
+                Whether to return a `DFlashTokenDiffusionSchedulerOutput` or a tuple.
+        """
+        posterior = self.sample(model_output, temperature=temperature)
+        if sample.shape[1] > 1:
+            matches = sample[:, 1:] == posterior[:, :-1]
             accepted_length = matches.int().cumprod(dim=1).sum(dim=1)
         else:
-            accepted_length = torch.zeros((draft_tokens.shape[0],), device=draft_tokens.device, dtype=torch.long)
+            accepted_length = torch.zeros((sample.shape[0],), device=sample.device, dtype=torch.long)
 
         next_token = posterior.gather(1, accepted_length.unsqueeze(1)).squeeze(1)
 
         if not return_dict:
-            return draft_tokens, accepted_length, next_token, posterior
+            return sample, accepted_length, next_token, posterior
         return DFlashTokenDiffusionSchedulerOutput(
-            prev_sample=draft_tokens,
+            prev_sample=sample,
             accepted_length=accepted_length,
             next_token=next_token,
             posterior=posterior,

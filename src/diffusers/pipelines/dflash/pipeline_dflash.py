@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 import torch
 from tqdm.auto import tqdm
-from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer, DynamicCache
+from transformers import DynamicCache
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...schedulers import DFlashTokenDiffusionScheduler
@@ -35,15 +35,14 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import torch
         >>> from diffusers import DFlashPipeline
+        >>> from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
-        >>> draft_id = "z-lab/Qwen3-8B-DFlash-b16"
-        >>> target_id = "Qwen/Qwen3-8B"
-        >>> pipe = DFlashPipeline.from_pretrained(
-        ...     draft_model_id=draft_id,
-        ...     target_model_id=target_id,
-        ...     draft_model_kwargs={"trust_remote_code": True, "dtype": torch.bfloat16},
-        ...     target_model_kwargs={"dtype": torch.bfloat16},
+        >>> draft = AutoModel.from_pretrained(
+        ...     "z-lab/Qwen3-8B-DFlash-b16", trust_remote_code=True, torch_dtype=torch.bfloat16
         ... )
+        >>> target = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-8B", torch_dtype=torch.bfloat16)
+        >>> tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-8B")
+        >>> pipe = DFlashPipeline(draft_model=draft, target_model=target, tokenizer=tokenizer)
         >>> out = pipe(prompt="How many positive whole-number divisors does 196 have?")
         >>> print(out.texts[0])
         ```
@@ -94,51 +93,6 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             scheduler = DFlashTokenDiffusionScheduler()
         self.register_modules(
             draft_model=draft_model, target_model=target_model, tokenizer=tokenizer, scheduler=scheduler
-        )
-
-    @classmethod
-    def from_pretrained(
-        cls,
-        pretrained_model_name_or_path: str | None = None,
-        *,
-        draft_model_id: str | None = None,
-        target_model_id: str | None = None,
-        tokenizer_id: str | None = None,
-        mask_token: str | None = "<|MASK|>",
-        scheduler: DFlashTokenDiffusionScheduler | None = None,
-        draft_model_kwargs: dict[str, object] | None = None,
-        target_model_kwargs: dict[str, object] | None = None,
-        tokenizer_kwargs: dict[str, object] | None = None,
-        **pipeline_kwargs,
-    ) -> "DFlashPipeline":
-        if draft_model_id is None and target_model_id is None and pretrained_model_name_or_path is not None:
-            return super().from_pretrained(pretrained_model_name_or_path, **pipeline_kwargs)
-
-        if draft_model_id is None:
-            if pretrained_model_name_or_path is None:
-                raise ValueError("Provide `draft_model_id` or `pretrained_model_name_or_path`.")
-            draft_model_id = str(pretrained_model_name_or_path)
-        if target_model_id is None:
-            raise ValueError("`target_model_id` must be provided when loading draft/target models separately.")
-
-        draft_model_kwargs = dict(draft_model_kwargs or {})
-        draft_model_kwargs.setdefault("trust_remote_code", True)
-        target_model_kwargs = dict(target_model_kwargs or {})
-        tokenizer_kwargs = dict(tokenizer_kwargs or {})
-
-        draft = AutoModel.from_pretrained(draft_model_id, **draft_model_kwargs)
-        target = AutoModelForCausalLM.from_pretrained(target_model_id, **target_model_kwargs)
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_id or target_model_id, **tokenizer_kwargs)
-
-        if mask_token is not None and tokenizer.mask_token_id is None:
-            tokenizer.add_special_tokens({"mask_token": mask_token})
-
-        return cls(
-            draft_model=draft,
-            target_model=target,
-            tokenizer=tokenizer,
-            scheduler=scheduler,
-            **pipeline_kwargs,
         )
 
     def check_inputs(
@@ -316,15 +270,27 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         if stop_token_ids is not None:
             stop_token_ids = [int(token_id) for token_id in stop_token_ids]
 
-        # 3. Setup models and scheduler
-        self.draft_model.eval()
-        self.target_model.eval()
+        # 3. Setup scheduler and resolve model attributes
         self.scheduler.set_timesteps(1, device=device)
 
         block_size = self._get_block_size()
-        target_layer_ids = self._get_target_layer_ids()
-        input_embeddings = self._get_target_input_embeddings()
-        output_embeddings = self._get_target_output_embeddings()
+
+        # Resolve target layer IDs from draft model config
+        layer_ids = getattr(self.draft_model, "target_layer_ids", None)
+        if layer_ids is not None:
+            target_layer_ids = list(layer_ids)
+        else:
+            cfg = getattr(self.draft_model, "config", None)
+            num_target_layers = getattr(cfg, "num_target_layers", None)
+            num_hidden_layers = getattr(cfg, "num_hidden_layers", None)
+            if num_target_layers is None or num_hidden_layers is None:
+                raise ValueError(
+                    "`draft_model` must define `target_layer_ids` or expose `num_target_layers` in config."
+                )
+            target_layer_ids = _build_target_layer_ids(int(num_target_layers), int(num_hidden_layers))
+
+        input_embeddings = self.target_model.get_input_embeddings()
+        output_embeddings = self.target_model.get_output_embeddings()
 
         num_input_tokens = input_ids.shape[1]
         max_length = num_input_tokens + int(max_new_tokens)
@@ -388,7 +354,11 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 logits_to_keep=None,
             )
             step_output = self.scheduler.step(
-                block_output_ids, output.logits, temperature=temperature, return_dict=True
+                model_output=output.logits,
+                timestep=global_step,
+                sample=block_output_ids,
+                temperature=temperature,
+                return_dict=True,
             )
             accepted_length = step_output.accepted_length
             next_token = step_output.next_token
@@ -433,40 +403,11 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         return DFlashPipelineOutput(sequences=sequences, texts=texts)
 
     def _get_block_size(self) -> int:
-        block_size = getattr(self.draft_model, "block_size", None)
-        if block_size is None:
-            block_size = getattr(getattr(self.draft_model, "config", None), "block_size", None)
-        if block_size is None:
-            raise ValueError("`draft_model` must define `block_size` on the module or its config.")
-        return int(block_size)
-
-    def _get_target_layer_ids(self) -> list[int]:
-        layer_ids = getattr(self.draft_model, "target_layer_ids", None)
-        if layer_ids is not None:
-            return list(layer_ids)
         cfg = getattr(self.draft_model, "config", None)
-        num_target_layers = getattr(cfg, "num_target_layers", None)
-        num_hidden_layers = getattr(cfg, "num_hidden_layers", None)
-        if num_target_layers is None or num_hidden_layers is None:
-            raise ValueError("`draft_model` must define `target_layer_ids` or expose `num_target_layers` in config.")
-        return _build_target_layer_ids(int(num_target_layers), int(num_hidden_layers))
-
-    def _get_target_input_embeddings(self) -> torch.nn.Module:
-        embeddings = self.target_model.get_input_embeddings()
-        if embeddings is None:
-            base_model = getattr(self.target_model, "model", None)
-            embeddings = getattr(base_model, "embed_tokens", None)
-        if embeddings is None:
-            raise ValueError("`target_model` must provide input embeddings for DFlash decoding.")
-        return embeddings
-
-    def _get_target_output_embeddings(self) -> torch.nn.Module:
-        embeddings = self.target_model.get_output_embeddings()
-        if embeddings is None:
-            embeddings = getattr(self.target_model, "lm_head", None)
-        if embeddings is None:
-            raise ValueError("`target_model` must provide output embeddings for DFlash decoding.")
-        return embeddings
+        block_size = getattr(cfg, "block_size", None)
+        if block_size is None:
+            raise ValueError("`draft_model.config` must define `block_size`.")
+        return int(block_size)
 
     def _target_forward(
         self,

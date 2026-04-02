@@ -71,7 +71,7 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     scheduler: SDARTokenDiffusionScheduler
     tokenizer: Any
 
-    _callback_tensor_inputs = ["cur_x", "logits", "sampled_tokens", "sampled_probs", "transfer_index"]
+    _callback_tensor_inputs = ["block_x", "logits", "sampled_tokens", "sampled_probs", "transfer_index"]
 
     def __init__(
         self,
@@ -149,7 +149,7 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     ) -> torch.LongTensor:
         return torch.full(
             (1, total_length),
-            int(mask_token_id),
+            mask_token_id,
             dtype=torch.long,
             device=device,
         )
@@ -245,14 +245,14 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         ):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
         if callback_on_step_end_tensor_inputs is None:
-            callback_on_step_end_tensor_inputs = ["cur_x"]
+            callback_on_step_end_tensor_inputs = ["block_x"]
 
         # Resolve block_length from model if not explicitly overridden by the user
         model_block_length = getattr(self.model, "block_length", None)
         if model_block_length is None:
             model_block_length = getattr(getattr(self.model, "config", None), "block_length", None)
         if model_block_length is not None:
-            block_length = int(model_block_length)
+            block_length = model_block_length
 
         if mask_token_id is None:
             mask_token_id = getattr(getattr(self, "tokenizer", None), "mask_token_id", None)
@@ -284,16 +284,14 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
         if stop_token_ids is None:
             eos_token_id = getattr(getattr(self, "tokenizer", None), "eos_token_id", None)
-            stop_token_ids = [int(eos_token_id)] if eos_token_id is not None else None
-        if stop_token_ids is not None:
-            stop_token_ids = [int(token_id) for token_id in stop_token_ids]
+            stop_token_ids = [eos_token_id] if eos_token_id is not None else None
 
         self.model.eval()
-        self.scheduler.set_timesteps(int(num_inference_steps), device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
 
         prompt_length = input_ids.shape[1]
-        num_blocks = (prompt_length + int(max_new_tokens) + int(block_length) - 1) // int(block_length)
-        total_length = int(num_blocks) * int(block_length)
+        num_blocks = (prompt_length + max_new_tokens + block_length - 1) // block_length
+        total_length = num_blocks * block_length
 
         # 3. Build 2D attention mask — the model handles backend-specific conversion internally.
         attn_mask = self._build_block_attention_mask_2d(
@@ -303,30 +301,30 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             device=device,
         )
 
-        x = self.prepare_latents(total_length, int(mask_token_id), device)
+        x = self.prepare_latents(total_length, mask_token_id, device)
         x[:, :prompt_length] = input_ids
 
         position_ids = torch.arange(total_length, device=device).unsqueeze(0)
         past_key_values = DynamicCache()
 
-        prefill_blocks = prompt_length // int(block_length)
-        prefill_length = int(prefill_blocks) * int(block_length)
+        prefill_blocks = prompt_length // block_length
+        prefill_length = prefill_blocks * block_length
 
         self._num_timesteps = num_inference_steps * max(num_blocks - prefill_blocks, 0)
 
         if prefill_length > 0:
-            cur_x = x[:, :prefill_length]
-            cur_position_ids = position_ids[:, :prefill_length]
-            cur_attn_mask = attn_mask[:prefill_length, :prefill_length].unsqueeze(0)
+            block_x = x[:, :prefill_length]
+            block_position_ids = position_ids[:, :prefill_length]
+            block_attn_mask = attn_mask[:prefill_length, :prefill_length].unsqueeze(0)
             self._model_forward_logits(
-                input_ids=cur_x,
-                attention_mask=cur_attn_mask,
-                position_ids=cur_position_ids,
+                input_ids=block_x,
+                attention_mask=block_attn_mask,
+                position_ids=block_position_ids,
                 past_key_values=past_key_values,
                 store_kv=True,
             )
 
-        num_transfer_tokens = self.scheduler.get_num_transfer_tokens(int(block_length), int(num_inference_steps)).to(
+        num_transfer_tokens = self.scheduler.get_num_transfer_tokens(block_length, num_inference_steps).to(
             device=device
         )
 
@@ -336,32 +334,32 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         block_progress_bar_config = getattr(self, "_progress_bar_config", {}).copy()
         block_progress_bar_config["position"] = 0
         block_progress_bar_config["desc"] = "Blocks"
-        for block_idx in tqdm(range(prefill_blocks, int(num_blocks)), **block_progress_bar_config):
-            start = int(block_idx) * int(block_length)
-            end = start + int(block_length)
-            cur_x = x[:, start:end].clone()
-            cur_position_ids = position_ids[:, start:end]
-            cur_attn_mask = attn_mask[start:end, :end].unsqueeze(0)
+        for block_idx in tqdm(range(prefill_blocks, num_blocks), **block_progress_bar_config):
+            start = block_idx * block_length
+            end = start + block_length
+            block_x = x[:, start:end].clone()
+            block_position_ids = position_ids[:, start:end]
+            block_attn_mask = attn_mask[start:end, :end].unsqueeze(0)
 
             self.set_progress_bar_config(position=1, leave=False, desc=f"Block {block_idx} Inference Steps")
             progress_bar = self.progress_bar(total=num_inference_steps)
 
-            for step in range(int(num_inference_steps) + 1):
-                mask_index = cur_x == int(mask_token_id)
+            for step in range(num_inference_steps + 1):
+                mask_index = block_x == mask_token_id
                 if mask_index.sum() == 0:
                     self._model_forward_logits(
-                        input_ids=cur_x,
-                        attention_mask=cur_attn_mask,
-                        position_ids=cur_position_ids,
+                        input_ids=block_x,
+                        attention_mask=block_attn_mask,
+                        position_ids=block_position_ids,
                         past_key_values=past_key_values,
                         store_kv=True,
                     )
                     break
 
                 logits = self._model_forward_logits(
-                    input_ids=cur_x,
-                    attention_mask=cur_attn_mask,
-                    position_ids=cur_position_ids,
+                    input_ids=block_x,
+                    attention_mask=block_attn_mask,
+                    position_ids=block_position_ids,
                     past_key_values=past_key_values,
                     store_kv=False,
                 )
@@ -369,8 +367,8 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 step_output = self.scheduler.step(
                     logits,
                     step,
-                    cur_x,
-                    mask_token_id=int(mask_token_id),
+                    block_x,
+                    mask_token_id=mask_token_id,
                     num_transfer_tokens=num_transfer_tokens,
                     remasking_strategy=remasking_strategy,
                     confidence_threshold=confidence_threshold,
@@ -381,7 +379,7 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                     generator=generator,
                     return_dict=True,
                 )
-                cur_x = step_output.prev_sample
+                block_x = step_output.prev_sample
                 transfer_index = step_output.transfer_index
                 sampled_tokens = step_output.sampled_tokens
                 sampled_probs = step_output.sampled_probs
@@ -391,27 +389,27 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
                     callback_outputs = callback_on_step_end(self, global_step, step, callback_kwargs)
-                    cur_x = callback_outputs.pop("cur_x", cur_x)
+                    block_x = callback_outputs.pop("block_x", block_x)
 
                 global_step += 1
                 progress_bar.update(1)
 
             progress_bar.close()
-            x[:, start:end] = cur_x
+            x[:, start:end] = block_x
 
             if self.scheduler.check_should_stop(x, prompt_length, stop_token_ids):
                 break
 
         # 5. Post-process output
-        output_ids = x[:, : prompt_length + int(max_new_tokens)]
+        output_ids = x[:, : prompt_length + max_new_tokens]
         if stop_token_ids is not None:
             stop_tensor = torch.tensor(stop_token_ids, device=device, dtype=torch.long)
             stop_positions = torch.isin(output_ids[0, prompt_length:], stop_tensor).nonzero(as_tuple=True)[0]
             if stop_positions.numel() > 0:
-                output_ids = output_ids[:, : prompt_length + int(stop_positions[0].item()) + 1]
+                output_ids = output_ids[:, : prompt_length + stop_positions[0].item() + 1]
 
         if output_ids.shape[0] == 1:
-            output_ids = output_ids[:, output_ids[0] != int(mask_token_id)]
+            output_ids = output_ids[:, output_ids[0] != mask_token_id]
 
         sequences = output_ids[:, prompt_length:]
         texts = None

@@ -20,11 +20,26 @@ from typing import Any, Callable
 import torch
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...utils import BaseOutput, logging
+from ...utils import BaseOutput, logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline, DiscreteDiffusionPipelineMixin
 
 
 logger = logging.get_logger(__name__)
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```python
+        >>> import torch
+        >>> from diffusers import TokenDiffusionPipeline, TokenDiffusionScheduler
+
+        >>> model = ...  # Any masked language model returning logits over vocabulary
+        >>> tokenizer = ...  # Corresponding tokenizer
+        >>> scheduler = TokenDiffusionScheduler(vocab_size=32000, mask_token_id=32000)
+        >>> pipe = TokenDiffusionPipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
+        >>> output = pipe(batch_size=1, seq_len=128, num_inference_steps=64)
+        >>> print(output.texts[0])
+        ```
+"""
 
 
 @dataclass
@@ -129,6 +144,7 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 raise ValueError(f"`prefix_ids` length {p.shape[1]} must be <= seq_len={seq_len}.")
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         batch_size: int = 1,
@@ -167,6 +183,8 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 `callback_on_step_end(self, step: int, timestep: int, callback_kwargs: dict)`.
             callback_on_step_end_tensor_inputs: List of tensor keys to include in `callback_kwargs`.
             model_kwargs: Forward kwargs passed to `model(...)` (e.g. attention mask overrides).
+
+        Examples:
         """
         # 1. Check inputs early
         if callback_on_step_end is not None and isinstance(
@@ -196,7 +214,6 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
         # 3. Prepare latents
         input_ids = self.prepare_latents(batch_size, seq_len, generator=generator, device=device)
-        attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
         # 4. Build fixed masks for prefix / infill conditioning
         fixed_mask = None
@@ -237,7 +254,7 @@ class TokenDiffusionPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
 
             # Enforce fixed masks (prefix / infill conditioning)
             if fixed_mask is not None:
-                input_ids = self.scheduler.enforce_fixed_masks(input_ids, fixed_mask, fixed_values)
+                input_ids = torch.where(fixed_mask, fixed_values, input_ids)
 
             if inject_start_token and start_token_id is not None:
                 input_ids[:, 0] = start_token_id
