@@ -22,7 +22,6 @@ from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
-
 logger = logging.get_logger(__name__)
 
 
@@ -43,9 +42,18 @@ class StableDiffusion3DecodeStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
-            InputParam("output_type", default="pil", description="The output format of the generated image (e.g., 'pil', 'pt', 'np')."),
-            InputParam("latents", required=True, type_hint=torch.Tensor, description="The denoised latents to be decoded."),
+        return [
+            InputParam(
+                "output_type",
+                default="pil",
+                description="The output format of the generated image (e.g., 'pil', 'pt', 'np').",
+            ),
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The denoised latents to be decoded.",
+            ),
         ]
 
     @property
@@ -58,7 +66,9 @@ class StableDiffusion3DecodeStep(ModularPipelineBlocks):
         vae = components.vae
 
         if not block_state.output_type == "latent":
-            latents = (block_state.latents / vae.config.scaling_factor) + vae.config.shift_factor
+            latents = (
+                block_state.latents / vae.config.scaling_factor
+            ) + vae.config.shift_factor
             block_state.images = vae.decode(latents, return_dict=False)[0]
             block_state.images = components.image_processor.postprocess(
                 block_state.images, output_type=block_state.output_type

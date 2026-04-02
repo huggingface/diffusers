@@ -17,9 +17,11 @@ import torch
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import InputParam, OutputParam
-from ..qwenimage.inputs import calculate_dimension_from_latents, repeat_tensor_to_batch_size
+from ..qwenimage.inputs import (
+    calculate_dimension_from_latents,
+    repeat_tensor_to_batch_size,
+)
 from .modular_pipeline import StableDiffusion3ModularPipeline
-
 
 logger = logging.get_logger(__name__)
 
@@ -29,20 +31,48 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return (
-            "Text input processing step that standardizes text embeddings for SD3, applying CFG duplication if needed."
-        )
+        return "Text input processing step that standardizes text embeddings for SD3, applying CFG duplication if needed."
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
-            InputParam("num_images_per_prompt", default=1, description="The number of images to generate per prompt."),
-            InputParam("guidance_scale", default=7.0, description="Guidance scale as defined in Classifier-Free Diffusion Guidance."),
-            InputParam("skip_guidance_layers", type_hint=list, description="A list of integers that specify layers to skip during guidance."),
-            InputParam("prompt_embeds", required=True, type_hint=torch.Tensor, description="Pre-generated text embeddings."),
-            InputParam("pooled_prompt_embeds", required=True, type_hint=torch.Tensor, description="Pre-generated pooled text embeddings."),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated negative text embeddings."),
-            InputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated negative pooled text embeddings."),
+        return [
+            InputParam(
+                "num_images_per_prompt",
+                default=1,
+                description="The number of images to generate per prompt.",
+            ),
+            InputParam(
+                "guidance_scale",
+                default=7.0,
+                description="Guidance scale as defined in Classifier-Free Diffusion Guidance.",
+            ),
+            InputParam(
+                "skip_guidance_layers",
+                type_hint=list,
+                description="A list of integers that specify layers to skip during guidance.",
+            ),
+            InputParam(
+                "prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Pre-generated text embeddings.",
+            ),
+            InputParam(
+                "pooled_prompt_embeds",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Pre-generated pooled text embeddings.",
+            ),
+            InputParam(
+                "negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Pre-generated negative text embeddings.",
+            ),
+            InputParam(
+                "negative_pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Pre-generated negative pooled text embeddings.",
+            ),
         ]
 
     @property
@@ -58,7 +88,9 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -66,23 +98,38 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
         block_state.do_classifier_free_guidance = block_state.guidance_scale > 1.0
 
         _, seq_len, _ = block_state.prompt_embeds.shape
-        prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1)
+        prompt_embeds = block_state.prompt_embeds.repeat(
+            1, block_state.num_images_per_prompt, 1
+        )
+        prompt_embeds = prompt_embeds.view(
+            block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
+        )
 
-        pooled_prompt_embeds = block_state.pooled_prompt_embeds.repeat(1, block_state.num_images_per_prompt)
+        pooled_prompt_embeds = block_state.pooled_prompt_embeds.repeat(
+            1, block_state.num_images_per_prompt
+        )
         pooled_prompt_embeds = pooled_prompt_embeds.view(
             block_state.batch_size * block_state.num_images_per_prompt, -1
         )
 
-        if block_state.do_classifier_free_guidance and block_state.negative_prompt_embeds is not None:
+        if (
+            block_state.do_classifier_free_guidance
+            and block_state.negative_prompt_embeds is not None
+        ):
             _, neg_seq_len, _ = block_state.negative_prompt_embeds.shape
-            negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
+            negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(
+                1, block_state.num_images_per_prompt, 1
+            )
             negative_prompt_embeds = negative_prompt_embeds.view(
-                block_state.batch_size * block_state.num_images_per_prompt, neg_seq_len, -1
+                block_state.batch_size * block_state.num_images_per_prompt,
+                neg_seq_len,
+                -1,
             )
 
-            negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.repeat(
-                1, block_state.num_images_per_prompt
+            negative_pooled_prompt_embeds = (
+                block_state.negative_pooled_prompt_embeds.repeat(
+                    1, block_state.num_images_per_prompt
+                )
             )
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.view(
                 block_state.batch_size * block_state.num_images_per_prompt, -1
@@ -105,12 +152,20 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
 class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
-    def __init__(self, image_latent_inputs: list[str] = ["image_latents"], additional_batch_inputs: list[str] = []):
+    def __init__(
+        self,
+        image_latent_inputs: list[str] = ["image_latents"],
+        additional_batch_inputs: list[str] = [],
+    ):
         self._image_latent_inputs = (
-            image_latent_inputs if isinstance(image_latent_inputs, list) else [image_latent_inputs]
+            image_latent_inputs
+            if isinstance(image_latent_inputs, list)
+            else [image_latent_inputs]
         )
         self._additional_batch_inputs = (
-            additional_batch_inputs if isinstance(additional_batch_inputs, list) else [additional_batch_inputs]
+            additional_batch_inputs
+            if isinstance(additional_batch_inputs, list)
+            else [additional_batch_inputs]
         )
         super().__init__()
 
@@ -120,14 +175,24 @@ class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        inputs =[
-            InputParam("num_images_per_prompt", default=1, description="The number of images to generate per prompt."),
+        inputs = [
+            InputParam(
+                "num_images_per_prompt",
+                default=1,
+                description="The number of images to generate per prompt.",
+            ),
             InputParam("batch_size", required=True, description="The batch size."),
-            InputParam("height", description="The height in pixels of the generated image."),
-            InputParam("width", description="The width in pixels of the generated image."),
+            InputParam(
+                "height", description="The height in pixels of the generated image."
+            ),
+            InputParam(
+                "width", description="The width in pixels of the generated image."
+            ),
         ]
         for name in self._image_latent_inputs + self._additional_batch_inputs:
-            inputs.append(InputParam(name, description=f"Latent input {name} to be processed."))
+            inputs.append(
+                InputParam(name, description=f"Latent input {name} to be processed.")
+            )
         return inputs
 
     @property
@@ -137,7 +202,9 @@ class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
             OutputParam("image_width", type_hint=int),
         ]
 
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
 
         for input_name in self._image_latent_inputs:
@@ -145,7 +212,9 @@ class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
             if tensor is None:
                 continue
 
-            height, width = calculate_dimension_from_latents(tensor, components.vae_scale_factor)
+            height, width = calculate_dimension_from_latents(
+                tensor, components.vae_scale_factor
+            )
             block_state.height = block_state.height or height
             block_state.width = block_state.width or width
 

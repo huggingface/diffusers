@@ -28,11 +28,7 @@ from .encoders import (
     StableDiffusion3TextEncoderStep,
     StableDiffusion3VaeEncoderStep,
 )
-from .inputs import (
-    StableDiffusion3AdditionalInputsStep,
-    StableDiffusion3TextInputStep,
-)
-
+from .inputs import StableDiffusion3AdditionalInputsStep, StableDiffusion3TextInputStep
 
 logger = logging.get_logger(__name__)
 
@@ -63,7 +59,10 @@ class StableDiffusion3Img2ImgVaeEncoderStep(SequentialPipelineBlocks):
     """
 
     model_name = "stable-diffusion-3"
-    block_classes = [StableDiffusion3ProcessImagesInputStep(), StableDiffusion3VaeEncoderStep()]
+    block_classes = [
+        StableDiffusion3ProcessImagesInputStep(),
+        StableDiffusion3VaeEncoderStep(),
+    ]
     block_names = ["preprocess", "encode"]
 
 
@@ -138,7 +137,10 @@ class StableDiffusion3BeforeDenoiseStep(SequentialPipelineBlocks):
     """
 
     model_name = "stable-diffusion-3"
-    block_classes = [StableDiffusion3PrepareLatentsStep(), StableDiffusion3SetTimestepsStep()]
+    block_classes = [
+        StableDiffusion3PrepareLatentsStep(),
+        StableDiffusion3SetTimestepsStep(),
+    ]
     block_names = ["prepare_latents", "set_timesteps"]
 
 
@@ -242,7 +244,10 @@ class StableDiffusion3AutoBeforeDenoiseStep(AutoPipelineBlocks):
     """
 
     model_name = "stable-diffusion-3"
-    block_classes = [StableDiffusion3Img2ImgBeforeDenoiseStep, StableDiffusion3BeforeDenoiseStep]
+    block_classes = [
+        StableDiffusion3Img2ImgBeforeDenoiseStep,
+        StableDiffusion3BeforeDenoiseStep,
+    ]
     block_names = ["img2img", "text2image"]
     block_trigger_inputs = ["image_latents", None]
 
@@ -294,7 +299,10 @@ class StableDiffusion3Img2ImgInputStep(SequentialPipelineBlocks):
     """
 
     model_name = "stable-diffusion-3"
-    block_classes = [StableDiffusion3TextInputStep(), StableDiffusion3AdditionalInputsStep()]
+    block_classes = [
+        StableDiffusion3TextInputStep(),
+        StableDiffusion3AdditionalInputsStep(),
+    ]
     block_names = ["text_inputs", "additional_inputs"]
 
 
@@ -407,7 +415,11 @@ class StableDiffusion3CoreDenoiseStep(SequentialPipelineBlocks):
     """
 
     model_name = "stable-diffusion-3"
-    block_classes = [StableDiffusion3AutoInputStep, StableDiffusion3AutoBeforeDenoiseStep, StableDiffusion3DenoiseStep]
+    block_classes = [
+        StableDiffusion3AutoInputStep,
+        StableDiffusion3AutoBeforeDenoiseStep,
+        StableDiffusion3DenoiseStep,
+    ]
     block_names = ["input", "before_denoise", "denoise"]
 
     @property

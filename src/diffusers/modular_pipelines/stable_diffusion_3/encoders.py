@@ -13,7 +13,12 @@
 # limitations under the License.
 
 import torch
-from transformers import CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
+from transformers import (
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    T5EncoderModel,
+    T5TokenizerFast,
+)
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
@@ -24,13 +29,14 @@ from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import StableDiffusion3ModularPipeline
 
-
 logger = logging.get_logger(__name__)
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor,
+    generator: torch.Generator | None = None,
+    sample_mode: str = "sample",
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -42,17 +48,30 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-def encode_vae_image(vae: AutoencoderKL, image: torch.Tensor, generator: torch.Generator, sample_mode="sample"):
+def encode_vae_image(
+    vae: AutoencoderKL,
+    image: torch.Tensor,
+    generator: torch.Generator,
+    sample_mode="sample",
+):
     if isinstance(generator, list):
         image_latents = [
-            retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i], sample_mode=sample_mode)
+            retrieve_latents(
+                vae.encode(image[i : i + 1]),
+                generator=generator[i],
+                sample_mode=sample_mode,
+            )
             for i in range(image.shape[0])
         ]
         image_latents = torch.cat(image_latents, dim=0)
     else:
-        image_latents = retrieve_latents(vae.encode(image), generator=generator, sample_mode=sample_mode)
+        image_latents = retrieve_latents(
+            vae.encode(image), generator=generator, sample_mode=sample_mode
+        )
 
-    image_latents = (image_latents - vae.config.shift_factor) * vae.config.scaling_factor
+    image_latents = (
+        image_latents - vae.config.shift_factor
+    ) * vae.config.scaling_factor
     return image_latents
 
 
@@ -91,9 +110,13 @@ def _get_t5_prompt_embeds(
         return_tensors="pt",
     )
     text_input_ids = text_inputs.input_ids
-    untruncated_ids = components.tokenizer_3(prompt, padding="longest", return_tensors="pt").input_ids
+    untruncated_ids = components.tokenizer_3(
+        prompt, padding="longest", return_tensors="pt"
+    ).input_ids
 
-    if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+    if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+        text_input_ids, untruncated_ids
+    ):
         removed_text = components.tokenizer_3.batch_decode(
             untruncated_ids[:, components.tokenizer_max_length - 1 : -1]
         )
@@ -145,9 +168,15 @@ def _get_clip_prompt_embeds(
     )
 
     text_input_ids = text_inputs.input_ids
-    untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-    if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-        removed_text = tokenizer.batch_decode(untruncated_ids[:, components.tokenizer_max_length - 1 : -1])
+    untruncated_ids = tokenizer(
+        prompt, padding="longest", return_tensors="pt"
+    ).input_ids
+    if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+        text_input_ids, untruncated_ids
+    ):
+        removed_text = tokenizer.batch_decode(
+            untruncated_ids[:, components.tokenizer_max_length - 1 : -1]
+        )
         logger.warning(
             "The following part of your input was truncated because CLIP can only handle sequences up to"
             f" {components.tokenizer_max_length} tokens: {removed_text}"
@@ -168,7 +197,9 @@ def _get_clip_prompt_embeds(
     prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
     pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt)
-    pooled_prompt_embeds = pooled_prompt_embeds.view(batch_size * num_images_per_prompt, -1)
+    pooled_prompt_embeds = pooled_prompt_embeds.view(
+        batch_size * num_images_per_prompt, -1
+    )
 
     return prompt_embeds, pooled_prompt_embeds
 
@@ -246,11 +277,14 @@ def encode_prompt(
         )
 
         clip_prompt_embeds = torch.nn.functional.pad(
-            clip_prompt_embeds, (0, t5_prompt_embed.shape[-1] - clip_prompt_embeds.shape[-1])
+            clip_prompt_embeds,
+            (0, t5_prompt_embed.shape[-1] - clip_prompt_embeds.shape[-1]),
         )
 
         prompt_embeds = torch.cat([clip_prompt_embeds, t5_prompt_embed], dim=-2)
-        pooled_prompt_embeds = torch.cat([pooled_prompt_embed, pooled_prompt_2_embed], dim=-1)
+        pooled_prompt_embeds = torch.cat(
+            [pooled_prompt_embed, pooled_prompt_2_embed], dim=-1
+        )
 
     if do_classifier_free_guidance and negative_prompt_embeds is None:
         negative_prompt = negative_prompt or ""
@@ -258,12 +292,20 @@ def encode_prompt(
         negative_prompt_3 = negative_prompt_3 or negative_prompt
 
         # normalize str to list
-        negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+        negative_prompt = (
+            batch_size * [negative_prompt]
+            if isinstance(negative_prompt, str)
+            else negative_prompt
+        )
         negative_prompt_2 = (
-            batch_size * [negative_prompt_2] if isinstance(negative_prompt_2, str) else negative_prompt_2
+            batch_size * [negative_prompt_2]
+            if isinstance(negative_prompt_2, str)
+            else negative_prompt_2
         )
         negative_prompt_3 = (
-            batch_size * [negative_prompt_3] if isinstance(negative_prompt_3, str) else negative_prompt_3
+            batch_size * [negative_prompt_3]
+            if isinstance(negative_prompt_3, str)
+            else negative_prompt_3
         )
 
         if prompt is not None and type(prompt) is not type(negative_prompt):
@@ -286,15 +328,19 @@ def encode_prompt(
             clip_skip=None,
             clip_model_index=0,
         )
-        negative_prompt_2_embed, negative_pooled_prompt_2_embed = _get_clip_prompt_embeds(
-            components,
-            negative_prompt_2,
-            device=device,
-            num_images_per_prompt=num_images_per_prompt,
-            clip_skip=None,
-            clip_model_index=1,
+        negative_prompt_2_embed, negative_pooled_prompt_2_embed = (
+            _get_clip_prompt_embeds(
+                components,
+                negative_prompt_2,
+                device=device,
+                num_images_per_prompt=num_images_per_prompt,
+                clip_skip=None,
+                clip_model_index=1,
+            )
         )
-        negative_clip_prompt_embeds = torch.cat([negative_prompt_embed, negative_prompt_2_embed], dim=-1)
+        negative_clip_prompt_embeds = torch.cat(
+            [negative_prompt_embed, negative_prompt_2_embed], dim=-1
+        )
 
         t5_negative_prompt_embed = _get_t5_prompt_embeds(
             components,
@@ -306,10 +352,16 @@ def encode_prompt(
 
         negative_clip_prompt_embeds = torch.nn.functional.pad(
             negative_clip_prompt_embeds,
-            (0, t5_negative_prompt_embed.shape[-1] - negative_clip_prompt_embeds.shape[-1]),
+            (
+                0,
+                t5_negative_prompt_embed.shape[-1]
+                - negative_clip_prompt_embeds.shape[-1],
+            ),
         )
 
-        negative_prompt_embeds = torch.cat([negative_clip_prompt_embeds, t5_negative_prompt_embed], dim=-2)
+        negative_prompt_embeds = torch.cat(
+            [negative_clip_prompt_embeds, t5_negative_prompt_embed], dim=-2
+        )
         negative_pooled_prompt_embeds = torch.cat(
             [negative_pooled_prompt_embed, negative_pooled_prompt_2_embed], dim=-1
         )
@@ -324,7 +376,12 @@ def encode_prompt(
             # Retrieve the original scale by scaling back the LoRA layers
             unscale_lora_layers(components.text_encoder_2, lora_scale)
 
-    return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+    return (
+        prompt_embeds,
+        negative_prompt_embeds,
+        pooled_prompt_embeds,
+        negative_pooled_prompt_embeds,
+    )
 
 
 class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
@@ -347,11 +404,18 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
+        return [
             InputParam("resized_image", description="The pre-resized image input."),
-            InputParam("image", description="The input image to be used as the starting point for the image-to-image process."),
-            InputParam("height", description="The height in pixels of the generated image."),
-            InputParam("width", description="The width in pixels of the generated image.")
+            InputParam(
+                "image",
+                description="The input image to be used as the starting point for the image-to-image process.",
+            ),
+            InputParam(
+                "height", description="The height in pixels of the generated image."
+            ),
+            InputParam(
+                "width", description="The width in pixels of the generated image."
+            ),
         ]
 
     @property
@@ -361,17 +425,25 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
     @staticmethod
     def check_inputs(height, width, vae_scale_factor, patch_size):
         if height is not None and height % (vae_scale_factor * patch_size) != 0:
-            raise ValueError(f"Height must be divisible by {vae_scale_factor * patch_size} but is {height}")
+            raise ValueError(
+                f"Height must be divisible by {vae_scale_factor * patch_size} but is {height}"
+            )
 
         if width is not None and width % (vae_scale_factor * patch_size) != 0:
-            raise ValueError(f"Width must be divisible by {vae_scale_factor * patch_size} but is {width}")
+            raise ValueError(
+                f"Width must be divisible by {vae_scale_factor * patch_size} but is {width}"
+            )
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ):
         block_state = self.get_block_state(state)
 
         if block_state.resized_image is None and block_state.image is None:
-            raise ValueError("`resized_image` and `image` cannot be None at the same time")
+            raise ValueError(
+                "`resized_image` and `image` cannot be None at the same time"
+            )
 
         if block_state.resized_image is None:
             image = block_state.image
@@ -387,7 +459,9 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
             width, height = block_state.resized_image[0].size
             image = block_state.resized_image
 
-        block_state.processed_image = components.image_processor.preprocess(image=image, height=height, width=width)
+        block_state.processed_image = components.image_processor.preprocess(
+            image=image, height=height, width=width
+        )
 
         self.set_block_state(state, block_state)
         return components, state
@@ -397,7 +471,10 @@ class StableDiffusion3VaeEncoderStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-3"
 
     def __init__(
-        self, input_name: str = "processed_image", output_name: str = "image_latents", sample_mode: str = "sample"
+        self,
+        input_name: str = "processed_image",
+        output_name: str = "image_latents",
+        sample_mode: str = "sample",
     ):
         self._image_input_name = input_name
         self._image_latents_output_name = output_name
@@ -414,9 +491,15 @@ class StableDiffusion3VaeEncoderStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
-            InputParam(self._image_input_name, description="The processed image input to be encoded."),
-            InputParam("generator", description="One or a list of torch generator(s) to make generation deterministic.")
+        return [
+            InputParam(
+                self._image_input_name,
+                description="The processed image input to be encoded.",
+            ),
+            InputParam(
+                "generator",
+                description="One or a list of torch generator(s) to make generation deterministic.",
+            ),
         ]
 
     @property
@@ -430,7 +513,9 @@ class StableDiffusion3VaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         image = getattr(block_state, self._image_input_name)
 
@@ -441,7 +526,10 @@ class StableDiffusion3VaeEncoderStep(ModularPipelineBlocks):
             dtype = components.vae.dtype
             image = image.to(device=device, dtype=dtype)
             image_latents = encode_vae_image(
-                image=image, vae=components.vae, generator=block_state.generator, sample_mode=self.sample_mode
+                image=image,
+                vae=components.vae,
+                generator=block_state.generator,
+                sample_mode=self.sample_mode,
             )
             setattr(block_state, self._image_latents_output_name, image_latents)
 
@@ -469,21 +557,71 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> list[InputParam]:
-        return[
-            InputParam("prompt", description="The prompt or prompts to guide the image generation."),
-            InputParam("prompt_2", description="The prompt or prompts to be sent to tokenizer_2 and text_encoder_2."),
-            InputParam("prompt_3", description="The prompt or prompts to be sent to tokenizer_3 and text_encoder_3."),
-            InputParam("negative_prompt", description="The prompt or prompts not to guide the image generation."),
-            InputParam("negative_prompt_2", description="The prompt or prompts not to guide the image generation for tokenizer_2."),
-            InputParam("negative_prompt_3", description="The prompt or prompts not to guide the image generation for tokenizer_3."),
-            InputParam("prompt_embeds", type_hint=torch.Tensor, description="Pre-generated text embeddings."),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated negative text embeddings."),
-            InputParam("pooled_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated pooled text embeddings."),
-            InputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor, description="Pre-generated negative pooled text embeddings."),
-            InputParam("guidance_scale", default=7.0, description="Guidance scale as defined in Classifier-Free Diffusion Guidance."),
-            InputParam("clip_skip", type_hint=int, description="Number of layers to be skipped from CLIP while computing the prompt embeddings."),
-            InputParam("max_sequence_length", type_hint=int, default=256, description="Maximum sequence length to use with the prompt."),
-            InputParam("joint_attention_kwargs", description="A kwargs dictionary passed along to the AttentionProcessor."),
+        return [
+            InputParam(
+                "prompt",
+                description="The prompt or prompts to guide the image generation.",
+            ),
+            InputParam(
+                "prompt_2",
+                description="The prompt or prompts to be sent to tokenizer_2 and text_encoder_2.",
+            ),
+            InputParam(
+                "prompt_3",
+                description="The prompt or prompts to be sent to tokenizer_3 and text_encoder_3.",
+            ),
+            InputParam(
+                "negative_prompt",
+                description="The prompt or prompts not to guide the image generation.",
+            ),
+            InputParam(
+                "negative_prompt_2",
+                description="The prompt or prompts not to guide the image generation for tokenizer_2.",
+            ),
+            InputParam(
+                "negative_prompt_3",
+                description="The prompt or prompts not to guide the image generation for tokenizer_3.",
+            ),
+            InputParam(
+                "prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Pre-generated text embeddings.",
+            ),
+            InputParam(
+                "negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Pre-generated negative text embeddings.",
+            ),
+            InputParam(
+                "pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Pre-generated pooled text embeddings.",
+            ),
+            InputParam(
+                "negative_pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Pre-generated negative pooled text embeddings.",
+            ),
+            InputParam(
+                "guidance_scale",
+                default=7.0,
+                description="Guidance scale as defined in Classifier-Free Diffusion Guidance.",
+            ),
+            InputParam(
+                "clip_skip",
+                type_hint=int,
+                description="Number of layers to be skipped from CLIP while computing the prompt embeddings.",
+            ),
+            InputParam(
+                "max_sequence_length",
+                type_hint=int,
+                default=256,
+                description="Maximum sequence length to use with the prompt.",
+            ),
+            InputParam(
+                "joint_attention_kwargs",
+                description="A kwargs dictionary passed along to the AttentionProcessor.",
+            ),
         ]
 
     @property
@@ -496,16 +634,25 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
         do_classifier_free_guidance = block_state.guidance_scale > 1.0
         lora_scale = (
-            block_state.joint_attention_kwargs.get("scale", None) if block_state.joint_attention_kwargs else None
+            block_state.joint_attention_kwargs.get("scale", None)
+            if block_state.joint_attention_kwargs
+            else None
         )
 
-        prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = encode_prompt(
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = encode_prompt(
             components=components,
             prompt=block_state.prompt,
             prompt_2=getattr(block_state, "prompt_2", None),
@@ -519,7 +666,9 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
             prompt_embeds=getattr(block_state, "prompt_embeds", None),
             negative_prompt_embeds=getattr(block_state, "negative_prompt_embeds", None),
             pooled_prompt_embeds=getattr(block_state, "pooled_prompt_embeds", None),
-            negative_pooled_prompt_embeds=getattr(block_state, "negative_pooled_prompt_embeds", None),
+            negative_pooled_prompt_embeds=getattr(
+                block_state, "negative_pooled_prompt_embeds", None
+            ),
             clip_skip=getattr(block_state, "clip_skip", None),
             max_sequence_length=getattr(block_state, "max_sequence_length", 256),
             lora_scale=lora_scale,

@@ -20,17 +20,22 @@ import PIL
 import torch
 
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.modular_pipelines.stable_diffusion_3 import StableDiffusion3AutoBlocks, StableDiffusion3ModularPipeline
+from diffusers.modular_pipelines.stable_diffusion_3 import (
+    StableDiffusion3AutoBlocks,
+    StableDiffusion3ModularPipeline,
+)
 
 from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
-
 
 SD3_TEXT2IMAGE_WORKFLOWS = {
     "text2image": [
         ("text_encoder", "StableDiffusion3TextEncoderStep"),
         ("denoise.input", "StableDiffusion3TextInputStep"),
-        ("denoise.before_denoise.prepare_latents", "StableDiffusion3PrepareLatentsStep"),
+        (
+            "denoise.before_denoise.prepare_latents",
+            "StableDiffusion3PrepareLatentsStep",
+        ),
         ("denoise.before_denoise.set_timesteps", "StableDiffusion3SetTimestepsStep"),
         ("denoise.denoise", "StableDiffusion3DenoiseStep"),
         ("decode", "StableDiffusion3DecodeStep"),
@@ -102,9 +107,18 @@ SD3_IMAGE2IMAGE_WORKFLOWS = {
         ("vae_encoder.encode", "StableDiffusion3VaeEncoderStep"),
         ("denoise.input.text_inputs", "StableDiffusion3TextInputStep"),
         ("denoise.input.additional_inputs", "StableDiffusion3AdditionalInputsStep"),
-        ("denoise.before_denoise.prepare_latents", "StableDiffusion3PrepareLatentsStep"),
-        ("denoise.before_denoise.set_timesteps", "StableDiffusion3Img2ImgSetTimestepsStep"),
-        ("denoise.before_denoise.prepare_img2img_latents", "StableDiffusion3Img2ImgPrepareLatentsStep"),
+        (
+            "denoise.before_denoise.prepare_latents",
+            "StableDiffusion3PrepareLatentsStep",
+        ),
+        (
+            "denoise.before_denoise.set_timesteps",
+            "StableDiffusion3Img2ImgSetTimestepsStep",
+        ),
+        (
+            "denoise.before_denoise.prepare_img2img_latents",
+            "StableDiffusion3Img2ImgPrepareLatentsStep",
+        ),
         ("denoise.denoise", "StableDiffusion3DenoiseStep"),
         ("decode", "StableDiffusion3DecodeStep"),
     ]
