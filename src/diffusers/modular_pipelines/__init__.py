@@ -90,6 +90,7 @@ else:
     ]
     _import_structure["hunyuan_video1_5"] = [
         "HunyuanVideo15Blocks",
+        "HunyuanVideo15Image2VideoBlocks",
         "HunyuanVideo15ModularPipeline",
     ]
     _import_structure["ltx"] = [
@@ -149,7 +150,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
         )
-        from .hunyuan_video1_5 import HunyuanVideo15Blocks, HunyuanVideo15ModularPipeline
+        from .hunyuan_video1_5 import HunyuanVideo15Blocks, HunyuanVideo15Image2VideoBlocks, HunyuanVideo15ModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import (
             Wan22Blocks,

@@ -237,3 +237,122 @@ class HunyuanVideo15DenoiseStep(HunyuanVideo15DenoiseLoopWrapper):
             " - `HunyuanVideo15LoopAfterDenoiser`\n"
             "This block supports text-to-video tasks."
         )
+
+
+class HunyuanVideo15Image2VideoLoopDenoiser(ModularPipelineBlocks):
+    model_name = "hunyuan-video-1.5"
+
+    def __init__(self, guider_input_fields=None):
+        if guider_input_fields is None:
+            guider_input_fields = {
+                "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+                "encoder_attention_mask": ("prompt_embeds_mask", "negative_prompt_embeds_mask"),
+                "encoder_hidden_states_2": ("prompt_embeds_2", "negative_prompt_embeds_2"),
+                "encoder_attention_mask_2": ("prompt_embeds_mask_2", "negative_prompt_embeds_mask_2"),
+            }
+        if not isinstance(guider_input_fields, dict):
+            raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
+        self._guider_input_fields = guider_input_fields
+        super().__init__()
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "guider",
+                ClassifierFreeGuidance,
+                config=FrozenDict({"guidance_scale": 7.5}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec("transformer", HunyuanVideo15Transformer3DModel),
+        ]
+
+    @property
+    def description(self) -> str:
+        return "I2V denoiser with MeanFlow timestep_r support"
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        inputs = [
+            InputParam("attention_kwargs"),
+            InputParam("num_inference_steps", required=True, type_hint=int),
+            InputParam("image_embeds", type_hint=torch.Tensor),
+            InputParam("timesteps", required=True, type_hint=torch.Tensor),
+        ]
+        for value in self._guider_input_fields.values():
+            if isinstance(value, tuple):
+                inputs.append(InputParam(name=value[0], required=True, type_hint=torch.Tensor))
+                for neg_name in value[1:]:
+                    inputs.append(InputParam(name=neg_name, type_hint=torch.Tensor))
+            else:
+                inputs.append(InputParam(name=value, required=True, type_hint=torch.Tensor))
+        return inputs
+
+    # Copied from pipeline_hunyuan_video1_5_image2video.py lines 853-912 with self->components
+    @torch.no_grad()
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> PipelineState:
+        timestep = t.expand(block_state.latent_model_input.shape[0]).to(block_state.latent_model_input.dtype)
+
+        # MeanFlow timestep_r (lines 855-862)
+        if components.transformer.config.use_meanflow:
+            if i == len(block_state.timesteps) - 1:
+                timestep_r = torch.tensor([0.0], device=timestep.device)
+            else:
+                timestep_r = block_state.timesteps[i + 1]
+            timestep_r = timestep_r.expand(block_state.latents.shape[0]).to(block_state.latents.dtype)
+        else:
+            timestep_r = None
+
+        guider_inputs = {
+            input_name: tuple(getattr(block_state, v) for v in value) if isinstance(value, tuple) else getattr(block_state, value)
+            for input_name, value in self._guider_input_fields.items()
+        }
+
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
+        guider_state = components.guider.prepare_inputs(guider_inputs)
+
+        for guider_state_batch in guider_state:
+            components.guider.prepare_models(components.transformer)
+
+            cond_kwargs = {
+                input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()
+            }
+
+            context_name = getattr(guider_state_batch, components.guider._identifier_key)
+            with components.transformer.cache_context(context_name):
+                guider_state_batch.noise_pred = components.transformer(
+                    hidden_states=block_state.latent_model_input,
+                    image_embeds=block_state.image_embeds,
+                    timestep=timestep,
+                    timestep_r=timestep_r,
+                    attention_kwargs=block_state.attention_kwargs,
+                    return_dict=False,
+                    **cond_kwargs,
+                )[0]
+
+            components.guider.cleanup_models(components.transformer)
+
+        block_state.noise_pred = components.guider(guider_state)[0]
+
+        return components, block_state
+
+
+class HunyuanVideo15Image2VideoDenoiseStep(HunyuanVideo15DenoiseLoopWrapper):
+    block_classes = [
+        HunyuanVideo15LoopBeforeDenoiser,
+        HunyuanVideo15Image2VideoLoopDenoiser(),
+        HunyuanVideo15LoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step for image-to-video with MeanFlow support.\n"
+            "At each iteration:\n"
+            " - `HunyuanVideo15LoopBeforeDenoiser`\n"
+            " - `HunyuanVideo15Image2VideoLoopDenoiser`\n"
+            " - `HunyuanVideo15LoopAfterDenoiser`"
+        )
