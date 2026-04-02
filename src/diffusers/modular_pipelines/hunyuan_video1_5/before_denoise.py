@@ -17,6 +17,7 @@ import inspect
 import numpy as np
 import torch
 
+from ...configuration_utils import FrozenDict
 from ...models import HunyuanVideo15Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
