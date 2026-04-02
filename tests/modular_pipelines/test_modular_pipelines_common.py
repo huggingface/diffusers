@@ -8,7 +8,7 @@ import torch
 from huggingface_hub import hf_hub_download
 
 import diffusers
-from diffusers import AutoModel, ComponentsManager, ModularPipeline, ModularPipelineBlocks
+from diffusers import AutoModel, ComponentsManager, ControlNetModel, ModularPipeline, ModularPipelineBlocks
 from diffusers.guiders import ClassifierFreeGuidance
 from diffusers.modular_pipelines.modular_pipeline_utils import (
     ComponentSpec,
@@ -726,6 +726,26 @@ class TestAutoModelLoadIdTagging:
         spec = pipe._component_specs["unet"]
         assert spec.pretrained_model_name_or_path == "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
         assert spec.subfolder == "unet"
+
+    def test_load_components_loads_local_single_file_path(self, tmp_path):
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+
+        model = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+        model.save_pretrained(tmp_path)
+
+        local_ckpt_path = str(tmp_path / "diffusion_pytorch_model.safetensors")
+
+        pipe._component_specs["controlnet"] = ComponentSpec(
+            name="controlnet",
+            type_hint=ControlNetModel,
+            pretrained_model_name_or_path=local_ckpt_path,
+        )
+        pipe.load_components(names="controlnet", config=str(tmp_path))
+
+        assert pipe.controlnet is not None
+        assert isinstance(pipe.controlnet, ControlNetModel)
+        assert pipe._component_specs["controlnet"].pretrained_model_name_or_path == local_ckpt_path
+        assert getattr(pipe.controlnet, "_diffusers_load_id", None) not in (None, "null")
 
 
 class TestLoadComponentsSkipBehavior:
