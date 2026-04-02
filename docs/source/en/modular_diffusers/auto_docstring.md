@@ -62,6 +62,15 @@ python utils/modular_auto_docstring.py
 python utils/modular_auto_docstring.py src/diffusers/modular_pipelines/flux/
 ```
 
+If any marked class is missing a docstring, the check fails and lists the classes that need updating.
+
+```
+Found the following # auto_docstring markers that need docstrings:
+- src/diffusers/modular_pipelines/flux/encoders.py: FluxTextEncoderStep at line 42
+
+Run `python utils/modular_auto_docstring.py --fix_and_overwrite` to fix them.
+```
+
 ## Parameter templates
 
 `InputParam` and `OutputParam` define a block's inputs and outputs. Create them directly or use `.template()` for standardized definitions of common parameters like `prompt`, `num_inference_steps`, or `latents`.
@@ -125,16 +134,20 @@ InputParam.template("prompt_embeds", note="batch-expanded")
 | `kwargs_type` | `str` | Group name for related parameters |
 | `metadata` | `dict` | Arbitrary additional information |
 
+#### Creating OutputParam directly
+
 ```py
 from diffusers.modular_pipelines import OutputParam
 
-# Direct creation
 OutputParam(name="image_latents", type_hint=torch.Tensor, description="Encoded image latents.")
+```
 
-# From template
+#### Using a template
+
+```py
 OutputParam.template("latents")
 
-# Template with a note
+# Add a note to the description
 OutputParam.template("prompt_embeds", note="batch-expanded")
 ```
 
