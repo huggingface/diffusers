@@ -80,7 +80,7 @@ class HunyuanVideo15LoopDenoiser(ModularPipelineBlocks):
             ComponentSpec(
                 "guider",
                 ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 1.0}),
+                config=FrozenDict({"guidance_scale": 7.5}),
                 default_creation_method="from_config",
             ),
             ComponentSpec("transformer", HunyuanVideo15Transformer3DModel),
@@ -252,7 +252,7 @@ class HunyuanVideo15Image2VideoLoopDenoiser(ModularPipelineBlocks):
             ComponentSpec(
                 "guider",
                 ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 1.0}),
+                config=FrozenDict({"guidance_scale": 7.5}),
                 default_creation_method="from_config",
             ),
             ComponentSpec("transformer", HunyuanVideo15Transformer3DModel),

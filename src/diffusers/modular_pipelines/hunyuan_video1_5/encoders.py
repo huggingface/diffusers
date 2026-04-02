@@ -48,7 +48,7 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
             ComponentSpec(
                 "guider",
                 ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 1.0}),
+                config=FrozenDict({"guidance_scale": 7.5}),
                 default_creation_method="from_config",
             ),
         ]
