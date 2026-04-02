@@ -18,7 +18,6 @@ import numpy as np
 import torch
 
 from ...models import HunyuanVideo15Transformer3DModel
-from ...pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5 import HunyuanVideo15Pipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
@@ -169,14 +168,13 @@ class HunyuanVideo15PrepareLatentsStep(ModularPipelineBlocks):
             OutputParam("image_embeds", type_hint=torch.Tensor),
         ]
 
-    # Copied from pipeline_hunyuan_video1_5.py lines 652-655, 706-725
+    # Copied from pipeline_hunyuan_video1_5.py lines 652-655, 477-524, 706-725 with self->components
     @torch.no_grad()
     def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = block_state.dtype
 
-        # Calculate default height/width if not provided (line 652-655)
         height = block_state.height
         width = block_state.width
         if height is None and width is None:
@@ -187,28 +185,33 @@ class HunyuanVideo15PrepareLatentsStep(ModularPipelineBlocks):
         batch_size = block_state.batch_size * block_state.num_videos_per_prompt
         num_frames = block_state.num_frames
 
-        # Copied from HunyuanVideo15Pipeline.prepare_latents (lines 477-505, 707-717)
-        block_state.latents = HunyuanVideo15Pipeline.prepare_latents(
-            components,
-            batch_size,
-            components.num_channels_latents,
-            height,
-            width,
-            num_frames,
-            dtype,
-            device,
-            block_state.generator,
-            block_state.latents,
-        )
+        # Copied from HunyuanVideo15Pipeline.prepare_latents with self->components
+        latents = block_state.latents
+        if latents is not None:
+            latents = latents.to(device=device, dtype=dtype)
+        else:
+            shape = (
+                batch_size,
+                components.num_channels_latents,
+                (num_frames - 1) // components.vae_scale_factor_temporal + 1,
+                int(height) // components.vae_scale_factor_spatial,
+                int(width) // components.vae_scale_factor_spatial,
+            )
+            if isinstance(block_state.generator, list) and len(block_state.generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(block_state.generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+            latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=dtype)
 
-        # Copied from HunyuanVideo15Pipeline.prepare_cond_latents_and_mask (lines 508-524, 718)
-        cond_latents_concat, mask_concat = HunyuanVideo15Pipeline.prepare_cond_latents_and_mask(
-            components, block_state.latents, dtype, device
-        )
-        block_state.cond_latents_concat = cond_latents_concat
-        block_state.mask_concat = mask_concat
+        block_state.latents = latents
 
-        # T2V: zero image_embeds (line 719-725)
+        # Copied from HunyuanVideo15Pipeline.prepare_cond_latents_and_mask with self->components
+        b, c, f, h, w = latents.shape
+        block_state.cond_latents_concat = torch.zeros(b, c, f, h, w, dtype=dtype, device=device)
+        block_state.mask_concat = torch.zeros(b, 1, f, h, w, dtype=dtype, device=device)
+
+        # T2V: zero image_embeds
         block_state.image_embeds = torch.zeros(
             block_state.batch_size,
             components.vision_num_semantic_tokens,
