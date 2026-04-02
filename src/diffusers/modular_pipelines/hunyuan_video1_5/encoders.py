@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import torch
-from transformers import ByT5Tokenizer, Qwen2_5_VLTextModel, Qwen2Tokenizer, T5EncoderModel
+from transformers import ByT5Tokenizer, Qwen2_5_VLTextModel, Qwen2TokenizerFast, T5EncoderModel
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
@@ -42,7 +42,7 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_encoder", Qwen2_5_VLTextModel),
-            ComponentSpec("tokenizer", Qwen2Tokenizer),
+            ComponentSpec("tokenizer", Qwen2TokenizerFast),
             ComponentSpec("text_encoder_2", T5EncoderModel),
             ComponentSpec("tokenizer_2", ByT5Tokenizer),
             ComponentSpec(
