@@ -423,6 +423,8 @@ def dispatch_attention_fn(
         **attention_kwargs,
         "_parallel_config": parallel_config,
     }
+    # Equivalent to `is_torch_version(">=", "2.5.0")` — use module-level constant to avoid
+    # Dynamo tracing into the lru_cache-wrapped `is_torch_version` during torch.compile.
     if _CAN_USE_FLEX_ATTN:
         kwargs["enable_gqa"] = enable_gqa
 
