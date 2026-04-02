@@ -111,7 +111,7 @@ It conditions on a monocular depth estimate of the original image.
 [Paper](https://huggingface.co/papers/2302.08113)
 
 MultiDiffusion Panorama defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation methods that can be readily applied to generate high quality and diverse images. Results adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
-MultiDiffusion Panorama allows to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
+MultiDiffusion Panorama allows you to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
 
 ## Fine-tuning your own models
 
