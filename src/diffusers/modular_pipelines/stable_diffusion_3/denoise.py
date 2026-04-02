@@ -189,7 +189,13 @@ class StableDiffusion3LoopAfterDenoiser(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("latents", type_hint=torch.Tensor)]
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="The denoised latent tensors.",
+            )
+        ]
 
     @torch.no_grad()
     def __call__(

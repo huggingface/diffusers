@@ -109,8 +109,16 @@ class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("timesteps", type_hint=torch.Tensor),
-            OutputParam("num_inference_steps", type_hint=int),
+            OutputParam(
+                "timesteps",
+                type_hint=torch.Tensor,
+                description="The timesteps schedule for the denoising process.",
+            ),
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="The final number of inference steps.",
+            ),
         ]
 
     @torch.no_grad()
@@ -191,8 +199,16 @@ class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("timesteps", type_hint=torch.Tensor),
-            OutputParam("num_inference_steps", type_hint=int),
+            OutputParam(
+                "timesteps",
+                type_hint=torch.Tensor,
+                description="The timesteps schedule for the denoising process.",
+            ),
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="The final number of inference steps.",
+            ),
         ]
 
     @staticmethod
@@ -285,7 +301,13 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("latents", type_hint=torch.Tensor)]
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="The prepared latent tensors to be denoised.",
+            )
+        ]
 
     @torch.no_grad()
     def __call__(
@@ -352,7 +374,13 @@ class StableDiffusion3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("initial_noise", type_hint=torch.Tensor)]
+        return [
+            OutputParam(
+                "initial_noise",
+                type_hint=torch.Tensor,
+                description="The initial noise applied to the image latents.",
+            )
+        ]
 
     @torch.no_grad()
     def __call__(

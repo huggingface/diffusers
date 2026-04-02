@@ -53,7 +53,7 @@ class StableDiffusion3Img2ImgVaeEncoderStep(SequentialPipelineBlocks):
 
       Outputs:
           processed_image (`None`):
-              TODO: Add description.
+              The pre-processed image tensor.
           image_latents (`Tensor`):
               The latents representing the reference image
     """
@@ -86,7 +86,7 @@ class StableDiffusion3AutoVaeEncoderStep(AutoPipelineBlocks):
 
       Outputs:
           processed_image (`None`):
-              TODO: Add description.
+              The pre-processed image tensor.
           image_latents (`Tensor`):
               The latents representing the reference image
     """
@@ -129,11 +129,11 @@ class StableDiffusion3BeforeDenoiseStep(SequentialPipelineBlocks):
 
       Outputs:
           latents (`Tensor`):
-              TODO: Add description.
+              The prepared latent tensors to be denoised.
           timesteps (`Tensor`):
-              TODO: Add description.
+              The timesteps schedule for the denoising process.
           num_inference_steps (`int`):
-              TODO: Add description.
+              The final number of inference steps.
     """
 
     model_name = "stable-diffusion-3"
@@ -180,13 +180,13 @@ class StableDiffusion3Img2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
 
       Outputs:
           latents (`Tensor`):
-              TODO: Add description.
+              The prepared latent tensors to be denoised.
           timesteps (`Tensor`):
-              TODO: Add description.
+              The timesteps schedule for the denoising process.
           num_inference_steps (`int`):
-              TODO: Add description.
+              The final number of inference steps.
           initial_noise (`Tensor`):
-              TODO: Add description.
+              The initial noise applied to the image latents.
     """
 
     model_name = "stable-diffusion-3"
@@ -234,13 +234,13 @@ class StableDiffusion3AutoBeforeDenoiseStep(AutoPipelineBlocks):
 
       Outputs:
           latents (`Tensor`):
-              TODO: Add description.
+              The prepared latent tensors to be denoised.
           timesteps (`Tensor`):
-              TODO: Add description.
+              The timesteps schedule for the denoising process.
           num_inference_steps (`int`):
-              TODO: Add description.
+              The final number of inference steps.
           initial_noise (`Tensor`):
-              TODO: Add description.
+              The initial noise applied to the image latents.
     """
 
     model_name = "stable-diffusion-3"
@@ -279,23 +279,23 @@ class StableDiffusion3Img2ImgInputStep(SequentialPipelineBlocks):
 
       Outputs:
           batch_size (`int`):
-              TODO: Add description.
+              The batch size for the inference.
           dtype (`dtype`):
-              TODO: Add description.
+              The expected data type for latents.
           do_classifier_free_guidance (`bool`):
-              TODO: Add description.
+              Flag indicating if CFG is enabled.
           prompt_embeds (`Tensor`):
-              TODO: Add description.
+              The processed text embeddings.
           pooled_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              The processed pooled text embeddings.
           negative_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              The processed negative text embeddings.
           negative_pooled_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              The processed negative pooled text embeddings.
           image_height (`int`):
-              TODO: Add description.
+              The height of the generated image.
           image_width (`int`):
-              TODO: Add description.
+              The width of the generated image.
     """
 
     model_name = "stable-diffusion-3"
@@ -333,23 +333,23 @@ class StableDiffusion3AutoInputStep(AutoPipelineBlocks):
 
       Outputs:
           batch_size (`int`):
-              TODO: Add description.
+              The batch size for the inference.
           dtype (`dtype`):
-              TODO: Add description.
+              The expected data type for latents.
           do_classifier_free_guidance (`bool`):
-              TODO: Add description.
+              Flag indicating if CFG is enabled.
           prompt_embeds (`Tensor`):
-              TODO: Add description.
+              The processed text embeddings.
           pooled_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              The processed pooled text embeddings.
           negative_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              The processed negative text embeddings.
           negative_pooled_prompt_embeds (`Tensor`):
-              TODO: Add description.
+              The processed negative pooled text embeddings.
           image_height (`int`):
-              TODO: Add description.
+              The height of the generated image.
           image_width (`int`):
-              TODO: Add description.
+              The width of the generated image.
     """
 
     model_name = "stable-diffusion-3"

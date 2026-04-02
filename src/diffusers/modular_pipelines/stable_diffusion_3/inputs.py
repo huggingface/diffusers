@@ -78,13 +78,41 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[str]:
         return [
-            OutputParam("batch_size", type_hint=int),
-            OutputParam("dtype", type_hint=torch.dtype),
-            OutputParam("do_classifier_free_guidance", type_hint=bool),
-            OutputParam("prompt_embeds", type_hint=torch.Tensor),
-            OutputParam("pooled_prompt_embeds", type_hint=torch.Tensor),
-            OutputParam("negative_prompt_embeds", type_hint=torch.Tensor),
-            OutputParam("negative_pooled_prompt_embeds", type_hint=torch.Tensor),
+            OutputParam(
+                "batch_size",
+                type_hint=int,
+                description="The batch size for the inference.",
+            ),
+            OutputParam(
+                "dtype",
+                type_hint=torch.dtype,
+                description="The expected data type for latents.",
+            ),
+            OutputParam(
+                "do_classifier_free_guidance",
+                type_hint=bool,
+                description="Flag indicating if CFG is enabled.",
+            ),
+            OutputParam(
+                "prompt_embeds",
+                type_hint=torch.Tensor,
+                description="The processed text embeddings.",
+            ),
+            OutputParam(
+                "pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="The processed pooled text embeddings.",
+            ),
+            OutputParam(
+                "negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="The processed negative text embeddings.",
+            ),
+            OutputParam(
+                "negative_pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="The processed negative pooled text embeddings.",
+            ),
         ]
 
     @torch.no_grad()
@@ -198,8 +226,16 @@ class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("image_height", type_hint=int),
-            OutputParam("image_width", type_hint=int),
+            OutputParam(
+                "image_height",
+                type_hint=int,
+                description="The height of the generated image.",
+            ),
+            OutputParam(
+                "image_width",
+                type_hint=int,
+                description="The width of the generated image.",
+            ),
         ]
 
     def __call__(

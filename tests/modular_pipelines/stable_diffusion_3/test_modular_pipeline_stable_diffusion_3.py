@@ -28,6 +28,7 @@ from diffusers.modular_pipelines.stable_diffusion_3 import (
 from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
+
 SD3_TEXT2IMAGE_WORKFLOWS = {
     "text2image": [
         ("text_encoder", "StableDiffusion3TextEncoderStep"),

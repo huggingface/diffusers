@@ -420,7 +420,11 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam(name="processed_image")]
+        return [
+            OutputParam(
+                name="processed_image", description="The pre-processed image tensor."
+            )
+        ]
 
     @staticmethod
     def check_inputs(height, width, vae_scale_factor, patch_size):
