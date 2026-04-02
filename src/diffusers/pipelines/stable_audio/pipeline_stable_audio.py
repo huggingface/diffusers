@@ -209,7 +209,7 @@ class StableAudioPipeline(DiffusionPipeline):
             uncond_tokens: list[str]
             if type(prompt) is not type(negative_prompt):
                 raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f"`negative_prompt` should be the same type as `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
