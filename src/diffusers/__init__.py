@@ -292,6 +292,7 @@ else:
             "ZImageControlNetModel",
             "ZImageTransformer2DModel",
             "attention_backend",
+            "ErnieImageTransformer2DModel"
         ]
     )
     _import_structure["modular_pipelines"].extend(
@@ -732,6 +733,7 @@ else:
             "ZImageInpaintPipeline",
             "ZImageOmniPipeline",
             "ZImagePipeline",
+            "ErnieImagePipeline",
         ]
     )
 
@@ -1079,6 +1081,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetModel,
             ZImageTransformer2DModel,
             attention_backend,
+            ErnieImageTransformer2DModel,
         )
         from .modular_pipelines import (
             AutoPipelineBlocks,
@@ -1493,6 +1496,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageInpaintPipeline,
             ZImageOmniPipeline,
             ZImagePipeline,
+            ErnieImagePipeline,
         )
 
     try:
