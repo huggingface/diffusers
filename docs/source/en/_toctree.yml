@@ -488,6 +488,8 @@
         title: AudioLDM 2
       - local: api/pipelines/stable_audio
         title: Stable Audio
+      - local: api/pipelines/longcat_audio_dit
+        title: LongCat-AudioDiT
       title: Audio
     - sections:
       - local: api/pipelines/animatediff
