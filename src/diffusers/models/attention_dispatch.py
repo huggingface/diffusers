@@ -423,7 +423,7 @@ def dispatch_attention_fn(
         **attention_kwargs,
         "_parallel_config": parallel_config,
     }
-    if is_torch_version(">=", "2.5.0"):
+    if _CAN_USE_FLEX_ATTN:
         kwargs["enable_gqa"] = enable_gqa
 
     if _AttentionBackendRegistry._checks_enabled:
