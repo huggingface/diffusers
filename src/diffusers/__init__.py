@@ -457,7 +457,6 @@ else:
             "HeliosPyramidDistilledModularPipeline",
             "HeliosPyramidModularPipeline",
             "HunyuanVideo15Blocks",
-            "HunyuanVideo15Image2VideoBlocks",
             "HunyuanVideo15ModularPipeline",
             "LTXAutoBlocks",
             "LTXModularPipeline",
