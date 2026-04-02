@@ -383,7 +383,7 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline, StableDiffusionLoraLoa
         if prompt is not None and negative_prompt is not None:
             if type(prompt) is not type(negative_prompt):
                 raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f"`negative_prompt` should be the same type as `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
                 )
 
