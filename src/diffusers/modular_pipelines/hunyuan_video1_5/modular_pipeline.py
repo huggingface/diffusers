@@ -32,52 +32,36 @@ class HunyuanVideo15ModularPipeline(
 
     default_blocks_name = "HunyuanVideo15Blocks"
 
+    # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline properties
     @property
-    def vae_spatial_compression_ratio(self):
-        if getattr(self, "vae", None) is not None:
-            return self.vae.spatial_compression_ratio
-        return 16
+    def vae_scale_factor_spatial(self):
+        return self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 16
 
     @property
-    def vae_temporal_compression_ratio(self):
-        if getattr(self, "vae", None) is not None:
-            return self.vae.temporal_compression_ratio
-        return 4
+    def vae_scale_factor_temporal(self):
+        return self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 4
 
     @property
     def num_channels_latents(self):
-        if getattr(self, "vae", None) is not None:
-            return self.vae.config.latent_channels
-        return 32
+        return self.vae.config.latent_channels if getattr(self, "vae", None) else 32
 
     @property
     def target_size(self):
-        if getattr(self, "transformer", None) is not None:
-            return self.transformer.config.target_size
-        return 640
+        return self.transformer.config.target_size if getattr(self, "transformer", None) else 640
 
     @property
     def default_aspect_ratio(self):
         return (16, 9)
 
     @property
-    def default_height(self):
-        from ...pipelines.hunyuan_video1_5.image_processor import HunyuanVideo15ImageProcessor
-        processor = HunyuanVideo15ImageProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
-        h, w = processor.calculate_default_height_width(
-            self.default_aspect_ratio[1], self.default_aspect_ratio[0], self.target_size
-        )
-        return h
+    def vision_num_semantic_tokens(self):
+        return 729
 
     @property
-    def default_width(self):
-        from ...pipelines.hunyuan_video1_5.image_processor import HunyuanVideo15ImageProcessor
-        processor = HunyuanVideo15ImageProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
-        h, w = processor.calculate_default_height_width(
-            self.default_aspect_ratio[1], self.default_aspect_ratio[0], self.target_size
-        )
-        return w
+    def vision_states_dim(self):
+        return self.transformer.config.image_embed_dim if getattr(self, "transformer", None) else 1152
 
+    # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline.__init__
     @property
     def tokenizer_max_length(self):
         return 1000
@@ -86,29 +70,23 @@ class HunyuanVideo15ModularPipeline(
     def tokenizer_2_max_length(self):
         return 256
 
+    # fmt: off
     @property
     def system_message(self):
-        # fmt: off
         return "You are a helpful assistant. Describe the video by detailing the following aspects: \
         1. The main content and theme of the video. \
         2. The color, shape, size, texture, quantity, text, and spatial relationships of the objects. \
         3. Actions, events, behaviors temporal relationships, physical movement changes of the objects. \
         4. background environment, light, style and atmosphere. \
         5. camera angles, movements, and transitions used in the video."
-        # fmt: on
+    # fmt: on
 
     @property
     def prompt_template_encode_start_idx(self):
         return 108
 
     @property
-    def vision_num_semantic_tokens(self):
-        return 729
-
-    @property
-    def vision_states_dim(self):
-        if getattr(self, "transformer", None) is not None:
-            return self.transformer.config.image_embed_dim
-        return 1152
-
-
+    def requires_unconditional_embeds(self):
+        if hasattr(self, "guider") and self.guider is not None:
+            return self.guider._enabled and self.guider.num_conditions > 1
+        return False

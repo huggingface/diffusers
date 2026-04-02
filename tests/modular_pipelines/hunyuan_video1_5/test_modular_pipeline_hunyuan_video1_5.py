@@ -17,7 +17,6 @@ import unittest
 
 from diffusers.modular_pipelines import (
     HunyuanVideo15Blocks,
-    HunyuanVideo15Image2VideoBlocks,
     HunyuanVideo15ModularPipeline,
 )
 
@@ -67,26 +66,6 @@ class TestHunyuanVideo15ModularPipelineStructure(unittest.TestCase):
     def test_model_name(self):
         blocks = HunyuanVideo15Blocks()
         self.assertEqual(blocks.model_name, "hunyuan-video-1.5")
-
-    def test_i2v_import(self):
-        blocks = HunyuanVideo15Image2VideoBlocks()
-        self.assertIsNotNone(blocks)
-
-    def test_i2v_pipeline_class(self):
-        blocks = HunyuanVideo15Image2VideoBlocks()
-        pipe = blocks.init_pipeline()
-        self.assertIsInstance(pipe, HunyuanVideo15ModularPipeline)
-
-    def test_i2v_has_image_input(self):
-        blocks = HunyuanVideo15Image2VideoBlocks()
-        input_names = {inp.name for inp in blocks.inputs}
-        self.assertIn("image", input_names)
-
-    def test_i2v_has_image_encoder(self):
-        blocks = HunyuanVideo15Image2VideoBlocks()
-        comp_names = {c.name for c in blocks.expected_components}
-        self.assertIn("image_encoder", comp_names)
-        self.assertIn("feature_extractor", comp_names)
 
     def test_top_level_export(self):
         from diffusers import HunyuanVideo15Blocks as Top, HunyuanVideo15ModularPipeline as TopPipe

@@ -20,8 +20,8 @@ import torch
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLHunyuanVideo15
+from ...pipelines.hunyuan_video1_5.image_processor import HunyuanVideo15ImageProcessor
 from ...utils import logging
-from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
@@ -38,7 +38,7 @@ class HunyuanVideo15VaeDecoderStep(ModularPipelineBlocks):
             ComponentSpec("vae", AutoencoderKLHunyuanVideo15),
             ComponentSpec(
                 "video_processor",
-                VideoProcessor,
+                HunyuanVideo15ImageProcessor,
                 config=FrozenDict({"vae_scale_factor": 16}),
                 default_creation_method="from_config",
             ),
@@ -65,6 +65,7 @@ class HunyuanVideo15VaeDecoderStep(ModularPipelineBlocks):
             )
         ]
 
+    # Copied from pipeline_hunyuan_video1_5.py lines 823-829
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
