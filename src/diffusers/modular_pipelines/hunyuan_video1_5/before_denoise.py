@@ -270,9 +270,16 @@ class HunyuanVideo15Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
         dtype = block_state.dtype
 
         batch_size = block_state.batch_size * block_state.num_videos_per_prompt
-        height = block_state.height or components.default_height
-        width = block_state.width or components.default_width
         num_frames = block_state.num_frames
+
+        # Resize/crop image to target resolution first (determines latent dims)
+        image = block_state.image
+        from ...pipelines.hunyuan_video1_5.image_processor import HunyuanVideo15ImageProcessor
+        video_processor = HunyuanVideo15ImageProcessor(vae_scale_factor=components.vae_spatial_compression_ratio)
+        height, width = video_processor.calculate_default_height_width(
+            height=image.size[1], width=image.size[0], target_size=components.target_size
+        )
+        image = video_processor.resize(image, height=height, width=width, resize_mode="crop")
 
         num_channels_latents = components.num_channels_latents
         latent_height = height // components.vae_spatial_compression_ratio
@@ -284,15 +291,6 @@ class HunyuanVideo15Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
         else:
             shape = (batch_size, num_channels_latents, latent_num_frames, latent_height, latent_width)
             block_state.latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=dtype)
-
-        # Resize/crop image to target resolution (matching upstream flow)
-        image = block_state.image
-        from ...pipelines.hunyuan_video1_5.image_processor import HunyuanVideo15ImageProcessor
-        video_processor = HunyuanVideo15ImageProcessor(vae_scale_factor=components.vae_spatial_compression_ratio)
-        height, width = video_processor.calculate_default_height_width(
-            height=image.size[1], width=image.size[0], target_size=components.target_size
-        )
-        image = video_processor.resize(image, height=height, width=width, resize_mode="crop")
 
         # Encode image for Siglip embeddings
         image_encoder_dtype = next(components.image_encoder.parameters()).dtype
