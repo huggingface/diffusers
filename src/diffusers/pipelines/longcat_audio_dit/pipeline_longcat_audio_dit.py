@@ -26,7 +26,7 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors.torch import load_file
 from torch.nn.utils.rnn import pad_sequence
-from transformers import PreTrainedTokenizerBase, T5Tokenizer, UMT5Config, UMT5EncoderModel
+from transformers import AutoTokenizer, PreTrainedTokenizerBase, UMT5Config, UMT5EncoderModel
 
 from ...models import LongCatAudioDiTTransformer, LongCatAudioDiTVae
 from ...utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
@@ -105,7 +105,7 @@ def _load_longcat_tokenizer(
     tokenizer_kwargs = {"local_files_only": local_files_only}
     if not isinstance(tokenizer_source, Path) and tokenizer_source == pretrained_model_name_or_path and subfolder:
         tokenizer_kwargs["subfolder"] = subfolder
-    return T5Tokenizer.from_pretrained(tokenizer_source, **tokenizer_kwargs)
+    return AutoTokenizer.from_pretrained(tokenizer_source, **tokenizer_kwargs)
 
 
 def _resolve_longcat_file(
@@ -278,6 +278,10 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
             transformer = transformer.to(dtype=torch_dtype)
             vae = vae.to(dtype=torch_dtype)
 
+        text_encoder.eval()
+        transformer.eval()
+        vae.eval()
+
         pipe = cls(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, transformer=transformer)
         pipe.sample_rate = config.get("sampling_rate", pipe.sample_rate)
         pipe.latent_hop = config.get("latent_hop", pipe.latent_hop)
@@ -322,15 +326,24 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         dtype: torch.dtype,
         generator: torch.Generator | list[torch.Generator] | None = None,
     ) -> torch.Tensor:
+        if isinstance(generator, list):
+            if len(generator) != batch_size:
+                raise ValueError(
+                    f"Expected {batch_size} generators for batch size {batch_size}, but got {len(generator)}."
+                )
+            generators = generator
+        else:
+            generators = [generator] * batch_size
+
         latents = [
             torch.randn(
                 duration,
                 self.latent_dim,
                 device=device,
                 dtype=dtype,
-                generator=generator if isinstance(generator, torch.Generator) else None,
+                generator=generators[idx],
             )
-            for _ in range(batch_size)
+            for idx in range(batch_size)
         ]
         return pad_sequence(latents, padding_value=0.0, batch_first=True)
 
@@ -381,6 +394,12 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         else:
             if isinstance(negative_prompt, str):
                 negative_prompt = [negative_prompt] * batch_size
+            else:
+                negative_prompt = list(negative_prompt)
+                if len(negative_prompt) != batch_size:
+                    raise ValueError(
+                        f"`negative_prompt` must have batch size {batch_size}, but got {len(negative_prompt)} prompts."
+                    )
             neg_text, neg_text_len = self.encode_prompt(negative_prompt, device)
             neg_text_mask = _lens_to_mask(neg_text_len, length=neg_text.shape[1])
 
@@ -399,7 +418,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 attention_mask=mask,
                 latent_cond=latent_cond,
             ).sample
-            if guidance_scale < 1e-5:
+            if guidance_scale <= 1.0:
                 return pred
             null_pred = self.transformer(
                 hidden_states=current_sample,
@@ -409,7 +428,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 attention_mask=mask,
                 latent_cond=latent_cond,
             ).sample
-            return pred + (pred - null_pred) * guidance_scale
+            return null_pred + (pred - null_pred) * guidance_scale
 
         for idx in range(len(timesteps) - 1):
             curr_t = timesteps[idx]

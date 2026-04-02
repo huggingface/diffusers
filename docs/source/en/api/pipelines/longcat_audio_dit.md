@@ -26,34 +26,32 @@ This pipeline was adapted from the LongCat-AudioDiT reference implementation: ht
 ## Usage
 
 ```py
+import soundfile as sf
 import torch
 from diffusers import LongCatAudioDiTPipeline
 
-repo_id = "<longcat-audio-dit-repo-id>"
-tokenizer_path = os.environ["LONGCAT_AUDIO_DIT_TOKENIZER_PATH"]
-
-pipe = LongCatAudioDiTPipeline.from_pretrained(
-    repo_id,
-    tokenizer=tokenizer_path,
+pipeline = LongCatAudioDiTPipeline.from_pretrained(
+    "meituan-longcat/LongCat-AudioDiT-1B",
     torch_dtype=torch.float16,
-    local_files_only=True,
 )
-pipe = pipe.to("cuda")
+pipeline = pipeline.to("cuda")
 
-audio = pipe(
+audio = pipeline(
     prompt="A calm ocean wave ambience with soft wind in the background.",
-    audio_end_in_s=2.0,
+    audio_end_in_s=5.0,
     num_inference_steps=16,
     guidance_scale=4.0,
     output_type="pt",
 ).audios
+
+output = audio[0, 0].float().cpu().numpy()
+sf.write("longcat.wav", output, pipeline.sample_rate)
 ```
 
 ## Tips
 
 - `audio_end_in_s` is the most direct way to control output duration.
 - `output_type="pt"` returns a PyTorch tensor shaped `(batch, channels, samples)`.
-- If your tokenizer path is local-only, pass it explicitly to `from_pretrained(...)`.
 
 ## LongCatAudioDiTPipeline
 
