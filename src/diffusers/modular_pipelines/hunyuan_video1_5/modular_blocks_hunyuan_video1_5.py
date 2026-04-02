@@ -31,6 +31,57 @@ logger = logging.get_logger(__name__)
 
 # auto_docstring
 class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    Denoise block that takes encoded conditions and runs the denoising process.
+
+      Components:
+          transformer (`HunyuanVideo15Transformer3DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          guider (`ClassifierFreeGuidance`)
+
+      Inputs:
+          num_videos_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              TODO: Add description.
+          batch_size (`int`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          height (`int`, *optional*):
+              TODO: Add description.
+          width (`int`, *optional*):
+              TODO: Add description.
+          num_frames (`int`, *optional*, defaults to 121):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask (`Tensor`):
+              TODO: Add description.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_2 (`Tensor`):
+              TODO: Add description.
+          negative_prompt_embeds_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask_2 (`Tensor`):
+              TODO: Add description.
+          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "hunyuan-video-1.5"
     block_classes = [
         HunyuanVideo15TextInputStep,
@@ -51,6 +102,69 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
 
 # auto_docstring
 class HunyuanVideo15Blocks(SequentialPipelineBlocks):
+    """
+    Modular pipeline blocks for HunyuanVideo 1.5 text-to-video.
+
+      Components:
+          text_encoder (`Qwen2_5_VLTextModel`)
+          tokenizer (`Qwen2TokenizerFast`)
+          text_encoder_2 (`T5EncoderModel`)
+          tokenizer_2 (`ByT5Tokenizer`)
+          guider (`ClassifierFreeGuidance`)
+          transformer (`HunyuanVideo15Transformer3DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          vae (`AutoencoderKLHunyuanVideo15`)
+          video_processor (`HunyuanVideo15ImageProcessor`)
+
+      Inputs:
+          prompt (`None`, *optional*):
+              TODO: Add description.
+          negative_prompt (`None`, *optional*):
+              TODO: Add description.
+          prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              TODO: Add description.
+          batch_size (`int`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          height (`int`, *optional*):
+              TODO: Add description.
+          width (`int`, *optional*):
+              TODO: Add description.
+          num_frames (`int`, *optional*, defaults to 121):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          output_type (`str`, *optional*, defaults to np):
+              TODO: Add description.
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+    """
+
     model_name = "hunyuan-video-1.5"
     block_classes = [
         HunyuanVideo15TextEncoderStep,
@@ -70,6 +184,59 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
 
 # auto_docstring
 class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    Denoise block for image-to-video that takes encoded conditions and runs the denoising process.
+
+      Components:
+          transformer (`HunyuanVideo15Transformer3DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          vae (`AutoencoderKLHunyuanVideo15`)
+          video_processor (`HunyuanVideo15ImageProcessor`)
+          image_encoder (`SiglipVisionModel`)
+          feature_extractor (`SiglipImageProcessor`)
+          guider (`ClassifierFreeGuidance`)
+
+      Inputs:
+          num_videos_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              TODO: Add description.
+          batch_size (`int`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          image (`None`):
+              TODO: Add description.
+          num_frames (`int`, *optional*, defaults to 121):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask (`Tensor`):
+              TODO: Add description.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_2 (`Tensor`):
+              TODO: Add description.
+          negative_prompt_embeds_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask_2 (`Tensor`):
+              TODO: Add description.
+          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "hunyuan-video-1.5"
     block_classes = [
         HunyuanVideo15TextInputStep,
@@ -90,6 +257,69 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 
 # auto_docstring
 class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
+    """
+    Modular pipeline blocks for HunyuanVideo 1.5 image-to-video.
+
+      Components:
+          text_encoder (`Qwen2_5_VLTextModel`)
+          tokenizer (`Qwen2TokenizerFast`)
+          text_encoder_2 (`T5EncoderModel`)
+          tokenizer_2 (`ByT5Tokenizer`)
+          guider (`ClassifierFreeGuidance`)
+          transformer (`HunyuanVideo15Transformer3DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          vae (`AutoencoderKLHunyuanVideo15`)
+          video_processor (`HunyuanVideo15ImageProcessor`)
+          image_encoder (`SiglipVisionModel`)
+          feature_extractor (`SiglipImageProcessor`)
+
+      Inputs:
+          prompt (`None`, *optional*):
+              TODO: Add description.
+          negative_prompt (`None`, *optional*):
+              TODO: Add description.
+          prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              TODO: Add description.
+          batch_size (`int`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          image (`None`):
+              TODO: Add description.
+          num_frames (`int`, *optional*, defaults to 121):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          output_type (`str`, *optional*, defaults to np):
+              TODO: Add description.
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+    """
+
     model_name = "hunyuan-video-1.5"
     block_classes = [
         HunyuanVideo15TextEncoderStep,
