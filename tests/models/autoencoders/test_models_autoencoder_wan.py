@@ -17,10 +17,11 @@ import pytest
 import torch
 
 from diffusers import AutoencoderKLWan
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
+from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -35,6 +36,10 @@ class AutoencoderKLWanTesterConfig(BaseModelTesterConfig):
     def output_shape(self):
         return (3, 9, 16, 16)
 
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
     def get_init_dict(self):
         return {
             "base_dim": 3,
@@ -44,26 +49,15 @@ class AutoencoderKLWanTesterConfig(BaseModelTesterConfig):
             "temperal_downsample": [False, True, True],
         }
 
-    def get_dummy_inputs(self, seed=0):
-        torch.manual_seed(seed)
+    def get_dummy_inputs(self):
         batch_size = 2
         num_frames = 9
         num_channels = 3
         sizes = (16, 16)
-        image = torch.randn(batch_size, num_channels, num_frames, *sizes).to(torch_device)
+        image = randn_tensor(
+            (batch_size, num_channels, num_frames, *sizes), generator=self.generator, device=torch_device
+        )
         return {"sample": image}
-
-    # Bridge for AutoencoderTesterMixin which still uses the old interface
-    def prepare_init_args_and_inputs_for_common(self):
-        return self.get_init_dict(), self.get_dummy_inputs()
-
-    def prepare_init_args_and_inputs_for_tiling(self):
-        batch_size = 2
-        num_frames = 9
-        num_channels = 3
-        sizes = (128, 128)
-        image = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
-        return self.get_init_dict(), {"sample": image}
 
 
 class TestAutoencoderKLWan(AutoencoderKLWanTesterConfig, ModelTesterMixin):
@@ -90,5 +84,5 @@ class TestAutoencoderKLWanMemory(AutoencoderKLWanTesterConfig, MemoryTesterMixin
         pass
 
 
-class TestAutoencoderKLWanSlicingTiling(AutoencoderKLWanTesterConfig, AutoencoderTesterMixin):
+class TestAutoencoderKLWanSlicingTiling(AutoencoderKLWanTesterConfig, NewAutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKLWan."""
