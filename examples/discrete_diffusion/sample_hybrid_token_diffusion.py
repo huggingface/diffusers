@@ -51,7 +51,7 @@ def main():
         generator=generator,
         prefix_ids=prefix_ids,
         inject_start_token=args.inject_start_token,
-        return_text=True,
+        output_type="text",
     )
 
     for i, t in enumerate(out.texts or []):
