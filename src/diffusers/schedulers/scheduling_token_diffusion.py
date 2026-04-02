@@ -209,10 +209,13 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         """
         Compute alpha(t) for the configured schedule.
 
-        The returned tensor is expected to be in (0, 1] and monotone decreasing in `t`.
+        The returned tensor is expected to be in (0, 1] and monotone decreasing in `t`. The ``eps`` parameter
+        clamps alpha away from 0 and 1 for numerical stability; the underlying schedule shapes (without eps)
+        match Table 4 of `MD4 <https://arxiv.org/abs/2406.04329>`_ and Appendix E.1 of
+        `MDLM <https://arxiv.org/abs/2406.07524>`_.
         """
         if self.config.alpha_schedule == "log_linear":
-            # alpha(t) = 1 - (1 - eps) * t
+            # alpha(t) = 1 - (1 - eps) * t  [MDLM default; MD4 Table 4 "linear"]
             return 1.0 - (1.0 - self.config.eps) * t
 
         if self.config.alpha_schedule == "linear":
@@ -220,13 +223,13 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             return (1.0 - 2.0 * self.config.eps) * (1.0 - t) + self.config.eps
 
         if self.config.alpha_schedule == "cosine":
-            # alpha_base(t) = 1 - cos(pi/2 * (1 - t))
+            # alpha_base(t) = 1 - cos(pi/2 * (1 - t))  [MD4 Table 4 "cosine"]
             # alpha(t) = (1 - 2*eps) * alpha_base(t) + eps
             base = 1.0 - torch.cos(torch.pi / 2.0 * (1.0 - t))
             return (1.0 - 2.0 * self.config.eps) * base + self.config.eps
 
         if self.config.alpha_schedule == "geometric":
-            # total_noise(t) = sigma_min^(1-t) * sigma_max^t
+            # total_noise(t) = sigma_min^(1-t) * sigma_max^t  [SEDD / MD4 Table 4 "geometric"]
             # alpha(t) = exp(-total_noise(t))
             sigma_min = torch.as_tensor(self.config.sigma_min, device=t.device, dtype=t.dtype)
             sigma_max = torch.as_tensor(self.config.sigma_max, device=t.device, dtype=t.dtype)
