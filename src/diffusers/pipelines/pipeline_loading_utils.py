@@ -999,7 +999,7 @@ def _maybe_raise_warning_for_inpainting(pipeline_class, pretrained_model_name_or
             " checkpoint: https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting instead or adapting your"
             f" checkpoint {pretrained_model_name_or_path} to the format of"
             " https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting. Note that we do not actively maintain"
-            " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
+            f" the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
         )
         deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
 

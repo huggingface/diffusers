@@ -399,7 +399,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 if not (is_pil_image or is_list_of_pil_images or is_list_of_list_of_pil_images):
                     raise ValueError(
                         "`reference_images` has to be of type `PIL.Image.Image` or `list` of `PIL.Image.Image`, or "
-                        "`list` of `list` of `PIL.Image.Image`, but is {type(reference_images)}"
+                        f"`list` of `list` of `PIL.Image.Image`, but is {type(reference_images)}"
                     )
                 if is_list_of_list_of_pil_images and len(reference_images) != 1:
                     raise ValueError(
@@ -474,7 +474,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             raise ValueError(
                 "`reference_images` has to be of type `PIL.Image.Image` or `list` of `PIL.Image.Image`, or "
-                "`list` of `list` of `PIL.Image.Image`, but is {type(reference_images)}"
+                f"`list` of `list` of `PIL.Image.Image`, but is {type(reference_images)}"
             )
 
         if video.shape[0] != len(reference_images):

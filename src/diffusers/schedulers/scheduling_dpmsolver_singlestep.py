@@ -418,13 +418,13 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
         if not self.config.lower_order_final and num_inference_steps % self.config.solver_order != 0:
             logger.warning(
-                "Changing scheduler {self.config} to have `lower_order_final` set to True to handle uneven amount of inference steps. Please make sure to always use an even number of `num_inference steps when using `lower_order_final=False`."
+                f"Changing scheduler {self.config} to have `lower_order_final` set to True to handle uneven amount of inference steps. Please make sure to always use an even number of `num_inference steps when using `lower_order_final=False`."
             )
             self.register_to_config(lower_order_final=True)
 
         if not self.config.lower_order_final and self.config.final_sigmas_type == "zero":
             logger.warning(
-                " `last_sigmas_type='zero'` is not supported for `lower_order_final=False`. Changing scheduler {self.config} to have `lower_order_final` set to True."
+                f" `last_sigmas_type='zero'` is not supported for `lower_order_final=False`. Changing scheduler {self.config} to have `lower_order_final` set to True."
             )
             self.register_to_config(lower_order_final=True)
 
