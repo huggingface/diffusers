@@ -224,7 +224,7 @@ _(Unless otherwise specified, the traces below were obtained with **Flux2**.)_
 
 ### Spotting gaps between launches
 
-Then a reasonable next step is to spot frequent gaps between kernel executions. In the compiled
+A reasonable next step is to spot frequent gaps between kernel executions. In the compiled
 case, we don't spot any on the surface. But if we zoom in, some become apparent.
 
 <table>
@@ -262,13 +262,21 @@ at the call site.
 
 The changes looked reasonable based on our past experience. So, we asked Claude to apply these changes to [`pipeline_flux2_klein.py`](../../src/diffusers/pipelines/flux2/pipeline_flux2_klein.py). We then profiled
 the updated pipeline. It still didn't completely eliminate the gaps as expected so, we fed that back to Claude and
-it spotted something more crucial.
+asked it to analyze what was filling those gaps now.
 
-Under the [`cache_context`](https://github.com/huggingface/diffusers/blob/f2be8bd6b3dc4035bd989dc467f15d86bf3c9c12/src/diffusers/pipelines/flux2/pipeline_flux2_klein.py#L842) manager, there is a call to `_set_context()` upon
+#### Discovering `cache_context` as the real bottleneck
+
+Claude parsed the updated trace and broke down the CPU events in each gap between `transformer_forward` spans. The results were revealing: the dominant cost was no longer tqdm or syncs — it was `diffusers/hooks/hooks.py: _set_context` at **~2.7ms per call**, filled with hundreds of `torch/nn/modules/module.py: named_modules` slices.
+
+Here's what was happening: under the [`cache_context`](https://github.com/huggingface/diffusers/blob/f2be8bd6b3dc4035bd989dc467f15d86bf3c9c12/src/diffusers/pipelines/flux2/pipeline_flux2_klein.py#L842) manager, there is a call to `_set_context()` upon
 enters and exits. It calls `named_modules()` on the entire underlying model (in this case the Flux2 Klein DiT).
-For large models, when they are invoked iteratively like our case, it adds to the latency because it involes traversing hundreds of submodules.
+For large models, when they are invoked iteratively like our case, it adds to the latency because it involves traversing hundreds of submodules. With 8 context switches per iteration (enter/exit for each `cache_context` call), this added up to **21.6ms** of pure Python overhead per denoising iteration.
 
-The fix was to build a list of hooked child registries once on the first call and cache it in `_child_registries_cache`. This way, the subsequent calls would return the cached list directly without
+The first round of fixes (tqdm, `_unpack_latents_with_ids`) were real issues, but they were masking this larger one. Only after removing them did the `_set_context` overhead become the clear dominant cost in the trace.
+
+#### The fix — caching child registries
+
+The module tree and hook registrations don't change during inference, so the `named_modules()` walk produces the same result every time. The fix was to build a list of hooked child registries once on the first call and cache it in `_child_registries_cache`. This way, the subsequent calls would return the cached list directly without
 any traversal. With the fix applied, the improvements were visible.
 
 |                        | Before                       | After                       |
@@ -276,6 +284,8 @@ any traversal. With the fix applied, the improvements were visible.
 | `_set_context` total   | 21.6ms (8 calls)             | 0.0ms (8 calls)             |
 | `cache_context` total  | 21.7ms                       | 0.1ms                       |
 | CPU gaps               | 5,523us / 8,007us / 5,508us  | 158us / 2,777us / 136us     |
+
+The remaining 2.7ms gap (between denoising steps) is the scheduler step — actual tensor arithmetic (`sub`, `mul`, `add`), not overhead. The within-step gaps (136–158us) are minimal Python dispatch cost.
 
 > [!NOTE]
 > The fixes mentioned above and below are available in [this PR](https://github.com/huggingface/diffusers/pull/13356).
