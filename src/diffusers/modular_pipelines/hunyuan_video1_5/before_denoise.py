@@ -245,9 +245,11 @@ class HunyuanVideo15Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
+        from transformers import SiglipImageProcessor, SiglipVisionModel
+
         from ...models import AutoencoderKLHunyuanVideo15
         from ...pipelines.hunyuan_video1_5.image_processor import HunyuanVideo15ImageProcessor
-        from transformers import SiglipVisionModel, SiglipImageProcessor
+
         return [
             ComponentSpec("vae", AutoencoderKLHunyuanVideo15),
             ComponentSpec(

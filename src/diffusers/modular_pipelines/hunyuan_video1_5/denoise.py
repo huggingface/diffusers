@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any
 
 import torch
 
@@ -115,7 +114,9 @@ class HunyuanVideo15LoopDenoiser(ModularPipelineBlocks):
 
         # Step 1: Collect model inputs
         guider_inputs = {
-            input_name: tuple(getattr(block_state, v) for v in value) if isinstance(value, tuple) else getattr(block_state, value)
+            input_name: tuple(getattr(block_state, v) for v in value)
+            if isinstance(value, tuple)
+            else getattr(block_state, value)
             for input_name, value in self._guider_input_fields.items()
         }
 
@@ -129,9 +130,7 @@ class HunyuanVideo15LoopDenoiser(ModularPipelineBlocks):
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
 
-            cond_kwargs = {
-                input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()
-            }
+            cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
             context_name = getattr(guider_state_batch, components.guider._identifier_key)
             with components.transformer.cache_context(context_name):
@@ -306,7 +305,9 @@ class HunyuanVideo15Image2VideoLoopDenoiser(ModularPipelineBlocks):
             timestep_r = None
 
         guider_inputs = {
-            input_name: tuple(getattr(block_state, v) for v in value) if isinstance(value, tuple) else getattr(block_state, value)
+            input_name: tuple(getattr(block_state, v) for v in value)
+            if isinstance(value, tuple)
+            else getattr(block_state, value)
             for input_name, value in self._guider_input_fields.items()
         }
 
@@ -316,9 +317,7 @@ class HunyuanVideo15Image2VideoLoopDenoiser(ModularPipelineBlocks):
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
 
-            cond_kwargs = {
-                input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()
-            }
+            cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
             context_name = getattr(guider_state_batch, components.guider._identifier_key)
             with components.transformer.cache_context(context_name):

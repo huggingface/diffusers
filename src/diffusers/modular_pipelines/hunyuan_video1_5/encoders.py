@@ -226,12 +226,20 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
             )
 
         _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1).view(batch_size * num_videos_per_prompt, seq_len, -1)
-        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_videos_per_prompt, 1).view(batch_size * num_videos_per_prompt, seq_len)
+        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1).view(
+            batch_size * num_videos_per_prompt, seq_len, -1
+        )
+        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_videos_per_prompt, 1).view(
+            batch_size * num_videos_per_prompt, seq_len
+        )
 
         _, seq_len_2, _ = prompt_embeds_2.shape
-        prompt_embeds_2 = prompt_embeds_2.repeat(1, num_videos_per_prompt, 1).view(batch_size * num_videos_per_prompt, seq_len_2, -1)
-        prompt_embeds_mask_2 = prompt_embeds_mask_2.repeat(1, num_videos_per_prompt, 1).view(batch_size * num_videos_per_prompt, seq_len_2)
+        prompt_embeds_2 = prompt_embeds_2.repeat(1, num_videos_per_prompt, 1).view(
+            batch_size * num_videos_per_prompt, seq_len_2, -1
+        )
+        prompt_embeds_mask_2 = prompt_embeds_mask_2.repeat(1, num_videos_per_prompt, 1).view(
+            batch_size * num_videos_per_prompt, seq_len_2
+        )
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds_mask = prompt_embeds_mask.to(dtype=dtype, device=device)

@@ -75,7 +75,9 @@ class HunyuanVideo15VaeDecoderStep(ModularPipelineBlocks):
         else:
             latents = block_state.latents.to(components.vae.dtype) / components.vae.config.scaling_factor
             video = components.vae.decode(latents, return_dict=False)[0]
-            block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
+            block_state.videos = components.video_processor.postprocess_video(
+                video, output_type=block_state.output_type
+            )
 
         self.set_block_state(state, block_state)
         return components, state
