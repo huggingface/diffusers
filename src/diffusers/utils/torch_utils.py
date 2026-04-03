@@ -347,7 +347,17 @@ def lru_cache_unless_export(maxsize=128, typed=False):
 
         @functools.wraps(fn)
         def inner_wrapper(*args: P.args, **kwargs: P.kwargs):
-            if torch.compiler.is_exporting():
+            compiler = getattr(torch, "compiler", None)
+            is_exporting = bool(compiler and hasattr(compiler, "is_exporting") and compiler.is_exporting())
+            is_compiling = bool(compiler and hasattr(compiler, "is_compiling") and compiler.is_compiling())
+
+            # Fallback for older builds where compiler.is_compiling is unavailable.
+            if not is_compiling:
+                dynamo = getattr(torch, "_dynamo", None)
+                if dynamo is not None and hasattr(dynamo, "is_compiling"):
+                    is_compiling = dynamo.is_compiling()
+
+            if is_exporting or is_compiling:
                 return fn(*args, **kwargs)
             return cached(*args, **kwargs)
 
