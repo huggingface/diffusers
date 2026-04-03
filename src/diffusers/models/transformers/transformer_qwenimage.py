@@ -832,6 +832,13 @@ class QwenImageTransformer2DModel(
         self.gradient_checkpointing = False
         self.zero_cond_t = zero_cond_t
 
+        # Cache for modulate_index tensor to avoid rebuilding it on every forward pass.
+        # The tensor is determined solely by img_shapes (fixed during inference), so it
+        # only needs to be computed once per unique (img_shapes, device) combination.
+        # Without caching, every forward call triggers a Python list comprehension +
+        # torch.tensor() construction which is visible as CPU overhead in profiling traces.
+        self._modulate_index_cache: dict = {}
+
     @apply_lora_scale("attention_kwargs")
     def forward(
         self,
@@ -898,11 +905,19 @@ class QwenImageTransformer2DModel(
 
         if self.zero_cond_t:
             timestep = torch.cat([timestep, timestep * 0], dim=0)
-            modulate_index = torch.tensor(
-                [[0] * prod(sample[0]) + [1] * sum([prod(s) for s in sample[1:]]) for sample in img_shapes],
-                device=timestep.device,
-                dtype=torch.int,
-            )
+            # Cache modulate_index to avoid rebuilding it on every forward pass.
+            # img_shapes is fixed during inference (same across all denoising steps),
+            # so we can build the tensor once and reuse it, eliminating the CPU overhead
+            # and implicit sync from torch.tensor() on each step.
+            device = timestep.device
+            cache_key = (tuple(tuple(s) for s in img_shapes), device)
+            if cache_key not in self._modulate_index_cache:
+                self._modulate_index_cache[cache_key] = torch.tensor(
+                    [[0] * prod(sample[0]) + [1] * sum([prod(s) for s in sample[1:]]) for sample in img_shapes],
+                    device=device,
+                    dtype=torch.int,
+                )
+            modulate_index = self._modulate_index_cache[cache_key]
         else:
             modulate_index = None
 
