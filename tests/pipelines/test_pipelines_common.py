@@ -1443,9 +1443,23 @@ class PipelineTesterMixin:
                         param.data = param.data.to(torch_device).to(torch.float32)
                     else:
                         param.data = param.data.to(torch_device).to(torch.float16)
+                for name, buf in module.named_buffers():
+                    if not buf.is_floating_point():
+                        buf.data = buf.data.to(torch_device)
+                    elif any(
+                        module_to_keep_in_fp32 in name.split(".")
+                        for module_to_keep_in_fp32 in module._keep_in_fp32_modules
+                    ):
+                        buf.data = buf.data.to(torch_device).to(torch.float32)
+                    else:
+                        buf.data = buf.data.to(torch_device).to(torch.float16)
 
             elif hasattr(module, "half"):
                 components[name] = module.to(torch_device).half()
+
+        for key, component in components.items():
+            if hasattr(component, "eval"):
+                component.eval()
 
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
