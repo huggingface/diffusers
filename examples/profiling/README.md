@@ -311,7 +311,7 @@ The UniPC scheduler (used in Wan) also had two more sync-causing patterns in `mu
 
 1. **`torch.tensor(rks, device=device)`** where `rks` is a list containing GPU scalar tensors. `torch.tensor()` pulls each GPU value back to CPU to construct a new tensor, triggering a DtoH sync. 
 
-**Fix**: Replace with `torch.stack(rks)` which concatenates GPU tensors directly on the GPU — no sync needed. The appended Python float `1.0` was also changed to `torch.ones((), device=device)` so the list is homogeneously GPU tensors.
+**Fix**: Replace with `torch.stack(rks)` which concatenates GPU tensors directly on the GPU — no sync needed. The appended Python float `1.0` was also changed to `torch.ones((), device=device)` so the list contains only GPU tensors.
 
 2. **`torch.tensor([0.5], dtype=x.dtype, device=device)`** creates a small constant tensor from a CPU Python float. This triggers a `cudaMemcpyAsync` + `cudaStreamSynchronize` to copy the value from CPU to GPU. The sync itself is normally fast (~6us), but it forces the CPU to wait until all pending GPU kernels finish before proceeding. Under `torch.compile`, the GPU has many queued kernels, so this tiny sync balloons to 2.3s. 
 
