@@ -48,8 +48,8 @@ class LTXLoopBeforeDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("dtype", required=True, type_hint=torch.dtype),
+            InputParam.template("latents", required=True),
+            InputParam.template("dtype", required=True),
         ]
 
     @torch.no_grad()
@@ -98,11 +98,11 @@ class LTXLoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         inputs = [
-            InputParam("attention_kwargs"),
-            InputParam("num_inference_steps", required=True, type_hint=int),
+            InputParam.template("attention_kwargs"),
+            InputParam.template("num_inference_steps", required=True),
             InputParam("rope_interpolation_scale", type_hint=tuple),
-            InputParam("height", type_hint=int),
-            InputParam("width", type_hint=int),
+            InputParam.template("height"),
+            InputParam.template("width"),
             InputParam("num_frames", type_hint=int),
         ]
         guider_input_names = []
@@ -210,8 +210,8 @@ class LTXDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     @property
     def loop_inputs(self) -> list[InputParam]:
         return [
-            InputParam("timesteps", required=True, type_hint=torch.Tensor),
-            InputParam("num_inference_steps", required=True, type_hint=int),
+            InputParam.template("timesteps", required=True),
+            InputParam.template("num_inference_steps", required=True),
         ]
 
     @torch.no_grad()
@@ -273,9 +273,9 @@ class LTXImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
+            InputParam.template("latents", required=True),
             InputParam("conditioning_mask", required=True, type_hint=torch.Tensor),
-            InputParam("dtype", required=True, type_hint=torch.dtype),
+            InputParam.template("dtype", required=True),
         ]
 
     @torch.no_grad()
@@ -329,11 +329,11 @@ class LTXImage2VideoLoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         inputs = [
-            InputParam("attention_kwargs"),
-            InputParam("num_inference_steps", required=True, type_hint=int),
+            InputParam.template("attention_kwargs"),
+            InputParam.template("num_inference_steps", required=True),
             InputParam("rope_interpolation_scale", type_hint=tuple),
-            InputParam("height", type_hint=int),
-            InputParam("width", type_hint=int),
+            InputParam.template("height"),
+            InputParam.template("width"),
             InputParam("num_frames", type_hint=int),
         ]
         guider_input_names = []
@@ -406,8 +406,8 @@ class LTXImage2VideoLoopAfterDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("height", type_hint=int),
-            InputParam("width", type_hint=int),
+            InputParam.template("height"),
+            InputParam.template("width"),
             InputParam("num_frames", type_hint=int),
         ]
 

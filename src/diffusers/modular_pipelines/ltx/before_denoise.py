@@ -93,12 +93,12 @@ class LTXTextInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("num_videos_per_prompt", default=1),
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam("guidance_scale", type_hint=float, default=3.0),
-            InputParam("prompt_embeds", required=True, type_hint=torch.Tensor),
-            InputParam("prompt_attention_mask", type_hint=torch.Tensor),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor),
-            InputParam("negative_prompt_attention_mask", type_hint=torch.Tensor),
+            InputParam.template("prompt_embeds", required=True),
+            InputParam.template("prompt_embeds_mask", name="prompt_attention_mask"),
+            InputParam.template("negative_prompt_embeds"),
+            InputParam.template("negative_prompt_embeds_mask", name="negative_prompt_attention_mask"),
         ]
 
     @property
@@ -161,11 +161,11 @@ class LTXSetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("num_inference_steps", default=50),
-            InputParam("timesteps"),
-            InputParam("sigmas"),
-            InputParam("height", type_hint=int, default=512),
-            InputParam("width", type_hint=int, default=704),
+            InputParam.template("num_inference_steps"),
+            InputParam.template("timesteps"),
+            InputParam.template("sigmas"),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
             InputParam("num_frames", type_hint=int, default=161),
             InputParam("frame_rate", type_hint=int, default=25),
         ]
@@ -244,20 +244,20 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("height", type_hint=int, default=512),
-            InputParam("width", type_hint=int, default=704),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
             InputParam("num_frames", type_hint=int, default=161),
-            InputParam("latents", type_hint=torch.Tensor | None),
-            InputParam("num_videos_per_prompt", type_hint=int, default=1),
-            InputParam("generator"),
-            InputParam("batch_size", required=True, type_hint=int),
-            InputParam("dtype", type_hint=torch.dtype),
+            InputParam.template("latents"),
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
+            InputParam.template("generator"),
+            InputParam.template("batch_size", required=True),
+            InputParam.template("dtype"),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("latents", type_hint=torch.Tensor),
+            OutputParam.template("latents"),
         ]
 
     @torch.no_grad()
@@ -321,21 +321,21 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("image", required=True),
-            InputParam("height", type_hint=int, default=512),
-            InputParam("width", type_hint=int, default=704),
+            InputParam.template("image"),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
             InputParam("num_frames", type_hint=int, default=161),
-            InputParam("latents", type_hint=torch.Tensor | None),
-            InputParam("num_videos_per_prompt", type_hint=int, default=1),
-            InputParam("generator"),
-            InputParam("batch_size", required=True, type_hint=int),
-            InputParam("dtype", type_hint=torch.dtype),
+            InputParam.template("latents"),
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
+            InputParam.template("generator"),
+            InputParam.template("batch_size", required=True),
+            InputParam.template("dtype"),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("latents", type_hint=torch.Tensor),
+            OutputParam.template("latents"),
             OutputParam("conditioning_mask", type_hint=torch.Tensor),
         ]
 

@@ -40,38 +40,38 @@ class LTXCoreDenoiseStep(SequentialPipelineBlocks):
           guider (`ClassifierFreeGuidance`)
 
       Inputs:
-          num_videos_per_prompt (`None`, *optional*, defaults to 1):
-              TODO: Add description.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           guidance_scale (`float`, *optional*, defaults to 3.0):
               TODO: Add description.
           prompt_embeds (`Tensor`):
-              TODO: Add description.
-          prompt_attention_mask (`Tensor`, *optional*):
-              TODO: Add description.
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_attention_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_attention_mask (`Tensor`, *optional*):
-              TODO: Add description.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              TODO: Add description.
-          timesteps (`None`, *optional*):
-              TODO: Add description.
-          sigmas (`None`, *optional*):
-              TODO: Add description.
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          timesteps (`Tensor`, *optional*):
+              Timesteps for the denoising process.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
           height (`int`, *optional*, defaults to 512):
-              TODO: Add description.
+              The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
-              TODO: Add description.
+              The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 161):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
-          latents (`Tensor | NoneType`, *optional*):
-              TODO: Add description.
-          generator (`None`, *optional*):
-              TODO: Add description.
-          attention_kwargs (`None`, *optional*):
-              TODO: Add description.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):
@@ -108,40 +108,40 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
           guider (`ClassifierFreeGuidance`)
 
       Inputs:
-          num_videos_per_prompt (`None`, *optional*, defaults to 1):
-              TODO: Add description.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           guidance_scale (`float`, *optional*, defaults to 3.0):
               TODO: Add description.
           prompt_embeds (`Tensor`):
-              TODO: Add description.
-          prompt_attention_mask (`Tensor`, *optional*):
-              TODO: Add description.
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_attention_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_attention_mask (`Tensor`, *optional*):
-              TODO: Add description.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              TODO: Add description.
-          timesteps (`None`, *optional*):
-              TODO: Add description.
-          sigmas (`None`, *optional*):
-              TODO: Add description.
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          timesteps (`Tensor`, *optional*):
+              Timesteps for the denoising process.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
           height (`int`, *optional*, defaults to 512):
-              TODO: Add description.
+              The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
-              TODO: Add description.
+              The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 161):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
-          image (`None`):
-              TODO: Add description.
-          latents (`Tensor | NoneType`, *optional*):
-              TODO: Add description.
-          generator (`None`, *optional*):
-              TODO: Add description.
-          attention_kwargs (`None`, *optional*):
-              TODO: Add description.
+          image (`Image | list`):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):
@@ -181,46 +181,46 @@ class LTXBlocks(SequentialPipelineBlocks):
           video_processor (`VideoProcessor`)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
-          negative_prompt (`None`, *optional*):
-              TODO: Add description.
-          prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
-          prompt_attention_mask (`Tensor`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_attention_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_attention_mask (`Tensor`, *optional*):
-              TODO: Add description.
-          max_sequence_length (`None`, *optional*, defaults to 128):
-              TODO: Add description.
-          num_videos_per_prompt (`None`, *optional*, defaults to 1):
-              TODO: Add description.
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+          max_sequence_length (`int`, *optional*, defaults to 128):
+              Maximum sequence length for prompt encoding.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           guidance_scale (`float`, *optional*, defaults to 3.0):
               TODO: Add description.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              TODO: Add description.
-          timesteps (`None`, *optional*):
-              TODO: Add description.
-          sigmas (`None`, *optional*):
-              TODO: Add description.
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          timesteps (`Tensor`, *optional*):
+              Timesteps for the denoising process.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
           height (`int`, *optional*, defaults to 512):
-              TODO: Add description.
+              The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
-              TODO: Add description.
+              The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 161):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
-          latents (`Tensor | NoneType`, *optional*):
-              TODO: Add description.
-          generator (`None`, *optional*):
-              TODO: Add description.
-          attention_kwargs (`None`, *optional*):
-              TODO: Add description.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):
-              TODO: Add description.
+              Output format: 'pil', 'np', 'pt'.
           decode_timestep (`None`, *optional*, defaults to 0.0):
               TODO: Add description.
           decode_noise_scale (`None`, *optional*):
@@ -263,48 +263,48 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
           video_processor (`VideoProcessor`)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
-          negative_prompt (`None`, *optional*):
-              TODO: Add description.
-          prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
-          prompt_attention_mask (`Tensor`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_attention_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_attention_mask (`Tensor`, *optional*):
-              TODO: Add description.
-          max_sequence_length (`None`, *optional*, defaults to 128):
-              TODO: Add description.
-          num_videos_per_prompt (`None`, *optional*, defaults to 1):
-              TODO: Add description.
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+          max_sequence_length (`int`, *optional*, defaults to 128):
+              Maximum sequence length for prompt encoding.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           guidance_scale (`float`, *optional*, defaults to 3.0):
               TODO: Add description.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              TODO: Add description.
-          timesteps (`None`, *optional*):
-              TODO: Add description.
-          sigmas (`None`, *optional*):
-              TODO: Add description.
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          timesteps (`Tensor`, *optional*):
+              Timesteps for the denoising process.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
           height (`int`, *optional*, defaults to 512):
-              TODO: Add description.
+              The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 704):
-              TODO: Add description.
+              The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 161):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
-          image (`None`):
-              TODO: Add description.
-          latents (`Tensor | NoneType`, *optional*):
-              TODO: Add description.
-          generator (`None`, *optional*):
-              TODO: Add description.
-          attention_kwargs (`None`, *optional*):
-              TODO: Add description.
+          image (`Image | list`):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):
-              TODO: Add description.
+              Output format: 'pil', 'np', 'pt'.
           decode_timestep (`None`, *optional*, defaults to 0.0):
               TODO: Add description.
           decode_noise_scale (`None`, *optional*):

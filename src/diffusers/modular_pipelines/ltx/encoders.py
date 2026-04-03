@@ -49,42 +49,22 @@ class LTXTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("prompt"),
-            InputParam("negative_prompt"),
-            InputParam("prompt_embeds", type_hint=torch.Tensor),
-            InputParam("prompt_attention_mask", type_hint=torch.Tensor),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor),
-            InputParam("negative_prompt_attention_mask", type_hint=torch.Tensor),
-            InputParam("max_sequence_length", default=128),
+            InputParam.template("prompt"),
+            InputParam.template("negative_prompt"),
+            InputParam.template("prompt_embeds"),
+            InputParam.template("prompt_embeds_mask", name="prompt_attention_mask"),
+            InputParam.template("negative_prompt_embeds"),
+            InputParam.template("negative_prompt_embeds_mask", name="negative_prompt_attention_mask"),
+            InputParam.template("max_sequence_length", default=128),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam(
-                "prompt_embeds",
-                type_hint=torch.Tensor,
-                kwargs_type="denoiser_input_fields",
-                description="text embeddings used to guide the video generation",
-            ),
-            OutputParam(
-                "prompt_attention_mask",
-                type_hint=torch.Tensor,
-                kwargs_type="denoiser_input_fields",
-                description="attention mask for text embeddings",
-            ),
-            OutputParam(
-                "negative_prompt_embeds",
-                type_hint=torch.Tensor,
-                kwargs_type="denoiser_input_fields",
-                description="negative text embeddings",
-            ),
-            OutputParam(
-                "negative_prompt_attention_mask",
-                type_hint=torch.Tensor,
-                kwargs_type="denoiser_input_fields",
-                description="attention mask for negative text embeddings",
-            ),
+            OutputParam.template("prompt_embeds"),
+            OutputParam.template("prompt_embeds_mask", name="prompt_attention_mask"),
+            OutputParam.template("negative_prompt_embeds"),
+            OutputParam.template("negative_prompt_embeds_mask", name="negative_prompt_attention_mask"),
         ]
 
     @staticmethod

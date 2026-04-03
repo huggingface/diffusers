@@ -14,8 +14,6 @@
 
 from typing import Any
 
-import numpy as np
-import PIL
 import torch
 
 from ...configuration_utils import FrozenDict
@@ -53,27 +51,21 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("output_type", default="np", type_hint=str),
-            InputParam("height", type_hint=int, default=512),
-            InputParam("width", type_hint=int, default=704),
+            InputParam.template("latents", required=True),
+            InputParam.template("output_type", default="np"),
+            InputParam.template("height", default=512),
+            InputParam.template("width", default=704),
             InputParam("num_frames", type_hint=int, default=161),
             InputParam("decode_timestep", default=0.0),
             InputParam("decode_noise_scale", default=None),
-            InputParam("generator"),
-            InputParam("batch_size", type_hint=int, default=1),
-            InputParam("dtype", required=True, type_hint=torch.dtype),
+            InputParam.template("generator"),
+            InputParam.template("batch_size"),
+            InputParam.template("dtype", required=True),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                "videos",
-                type_hint=list[list[PIL.Image.Image]] | list[torch.Tensor] | list[np.ndarray],
-                description="The generated videos",
-            )
-        ]
+        return [OutputParam.template("videos")]
 
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
