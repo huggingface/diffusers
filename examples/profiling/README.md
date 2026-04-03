@@ -241,7 +241,7 @@ case, we don't spot any on the surface. But if we zoom in, some become apparent.
 </table>
 
 So, we provided the profile trace file (with compilation) to Claude, asked it to find the instances of
-"cudaStreamSynchronize" and "cudaDeviceSynchronize", and to come up with some potential fixes.
+`cudaStreamSynchronize` and `cudaDeviceSynchronize`, and to come up with some potential fixes.
 Claude came back with the following:
 
 ```
