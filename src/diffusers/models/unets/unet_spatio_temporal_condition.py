@@ -49,7 +49,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
         block_out_channels (`tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         addition_time_embed_dim: (`int`, defaults to 256):
-            Dimension to to encode the additional time ids.
+            Dimension to encode the additional time ids.
         projection_class_embeddings_input_dim (`int`, defaults to 768):
             The dimension of the projection of encoded `added_time_ids`.
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
