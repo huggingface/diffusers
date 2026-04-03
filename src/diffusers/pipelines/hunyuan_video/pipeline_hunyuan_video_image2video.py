@@ -367,12 +367,12 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                 batch_indices = torch.cat((batch_indices, torch.tensor([0], device=batch_indices.device)))
 
             # Get the last <|end_header_id|> position per batch, then +1 to get the position after it
-            last_double_return_token_indices = end_header_indices.reshape(text_input_ids.shape[0], -1)[:, -1] + 1
+            assistant_start_indices = end_header_indices.reshape(text_input_ids.shape[0], -1)[:, -1] + 1
             batch_indices = batch_indices.reshape(text_input_ids.shape[0], -1)[:, -1]
-            assistant_crop_start = last_double_return_token_indices - 1 + image_emb_len - 4
-            assistant_crop_end = last_double_return_token_indices - 1 + image_emb_len
-            attention_mask_assistant_crop_start = last_double_return_token_indices - 4
-            attention_mask_assistant_crop_end = last_double_return_token_indices
+            assistant_crop_start = assistant_start_indices - 1 + image_emb_len - 4
+            assistant_crop_end = assistant_start_indices - 1 + image_emb_len
+            attention_mask_assistant_crop_start = assistant_start_indices - 4
+            attention_mask_assistant_crop_end = assistant_start_indices
 
             prompt_embed_list = []
             prompt_attention_mask_list = []
