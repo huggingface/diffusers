@@ -31,6 +31,53 @@ logger = logging.get_logger(__name__)
 
 # auto_docstring
 class LTXCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    Denoise block that takes encoded conditions and runs the denoising process.
+
+      Components:
+          transformer (`LTXVideoTransformer3DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          guider (`ClassifierFreeGuidance`)
+
+      Inputs:
+          num_videos_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          guidance_scale (`float`, *optional*, defaults to 3.0):
+              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              TODO: Add description.
+          prompt_attention_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_attention_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          timesteps (`None`, *optional*):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          height (`int`, *optional*, defaults to 512):
+              TODO: Add description.
+          width (`int`, *optional*, defaults to 704):
+              TODO: Add description.
+          num_frames (`int`, *optional*, defaults to 161):
+              TODO: Add description.
+          frame_rate (`int`, *optional*, defaults to 25):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "ltx"
     block_classes = [
         LTXTextInputStep,
@@ -51,6 +98,56 @@ class LTXCoreDenoiseStep(SequentialPipelineBlocks):
 
 # auto_docstring
 class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    Denoise block for image-to-video that takes encoded conditions and an image, and runs the denoising process.
+
+      Components:
+          transformer (`LTXVideoTransformer3DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          vae (`AutoencoderKLLTXVideo`)
+          guider (`ClassifierFreeGuidance`)
+
+      Inputs:
+          num_videos_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          guidance_scale (`float`, *optional*, defaults to 3.0):
+              TODO: Add description.
+          prompt_embeds (`Tensor`):
+              TODO: Add description.
+          prompt_attention_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_attention_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          timesteps (`None`, *optional*):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          height (`int`, *optional*, defaults to 512):
+              TODO: Add description.
+          width (`int`, *optional*, defaults to 704):
+              TODO: Add description.
+          num_frames (`int`, *optional*, defaults to 161):
+              TODO: Add description.
+          frame_rate (`int`, *optional*, defaults to 25):
+              TODO: Add description.
+          image (`None`):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
     model_name = "ltx"
     block_classes = [
         LTXTextInputStep,
@@ -71,6 +168,69 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 
 # auto_docstring
 class LTXBlocks(SequentialPipelineBlocks):
+    """
+    Modular pipeline blocks for LTX Video text-to-video.
+
+      Components:
+          text_encoder (`T5EncoderModel`)
+          tokenizer (`T5TokenizerFast`)
+          guider (`ClassifierFreeGuidance`)
+          transformer (`LTXVideoTransformer3DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          vae (`AutoencoderKLLTXVideo`)
+          video_processor (`VideoProcessor`)
+
+      Inputs:
+          prompt (`None`, *optional*):
+              TODO: Add description.
+          negative_prompt (`None`, *optional*):
+              TODO: Add description.
+          prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_attention_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_attention_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          max_sequence_length (`None`, *optional*, defaults to 128):
+              TODO: Add description.
+          num_videos_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          guidance_scale (`float`, *optional*, defaults to 3.0):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          timesteps (`None`, *optional*):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          height (`int`, *optional*, defaults to 512):
+              TODO: Add description.
+          width (`int`, *optional*, defaults to 704):
+              TODO: Add description.
+          num_frames (`int`, *optional*, defaults to 161):
+              TODO: Add description.
+          frame_rate (`int`, *optional*, defaults to 25):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          output_type (`str`, *optional*, defaults to np):
+              TODO: Add description.
+          decode_timestep (`None`, *optional*, defaults to 0.0):
+              TODO: Add description.
+          decode_noise_scale (`None`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+    """
+
     model_name = "ltx"
     block_classes = [
         LTXTextEncoderStep,
@@ -90,6 +250,71 @@ class LTXBlocks(SequentialPipelineBlocks):
 
 # auto_docstring
 class LTXImage2VideoBlocks(SequentialPipelineBlocks):
+    """
+    Modular pipeline blocks for LTX Video image-to-video.
+
+      Components:
+          text_encoder (`T5EncoderModel`)
+          tokenizer (`T5TokenizerFast`)
+          guider (`ClassifierFreeGuidance`)
+          transformer (`LTXVideoTransformer3DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          vae (`AutoencoderKLLTXVideo`)
+          video_processor (`VideoProcessor`)
+
+      Inputs:
+          prompt (`None`, *optional*):
+              TODO: Add description.
+          negative_prompt (`None`, *optional*):
+              TODO: Add description.
+          prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_attention_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_attention_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          max_sequence_length (`None`, *optional*, defaults to 128):
+              TODO: Add description.
+          num_videos_per_prompt (`None`, *optional*, defaults to 1):
+              TODO: Add description.
+          guidance_scale (`float`, *optional*, defaults to 3.0):
+              TODO: Add description.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              TODO: Add description.
+          timesteps (`None`, *optional*):
+              TODO: Add description.
+          sigmas (`None`, *optional*):
+              TODO: Add description.
+          height (`int`, *optional*, defaults to 512):
+              TODO: Add description.
+          width (`int`, *optional*, defaults to 704):
+              TODO: Add description.
+          num_frames (`int`, *optional*, defaults to 161):
+              TODO: Add description.
+          frame_rate (`int`, *optional*, defaults to 25):
+              TODO: Add description.
+          image (`None`):
+              TODO: Add description.
+          latents (`Tensor | NoneType`, *optional*):
+              TODO: Add description.
+          generator (`None`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`None`, *optional*):
+              TODO: Add description.
+          output_type (`str`, *optional*, defaults to np):
+              TODO: Add description.
+          decode_timestep (`None`, *optional*, defaults to 0.0):
+              TODO: Add description.
+          decode_noise_scale (`None`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+    """
+
     model_name = "ltx"
     block_classes = [
         LTXTextEncoderStep,
