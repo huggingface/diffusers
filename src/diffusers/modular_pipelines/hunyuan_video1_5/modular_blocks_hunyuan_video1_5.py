@@ -40,28 +40,29 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
           guider (`ClassifierFreeGuidance`)
 
       Inputs:
-          num_videos_per_prompt (`None`, *optional*, defaults to 1):
-              TODO: Add description.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           prompt_embeds (`Tensor`):
-              TODO: Add description.
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
           batch_size (`int`, *optional*):
-              TODO: Add description.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              TODO: Add description.
-          sigmas (`None`, *optional*):
-              TODO: Add description.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
+              generated in input step.
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
           height (`int`, *optional*):
-              TODO: Add description.
+              The height in pixels of the generated image.
           width (`int`, *optional*):
-              TODO: Add description.
+              The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 121):
               TODO: Add description.
-          latents (`Tensor | NoneType`, *optional*):
-              TODO: Add description.
-          generator (`None`, *optional*):
-              TODO: Add description.
-          attention_kwargs (`None`, *optional*):
-              TODO: Add description.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
           negative_prompt_embeds (`Tensor`, *optional*):
               TODO: Add description.
           prompt_embeds_mask (`Tensor`):
@@ -117,18 +118,18 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
           video_processor (`HunyuanVideo15ImageProcessor`)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
-          negative_prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`, *optional*):
+              The prompt or prompts to guide image generation.
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
           prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
           prompt_embeds_mask (`Tensor`, *optional*):
-              TODO: Add description.
+              mask for the text embeddings. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_embeds_mask (`Tensor`, *optional*):
-              TODO: Add description.
+              mask for the negative text embeddings. Can be generated from text_encoder step.
           prompt_embeds_2 (`Tensor`, *optional*):
               TODO: Add description.
           prompt_embeds_mask_2 (`Tensor`, *optional*):
@@ -138,27 +139,28 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
           negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
               TODO: Add description.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              TODO: Add description.
+              The number of images to generate per prompt.
           batch_size (`int`, *optional*):
-              TODO: Add description.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              TODO: Add description.
-          sigmas (`None`, *optional*):
-              TODO: Add description.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
+              generated in input step.
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
           height (`int`, *optional*):
-              TODO: Add description.
+              The height in pixels of the generated image.
           width (`int`, *optional*):
-              TODO: Add description.
+              The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 121):
               TODO: Add description.
-          latents (`Tensor | NoneType`, *optional*):
-              TODO: Add description.
-          generator (`None`, *optional*):
-              TODO: Add description.
-          attention_kwargs (`None`, *optional*):
-              TODO: Add description.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):
-              TODO: Add description.
+              Output format: 'pil', 'np', 'pt'.
 
       Outputs:
           videos (`list`):
@@ -197,26 +199,27 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
           guider (`ClassifierFreeGuidance`)
 
       Inputs:
-          num_videos_per_prompt (`None`, *optional*, defaults to 1):
-              TODO: Add description.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           prompt_embeds (`Tensor`):
-              TODO: Add description.
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
           batch_size (`int`, *optional*):
-              TODO: Add description.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              TODO: Add description.
-          sigmas (`None`, *optional*):
-              TODO: Add description.
-          image (`None`):
-              TODO: Add description.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
+              generated in input step.
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
+          image (`Image | list`):
+              Reference image(s) for denoising. Can be a single image or list of images.
           num_frames (`int`, *optional*, defaults to 121):
               TODO: Add description.
-          latents (`Tensor | NoneType`, *optional*):
-              TODO: Add description.
-          generator (`None`, *optional*):
-              TODO: Add description.
-          attention_kwargs (`None`, *optional*):
-              TODO: Add description.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
           negative_prompt_embeds (`Tensor`, *optional*):
               TODO: Add description.
           prompt_embeds_mask (`Tensor`):
@@ -274,18 +277,18 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
           feature_extractor (`SiglipImageProcessor`)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
-          negative_prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`, *optional*):
+              The prompt or prompts to guide image generation.
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
           prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
           prompt_embeds_mask (`Tensor`, *optional*):
-              TODO: Add description.
+              mask for the text embeddings. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_embeds_mask (`Tensor`, *optional*):
-              TODO: Add description.
+              mask for the negative text embeddings. Can be generated from text_encoder step.
           prompt_embeds_2 (`Tensor`, *optional*):
               TODO: Add description.
           prompt_embeds_mask_2 (`Tensor`, *optional*):
@@ -295,25 +298,26 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
           negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
               TODO: Add description.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              TODO: Add description.
+              The number of images to generate per prompt.
           batch_size (`int`, *optional*):
-              TODO: Add description.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              TODO: Add description.
-          sigmas (`None`, *optional*):
-              TODO: Add description.
-          image (`None`):
-              TODO: Add description.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
+              generated in input step.
+          num_inference_steps (`int`, *optional*, defaults to 50):
+              The number of denoising steps.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
+          image (`Image | list`):
+              Reference image(s) for denoising. Can be a single image or list of images.
           num_frames (`int`, *optional*, defaults to 121):
               TODO: Add description.
-          latents (`Tensor | NoneType`, *optional*):
-              TODO: Add description.
-          generator (`None`, *optional*):
-              TODO: Add description.
-          attention_kwargs (`None`, *optional*):
-              TODO: Add description.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):
-              TODO: Add description.
+              Output format: 'pil', 'np', 'pt'.
 
       Outputs:
           videos (`list`):

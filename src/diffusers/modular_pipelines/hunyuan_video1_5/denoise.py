@@ -43,7 +43,7 @@ class HunyuanVideo15LoopBeforeDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
+            InputParam.template("latents", required=True),
             InputParam("cond_latents_concat", required=True, type_hint=torch.Tensor),
             InputParam("mask_concat", required=True, type_hint=torch.Tensor),
         ]
@@ -92,8 +92,8 @@ class HunyuanVideo15LoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         inputs = [
-            InputParam("attention_kwargs"),
-            InputParam("num_inference_steps", required=True, type_hint=int),
+            InputParam.template("attention_kwargs"),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam("image_embeds", type_hint=torch.Tensor),
         ]
         for value in self._guider_input_fields.values():
@@ -194,8 +194,8 @@ class HunyuanVideo15DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     @property
     def loop_inputs(self) -> list[InputParam]:
         return [
-            InputParam("timesteps", required=True, type_hint=torch.Tensor),
-            InputParam("num_inference_steps", required=True, type_hint=int),
+            InputParam.template("timesteps", required=True),
+            InputParam.template("num_inference_steps", required=True, default=None),
         ]
 
     @torch.no_grad()
@@ -273,10 +273,10 @@ class HunyuanVideo15Image2VideoLoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         inputs = [
-            InputParam("attention_kwargs"),
-            InputParam("num_inference_steps", required=True, type_hint=int),
+            InputParam.template("attention_kwargs"),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam("image_embeds", type_hint=torch.Tensor),
-            InputParam("timesteps", required=True, type_hint=torch.Tensor),
+            InputParam.template("timesteps", required=True),
         ]
         for value in self._guider_input_fields.values():
             if isinstance(value, tuple):

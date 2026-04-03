@@ -76,9 +76,9 @@ class HunyuanVideo15TextInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("num_videos_per_prompt", default=1),
-            InputParam("prompt_embeds", required=True, type_hint=torch.Tensor),
-            InputParam("batch_size", type_hint=int),
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
+            InputParam.template("prompt_embeds"),
+            InputParam.template("batch_size", default=None),
         ]
 
     @property
@@ -111,8 +111,8 @@ class HunyuanVideo15SetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("num_inference_steps", default=50),
-            InputParam("sigmas"),
+            InputParam.template("num_inference_steps"),
+            InputParam.template("sigmas"),
         ]
 
     @property
@@ -150,20 +150,20 @@ class HunyuanVideo15PrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("height", type_hint=int),
-            InputParam("width", type_hint=int),
+            InputParam.template("height"),
+            InputParam.template("width"),
             InputParam("num_frames", type_hint=int, default=121),
-            InputParam("latents", type_hint=torch.Tensor | None),
-            InputParam("num_videos_per_prompt", type_hint=int, default=1),
-            InputParam("generator"),
-            InputParam("batch_size", required=True, type_hint=int),
-            InputParam("dtype", type_hint=torch.dtype),
+            InputParam.template("latents"),
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
+            InputParam.template("generator"),
+            InputParam.template("batch_size", required=True, default=None),
+            InputParam.template("dtype", default=None),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("latents", type_hint=torch.Tensor),
+            OutputParam.template("latents"),
             OutputParam("cond_latents_concat", type_hint=torch.Tensor),
             OutputParam("mask_concat", type_hint=torch.Tensor),
             OutputParam("image_embeds", type_hint=torch.Tensor),
@@ -265,19 +265,19 @@ class HunyuanVideo15Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("image", required=True),
+            InputParam.template("image"),
             InputParam("num_frames", type_hint=int, default=121),
-            InputParam("latents", type_hint=torch.Tensor | None),
-            InputParam("num_videos_per_prompt", type_hint=int, default=1),
-            InputParam("generator"),
-            InputParam("batch_size", required=True, type_hint=int),
-            InputParam("dtype", type_hint=torch.dtype),
+            InputParam.template("latents"),
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
+            InputParam.template("generator"),
+            InputParam.template("batch_size", required=True, default=None),
+            InputParam.template("dtype", default=None),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("latents", type_hint=torch.Tensor),
+            OutputParam.template("latents"),
             OutputParam("cond_latents_concat", type_hint=torch.Tensor),
             OutputParam("mask_concat", type_hint=torch.Tensor),
             OutputParam("image_embeds", type_hint=torch.Tensor),

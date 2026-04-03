@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any
 
-import numpy as np
-import PIL
 import torch
 
 from ...configuration_utils import FrozenDict
@@ -49,20 +46,16 @@ class HunyuanVideo15VaeDecoderStep(ModularPipelineBlocks):
         return "Step that decodes the denoised latents into videos"
 
     @property
-    def inputs(self) -> list[tuple[str, Any]]:
+    def inputs(self) -> list[InputParam]:
         return [
-            InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("output_type", default="np", type_hint=str),
+            InputParam.template("latents", required=True),
+            InputParam.template("output_type", default="np"),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam(
-                "videos",
-                type_hint=list[list[PIL.Image.Image]] | list[torch.Tensor] | list[np.ndarray],
-                description="The generated videos",
-            )
+            OutputParam.template("videos"),
         ]
 
     # Copied from pipeline_hunyuan_video1_5.py lines 823-829

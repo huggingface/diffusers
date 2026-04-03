@@ -128,6 +128,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HeliosPyramidDistilledModularPipeline,
             HeliosPyramidModularPipeline,
         )
+        from .hunyuan_video1_5 import (
+            HunyuanVideo15Blocks,
+            HunyuanVideo15Image2VideoBlocks,
+            HunyuanVideo15ModularPipeline,
+        )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,
@@ -150,7 +155,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
         )
-        from .hunyuan_video1_5 import HunyuanVideo15Blocks, HunyuanVideo15Image2VideoBlocks, HunyuanVideo15ModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import (
             Wan22Blocks,

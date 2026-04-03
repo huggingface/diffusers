@@ -158,26 +158,26 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("prompt"),
-            InputParam("negative_prompt"),
-            InputParam("prompt_embeds", type_hint=torch.Tensor),
-            InputParam("prompt_embeds_mask", type_hint=torch.Tensor),
-            InputParam("negative_prompt_embeds", type_hint=torch.Tensor),
-            InputParam("negative_prompt_embeds_mask", type_hint=torch.Tensor),
+            InputParam.template("prompt", required=False),
+            InputParam.template("negative_prompt"),
+            InputParam.template("prompt_embeds", required=False),
+            InputParam.template("prompt_embeds_mask", required=False),
+            InputParam.template("negative_prompt_embeds"),
+            InputParam.template("negative_prompt_embeds_mask"),
             InputParam("prompt_embeds_2", type_hint=torch.Tensor),
             InputParam("prompt_embeds_mask_2", type_hint=torch.Tensor),
             InputParam("negative_prompt_embeds_2", type_hint=torch.Tensor),
             InputParam("negative_prompt_embeds_mask_2", type_hint=torch.Tensor),
-            InputParam("num_videos_per_prompt", type_hint=int, default=1),
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("prompt_embeds", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
-            OutputParam("prompt_embeds_mask", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
-            OutputParam("negative_prompt_embeds", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
-            OutputParam("negative_prompt_embeds_mask", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
+            OutputParam.template("prompt_embeds"),
+            OutputParam.template("prompt_embeds_mask"),
+            OutputParam.template("negative_prompt_embeds"),
+            OutputParam.template("negative_prompt_embeds_mask"),
             OutputParam("prompt_embeds_2", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
             OutputParam("prompt_embeds_mask_2", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
             OutputParam("negative_prompt_embeds_2", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
