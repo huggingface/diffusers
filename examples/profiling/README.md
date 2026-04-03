@@ -288,8 +288,10 @@ any traversal. With the fix applied, the improvements were visible.
 | `_set_context` total   | 21.6ms (8 calls)             | 0.0ms (8 calls)             |
 | `cache_context` total  | 21.7ms                       | 0.1ms                       |
 | CPU gaps               | 5,523us / 8,007us / 5,508us  | 158us / 2,777us / 136us     |
+| Wall-clock runtime     | 574.3ms (std 2.3ms)          | 569.8ms (std 2.4ms)         |
 
-The remaining 2.7ms gap (between denoising steps) is the scheduler step — actual tensor arithmetic (`sub`, `mul`, `add`), not overhead. The within-step gaps (136–158us) are minimal Python dispatch cost.
+> [!NOTE]
+> The wall-clock improvement here is modest (~0.8%) because the GPU is already the bottleneck for Flux2 Klein at this resolution — the CPU finishes dispatching well before the GPU finishes executing. The CPU overhead reduction (21.6ms → 0.0ms) is hidden behind GPU execution time. These fixes become more impactful with larger batch sizes and higher resolutions, where the GPU has a deeper queue of pending kernels and any sync point causes a longer stall. The numbers were obtained on a single H100 using regional compilation with 2 inference steps and 1024x1024 resolution (`--benchmark --num_runs 5 --num_warmups 2`).
 
 > [!NOTE]
 > The fixes mentioned above and below are available in [this PR](https://github.com/huggingface/diffusers/pull/13356).
