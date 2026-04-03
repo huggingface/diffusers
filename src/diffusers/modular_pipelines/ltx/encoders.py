@@ -103,7 +103,6 @@ class LTXTextEncoderStep(ModularPipelineBlocks):
         dtype: torch.dtype,
     ):
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
 
         text_inputs = components.tokenizer(
             prompt,

@@ -308,6 +308,7 @@ class LTXImage2VideoLoopDenoiser(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         from ...configuration_utils import FrozenDict
         from ...guiders import ClassifierFreeGuidance
+
         return [
             ComponentSpec(
                 "guider",
@@ -420,13 +421,17 @@ class LTXImage2VideoLoopAfterDenoiser(ModularPipelineBlocks):
 
         noise_pred = LTXPipeline._unpack_latents(
             block_state.noise_pred,
-            latent_num_frames, latent_height, latent_width,
+            latent_num_frames,
+            latent_height,
+            latent_width,
             components.transformer_spatial_patch_size,
             components.transformer_temporal_patch_size,
         )
         latents = LTXPipeline._unpack_latents(
             block_state.latents,
-            latent_num_frames, latent_height, latent_width,
+            latent_num_frames,
+            latent_height,
+            latent_width,
             components.transformer_spatial_patch_size,
             components.transformer_temporal_patch_size,
         )
