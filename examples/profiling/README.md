@@ -2,7 +2,7 @@
 
 Education materials to strategically profile pipelines to potentially improve their
 runtime with `torch.compile`. To set these pipelines up for success with `torch.compile`,
-we often have to get rid of DtoH syncs, CPU overheads, kernel launch delays, and
+we often have to get rid of device-to-host (DtoH) syncs, CPU overheads, kernel launch delays, and
 graph breaks. In this context, profiling serves that purpose for us.
 
 Thanks to Claude Code for paircoding! We acknowledge the [Claude of OSS](https://claude.com/contact-sales/claude-for-oss) support provided to us.
@@ -20,7 +20,7 @@ Jump to the "Verification" section to get started right away.
 
 ## Context
 
-We want to uncover CPU overhead, CPU-GPU sync points, and other bottlenecks in popular diffusers pipelines — especially issues that become non-trivial under `torch.compile`. The approach is inspired by [flux-fast's run_benchmark.py](https://github.com/huggingface/flux-fast/blob/0a1dcc91658f0df14cd7fce862a5c8842784c6da/run_benchmark.py#L66-L85) which uses `torch.profiler` with method-level annotations, and motivated by issues like [diffusers#11696](https://github.com/huggingface/diffusers/pull/11696) (DtoH sync from scheduler `.item()` call).
+We want to uncover CPU overhead, CPU-GPU sync points, and other bottlenecks in popular diffusers pipelines — especially issues that become non-trivial when using [`torch.compile`](https://docs.pytorch.org/docs/stable/generated/torch.compile.html). The approach is inspired by [flux-fast's run_benchmark.py](https://github.com/huggingface/flux-fast/blob/0a1dcc91658f0df14cd7fce862a5c8842784c6da/run_benchmark.py#L66-L85) which uses [`torch.profiler`](https://docs.pytorch.org/docs/stable/profiler.html) with method-level annotations, and motivated by issues like [diffusers#11696](https://github.com/huggingface/diffusers/pull/11696) (DtoH sync from scheduler `.item()` call).
 
 ## Target Pipelines
 
@@ -39,7 +39,7 @@ We want to uncover CPU overhead, CPU-GPU sync points, and other bottlenecks in p
 
 ## How the Tooling Works
 
-Follow the flux-fast pattern: **annotate key pipeline methods** with `torch.profiler.record_function` wrappers, then run the pipeline under `torch.profiler.profile` and export a Chrome trace.
+Follow the flux-fast pattern: **annotate key pipeline methods** with `torch.profiler.record_function` wrappers, then run the pipeline under `torch.profiler.profile` and export a Chrome JSON trace.
 
 ### New Files
 
@@ -129,7 +129,7 @@ The profiling should surface these known/suspected issues:
 
 ## Verification
 
-1. Run: `python profiling/profiling_pipelines.py --pipeline flux --mode eager --num_steps 2`
+1. Run: `python examples/profiling/profiling_pipelines.py --pipeline flux --mode eager --num_steps 2`
 2. Verify `profiling_results/flux_eager.json` is produced
 3. Open trace in [Perfetto UI](https://ui.perfetto.dev/) — confirm:
    - `transformer_forward` and `scheduler_step` annotations visible
@@ -190,7 +190,7 @@ Each CUDA kernel is launched from the CPU. The CPU-side launch calls (`cudaLaunc
 - There may be implicit syncs forcing serialization
 - `torch.compile` should help here by batching launches — compare eager vs compile to confirm
 
-To inspect this: zoom into a single denoising step, select a CUDA kernel on the GPU row, and look at the corresponding CPU-side launch slice directly above it. The horizontal offset between them is the launch latency. In a healthy trace, CPU launch slices should be well ahead of GPU execution (the CPU is "feeding" the GPU faster than it can consume).
+To inspect this: zoom into a single denoising step, select a CUDA kernel on the GPU row, and look at the corresponding CPU-side launch slice directly above it (there should be an arrow pointing from the CPU launch slice to the GPU kernel slice). The horizontal offset between them is the launch latency. In a healthy trace, CPU launch slices should be well ahead of GPU execution (the CPU is "feeding" the GPU faster than it can consume).
 
 ### Quick checklist per pipeline
 
@@ -225,7 +225,7 @@ _(Unless otherwise specified, the traces below were obtained with **Flux2**.)_
 ### Spotting gaps between launches
 
 Then a reasonable next step is to spot frequent gaps between kernel executions. In the compiled
-case, we don't spot any on the surface. But if we zone in, some become apparent.
+case, we don't spot any on the surface. But if we zoom in, some become apparent.
 
 <table>
   <tr>
@@ -316,7 +316,5 @@ kernels, so this tiny sync balloons to 2.3s.
 there are still some gaps outside the compiled regions. A full compilation
 will likely mitigate it. In case it doesn't, the above observations could
 be useful to mitigate that.
-* Use of CUDA Graphs can also help mitigate CPU overhead related issues. When
-using "reduce-overhead" and "max-autotune" in `torch.compile` triggers the
-use of CUDA Graphs.
+* Use of CUDA Graphs can also help mitigate CPU overhead related issues. CUDA Graphs can be enabled by setting the `torch.compile` mode to `"reduce-overhead"` or `"max-autotune"`.
 * Diffusers' integration of `torch.compile` is documented [here](https://huggingface.co/docs/diffusers/main/en/optimization/fp16#torchcompile).
