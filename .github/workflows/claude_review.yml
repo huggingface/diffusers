@@ -7,7 +7,7 @@ on:
     types: [created]
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
   issues: read
 
@@ -34,11 +34,18 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
-          ref: refs/pull/${{ github.event.issue.number || github.event.pull_request.number }}/head
       - name: Restore base branch config and sanitize Claude settings
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           rm -rf .claude/
-          git checkout origin/${{ github.event.repository.default_branch }} -- .ai/
+          git checkout "origin/$DEFAULT_BRANCH" -- .ai/
+      - name: Get PR diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: |
+          gh pr diff "$PR_NUMBER" > pr.diff
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
