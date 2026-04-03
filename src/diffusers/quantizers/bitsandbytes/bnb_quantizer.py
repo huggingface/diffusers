@@ -101,7 +101,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         if target_dtype != torch.int8:
             from accelerate.utils import CustomDtype
 
-            logger.info("target_dtype {target_dtype} is replaced by `CustomDtype.INT4` for 4-bit BnB quantization")
+            logger.info(f"target_dtype {target_dtype} is replaced by `CustomDtype.INT4` for 4-bit BnB quantization")
             return CustomDtype.INT4
         else:
             raise ValueError(f"Wrong `target_dtype` ({target_dtype}) provided.")
@@ -245,8 +245,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             device_map = {"": current_device}
             logger.info(
                 "The device_map was not initialized. "
-                "Setting device_map to {"
-                ": {current_device}}. "
+                f"Setting device_map to {{'': {current_device}}}. "
                 "If you want to use the model for inference, please set device_map ='auto' "
             )
         return device_map
@@ -416,15 +415,14 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             device_map = {"": current_device}
             logger.info(
                 "The device_map was not initialized. "
-                "Setting device_map to {"
-                ": {current_device}}. "
+                f"Setting device_map to {{'': {current_device}}}. "
                 "If you want to use the model for inference, please set device_map ='auto' "
             )
         return device_map
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
         if target_dtype != torch.int8:
-            logger.info("target_dtype {target_dtype} is replaced by `torch.int8` for 8-bit BnB quantization")
+            logger.info(f"target_dtype {target_dtype} is replaced by `torch.int8` for 8-bit BnB quantization")
         return torch.int8
 
     def check_if_quantized_param(
