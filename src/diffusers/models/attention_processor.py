@@ -325,11 +325,11 @@ class Attention(nn.Module):
         """
         if use_xla_flash_attention:
             if not is_torch_xla_available:
-                raise "torch_xla is not available"
+                raise RuntimeError("torch_xla is not available")
             elif is_torch_xla_version("<", "2.3"):
-                raise "flash attention pallas kernel is supported from torch_xla version 2.3"
+                raise RuntimeError("flash attention pallas kernel is supported from torch_xla version 2.3")
             elif is_spmd() and is_torch_xla_version("<", "2.4"):
-                raise "flash attention pallas kernel using SPMD is supported from torch_xla version 2.4"
+                raise RuntimeError("flash attention pallas kernel using SPMD is supported from torch_xla version 2.4")
             else:
                 if is_flux:
                     processor = XLAFluxFlashAttnProcessor2_0(partition_spec)
