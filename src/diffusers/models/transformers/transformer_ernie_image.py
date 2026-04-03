@@ -90,7 +90,7 @@ class ErnieImageSingleStreamAttnProcessor:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "ZSingleStreamAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
+                "ErnieImageSingleStreamAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
             )
 
     def __call__(
@@ -307,7 +307,7 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         patches = self.final_linear(x)[:N_img].transpose(0, 1).contiguous()
         output = patches.view(B, Hp, Wp, p, p, self.out_channels).permute(0, 5, 1, 3, 2, 4).contiguous().view(B, self.out_channels, H, W)
 
-        return Text2ImgDiTTransformer2DModelOutput(sample=output) if return_dict else (output,)
+        return ErnieImageTransformer2DModelOutput(sample=output) if return_dict else (output,)
 
     def _pad_text(self, text_hiddens: List[torch.Tensor], device: torch.device, dtype: torch.dtype):
         B = len(text_hiddens)
