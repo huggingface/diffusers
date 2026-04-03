@@ -261,7 +261,7 @@ at the call site.
 ```
 
 The changes looked reasonable based on our past experience. So, we asked Claude to apply these changes to [`pipeline_flux2_klein.py`](../../src/diffusers/pipelines/flux2/pipeline_flux2_klein.py). We then profiled
-the updated pipeline. It still didn't eliminate the gaps as expected so, we fed that back to Claude and
+the updated pipeline. It still didn't completely eliminate the gaps as expected so, we fed that back to Claude and
 it spotted something more crucial.
 
 Under the [`cache_context`](https://github.com/huggingface/diffusers/blob/f2be8bd6b3dc4035bd989dc467f15d86bf3c9c12/src/diffusers/pipelines/flux2/pipeline_flux2_klein.py#L842) manager, there is a call to `_set_context()` upon
