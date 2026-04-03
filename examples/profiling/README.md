@@ -13,7 +13,7 @@ Thanks to Claude Code for paircoding! We acknowledge the [Claude of OSS](https:/
 * [Target pipelines](#target-pipelines)
 * [How the tooling works](#how-the-tooling-works)
 * [Verification](#verification)
-* [Interpretation](#interpreting-traces-in-perfetto-ui)
+* [Interpretation of profiling traces](#interpreting-traces-in-perfetto-ui)
 * [Taking profiling-guided steps for improvements](#afterwards)
 
 Jump to the "Verification" section to get started right away.
