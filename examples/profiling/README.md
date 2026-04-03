@@ -145,6 +145,10 @@ Open the exported `.json` trace at [ui.perfetto.dev](https://ui.perfetto.dev/). 
 
 **Navigation:** Use `W` to zoom in, `S` to zoom out, and `A`/`D` to pan left/right. You can also scroll to zoom and click-drag to pan. Use `Shift+scroll` to scroll vertically through rows.
 
+> [!IMPORTANT]
+> To keep the profiling iterations fast, we always use [regional compilation](https://pytorch.org/tutorials/recipes/regional_compilation.html). The observations below would largely still apply for full model
+compilation, too.
+
 ### What to look for
 
 **1. Gaps between CUDA kernels**
@@ -201,8 +205,7 @@ To inspect this: zoom into a single denoising step, select a CUDA kernel on the 
 
 ## What Profiling Revealed and Fixes
 
-To keep the profiling iterations fast, we always use [regional compilation](https://pytorch.org/tutorials/recipes/regional_compilation.html). As one would expect the trace with compilation should show
-fewer kernel launches than its eager counterpart.
+As one would expect the trace with compilation should show fewer kernel launches than its eager counterpart.
 
 _(Unless otherwise specified, the traces below were obtained with **Flux2**.)_
 
