@@ -135,7 +135,7 @@ The profiling should surface these known/suspected issues:
    - `transformer_forward` and `scheduler_step` annotations visible
    - CPU and CUDA timelines present
    - Stack traces visible on CPU events
-4. Run with `--mode compile` and compare trace for fewer/fused CUDA kernels
+4. Run with `--mode compile`: `python examples/profiling/profiling_pipelines.py --pipeline flux --mode compile --compile_regional --num_steps 2` and compare trace for fewer/fused CUDA kernels
 
 You can also use the `run_profiling.sh` script to bulk launch runs for different pipelines.
 
