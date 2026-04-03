@@ -266,13 +266,13 @@ asked it to analyze what was filling those gaps now.
 
 #### Discovering `cache_context` as the real bottleneck
 
-Claude parsed the updated trace and broke down the CPU events in each gap between `transformer_forward` spans. The results were revealing: the dominant cost was no longer tqdm or syncs — it was `diffusers/hooks/hooks.py: _set_context` at **~2.7ms per call**, filled with hundreds of `torch/nn/modules/module.py: named_modules` slices.
+Claude parsed the updated trace and broke down the CPU events in each gap between `transformer_forward` spans. The results were revealing: the dominant cost was no longer tqdm or syncs — it was `src/diffusers/hooks/hooks.py: _set_context` at **~2.7ms per call**, filled with hundreds of `named_modules()` slices.
 
-Here's what was happening: under the [`cache_context`](https://github.com/huggingface/diffusers/blob/f2be8bd6b3dc4035bd989dc467f15d86bf3c9c12/src/diffusers/pipelines/flux2/pipeline_flux2_klein.py#L842) manager, there is a call to `_set_context()` upon
-enters and exits. It calls `named_modules()` on the entire underlying model (in this case the Flux2 Klein DiT).
+Here's what was happening: under the [`cache_context`](https://github.com/huggingface/diffusers/blob/f2be8bd6b3dc4035bd989dc467f15d86bf3c9c12/src/diffusers/pipelines/flux2/pipeline_flux2_klein.py#L842) manager, there is a call to `_set_context()` upon enters and exits. It calls `named_modules()` on the entire underlying model (in this case the Flux2 Klein DiT).
+
 For large models, when they are invoked iteratively like our case, it adds to the latency because it involves traversing hundreds of submodules. With 8 context switches per iteration (enter/exit for each `cache_context` call), this added up to **21.6ms** of pure Python overhead per denoising iteration.
 
-The first round of fixes (tqdm, `_unpack_latents_with_ids`) were real issues, but they were masking this larger one. Only after removing them did the `_set_context` overhead become the clear dominant cost in the trace.
+The first round of fixes (`tqdm`, `_unpack_latents_with_ids`) were real issues, but they were masking this larger one. Only after removing them did the `_set_context` overhead become the clear dominant cost in the trace.
 
 #### The fix — caching child registries
 
@@ -295,10 +295,11 @@ The remaining 2.7ms gap (between denoising steps) is the scheduler step — actu
 We also profiled the **Wan** model and uncovered problems related to CPU DtoH syncs. Below is an
 overview.
 
-First, there was a dynamo cache lookup delay making the GPU idle as reported [in this PR](https://github.com/huggingface/diffusers/pull/11696). So, the fix was to call `self.scheduler.set_begin_index(0)` before
-the denoising loop. This tells the scheduler the starting index is 0, so `_init_step_index()` skips the `nonzero().item()` (which was causing the sync) path entirely. This fix eliminated the below ~2.3s GPU idle time completely:
+First, there was a dynamo cache lookup delay making the GPU idle as reported [in this PR](https://github.com/huggingface/diffusers/pull/11696).
 
 ![GPU idle](https://huggingface.co/datasets/sayakpaul/torch-profiling-trace-diffusers/resolve/main/Wan/Screenshot%202026-03-27%20at%205.56.39%E2%80%AFPM.png)
+
+Similar to the above-mentioned PR, the fix was to call `self.scheduler.set_begin_index(0)` before the denoising loop. This tells the scheduler the starting index is 0, so `_init_step_index()` skips the `nonzero().item()` (which was causing the sync) path entirely. This fix eliminated the ~2.3s GPU idle time completely.
 
 The UniPC scheduler (used in Wan) also had two more sync-causing patterns in `multistep_uni_p_bh_update` and `multistep_uni_c_bh_update`:
 
