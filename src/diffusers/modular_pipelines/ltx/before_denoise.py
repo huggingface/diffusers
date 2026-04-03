@@ -18,7 +18,6 @@ import numpy as np
 import torch
 
 from ...models import LTXVideoTransformer3DModel
-from ...pipelines.ltx.pipeline_ltx import LTXPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
@@ -73,6 +72,43 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
+# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._pack_latents
+def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1) -> torch.Tensor:
+    # Unpacked latents of shape are [B, C, F, H, W] are patched into tokens of shape
+    # [B, C, F // p_t, p_t, H // p, p, W // p, p].
+    # The patch dimensions are then permuted and collapsed into the channel dimension of shape:
+    # [B, F // p_t * H // p * W // p, C * p_t * p * p] (an ndim=3 tensor).
+    # dim=0 is the batch size, dim=1 is the effective video sequence length,
+    # dim=2 is the effective number of input features
+    batch_size, num_channels, num_frames, height, width = latents.shape
+    post_patch_num_frames = num_frames // patch_size_t
+    post_patch_height = height // patch_size
+    post_patch_width = width // patch_size
+    latents = latents.reshape(
+        batch_size,
+        -1,
+        post_patch_num_frames,
+        patch_size_t,
+        post_patch_height,
+        patch_size,
+        post_patch_width,
+        patch_size,
+    )
+    latents = latents.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
+    return latents
+
+
+# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._normalize_latents
+def _normalize_latents(
+    latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
+) -> torch.Tensor:
+    # Normalize latents across the channel dimension [B, C, F, H, W]
+    latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+    latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+    latents = (latents - latents_mean) * scaling_factor / latents_std
+    return latents
+
+
 class LTXTextInputStep(ModularPipelineBlocks):
     model_name = "ltx"
 
@@ -94,7 +130,6 @@ class LTXTextInputStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam("guidance_scale", type_hint=float, default=3.0),
             InputParam.template("prompt_embeds", required=True),
             InputParam.template("prompt_embeds_mask", name="prompt_attention_mask"),
             InputParam.template("negative_prompt_embeds"),
@@ -111,11 +146,6 @@ class LTXTextInputStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-
-        # Set guidance_scale on guider so CFG is configured correctly
-        guidance_scale = getattr(block_state, "guidance_scale", 3.0)
-        if hasattr(components, "guider") and components.guider is not None:
-            components.guider.guidance_scale = guidance_scale
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
         block_state.dtype = block_state.prompt_embeds.dtype
@@ -257,7 +287,7 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam.template("latents"),
+            OutputParam("latents", type_hint=torch.Tensor),
         ]
 
     @torch.no_grad()
@@ -279,7 +309,7 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
             block_state.latents = randn_tensor(
                 shape, generator=block_state.generator, device=device, dtype=torch.float32
             )
-            block_state.latents = LTXPipeline._pack_latents(
+            block_state.latents = _pack_latents(
                 block_state.latents,
                 components.transformer_spatial_patch_size,
                 components.transformer_temporal_patch_size,
@@ -289,39 +319,19 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(
-    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
-):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
-
-
 class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "ltx"
 
     @property
     def description(self) -> str:
-        return "Prepare latents step for image-to-video: encodes the first frame and creates a conditioning mask"
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        from ...models import AutoencoderKLLTXVideo
-
-        return [
-            ComponentSpec("vae", AutoencoderKLLTXVideo),
-        ]
+        return (
+            "Prepare latents step for image-to-video: takes pre-encoded image latents and creates a conditioning mask"
+        )
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("image"),
+            InputParam("image_latents", type_hint=torch.Tensor, required=True),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam("num_frames", type_hint=int, default=161),
@@ -335,7 +345,7 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam.template("latents"),
+            OutputParam("latents", type_hint=torch.Tensor),
             OutputParam("conditioning_mask", type_hint=torch.Tensor),
         ]
 
@@ -355,7 +365,7 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
         if block_state.latents is not None:
             conditioning_mask = block_state.latents.new_zeros(mask_shape)
             conditioning_mask[:, :, 0] = 1.0
-            conditioning_mask = LTXPipeline._pack_latents(
+            conditioning_mask = _pack_latents(
                 conditioning_mask,
                 components.transformer_spatial_patch_size,
                 components.transformer_temporal_patch_size,
@@ -365,38 +375,9 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
             self.set_block_state(state, block_state)
             return components, state
 
-        image = block_state.image
-        if not isinstance(image, torch.Tensor):
-            from ...video_processor import VideoProcessor
-
-            processor = VideoProcessor(vae_scale_factor=components.vae_spatial_compression_ratio)
-            image = processor.preprocess(image, height=block_state.height, width=block_state.width)
-            image = image.to(device=device, dtype=torch.float32)
-
-        vae_dtype = components.vae.dtype
-
-        num_images = image.shape[0]
-        if isinstance(block_state.generator, list):
-            init_latents = [
-                retrieve_latents(
-                    components.vae.encode(image[i].unsqueeze(0).unsqueeze(2).to(vae_dtype)), block_state.generator[i]
-                )
-                for i in range(num_images)
-            ]
-        else:
-            init_latents = [
-                retrieve_latents(
-                    components.vae.encode(img.unsqueeze(0).unsqueeze(2).to(vae_dtype)), block_state.generator
-                )
-                for img in image
-            ]
-
-        init_latents = torch.cat(init_latents, dim=0).to(torch.float32)
+        init_latents = block_state.image_latents.to(device=device, dtype=torch.float32)
         if init_latents.shape[0] < batch_size:
             init_latents = init_latents.repeat_interleave(batch_size // init_latents.shape[0], dim=0)
-        init_latents = LTXPipeline._normalize_latents(
-            init_latents, components.vae.latents_mean, components.vae.latents_std
-        )
         init_latents = init_latents.repeat(1, 1, num_frames, 1, 1)
 
         actual_mask_shape = (
@@ -412,12 +393,12 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
         noise = randn_tensor(init_latents.shape, generator=block_state.generator, device=device, dtype=torch.float32)
         latents = init_latents * conditioning_mask + noise * (1 - conditioning_mask)
 
-        conditioning_mask = LTXPipeline._pack_latents(
+        conditioning_mask = _pack_latents(
             conditioning_mask,
             components.transformer_spatial_patch_size,
             components.transformer_temporal_patch_size,
         ).squeeze(-1)
-        latents = LTXPipeline._pack_latents(
+        latents = _pack_latents(
             latents,
             components.transformer_spatial_patch_size,
             components.transformer_temporal_patch_size,

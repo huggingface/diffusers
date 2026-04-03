@@ -34,6 +34,46 @@ from .modular_pipeline import LTXModularPipeline
 logger = logging.get_logger(__name__)
 
 
+# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._pack_latents
+def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1) -> torch.Tensor:
+    # Unpacked latents of shape are [B, C, F, H, W] are patched into tokens of shape
+    # [B, C, F // p_t, p_t, H // p, p, W // p, p].
+    # The patch dimensions are then permuted and collapsed into the channel dimension of shape:
+    # [B, F // p_t * H // p * W // p, C * p_t * p * p] (an ndim=3 tensor).
+    # dim=0 is the batch size, dim=1 is the effective video sequence length,
+    # dim=2 is the effective number of input features
+    batch_size, num_channels, num_frames, height, width = latents.shape
+    post_patch_num_frames = num_frames // patch_size_t
+    post_patch_height = height // patch_size
+    post_patch_width = width // patch_size
+    latents = latents.reshape(
+        batch_size,
+        -1,
+        post_patch_num_frames,
+        patch_size_t,
+        post_patch_height,
+        patch_size,
+        post_patch_width,
+        patch_size,
+    )
+    latents = latents.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
+    return latents
+
+
+# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._unpack_latents
+def _unpack_latents(
+    latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
+) -> torch.Tensor:
+    # Packed latents of shape [B, S, D] (S is the effective video sequence length,
+    # D is the effective feature dimensions) are unpacked and reshaped into a video tensor
+    # of shape [B, C, F, H, W]. This is the inverse operation of what happens in the
+    # `_pack_latents` method.
+    batch_size = latents.size(0)
+    latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
+    latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+    return latents
+
+
 class LTXLoopBeforeDenoiser(ModularPipelineBlocks):
     model_name = "ltx"
 
@@ -413,13 +453,11 @@ class LTXImage2VideoLoopAfterDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        from ...pipelines.ltx.pipeline_ltx import LTXPipeline
-
         latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
         latent_height = block_state.height // components.vae_spatial_compression_ratio
         latent_width = block_state.width // components.vae_spatial_compression_ratio
 
-        noise_pred = LTXPipeline._unpack_latents(
+        noise_pred = _unpack_latents(
             block_state.noise_pred,
             latent_num_frames,
             latent_height,
@@ -427,7 +465,7 @@ class LTXImage2VideoLoopAfterDenoiser(ModularPipelineBlocks):
             components.transformer_spatial_patch_size,
             components.transformer_temporal_patch_size,
         )
-        latents = LTXPipeline._unpack_latents(
+        latents = _unpack_latents(
             block_state.latents,
             latent_num_frames,
             latent_height,
@@ -441,7 +479,7 @@ class LTXImage2VideoLoopAfterDenoiser(ModularPipelineBlocks):
         pred_latents = components.scheduler.step(noise_pred, t, noise_latents, return_dict=False)[0]
 
         latents = torch.cat([latents[:, :, :1], pred_latents], dim=2)
-        block_state.latents = LTXPipeline._pack_latents(
+        block_state.latents = _pack_latents(
             latents,
             components.transformer_spatial_patch_size,
             components.transformer_temporal_patch_size,

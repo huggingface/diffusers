@@ -18,7 +18,6 @@ import torch
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLLTXVideo
-from ...pipelines.ltx.pipeline_ltx import LTXPipeline
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -27,6 +26,31 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
 
 logger = logging.get_logger(__name__)
+
+
+# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._unpack_latents
+def _unpack_latents(
+    latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
+) -> torch.Tensor:
+    # Packed latents of shape [B, S, D] (S is the effective video sequence length,
+    # D is the effective feature dimensions) are unpacked and reshaped into a video tensor
+    # of shape [B, C, F, H, W]. This is the inverse operation of what happens in the
+    # `_pack_latents` method.
+    batch_size = latents.size(0)
+    latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
+    latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+    return latents
+
+
+# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._denormalize_latents
+def _denormalize_latents(
+    latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
+) -> torch.Tensor:
+    # Denormalize latents across the channel dimension [B, C, F, H, W]
+    latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+    latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+    latents = latents * latents_std / scaling_factor + latents_mean
+    return latents
 
 
 class LTXVaeDecoderStep(ModularPipelineBlocks):
@@ -74,11 +98,6 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
 
         latents = block_state.latents
 
-        if block_state.output_type == "latent":
-            block_state.videos = latents
-            self.set_block_state(state, block_state)
-            return components, state
-
         height = block_state.height
         width = block_state.width
         num_frames = block_state.num_frames
@@ -87,7 +106,7 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
         latent_height = height // components.vae_spatial_compression_ratio
         latent_width = width // components.vae_spatial_compression_ratio
 
-        latents = LTXPipeline._unpack_latents(
+        latents = _unpack_latents(
             latents,
             latent_num_frames,
             latent_height,
@@ -95,9 +114,7 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
             components.transformer_spatial_patch_size,
             components.transformer_temporal_patch_size,
         )
-        latents = LTXPipeline._denormalize_latents(
-            latents, vae.latents_mean, vae.latents_std, vae.config.scaling_factor
-        )
+        latents = _denormalize_latents(latents, vae.latents_mean, vae.latents_std, vae.config.scaling_factor)
         latents = latents.to(block_state.dtype)
 
         if not vae.config.timestep_conditioning:

@@ -23,7 +23,7 @@ from .before_denoise import (
 )
 from .decoders import LTXVaeDecoderStep
 from .denoise import LTXDenoiseStep, LTXImage2VideoDenoiseStep
-from .encoders import LTXTextEncoderStep
+from .encoders import LTXTextEncoderStep, LTXVaeEncoderStep
 
 
 logger = logging.get_logger(__name__)
@@ -35,15 +35,12 @@ class LTXCoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block that takes encoded conditions and runs the denoising process.
 
       Components:
-          transformer (`LTXVideoTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          guider (`ClassifierFreeGuidance`)
+          transformer (`LTXVideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          guidance_scale (`float`, *optional*, defaults to 3.0):
-              TODO: Add description.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           prompt_attention_mask (`Tensor`):
@@ -102,16 +99,12 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block for image-to-video that takes encoded conditions and an image, and runs the denoising process.
 
       Components:
-          transformer (`LTXVideoTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          vae (`AutoencoderKLLTXVideo`)
-          guider (`ClassifierFreeGuidance`)
+          transformer (`LTXVideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) vae
+          (`AutoencoderKLLTXVideo`) video_processor (`VideoProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          guidance_scale (`float`, *optional*, defaults to 3.0):
-              TODO: Add description.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           prompt_attention_mask (`Tensor`):
@@ -136,10 +129,10 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
 
@@ -152,10 +145,11 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         LTXTextInputStep,
         LTXSetTimestepsStep,
+        LTXVaeEncoderStep,
         LTXImage2VideoPrepareLatentsStep,
         LTXImage2VideoDenoiseStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "denoise"]
+    block_names = ["input", "set_timesteps", "vae_encoder", "prepare_latents", "denoise"]
 
     @property
     def description(self):
@@ -172,12 +166,8 @@ class LTXBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX Video text-to-video.
 
       Components:
-          text_encoder (`T5EncoderModel`)
-          tokenizer (`T5TokenizerFast`)
-          guider (`ClassifierFreeGuidance`)
-          transformer (`LTXVideoTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          vae (`AutoencoderKLLTXVideo`)
+          text_encoder (`T5EncoderModel`) tokenizer (`T5TokenizerFast`) guider (`ClassifierFreeGuidance`) transformer
+          (`LTXVideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLLTXVideo`)
           video_processor (`VideoProcessor`)
 
       Inputs:
@@ -185,20 +175,10 @@ class LTXBlocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
-          prompt_embeds (`Tensor`):
-              text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          prompt_attention_mask (`Tensor`):
-              mask for the text embeddings. Can be generated from text_encoder step.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          negative_prompt_attention_mask (`Tensor`, *optional*):
-              mask for the negative text embeddings. Can be generated from text_encoder step.
           max_sequence_length (`int`, *optional*, defaults to 128):
               Maximum sequence length for prompt encoding.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          guidance_scale (`float`, *optional*, defaults to 3.0):
-              TODO: Add description.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -254,12 +234,8 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX Video image-to-video.
 
       Components:
-          text_encoder (`T5EncoderModel`)
-          tokenizer (`T5TokenizerFast`)
-          guider (`ClassifierFreeGuidance`)
-          transformer (`LTXVideoTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          vae (`AutoencoderKLLTXVideo`)
+          text_encoder (`T5EncoderModel`) tokenizer (`T5TokenizerFast`) guider (`ClassifierFreeGuidance`) transformer
+          (`LTXVideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLLTXVideo`)
           video_processor (`VideoProcessor`)
 
       Inputs:
@@ -267,20 +243,10 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
-          prompt_embeds (`Tensor`):
-              text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          prompt_attention_mask (`Tensor`):
-              mask for the text embeddings. Can be generated from text_encoder step.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          negative_prompt_attention_mask (`Tensor`, *optional*):
-              mask for the negative text embeddings. Can be generated from text_encoder step.
           max_sequence_length (`int`, *optional*, defaults to 128):
               Maximum sequence length for prompt encoding.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          guidance_scale (`float`, *optional*, defaults to 3.0):
-              TODO: Add description.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           timesteps (`Tensor`, *optional*):
@@ -297,10 +263,10 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           image (`Image | list`):
               Reference image(s) for denoising. Can be a single image or list of images.
-          latents (`Tensor`, *optional*):
-              Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
+          latents (`Tensor`, *optional*):
+              Pre-generated noisy latents for image generation.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):
