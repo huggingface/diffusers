@@ -174,3 +174,10 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 354.5418) < 1e-2, f" expected result sum 218.4379, but get {result_sum}"
         assert abs(result_mean.item() - 0.4616) < 1e-3, f" expected result mean 0.2844, but get {result_mean}"
+
+    def test_num_inference_steps_zero_raises(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler = scheduler_class(**self.get_scheduler_config())
+
+        with self.assertRaises(ValueError):
+            scheduler.set_timesteps(num_inference_steps=0)
