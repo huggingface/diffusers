@@ -290,12 +290,17 @@ the denoising loop. This tells the scheduler the starting index is 0, so `_init_
 
 ![GPU idle](https://huggingface.co/datasets/sayakpaul/torch-profiling-trace-diffusers/resolve/main/Wan/Screenshot%202026-03-27%20at%205.56.39%E2%80%AFPM.png)
 
-The UniPC scheduler (used in Wan) creates small constant tensors via `torch.tensor([0.5], dtype=x.dtype, device=device)` during `step()`. This triggers a "cudaMemcpyAsync + cudaStreamSynchronize" to copy
-the value from CPU to GPU. The sync itself is normally fast (~6us), but it forces the CPU to wait
-until all pending GPU kernels finish before proceeding. Under torch.compile, the GPU has many queued
-kernels, so this tiny sync balloons to 2.3s.
+The UniPC scheduler (used in Wan) also had two more sync-causing patterns in `multistep_uni_p_bh_update` and `multistep_uni_c_bh_update`:
 
-**Fix**: Replace with `torch.ones(1, dtype=x.dtype, device=device) * 0.5`. `torch.ones` allocates on GPU via "cudaMemsetAsync" (no sync), and `* 0.5` is a CUDA kernel launch (no sync). Same result, zero CPU-GPU synchronization. The duration of the scheduling step before and after this fix confirms this:
+1. **`torch.tensor(rks, device=device)`** where `rks` is a list containing GPU scalar tensors. `torch.tensor()` pulls each GPU value back to CPU to construct a new tensor, triggering a DtoH sync. 
+
+**Fix**: Replace with `torch.stack(rks)` which concatenates GPU tensors directly on the GPU — no sync needed. The appended Python float `1.0` was also changed to `torch.ones((), device=device)` so the list is homogeneously GPU tensors.
+
+2. **`torch.tensor([0.5], dtype=x.dtype, device=device)`** creates a small constant tensor from a CPU Python float. This triggers a `cudaMemcpyAsync` + `cudaStreamSynchronize` to copy the value from CPU to GPU. The sync itself is normally fast (~6us), but it forces the CPU to wait until all pending GPU kernels finish before proceeding. Under `torch.compile`, the GPU has many queued kernels, so this tiny sync balloons to 2.3s. 
+
+**Fix**: Replace with `torch.ones(1, dtype=x.dtype, device=device) * 0.5`. `torch.ones` allocates on GPU via `cudaMemsetAsync` (no sync), and `* 0.5` is a CUDA kernel launch (no sync). Same result, zero CPU-GPU synchronization.
+
+The duration of the scheduling step before and after these fixes confirms this:
 
 <table>
   <tr>
