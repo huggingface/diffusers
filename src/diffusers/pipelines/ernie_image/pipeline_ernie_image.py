@@ -19,6 +19,7 @@ Ernie-Image Pipeline for HuggingFace Diffusers.
 
 import json
 import os
+import numpy as np
 import torch
 from PIL import Image
 from dataclasses import dataclass

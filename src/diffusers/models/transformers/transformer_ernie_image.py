@@ -28,6 +28,9 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ..embeddings import Timesteps
 from ..modeling_utils import ModelMixin
 from ...utils import BaseOutput
+from ..normalization import RMSNorm
+from ..attention_processor import Attention
+from ..attention_dispatch import dispatch_attention_fn
 
 
 @dataclass
@@ -52,8 +55,8 @@ class EmbedND3(nn.Module):
 
     def forward(self, ids: torch.Tensor) -> torch.Tensor:
         emb = torch.cat([rope(ids[..., i], self.axes_dim[i], self.theta) for i in range(3)], dim=-1)
-        emb = emb.unsqueeze(1).permute(2, 0, 1, 3)
-        return torch.stack([emb, emb], dim=-1).reshape(*emb.shape[:-1], -1)
+        emb = emb.unsqueeze(2)  # [B, S, 1, head_dim//2]
+        return torch.stack([emb, emb], dim=-1).reshape(*emb.shape[:-1], -1)  # [B, S, 1, head_dim]
 
 
 class PatchEmbedDynamic(nn.Module):
@@ -76,78 +79,84 @@ class TimestepEmbedding(nn.Module):
         self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim)
 
     def forward(self, sample: torch.Tensor) -> torch.Tensor:
-        sample = self.linear_1(sample.to(self.linear_1.weight.dtype))
-        return self.linear_2(self.act(sample).to(self.linear_2.weight.dtype))
+        sample = sample.to(self.linear_1.weight.dtype)
+        return self.linear_2(self.act(self.linear_1(sample)))
 
 
-class RMSNorm(nn.Module):
-    """RMSNorm implementation matching Megatron's TENorm."""
+class ErnieImageSingleStreamAttnProcessor:
+    _attention_backend = None
+    _parallel_config = None
 
-    def __init__(self, dim: int, eps: float = 1e-6):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "ZSingleStreamAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
+            )
 
-    def _norm(self, x: torch.Tensor) -> torch.Tensor:
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        freqs_cis: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # 内部计算转换为FP32，对齐transform engine的TENorm计算精度
-        x_norm = self._norm(x.float())
-        output = x_norm * self.weight.float()
-        return output.to(x.dtype)
+        query = query.unflatten(-1, (attn.heads, -1))
+        key = key.unflatten(-1, (attn.heads, -1))
+        value = value.unflatten(-1, (attn.heads, -1))
 
+        # Apply Norms
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
 
-class Attention(nn.Module):
-    def __init__(self, hidden_size: int, num_heads: int, eps: float = 1e-6, qk_layernorm: bool = True):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.num_heads = num_heads
-        self.head_dim = hidden_size // num_heads
-        # Separate Q, K, V projections (matches converted weights)
-        self.q_proj = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.k_proj = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.v_proj = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.linear_proj = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.qk_layernorm = qk_layernorm
-        if qk_layernorm:
-            # self.q_layernorm = RMSNorm(self.head_dim, eps=eps)
-            # self.k_layernorm = RMSNorm(self.head_dim, eps=eps)
-            self.q_layernorm = torch.nn.RMSNorm(self.head_dim, eps=eps)
-            self.k_layernorm = torch.nn.RMSNorm(self.head_dim, eps=eps)
+        # Apply RoPE: same rotate_half logic as Megatron _apply_rotary_pos_emb_bshd (rotary_interleaved=False)
+        # x_in: [B, S, heads, head_dim], freqs_cis: [B, S, 1, head_dim] with angles [θ0,θ0,θ1,θ1,...]
+        def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
+            rot_dim = freqs_cis.shape[-1]
+            x, x_pass = x_in[..., :rot_dim], x_in[..., rot_dim:]
+            cos_ = torch.cos(freqs_cis).to(x.dtype)
+            sin_ = torch.sin(freqs_cis).to(x.dtype)
+            # Non-interleaved rotate_half: [-x2, x1]
+            x1, x2 = x.chunk(2, dim=-1)
+            x_rotated = torch.cat((-x2, x1), dim=-1)
+            return torch.cat((x * cos_ + x_rotated * sin_, x_pass), dim=-1)
 
-    def forward(self, x: torch.Tensor, rotary_pos_emb: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        S, B, H = x.shape
-        # Separate Q, K, V projections
-        q = self.q_proj(x).view(S, B, self.num_heads, self.head_dim).contiguous()
-        k = self.k_proj(x).view(S, B, self.num_heads, self.head_dim).contiguous()
-        v = self.v_proj(x).view(S, B, self.num_heads, self.head_dim).contiguous()
-        if self.qk_layernorm:
-            q, k = self.q_layernorm(q), self.k_layernorm(k)
-        q, k = self._apply_rotary(q, rotary_pos_emb), self._apply_rotary(k, rotary_pos_emb)
-        q, k, v = q.permute(1, 2, 0, 3), k.permute(1, 2, 0, 3), v.permute(1, 2, 0, 3)
-        attn_mask = ~attention_mask if attention_mask is not None else None
-        out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=0.0)
-        return self.linear_proj(out.permute(2, 0, 1, 3).reshape(S, B, H))
+        if freqs_cis is not None:
+            query = apply_rotary_emb(query, freqs_cis)
+            key = apply_rotary_emb(key, freqs_cis)
 
-    def _apply_rotary(self, x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
-        """Apply rotary position embedding.
+        # Cast to correct dtype
+        dtype = query.dtype
+        query, key = query.to(dtype), key.to(dtype)
 
-        Matches Megatron's _apply_rotary_pos_emb_bshd with rotary_interleaved=False.
-        freqs: [S, B, 1, dim] containing angles [θ0, θ0, θ1, θ1, ...]
-        """
-        rot_dim = freqs.shape[-1]
-        x, x_pass = x[..., :rot_dim], x[..., rot_dim:]
+        # From [batch, seq_len] to [batch, 1, 1, seq_len] -> broadcast to [batch, heads, seq_len, seq_len]
+        if attention_mask is not None and attention_mask.ndim == 2:
+            attention_mask = attention_mask[:, None, None, :]
 
-        cos_ = torch.cos(freqs).to(x.dtype)
-        sin_ = torch.sin(freqs).to(x.dtype)
+        # Compute joint attention
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
 
-        # Non-interleaved rotate_half: [-x2, x1]
-        x1, x2 = x.chunk(2, dim=-1)
-        x_rotated = torch.cat((-x2, x1), dim=-1)
+        # Reshape back
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.to(dtype)
+        output = attn.to_out[0](hidden_states)
 
-        x = x * cos_ + x_rotated * sin_
-        return torch.cat((x, x_pass), dim=-1)
+        return output
 
 
 class FeedForward(nn.Module):
@@ -161,22 +170,31 @@ class FeedForward(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.linear_fc2(self.up_proj(x) * F.gelu(self.gate_proj(x)))
 
-
 class SharedAdaLNBlock(nn.Module):
     def __init__(self, hidden_size: int, num_heads: int, ffn_hidden_size: int, eps: float = 1e-6, qk_layernorm: bool = True):
         super().__init__()
-        # self.adaLN_sa_ln = RMSNorm(hidden_size, eps=eps)
-        self.adaLN_sa_ln = torch.nn.RMSNorm(hidden_size, eps=eps)
-        self.self_attention = Attention(hidden_size, num_heads, eps=eps, qk_layernorm=qk_layernorm)
-        # self.adaLN_mlp_ln = RMSNorm(hidden_size, eps=eps)
-        self.adaLN_mlp_ln = torch.nn.RMSNorm(hidden_size, eps=eps)
+        self.adaLN_sa_ln = RMSNorm(hidden_size, eps=eps)
+        self.self_attention = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=None,
+            dim_head=hidden_size // num_heads,
+            heads=num_heads,
+            qk_norm="rms_norm" if qk_layernorm else None,
+            eps=eps,
+            bias=False,
+            out_bias=False,
+            processor=ErnieImageSingleStreamAttnProcessor(),
+        )
+        self.adaLN_mlp_ln = RMSNorm(hidden_size, eps=eps)
         self.mlp = FeedForward(hidden_size, ffn_hidden_size)
 
     def forward(self, x, rotary_pos_emb, shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, attention_mask=None):
         residual = x
         x = self.adaLN_sa_ln(x)
         x = self._modulate(x, shift_msa, scale_msa)
-        attn_out = self.self_attention(x, rotary_pos_emb, attention_mask)
+        x_bsh = x.permute(1, 0, 2)  # [S, B, H] → [B, S, H] for diffusers Attention (batch-first)
+        attn_out = self.self_attention(x_bsh, attention_mask=attention_mask, freqs_cis=rotary_pos_emb)
+        attn_out = attn_out.permute(1, 0, 2)  # [B, S, H] → [S, B, H]
         x = residual + self._apply_gate(gate_msa, attn_out)
         residual = x
         x = self._modulate(self.adaLN_mlp_ln(x), shift_mlp, scale_mlp)
@@ -231,7 +249,6 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         qk_layernorm: bool = True,
     ):
         super().__init__()
-        self.gradient_checkpointing = False
         self.hidden_size = hidden_size
         self.num_heads = num_attention_heads
         self.head_dim = hidden_size // num_attention_heads
@@ -277,26 +294,20 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         image_ids = torch.cat([text_lens.float().view(B, 1, 1).expand(-1, N_img, -1), grid_yx.view(1, N_img, 2).expand(B, -1, -1)], dim=-1)
         rotary_pos_emb = self.pos_embed(torch.cat([image_ids, text_ids], dim=1))
 
-        # Attention mask
+        # Attention mask: True = valid (attend), False = padding (mask out), matches sdpa bool convention
         valid_text = torch.arange(Tmax, device=device).view(1, Tmax) < text_lens.view(B, 1) if Tmax > 0 else torch.zeros((B, 0), device=device, dtype=torch.bool)
-        attention_mask = (~torch.cat([torch.ones((B, N_img), device=device, dtype=torch.bool), valid_text], dim=1))[:, None, None, :]
+        attention_mask = torch.cat([torch.ones((B, N_img), device=device, dtype=torch.bool), valid_text], dim=1)[:, None, None, :]
 
         # AdaLN
         c = self.time_embedding(self.time_proj(timestep.to(dtype)))
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = [t.unsqueeze(0).expand(S, -1, -1).contiguous() for t in self.adaLN_modulation(c).chunk(6, dim=-1)]
         for layer in self.layers:
-            if self.gradient_checkpointing and self.training:
-                x = self._gradient_checkpointing_func(
-                    layer.__call__,
-                    x, rotary_pos_emb, shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, attention_mask
-                )
-            else:
-                x = layer(x, rotary_pos_emb, shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, attention_mask)
+            x = layer(x, rotary_pos_emb, shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, attention_mask)
         x = self.final_norm(x, c).type_as(x)
         patches = self.final_linear(x)[:N_img].transpose(0, 1).contiguous()
         output = patches.view(B, Hp, Wp, p, p, self.out_channels).permute(0, 5, 1, 3, 2, 4).contiguous().view(B, self.out_channels, H, W)
 
-        return ErnieImageTransformer2DModelOutput(sample=output) if return_dict else (output,)
+        return Text2ImgDiTTransformer2DModelOutput(sample=output) if return_dict else (output,)
 
     def _pad_text(self, text_hiddens: List[torch.Tensor], device: torch.device, dtype: torch.dtype):
         B = len(text_hiddens)
