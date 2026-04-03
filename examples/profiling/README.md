@@ -24,6 +24,8 @@ We want to uncover CPU overhead, CPU-GPU sync points, and other bottlenecks in p
 
 ## Target Pipelines
 
+We wanted to start with some of our most popular and widely-used pipelines:
+
 | Pipeline | Type | Checkpoint | Steps |
 |----------|------|-----------|-------|
 | `FluxPipeline` | text-to-image | `black-forest-labs/FLUX.1-dev` | 2 |
@@ -87,6 +89,8 @@ This is non-invasive — it monkey-patches bound methods without modifying sourc
   3. Export Chrome trace JSON
   4. Print `key_averages()` summary table (sorted by CUDA time) to stdout
 
+`PipelineProfiler` also has a `benchmark()` method that can measure the total runtime of a pipeline. 
+
 ### Step 2: `profiling_pipelines.py` — CLI with Pipeline Configs
 
 **Pipeline config registry** — each entry specifies:
@@ -113,7 +117,7 @@ All configs use `output_type="latent"` by default (skip VAE decode for cleaner d
 - `--full_decode` (switch output_type from `"latent"` to `"pil"` to include VAE)
 - `--compile_mode default|reduce-overhead|max-autotune`
 - `--compile_regional` flag (uses [regional compilation](https://pytorch.org/tutorials/recipes/regional_compilation.html) to compile only the transformer forward pass instead of the full pipeline — faster compile times, ideal for iterative profiling)
-- `--compile_fullgraph` flag
+- `--compile_fullgraph` flag to ensure there are no graph breaks
 
 **Output:** `{output_dir}/{pipeline}_{mode}.json` Chrome trace + stdout summary.
 
