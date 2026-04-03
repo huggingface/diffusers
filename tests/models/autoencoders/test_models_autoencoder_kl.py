@@ -21,6 +21,7 @@ from parameterized import parameterized
 
 from diffusers import AutoencoderKL
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -35,7 +36,7 @@ from ...testing_utils import (
     torch_device,
 )
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -50,6 +51,10 @@ class AutoencoderKLTesterConfig(BaseModelTesterConfig):
     def output_shape(self):
         return (3, 32, 32)
 
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
     def get_init_dict(self, block_out_channels=None, norm_num_groups=None):
         block_out_channels = block_out_channels or [2, 4]
         norm_num_groups = norm_num_groups or 2
@@ -63,17 +68,12 @@ class AutoencoderKLTesterConfig(BaseModelTesterConfig):
             "norm_num_groups": norm_num_groups,
         }
 
-    def get_dummy_inputs(self, seed=0):
-        torch.manual_seed(seed)
+    def get_dummy_inputs(self):
         batch_size = 4
         num_channels = 3
         sizes = (32, 32)
-        image = torch.randn(batch_size, num_channels, *sizes).to(torch_device)
+        image = randn_tensor((batch_size, num_channels, *sizes), generator=self.generator, device=torch_device)
         return {"sample": image}
-
-    # Bridge for AutoencoderTesterMixin which still uses the old interface
-    def prepare_init_args_and_inputs_for_common(self):
-        return self.get_init_dict(), self.get_dummy_inputs()
 
 
 class TestAutoencoderKL(AutoencoderKLTesterConfig, ModelTesterMixin, TrainingTesterMixin):
@@ -168,7 +168,7 @@ class TestAutoencoderKLMemory(AutoencoderKLTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKL."""
 
 
-class TestAutoencoderKLSlicingTiling(AutoencoderKLTesterConfig, AutoencoderTesterMixin):
+class TestAutoencoderKLSlicingTiling(AutoencoderKLTesterConfig, NewAutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKL."""
 
 
