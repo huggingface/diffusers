@@ -8,6 +8,10 @@ Usage:
     python profiling/profiling_pipelines.py --pipeline all --mode eager
     python profiling/profiling_pipelines.py --pipeline wan --mode eager --full_decode
     python profiling/profiling_pipelines.py --pipeline flux --mode compile --num_steps 4
+
+Benchmarking (wall-clock time, no profiler overhead):
+    python profiling/profiling_pipelines.py --pipeline flux --mode compile --benchmark
+    python profiling/profiling_pipelines.py --pipeline flux --mode both --benchmark --num_runs 10 --num_warmups 3
 """
 
 import argparse
@@ -145,6 +149,13 @@ def main():
         action="store_true",
         help="Use compile_repeated_blocks() instead of full model compile",
     )
+    parser.add_argument(
+        "--benchmark",
+        action="store_true",
+        help="Benchmark wall-clock time instead of profiling. Uses CUDA events, no profiler overhead.",
+    )
+    parser.add_argument("--num_runs", type=int, default=5, help="Number of timed runs for benchmarking")
+    parser.add_argument("--num_warmups", type=int, default=2, help="Number of warmup runs for benchmarking")
     args = parser.parse_args()
 
     registry = build_registry()
@@ -168,13 +179,17 @@ def main():
                 }
                 config.compile_regional = args.compile_regional
 
-            logger.info(f"Profiling {pipeline_name} in {mode} mode...")
             profiler = PipelineProfiler(config, args.output_dir)
             try:
-                trace_file = profiler.run()
-                logger.info(f"Done: {trace_file}")
+                if args.benchmark:
+                    logger.info(f"Benchmarking {pipeline_name} in {mode} mode...")
+                    profiler.benchmark(num_runs=args.num_runs, num_warmups=args.num_warmups)
+                else:
+                    logger.info(f"Profiling {pipeline_name} in {mode} mode...")
+                    trace_file = profiler.run()
+                    logger.info(f"Done: {trace_file}")
             except Exception as e:
-                logger.error(f"Failed to profile {pipeline_name} ({mode}): {e}")
+                logger.error(f"Failed to {'benchmark' if args.benchmark else 'profile'} {pipeline_name} ({mode}): {e}")
 
 
 if __name__ == "__main__":

@@ -59,6 +59,41 @@ def flush():
     torch.cuda.reset_peak_memory_stats()
 
 
+def benchmark_fn(f, *args, num_runs=5, num_warmups=2, **kwargs):
+    """Benchmark a function using CUDA events for accurate GPU timing.
+
+    Uses CUDA events to measure wall-clock time including GPU execution,
+    without the overhead of torch.profiler. Reports mean and standard deviation
+    over multiple runs.
+
+    Returns:
+        dict with keys: mean_ms, std_ms, runs_ms (list of individual timings)
+    """
+    # Warmup
+    for _ in range(num_warmups):
+        f(*args, **kwargs)
+        torch.cuda.synchronize()
+
+    # Timed runs
+    times = []
+    for _ in range(num_runs):
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+
+        start.record()
+        f(*args, **kwargs)
+        end.record()
+
+        torch.cuda.synchronize()
+        times.append(start.elapsed_time(end))
+
+    mean_ms = sum(times) / len(times)
+    variance = sum((t - mean_ms) ** 2 for t in times) / len(times)
+    std_ms = variance**0.5
+
+    return {"mean_ms": mean_ms, "std_ms": std_ms, "runs_ms": times}
+
+
 @dataclass
 class PipelineProfilingConfig:
     name: str
@@ -75,7 +110,7 @@ class PipelineProfiler:
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
 
-    def setup_pipeline(self):
+    def setup_pipeline(self, annotate=True):
         """Load the pipeline from pretrained, optionally compile, and annotate."""
         logger.info(f"Loading pipeline: {self.config.name}")
         pipe = self.config.pipeline_cls.from_pretrained(**self.config.pipeline_init_kwargs)
@@ -94,7 +129,8 @@ class PipelineProfiler:
         # Disable tqdm progress bar to avoid CPU overhead / IO between steps
         pipe.set_progress_bar_config(disable=True)
 
-        annotate_pipeline(pipe)
+        if annotate:
+            annotate_pipeline(pipe)
         return pipe
 
     def run(self):
@@ -146,3 +182,34 @@ class PipelineProfiler:
         flush()
 
         return trace_file
+
+    def benchmark(self, num_runs=5, num_warmups=2):
+        """Benchmark pipeline wall-clock time without profiler overhead.
+
+        Uses CUDA events for accurate GPU-inclusive timing over multiple runs.
+        No annotations are applied to avoid any overhead from record_function wrappers.
+        Reports mean, std, and individual run times.
+        """
+        pipe = self.setup_pipeline(annotate=False)
+        flush()
+
+        mode = "compile" if self.config.compile_kwargs else "eager"
+
+        logger.info(f"Benchmarking {self.config.name} ({mode}): {num_warmups} warmup + {num_runs} timed runs...")
+        result = benchmark_fn(pipe, num_runs=num_runs, num_warmups=num_warmups, **self.config.pipeline_call_kwargs)
+
+        print("\n" + "=" * 80)
+        print(f"Benchmark: {self.config.name} ({mode})")
+        print("=" * 80)
+        print(f"  Runs: {num_runs} (after {num_warmups} warmup)")
+        print(f"  Mean: {result['mean_ms']:.1f} ms")
+        print(f"  Std:  {result['std_ms']:.1f} ms")
+        print(f"  Individual: {', '.join(f'{t:.1f}' for t in result['runs_ms'])} ms")
+        print("=" * 80)
+
+        # Cleanup
+        pipe.to("cpu")
+        del pipe
+        flush()
+
+        return result
