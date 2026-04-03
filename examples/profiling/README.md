@@ -340,3 +340,7 @@ will likely mitigate it. In case it doesn't, the above observations could
 be useful to mitigate that.
 * Use of CUDA Graphs can also help mitigate CPU overhead related issues. CUDA Graphs can be enabled by setting the `torch.compile` mode to `"reduce-overhead"` or `"max-autotune"`.
 * Diffusers' integration of `torch.compile` is documented [here](https://huggingface.co/docs/diffusers/main/en/optimization/fp16#torchcompile).
+
+## Acknowledgements
+
+Thanks to [vkuzo](https://github.com/vkuzo) and [jbschlosser](https://github.com/jbschlosser) from the PyTorch team for providing invaluable feedback on the guide.
