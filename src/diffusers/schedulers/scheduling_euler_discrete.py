@@ -368,7 +368,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 based on the `timestep_spacing` attribute. If `timesteps` is passed, `num_inference_steps` and `sigmas`
                 must be `None`, and `timestep_spacing` attribute will be ignored.
             sigmas (`list[float]`, *optional*):
-                Custom sigmas used to support arbitrary timesteps schedule schedule. If `None`, timesteps and sigmas
+                Custom sigmas used to support arbitrary timesteps schedule. If `None`, timesteps and sigmas
                 will be generated based on the relevant scheduler attributes. If `sigmas` is passed,
                 `num_inference_steps` and `timesteps` must be `None`, and the timesteps will be generated based on the
                 custom sigmas schedule.

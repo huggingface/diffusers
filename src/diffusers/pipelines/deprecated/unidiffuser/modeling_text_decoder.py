@@ -11,7 +11,7 @@ from ....models import ModelMixin
 # Modified from ClipCaptionModel in https://github.com/thu-ml/unidiffuser/blob/main/libs/caption_decoder.py
 class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     """
-    Text decoder model for a image-text [UniDiffuser](https://huggingface.co/papers/2303.06555) model. This is used to
+    Text decoder model for an image-text [UniDiffuser](https://huggingface.co/papers/2303.06555) model. This is used to
     generate text from the UniDiffuser image-text embedding.
 
     Parameters:

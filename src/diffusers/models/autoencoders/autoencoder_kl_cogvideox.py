@@ -550,7 +550,7 @@ class CogVideoXUpBlock3D(nn.Module):
         spatial_norm_dim (`int`, defaults to `16`):
             The dimension to use for spatial norm if it is to be used instead of group norm.
         add_upsample (`bool`, defaults to `True`):
-            Whether or not to use a upsampling layer. If not used, output dimension would be same as input dimension.
+            Whether or not to use an upsampling layer. If not used, output dimension would be same as input dimension.
         compress_time (`bool`, defaults to `False`):
             Whether or not to downsample across temporal dimension.
         pad_mode (str, defaults to `"first"`):

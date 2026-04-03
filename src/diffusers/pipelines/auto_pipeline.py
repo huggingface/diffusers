@@ -659,7 +659,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
     @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_or_path, **kwargs):
         r"""
-        Instantiates a image-to-image Pytorch diffusion pipeline from pretrained pipeline weight.
+        Instantiates an image-to-image Pytorch diffusion pipeline from pretrained pipeline weight.
 
         The from_pretrained() method takes care of returning the correct pipeline class instance by:
             1. Detect the pipeline class of the pretrained_model_or_path based on the _class_name property of its
@@ -817,7 +817,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
         r"""
-        Instantiates a image-to-image Pytorch diffusion pipeline from another instantiated diffusion pipeline class.
+        Instantiates an image-to-image Pytorch diffusion pipeline from another instantiated diffusion pipeline class.
 
         The from_pipe() method takes care of returning the correct pipeline class instance by finding the
         image-to-image pipeline linked to the pipeline class using pattern matching on pipeline class name.

@@ -172,7 +172,7 @@ class AutoOffloadStrategy:
         try:
             mem_on_device = device_module.mem_get_info(execution_device.index)[0]
         except AttributeError:
-            raise AttributeError(f"Do not know how to obtain obtain memory info for {str(device_module)}.")
+            raise AttributeError(f"Do not know how to obtain memory info for {str(device_module)}.")
 
         mem_on_device = mem_on_device - self.memory_reserve_margin
         if current_module_size < mem_on_device:
