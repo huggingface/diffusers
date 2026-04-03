@@ -17,10 +17,11 @@ import pytest
 import torch
 
 from diffusers import AutoencoderDC
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import AutoencoderTesterMixin
+from .testing_utils import NewAutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -34,6 +35,10 @@ class AutoencoderDCTesterConfig(BaseModelTesterConfig):
     @property
     def output_shape(self):
         return (3, 32, 32)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
 
     def get_init_dict(self):
         return {
@@ -61,17 +66,12 @@ class AutoencoderDCTesterConfig(BaseModelTesterConfig):
             "scaling_factor": 0.41407,
         }
 
-    def get_dummy_inputs(self, seed=0):
-        torch.manual_seed(seed)
+    def get_dummy_inputs(self):
         batch_size = 4
         num_channels = 3
         sizes = (32, 32)
-        image = torch.randn(batch_size, num_channels, *sizes).to(torch_device)
+        image = randn_tensor((batch_size, num_channels, *sizes), generator=self.generator, device=torch_device)
         return {"sample": image}
-
-    # Bridge for AutoencoderTesterMixin which still uses the old interface
-    def prepare_init_args_and_inputs_for_common(self):
-        return self.get_init_dict(), self.get_dummy_inputs()
 
 
 class TestAutoencoderDC(AutoencoderDCTesterConfig, ModelTesterMixin):
@@ -90,5 +90,5 @@ class TestAutoencoderDCMemory(AutoencoderDCTesterConfig, MemoryTesterMixin):
         super().test_layerwise_casting_memory()
 
 
-class TestAutoencoderDCSlicingTiling(AutoencoderDCTesterConfig, AutoencoderTesterMixin):
+class TestAutoencoderDCSlicingTiling(AutoencoderDCTesterConfig, NewAutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderDC."""
