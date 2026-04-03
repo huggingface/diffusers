@@ -1262,7 +1262,7 @@ class StableDiffusion3ControlNetInpaintingPipeline(
 
             control_image = control_images
         else:
-            assert ValueError("Controlnet not found. Please check the controlnet model.")
+            raise ValueError("Controlnet not found. Please check the controlnet model.")
 
         if controlnet_pooled_projections is None:
             controlnet_pooled_projections = torch.zeros_like(pooled_prompt_embeds)
