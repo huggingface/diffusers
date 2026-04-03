@@ -906,7 +906,6 @@ class PromptDataset(Dataset):
         return example
 
 
-
 def _materialize_prompt_embedding_mask(
     prompt_embeds: torch.Tensor, prompt_embeds_mask: torch.Tensor | None
 ) -> torch.Tensor:
@@ -965,6 +964,7 @@ def concat_prompt_embedding_batches(
         return merged_prompt_embeds, None
 
     return merged_prompt_embeds, merged_mask
+
 
 def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
