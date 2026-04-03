@@ -49,6 +49,16 @@ class TextKVCacheState(BaseState):
         self.key = None
 
 
+class TextKVCacheBlockState(BaseState):
+    """Per-block state holding cached text key/value projections."""
+
+    def __init__(self):
+        self.kv_cache: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
+
+    def reset(self):
+        self.kv_cache.clear()
+
+
 class TextKVCacheTransformerHook(ModelHook):
     """Captures ``encoder_hidden_states.data_ptr()`` before ``txt_norm``
     and writes it to shared state for the block hooks to read."""
@@ -80,16 +90,19 @@ class TextKVCacheBlockHook(ModelHook):
 
     _is_stateful = True
 
-    def __init__(self, state_manager: StateManager):
+    def __init__(self, state_manager: StateManager, block_state_manager: StateManager):
         super().__init__()
         self.state_manager = state_manager
-        self.kv_cache: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
+        self.block_state_manager = block_state_manager
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         from ..models.transformers.transformer_nucleusmoe_image import _apply_rotary_emb_nucleus
 
         if self.state_manager._current_context is None:
             self.state_manager.set_context("inference")
+
+        if self.block_state_manager._current_context is None:
+            self.block_state_manager.set_context("inference")
 
         if "encoder_hidden_states" in kwargs:
             encoder_hidden_states = kwargs["encoder_hidden_states"]
@@ -106,7 +119,9 @@ class TextKVCacheBlockHook(ModelHook):
         state: TextKVCacheState = self.state_manager.get_state()
         cache_key = state.key
 
-        if cache_key not in self.kv_cache:
+        block_state: TextKVCacheBlockState = self.block_state_manager.get_state()
+
+        if cache_key not in block_state.kv_cache:
             context = module.encoder_proj(encoder_hidden_states)
 
             attn = module.attn
@@ -123,9 +138,9 @@ class TextKVCacheBlockHook(ModelHook):
                 _, txt_freqs = image_rotary_emb
                 txt_key = _apply_rotary_emb_nucleus(txt_key, txt_freqs, use_real=False)
 
-            self.kv_cache[cache_key] = (txt_key, txt_value)
+            block_state.kv_cache[cache_key] = (txt_key, txt_value)
 
-        txt_key, txt_value = self.kv_cache[cache_key]
+        txt_key, txt_value = block_state.kv_cache[cache_key]
 
         attn_kwargs = kwargs.get("attention_kwargs") or {}
         attn_kwargs["cached_txt_key"] = txt_key
@@ -135,7 +150,7 @@ class TextKVCacheBlockHook(ModelHook):
         return self.fn_ref.original_forward(*args, **kwargs)
 
     def reset_state(self, module: torch.nn.Module):
-        self.kv_cache.clear()
+        self.block_state_manager.reset()
         return module
 
 
@@ -152,6 +167,7 @@ def apply_text_kv_cache(module: torch.nn.Module, config: TextKVCacheConfig) -> N
 
     for _, submodule in module.named_modules():
         if isinstance(submodule, NucleusMoEImageTransformerBlock):
-            hook = TextKVCacheBlockHook(state_manager)
+            block_state_manager = StateManager(TextKVCacheBlockState)
+            hook = TextKVCacheBlockHook(state_manager, block_state_manager)
             block_registry = HookRegistry.check_if_exists_or_initialize(submodule)
             block_registry.register_hook(hook, _TEXT_KV_CACHE_BLOCK_HOOK)
