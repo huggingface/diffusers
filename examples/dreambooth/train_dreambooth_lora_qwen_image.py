@@ -906,6 +906,8 @@ class PromptDataset(Dataset):
         return example
 
 
+# These helpers only matter for prior preservation, where instance and class prompt
+# embedding batches are concatenated and may not share the same mask/sequence length.
 def _materialize_prompt_embedding_mask(
     prompt_embeds: torch.Tensor, prompt_embeds_mask: torch.Tensor | None
 ) -> torch.Tensor:
