@@ -909,15 +909,34 @@ class QwenImageTransformer2DModel(
             # img_shapes is fixed during inference (same across all denoising steps),
             # so we can build the tensor once and reuse it, eliminating the CPU overhead
             # and implicit sync from torch.tensor() on each step.
+            #
+            # However, mutating a Python dict inside forward can cause graph breaks or
+            # repeated recompiles under torch.compile and can be problematic for
+            # torch.export, so disable cache reads/writes in those modes.
             device = timestep.device
             cache_key = (tuple(tuple(s) for s in img_shapes), device)
-            if cache_key not in self._modulate_index_cache:
-                self._modulate_index_cache[cache_key] = torch.tensor(
+            is_compile_or_export = torch.compiler.is_compiling() or (
+                hasattr(torch.compiler, "is_exporting") and torch.compiler.is_exporting()
+            )
+
+            if is_compile_or_export:
+                modulate_index = torch.tensor(
                     [[0] * prod(sample[0]) + [1] * sum([prod(s) for s in sample[1:]]) for sample in img_shapes],
                     device=device,
                     dtype=torch.int,
                 )
-            modulate_index = self._modulate_index_cache[cache_key]
+            else:
+                modulate_index_cache = getattr(self, "_modulate_index_cache", None)
+                if modulate_index_cache is None:
+                    modulate_index_cache = {}
+                    setattr(self, "_modulate_index_cache", modulate_index_cache)
+                if cache_key not in modulate_index_cache:
+                    modulate_index_cache[cache_key] = torch.tensor(
+                        [[0] * prod(sample[0]) + [1] * sum([prod(s) for s in sample[1:]]) for sample in img_shapes],
+                        device=device,
+                        dtype=torch.int,
+                    )
+                modulate_index = modulate_index_cache[cache_key]
         else:
             modulate_index = None
 
