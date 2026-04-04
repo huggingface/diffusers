@@ -34,7 +34,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
     A conditional Spatio-Temporal UNet model that takes a noisy video frames, conditional state, and a timestep and
     returns a sample shaped output.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
 
     Parameters:

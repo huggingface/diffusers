@@ -678,7 +678,7 @@ class AutoencoderKLAllegro(ModelMixin, AutoencoderMixin, ConfigMixin):
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Used in
     [Allegro](https://github.com/rhymes-ai/Allegro).
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
 
     Parameters:

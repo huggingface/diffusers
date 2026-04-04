@@ -167,7 +167,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNe
     self-attention layer in each Transformer block, as well as multiple cross-attention layers. It also allows for up
     to two cross-attention embeddings, `encoder_hidden_states` and `encoder_hidden_states_1`.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
 
     Parameters:

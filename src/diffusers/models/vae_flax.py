@@ -774,7 +774,7 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
     r"""
     Flax implementation of a VAE model with KL loss for decoding latent representations.
 
-    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for it's generic methods
+    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for its generic methods
     implemented for all models (such as downloading or saving).
 
     This model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)

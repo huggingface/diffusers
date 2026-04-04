@@ -958,7 +958,7 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images. Used in
     [CogVideoX](https://github.com/THUDM/CogVideo).
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
 
     Parameters:

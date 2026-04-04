@@ -413,7 +413,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromO
     r"""
     A VAE model for 2D images with spatial tiling support.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
     """
 

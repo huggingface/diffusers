@@ -940,7 +940,7 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
     A VAE model for encoding videos into latents and decoding latent representations into videos, supporting both
     continuous and discrete latent representations. Used in [VidTok](https://github.com/microsoft/VidTok).
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
 
     Args:

@@ -41,7 +41,7 @@ class VQModel(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A VQ-VAE model for decoding latent representations.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
 
     Parameters:

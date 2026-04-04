@@ -246,7 +246,7 @@ class ControlNetXSAdapter(ModelMixin, AttentionMixin, ConfigMixin):
     A `ControlNetXSAdapter` model. To use it, pass it into a `UNetControlNetXSModel` (together with a
     `UNet2DConditionModel` base model).
 
-    This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
+    This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for its generic
     methods implemented for all models (such as downloading or saving).
 
     Like `UNetControlNetXSModel`, `ControlNetXSAdapter` is compatible with StableDiffusion and StableDiffusion-XL. It's
@@ -512,13 +512,13 @@ class UNetControlNetXSModel(ModelMixin, AttentionMixin, ConfigMixin):
     r"""
     A UNet fused with a ControlNet-XS adapter model
 
-    This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
+    This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for its generic
     methods implemented for all models (such as downloading or saving).
 
-    `UNetControlNetXSModel` is compatible with StableDiffusion and StableDiffusion-XL. It's default parameters are
+    `UNetControlNetXSModel` is compatible with StableDiffusion and StableDiffusion-XL. Its default parameters are
     compatible with StableDiffusion.
 
-    It's parameters are either passed to the underlying `UNet2DConditionModel` or used exactly like in
+    Its parameters are either passed to the underlying `UNet2DConditionModel` or used exactly like in
     `ControlNetXSAdapter` . See their documentation for details.
     """
 

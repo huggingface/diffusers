@@ -667,7 +667,7 @@ class AutoencoderKLMagvit(ModelMixin, AutoencoderMixin, ConfigMixin):
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images. This
     model is used in [EasyAnimate](https://huggingface.co/papers/2405.18991).
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
     """
 

@@ -627,7 +627,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
     Introduced in [HunyuanVideo](https://huggingface.co/papers/2412.03603).
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
     """
 

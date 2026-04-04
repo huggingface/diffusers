@@ -41,7 +41,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     r"""
     A 1D UNet model that takes a noisy sample and a timestep and returns a sample shaped output.
 
-    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for its generic methods implemented
     for all models (such as downloading or saving).
 
     Parameters:

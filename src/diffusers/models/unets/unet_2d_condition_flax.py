@@ -53,7 +53,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
     shaped output.
 
-    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for it's generic methods
+    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for its generic methods
     implemented for all models (such as downloading or saving).
 
     This model is also a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
