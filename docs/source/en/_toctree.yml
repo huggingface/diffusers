@@ -737,6 +737,8 @@
       title: LCMScheduler
     - local: api/schedulers/lms_discrete
       title: LMSDiscreteScheduler
+    - local: api/schedulers/ltx_euler_ancestral_rf
+      title: LTXEulerAncestralRFScheduler
     - local: api/schedulers/pndm
       title: PNDMScheduler
     - local: api/schedulers/repaint

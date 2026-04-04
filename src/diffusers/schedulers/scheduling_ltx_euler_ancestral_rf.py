@@ -1,4 +1,4 @@
-# Copyright 2025 Lightricks and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Lightricks, Vittoria Lanzo and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,8 +65,9 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps (`int`, defaults to 1000):
             Included for config compatibility; not used to build the schedule.
         eta (`float`, defaults to 1.0):
-            Stochasticity parameter. `eta=0.0` yields deterministic DDIM-like sampling; `eta=1.0` matches ComfyUI's
-            default RF behavior.
+            Stochasticity parameter. Must be >= 0. `eta=0.0` yields deterministic DDIM-like sampling; `eta=1.0`
+            matches ComfyUI's default RF behavior. Values above 1.0 are accepted but will trigger clamping of
+            `sigma_down` to [0, sigma_next] with a one-time warning when the schedule step is too coarse.
         s_noise (`float`, defaults to 1.0):
             Global scaling factor for the stochastic noise term.
     """
@@ -82,12 +83,15 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         eta: float = 1.0,
         s_noise: float = 1.0,
     ):
+        if eta < 0:
+            raise ValueError(f"`eta` must be >= 0, got {eta}.")
         # Note: num_train_timesteps is kept only for config compatibility.
         self.num_inference_steps: int = None
         self.sigmas: torch.Tensor | None = None
         self.timesteps: torch.Tensor | None = None
         self._step_index: int = None
         self._begin_index: int = None
+        self._sigma_down_warned: bool = False  # deduplication flag for sigma_down clamp warning
 
     @property
     def step_index(self) -> int:
@@ -233,12 +237,23 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         if sigmas_tensor.ndim != 1:
             raise ValueError(f"`sigmas` must be a 1D tensor, got shape {tuple(sigmas_tensor.shape)}.")
 
+        if sigmas_tensor[0].item() > 1.0 + 1e-6:
+            raise ValueError(
+                f"`sigmas` values must be in [0, 1] for RF/CONST parameterization, "
+                f"got max={sigmas_tensor[0].item():.6f}."
+            )
+
+        if len(sigmas_tensor) > 1 and not (sigmas_tensor[:-1] >= sigmas_tensor[1:]).all():
+            sig_list = sigmas_tensor.tolist()
+            sig_repr = str(sig_list) if len(sig_list) <= 8 else f"{sig_list[:4]} ... {sig_list[-4:]} (len={len(sig_list)})"
+            raise ValueError(
+                f"`sigmas` must be monotonically non-increasing (each entry >= the next), got {sig_repr}"
+            )
+
         if sigmas_tensor[-1].abs().item() > 1e-6:
             logger.warning(
-                "The last sigma in the schedule is not zero (%.6f). "
-                "For best compatibility with ComfyUI's RF sampler, the terminal sigma "
-                "should be 0.0.",
-                sigmas_tensor[-1].item(),
+                f"The last sigma in the schedule is not zero ({sigmas_tensor[-1].item():.6f}). "
+                f"For best compatibility with ComfyUI's RF sampler, the terminal sigma should be 0.0."
             )
 
         # Move to device once, then derive timesteps.
@@ -256,10 +271,8 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
 
         if num_inference_steps is not None and num_inference_steps != len(sigmas) - 1:
             logger.warning(
-                "Provided `num_inference_steps=%d` does not match `len(sigmas)-1=%d`. "
-                "Overriding `num_inference_steps` with `len(sigmas)-1`.",
-                num_inference_steps,
-                len(sigmas) - 1,
+                f"Provided `num_inference_steps={num_inference_steps}` does not match `len(sigmas)-1={len(sigmas) - 1}`. "
+                f"Overriding `num_inference_steps` with `len(sigmas)-1`."
             )
 
         self.num_inference_steps = len(sigmas) - 1
@@ -344,6 +357,20 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
                 # Downstep computation (ComfyUI RF variant)
                 downstep_ratio = 1.0 + (sigma_next / sigma - 1.0) * eta
                 sigma_down = sigma_next * downstep_ratio
+
+                # sigma_down can go negative when eta > 1 on a coarse schedule step, which
+                # flips sigma_ratio and corrupts the Euler update. Clamp to [0, +inf) and
+                # emit a one-time warning so the user knows to reduce eta or refine the schedule.
+                # (sigma_down > sigma_next is not reachable under a valid monotone schedule.)
+                if sigma_down.item() < 0:
+                    if not self._sigma_down_warned:
+                        logger.warning(
+                            f"`eta`={eta:.3f} caused `sigma_down`={sigma_down.item():.6f} to go negative "
+                            f"(sigma={sigma.item():.6f}, sigma_next={sigma_next.item():.6f}). "
+                            f"Clamping to 0. Reduce `eta` or use a finer schedule to avoid this."
+                        )
+                        self._sigma_down_warned = True
+                    sigma_down = sigma_down.clamp(min=0.0)
 
                 alpha_ip1 = 1.0 - sigma_next
                 alpha_down = 1.0 - sigma_down
