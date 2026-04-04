@@ -725,8 +725,8 @@ def _caching_allocator_warmup(
 ) -> None:
     """
     This function warm-ups the caching allocator based on the size of the model tensors that will reside on each
-    device. It allows to have one large call to Malloc, instead of recursively calling it later when loading the model,
-    which is actually the loading speed bottleneck. Calling this function allows to cut the model loading time by a
+    device. It allows having one large call to Malloc, instead of recursively calling it later when loading the model,
+    which is actually the loading speed bottleneck. Calling this function allows cutting the model loading time by a
     very large margin.
     """
     factor = 2 if hf_quantizer is None else hf_quantizer.get_cuda_warm_up_factor()

@@ -78,7 +78,7 @@ class DiffusersQuantizer(ABC):
 
     def update_device_map(self, device_map: dict[str, Any] | None) -> dict[str, Any] | None:
         """
-        Override this method if you want to pass a override the existing device map with a new one. E.g. for
+        Override this method if you want to override the existing device map with a new one. E.g. for
         bitsandbytes, since `accelerate` is a hard requirement, if no device_map is passed, the device_map is set to
         `"auto"``
 
