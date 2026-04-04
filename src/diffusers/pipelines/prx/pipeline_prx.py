@@ -197,7 +197,8 @@ class TextPreprocessor:
             text = re.sub(regex2, " ", text)
 
         # Basic cleaning
-        text = ftfy.fix_text(text)
+        if is_ftfy_available():
+            text = ftfy.fix_text(text)
         text = html.unescape(html.unescape(text))
         text = text.strip()
 

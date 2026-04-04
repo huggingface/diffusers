@@ -626,7 +626,8 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         if len(re.findall(regex2, caption)) > 3:
             caption = re.sub(regex2, " ", caption)
 
-        caption = ftfy.fix_text(caption)
+        if is_ftfy_available():
+            caption = ftfy.fix_text(caption)
         caption = html.unescape(html.unescape(caption))
 
         caption = re.sub(r"\b[a-zA-Z]{1,3}\d{3,15}\b", "", caption)  # jc6640
