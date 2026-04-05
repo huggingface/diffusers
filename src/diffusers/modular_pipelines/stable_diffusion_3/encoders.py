@@ -82,11 +82,12 @@ def _get_t5_prompt_embeds(
     max_sequence_length: int = 256,
     device: torch.device | None = None,
     joint_attention_dim: int = 4096,
+    dtype: torch.dtype | None = None,
 ):
     device = device or (
         text_encoder.device if text_encoder is not None else torch.device("cpu")
     )
-    dtype = text_encoder.dtype if text_encoder is not None else torch.float32
+    dtype = dtype or (text_encoder.dtype if text_encoder is not None else torch.float32)
 
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
@@ -135,11 +136,12 @@ def _get_clip_prompt_embeds(
     device: torch.device | None = None,
     clip_skip: int | None = None,
     hidden_size: int = 768,
+    dtype: torch.dtype | None = None,
 ):
     device = device or (
         text_encoder.device if text_encoder is not None else torch.device("cpu")
     )
-    dtype = text_encoder.dtype if text_encoder is not None else torch.float32
+    dtype = dtype or (text_encoder.dtype if text_encoder is not None else torch.float32)
 
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
@@ -203,6 +205,16 @@ def encode_prompt(
 ):
     device = device or components._execution_device
 
+    expected_dtype = None
+    if components.text_encoder is not None:
+        expected_dtype = components.text_encoder.dtype
+    elif components.text_encoder_2 is not None:
+        expected_dtype = components.text_encoder_2.dtype
+    elif getattr(components, "transformer", None) is not None:
+        expected_dtype = components.transformer.dtype
+    else:
+        expected_dtype = torch.float32
+
     if lora_scale is not None and isinstance(components, SD3LoraLoaderMixin):
         components._lora_scale = lora_scale
         if components.text_encoder is not None and USE_PEFT_BACKEND:
@@ -226,6 +238,7 @@ def encode_prompt(
         device=device,
         clip_skip=clip_skip,
         hidden_size=768,
+        dtype=expected_dtype,
     )
     prompt_2_embed, pooled_prompt_2_embed = _get_clip_prompt_embeds(
         components.text_encoder_2,
@@ -234,6 +247,7 @@ def encode_prompt(
         device=device,
         clip_skip=clip_skip,
         hidden_size=1280,
+        dtype=expected_dtype,
     )
     clip_prompt_embeds = torch.cat([prompt_embed, prompt_2_embed], dim=-1)
 
@@ -248,6 +262,7 @@ def encode_prompt(
             if getattr(components, "transformer", None) is not None
             else 4096
         ),
+        dtype=expected_dtype,
     )
 
     clip_prompt_embeds = torch.nn.functional.pad(
@@ -286,6 +301,7 @@ def encode_prompt(
         device=device,
         clip_skip=None,
         hidden_size=768,
+        dtype=expected_dtype,
     )
     negative_prompt_2_embed, negative_pooled_prompt_2_embed = _get_clip_prompt_embeds(
         components.text_encoder_2,
@@ -294,6 +310,7 @@ def encode_prompt(
         device=device,
         clip_skip=None,
         hidden_size=1280,
+        dtype=expected_dtype,
     )
     negative_clip_prompt_embeds = torch.cat(
         [negative_prompt_embed, negative_prompt_2_embed], dim=-1
@@ -310,6 +327,7 @@ def encode_prompt(
             if getattr(components, "transformer", None) is not None
             else 4096
         ),
+        dtype=expected_dtype,
     )
 
     negative_clip_prompt_embeds = torch.nn.functional.pad(
