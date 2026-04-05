@@ -98,268 +98,7 @@ class StableDiffusion3AutoVaeEncoderStep(AutoPipelineBlocks):
 
 
 # auto_docstring
-class StableDiffusion3BeforeDenoiseStep(SequentialPipelineBlocks):
-    """
-    Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-
-      Inputs:
-          height (`int`, *optional*):
-              The height in pixels of the generated image.
-          width (`int`, *optional*):
-              The width in pixels of the generated image.
-          latents (`Tensor | NoneType`, *optional*):
-              Pre-generated noisy latents to be used as inputs for image generation.
-          num_images_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
-          generator (`None`, *optional*):
-              One or a list of torch generator(s) to make generation deterministic.
-          batch_size (`int`):
-              The batch size for latent generation.
-          dtype (`dtype`, *optional*):
-              The data type for the latents.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              The number of denoising steps.
-          timesteps (`None`, *optional*):
-              Custom timesteps to use for the denoising process.
-          sigmas (`None`, *optional*):
-              Custom sigmas to use for the denoising process.
-          mu (`float`, *optional*):
-              The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
-
-      Outputs:
-          latents (`Tensor`):
-              The prepared latent tensors to be denoised.
-          timesteps (`Tensor`):
-              The timesteps schedule for the denoising process.
-          num_inference_steps (`int`):
-              The final number of inference steps.
-    """
-
-    model_name = "stable-diffusion-3"
-    block_classes = [
-        StableDiffusion3PrepareLatentsStep(),
-        StableDiffusion3SetTimestepsStep(),
-    ]
-    block_names = ["prepare_latents", "set_timesteps"]
-
-
-# auto_docstring
-class StableDiffusion3Img2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
-    """
-    Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-
-      Inputs:
-          height (`int`, *optional*):
-              The height in pixels of the generated image.
-          width (`int`, *optional*):
-              The width in pixels of the generated image.
-          latents (`Tensor | NoneType`, *optional*):
-              Pre-generated noisy latents to be used as inputs for image generation.
-          num_images_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
-          generator (`None`, *optional*):
-              One or a list of torch generator(s) to make generation deterministic.
-          batch_size (`int`):
-              The batch size for latent generation.
-          dtype (`dtype`, *optional*):
-              The data type for the latents.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              The number of denoising steps.
-          timesteps (`None`, *optional*):
-              Custom timesteps to use for the denoising process.
-          sigmas (`None`, *optional*):
-              Custom sigmas to use for the denoising process.
-          strength (`None`, *optional*, defaults to 0.6):
-              Indicates extent to transform the reference image.
-          mu (`float`, *optional*):
-              The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
-          image_latents (`Tensor`):
-              The image latents encoded by the VAE.
-
-      Outputs:
-          latents (`Tensor`):
-              The prepared latent tensors to be denoised.
-          timesteps (`Tensor`):
-              The timesteps schedule for the denoising process.
-          num_inference_steps (`int`):
-              The final number of inference steps.
-          initial_noise (`Tensor`):
-              The initial noise applied to the image latents.
-    """
-
-    model_name = "stable-diffusion-3"
-    block_classes = [
-        StableDiffusion3PrepareLatentsStep(),
-        StableDiffusion3Img2ImgSetTimestepsStep(),
-        StableDiffusion3Img2ImgPrepareLatentsStep(),
-    ]
-    block_names = ["prepare_latents", "set_timesteps", "prepare_img2img_latents"]
-
-
-# auto_docstring
-class StableDiffusion3AutoBeforeDenoiseStep(AutoPipelineBlocks):
-    """
-    Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-
-      Inputs:
-          height (`int`, *optional*):
-              The height in pixels of the generated image.
-          width (`int`, *optional*):
-              The width in pixels of the generated image.
-          latents (`Tensor | NoneType`, *optional*):
-              Pre-generated noisy latents to be used as inputs for image generation.
-          num_images_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
-          generator (`None`, *optional*):
-              One or a list of torch generator(s) to make generation deterministic.
-          batch_size (`int`):
-              The batch size for latent generation.
-          dtype (`dtype`, *optional*):
-              The data type for the latents.
-          num_inference_steps (`None`, *optional*, defaults to 50):
-              The number of denoising steps.
-          timesteps (`None`, *optional*):
-              Custom timesteps to use for the denoising process.
-          sigmas (`None`, *optional*):
-              Custom sigmas to use for the denoising process.
-          strength (`None`, *optional*, defaults to 0.6):
-              Indicates extent to transform the reference image.
-          mu (`float`, *optional*):
-              The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
-          image_latents (`Tensor`, *optional*):
-              The image latents encoded by the VAE.
-
-      Outputs:
-          latents (`Tensor`):
-              The prepared latent tensors to be denoised.
-          timesteps (`Tensor`):
-              The timesteps schedule for the denoising process.
-          num_inference_steps (`int`):
-              The final number of inference steps.
-          initial_noise (`Tensor`):
-              The initial noise applied to the image latents.
-    """
-
-    model_name = "stable-diffusion-3"
-    block_classes = [
-        StableDiffusion3Img2ImgBeforeDenoiseStep,
-        StableDiffusion3BeforeDenoiseStep,
-    ]
-    block_names = ["img2img", "text2image"]
-    block_trigger_inputs = ["image_latents", None]
-
-
-# auto_docstring
-class StableDiffusion3Img2ImgInputStep(SequentialPipelineBlocks):
-    """
-    Inputs:
-          num_images_per_prompt (`None`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
-          guidance_scale (`None`, *optional*, defaults to 7.0):
-              Guidance scale as defined in Classifier-Free Diffusion Guidance.
-          skip_guidance_layers (`list`, *optional*):
-              A list of integers that specify layers to skip during guidance.
-          prompt_embeds (`Tensor`):
-              Pre-generated text embeddings.
-          pooled_prompt_embeds (`Tensor`):
-              Pre-generated pooled text embeddings.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              Pre-generated negative text embeddings.
-          negative_pooled_prompt_embeds (`Tensor`, *optional*):
-              Pre-generated negative pooled text embeddings.
-          height (`None`, *optional*):
-              The height in pixels of the generated image.
-          width (`None`, *optional*):
-              The width in pixels of the generated image.
-          image_latents (`None`, *optional*):
-              Latent input image_latents to be processed.
-
-      Outputs:
-          batch_size (`int`):
-              The batch size for the inference.
-          dtype (`dtype`):
-              The expected data type for latents.
-          do_classifier_free_guidance (`bool`):
-              Flag indicating if CFG is enabled.
-          prompt_embeds (`Tensor`):
-              The processed text embeddings.
-          pooled_prompt_embeds (`Tensor`):
-              The processed pooled text embeddings.
-          negative_prompt_embeds (`Tensor`):
-              The processed negative text embeddings.
-          negative_pooled_prompt_embeds (`Tensor`):
-              The processed negative pooled text embeddings.
-          image_height (`int`):
-              The height of the generated image.
-          image_width (`int`):
-              The width of the generated image.
-    """
-
-    model_name = "stable-diffusion-3"
-    block_classes = [
-        StableDiffusion3TextInputStep(),
-        StableDiffusion3AdditionalInputsStep(),
-    ]
-    block_names = ["text_inputs", "additional_inputs"]
-
-
-# auto_docstring
-class StableDiffusion3AutoInputStep(AutoPipelineBlocks):
-    """
-    Inputs:
-          num_images_per_prompt (`None`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
-          guidance_scale (`None`, *optional*, defaults to 7.0):
-              Guidance scale as defined in Classifier-Free Diffusion Guidance.
-          skip_guidance_layers (`list`, *optional*):
-              A list of integers that specify layers to skip during guidance.
-          prompt_embeds (`Tensor`):
-              Pre-generated text embeddings.
-          pooled_prompt_embeds (`Tensor`):
-              Pre-generated pooled text embeddings.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              Pre-generated negative text embeddings.
-          negative_pooled_prompt_embeds (`Tensor`, *optional*):
-              Pre-generated negative pooled text embeddings.
-          height (`None`, *optional*):
-              The height in pixels of the generated image.
-          width (`None`, *optional*):
-              The width in pixels of the generated image.
-          image_latents (`None`, *optional*):
-              Latent input image_latents to be processed.
-
-      Outputs:
-          batch_size (`int`):
-              The batch size for the inference.
-          dtype (`dtype`):
-              The expected data type for latents.
-          do_classifier_free_guidance (`bool`):
-              Flag indicating if CFG is enabled.
-          prompt_embeds (`Tensor`):
-              The processed text embeddings.
-          pooled_prompt_embeds (`Tensor`):
-              The processed pooled text embeddings.
-          negative_prompt_embeds (`Tensor`):
-              The processed negative text embeddings.
-          negative_pooled_prompt_embeds (`Tensor`):
-              The processed negative pooled text embeddings.
-          image_height (`int`):
-              The height of the generated image.
-          image_width (`int`):
-              The width of the generated image.
-    """
-
-    model_name = "stable-diffusion-3"
-    block_classes = [StableDiffusion3Img2ImgInputStep, StableDiffusion3TextInputStep]
-    block_names = ["img2img", "text2image"]
-    block_trigger_inputs = ["image_latents", None]
-
-
-# auto_docstring
-class StableDiffusion3CoreDenoiseStep(SequentialPipelineBlocks):
+class StableDiffusion3T2ICoreDenoiseStep(SequentialPipelineBlocks):
     """
     Components:
           scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
@@ -368,10 +107,70 @@ class StableDiffusion3CoreDenoiseStep(SequentialPipelineBlocks):
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
               The number of images to generate per prompt.
+          prompt_embeds (`Tensor`):
+              Pre-generated text embeddings.
+          pooled_prompt_embeds (`Tensor`):
+              Pre-generated pooled text embeddings.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              Pre-generated negative text embeddings.
+          negative_pooled_prompt_embeds (`Tensor`, *optional*):
+              Pre-generated negative pooled text embeddings.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          latents (`Tensor | NoneType`, *optional*):
+              Pre-generated noisy latents to be used as inputs for image generation.
+          generator (`None`, *optional*):
+              One or a list of torch generator(s) to make generation deterministic.
+          num_inference_steps (`None`, *optional*, defaults to 50):
+              The number of denoising steps.
+          timesteps (`None`, *optional*):
+              Custom timesteps to use for the denoising process.
+          sigmas (`None`, *optional*):
+              Custom sigmas to use for the denoising process.
+          mu (`float`, *optional*):
+              The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
+          joint_attention_kwargs (`dict`, *optional*):
+              A kwargs dictionary passed along to the AttentionProcessor.
           guidance_scale (`None`, *optional*, defaults to 7.0):
               Guidance scale as defined in Classifier-Free Diffusion Guidance.
-          skip_guidance_layers (`list`, *optional*):
-              A list of integers that specify layers to skip during guidance.
+          skip_layer_guidance_scale (`None`, *optional*, defaults to 2.8):
+              The scale of the guidance for the skipped layers.
+          skip_layer_guidance_stop (`None`, *optional*, defaults to 0.2):
+              The step fraction at which the guidance for skipped layers stops.
+          skip_layer_guidance_start (`None`, *optional*, defaults to 0.01):
+              The step fraction at which the guidance for skipped layers starts.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
+    model_name = "stable-diffusion-3"
+    block_classes = [
+        StableDiffusion3TextInputStep(),
+        StableDiffusion3PrepareLatentsStep(),
+        StableDiffusion3SetTimestepsStep(),
+        StableDiffusion3DenoiseStep(),
+    ]
+    block_names = ["text_inputs", "prepare_latents", "set_timesteps", "denoise"]
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("latents")]
+
+
+# auto_docstring
+class StableDiffusion3I2ICoreDenoiseStep(SequentialPipelineBlocks):
+    """
+    Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
+          (`SD3Transformer2DModel`)
+
+      Inputs:
+          num_images_per_prompt (`None`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           prompt_embeds (`Tensor`):
               Pre-generated text embeddings.
           pooled_prompt_embeds (`Tensor`):
@@ -402,6 +201,8 @@ class StableDiffusion3CoreDenoiseStep(SequentialPipelineBlocks):
               The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
           joint_attention_kwargs (`dict`, *optional*):
               A kwargs dictionary passed along to the AttentionProcessor.
+          guidance_scale (`None`, *optional*, defaults to 7.0):
+              Guidance scale as defined in Classifier-Free Diffusion Guidance.
           skip_layer_guidance_scale (`None`, *optional*, defaults to 2.8):
               The scale of the guidance for the skipped layers.
           skip_layer_guidance_stop (`None`, *optional*, defaults to 0.2):
@@ -416,11 +217,88 @@ class StableDiffusion3CoreDenoiseStep(SequentialPipelineBlocks):
 
     model_name = "stable-diffusion-3"
     block_classes = [
-        StableDiffusion3AutoInputStep,
-        StableDiffusion3AutoBeforeDenoiseStep,
-        StableDiffusion3DenoiseStep,
+        StableDiffusion3TextInputStep(),
+        StableDiffusion3AdditionalInputsStep(),
+        StableDiffusion3PrepareLatentsStep(),
+        StableDiffusion3Img2ImgSetTimestepsStep(),
+        StableDiffusion3Img2ImgPrepareLatentsStep(),
+        StableDiffusion3DenoiseStep(),
     ]
-    block_names = ["input", "before_denoise", "denoise"]
+    block_names = [
+        "text_inputs",
+        "additional_inputs",
+        "prepare_latents",
+        "set_timesteps",
+        "prepare_img2img_latents",
+        "denoise",
+    ]
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("latents")]
+
+
+# auto_docstring
+class StableDiffusion3AutoCoreDenoiseStep(AutoPipelineBlocks):
+    """
+    Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
+          (`SD3Transformer2DModel`)
+
+      Inputs:
+          num_images_per_prompt (`None`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          prompt_embeds (`Tensor`):
+              Pre-generated text embeddings.
+          pooled_prompt_embeds (`Tensor`):
+              Pre-generated pooled text embeddings.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              Pre-generated negative text embeddings.
+          negative_pooled_prompt_embeds (`Tensor`, *optional*):
+              Pre-generated negative pooled text embeddings.
+          height (`None`, *optional*):
+              The height in pixels of the generated image.
+          width (`None`, *optional*):
+              The width in pixels of the generated image.
+          image_latents (`None`, *optional*):
+              Latent input image_latents to be processed.
+          latents (`Tensor | NoneType`):
+              Pre-generated noisy latents to be used as inputs for image generation.
+          generator (`None`, *optional*):
+              One or a list of torch generator(s) to make generation deterministic.
+          num_inference_steps (`None`):
+              The number of denoising steps.
+          timesteps (`None`):
+              Custom timesteps to use for the denoising process.
+          sigmas (`None`, *optional*):
+              Custom sigmas to use for the denoising process.
+          strength (`None`, *optional*, defaults to 0.6):
+              Indicates extent to transform the reference image.
+          mu (`float`, *optional*):
+              The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
+          joint_attention_kwargs (`dict`, *optional*):
+              A kwargs dictionary passed along to the AttentionProcessor.
+          guidance_scale (`None`, *optional*, defaults to 7.0):
+              Guidance scale as defined in Classifier-Free Diffusion Guidance.
+          skip_layer_guidance_scale (`None`, *optional*, defaults to 2.8):
+              The scale of the guidance for the skipped layers.
+          skip_layer_guidance_stop (`None`, *optional*, defaults to 0.2):
+              The step fraction at which the guidance for skipped layers stops.
+          skip_layer_guidance_start (`None`, *optional*, defaults to 0.01):
+              The step fraction at which the guidance for skipped layers starts.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
+    model_name = "stable-diffusion-3"
+    block_classes = [
+        StableDiffusion3I2ICoreDenoiseStep,
+        StableDiffusion3T2ICoreDenoiseStep,
+    ]
+    block_names = ["img2img", "text2image"]
+    block_trigger_inputs = ["image_latents", None]
 
     @property
     def outputs(self):
@@ -431,7 +309,7 @@ AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", StableDiffusion3TextEncoderStep()),
         ("vae_encoder", StableDiffusion3AutoVaeEncoderStep()),
-        ("denoise", StableDiffusion3CoreDenoiseStep()),
+        ("denoise", StableDiffusion3AutoCoreDenoiseStep()),
         ("decode", StableDiffusion3DecodeStep()),
     ]
 )
@@ -471,8 +349,6 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
               Pre-generated pooled text embeddings.
           negative_pooled_prompt_embeds (`Tensor`, *optional*):
               Pre-generated negative pooled text embeddings.
-          guidance_scale (`None`, *optional*, defaults to 7.0):
-              Guidance scale as defined in Classifier-Free Diffusion Guidance.
           clip_skip (`int`, *optional*):
               Number of layers to be skipped from CLIP while computing the prompt embeddings.
           max_sequence_length (`int`, *optional*, defaults to 256):
@@ -491,15 +367,13 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
               One or a list of torch generator(s) to make generation deterministic.
           num_images_per_prompt (`None`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          skip_guidance_layers (`list`, *optional*):
-              A list of integers that specify layers to skip during guidance.
           image_latents (`None`, *optional*):
               Latent input image_latents to be processed.
-          latents (`Tensor | NoneType`, *optional*):
+          latents (`Tensor | NoneType`):
               Pre-generated noisy latents to be used as inputs for image generation.
-          num_inference_steps (`None`, *optional*, defaults to 50):
+          num_inference_steps (`None`):
               The number of denoising steps.
-          timesteps (`None`, *optional*):
+          timesteps (`None`):
               Custom timesteps to use for the denoising process.
           sigmas (`None`, *optional*):
               Custom sigmas to use for the denoising process.
@@ -507,6 +381,8 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
               Indicates extent to transform the reference image.
           mu (`float`, *optional*):
               The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
+          guidance_scale (`None`, *optional*, defaults to 7.0):
+              Guidance scale as defined in Classifier-Free Diffusion Guidance.
           skip_layer_guidance_scale (`None`, *optional*, defaults to 2.8):
               The scale of the guidance for the skipped layers.
           skip_layer_guidance_stop (`None`, *optional*, defaults to 0.2):

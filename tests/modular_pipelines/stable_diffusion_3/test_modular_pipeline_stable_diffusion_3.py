@@ -28,16 +28,12 @@ from diffusers.modular_pipelines.stable_diffusion_3 import (
 from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
-
 SD3_TEXT2IMAGE_WORKFLOWS = {
     "text2image": [
         ("text_encoder", "StableDiffusion3TextEncoderStep"),
-        ("denoise.input", "StableDiffusion3TextInputStep"),
-        (
-            "denoise.before_denoise.prepare_latents",
-            "StableDiffusion3PrepareLatentsStep",
-        ),
-        ("denoise.before_denoise.set_timesteps", "StableDiffusion3SetTimestepsStep"),
+        ("denoise.text_inputs", "StableDiffusion3TextInputStep"),
+        ("denoise.prepare_latents", "StableDiffusion3PrepareLatentsStep"),
+        ("denoise.set_timesteps", "StableDiffusion3SetTimestepsStep"),
         ("denoise.denoise", "StableDiffusion3DenoiseStep"),
         ("decode", "StableDiffusion3DecodeStep"),
     ]
@@ -106,18 +102,12 @@ SD3_IMAGE2IMAGE_WORKFLOWS = {
         ("text_encoder", "StableDiffusion3TextEncoderStep"),
         ("vae_encoder.preprocess", "StableDiffusion3ProcessImagesInputStep"),
         ("vae_encoder.encode", "StableDiffusion3VaeEncoderStep"),
-        ("denoise.input.text_inputs", "StableDiffusion3TextInputStep"),
-        ("denoise.input.additional_inputs", "StableDiffusion3AdditionalInputsStep"),
+        ("denoise.text_inputs", "StableDiffusion3TextInputStep"),
+        ("denoise.additional_inputs", "StableDiffusion3AdditionalInputsStep"),
+        ("denoise.prepare_latents", "StableDiffusion3PrepareLatentsStep"),
+        ("denoise.set_timesteps", "StableDiffusion3Img2ImgSetTimestepsStep"),
         (
-            "denoise.before_denoise.prepare_latents",
-            "StableDiffusion3PrepareLatentsStep",
-        ),
-        (
-            "denoise.before_denoise.set_timesteps",
-            "StableDiffusion3Img2ImgSetTimestepsStep",
-        ),
-        (
-            "denoise.before_denoise.prepare_img2img_latents",
+            "denoise.prepare_img2img_latents",
             "StableDiffusion3Img2ImgPrepareLatentsStep",
         ),
         ("denoise.denoise", "StableDiffusion3DenoiseStep"),
