@@ -81,6 +81,10 @@ class HunyuanVideoTransformerTesterConfig(BaseModelTesterConfig):
             "image_condition_type": None,
         }
 
+    @property
+    def torch_dtype(self):
+        return None
+
     def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
         num_channels = 4
         num_frames = 1
@@ -89,23 +93,33 @@ class HunyuanVideoTransformerTesterConfig(BaseModelTesterConfig):
         text_encoder_embedding_dim = 16
         pooled_projection_dim = 8
         sequence_length = 12
+        dtype = self.torch_dtype
 
         return {
             "hidden_states": randn_tensor(
-                (batch_size, num_channels, num_frames, height, width), generator=self.generator, device=torch_device
+                (batch_size, num_channels, num_frames, height, width),
+                generator=self.generator,
+                device=torch_device,
+                dtype=dtype,
             ),
-            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
+            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(
+                torch_device, dtype=dtype or torch.float32
+            ),
             "encoder_hidden_states": randn_tensor(
                 (batch_size, sequence_length, text_encoder_embedding_dim),
                 generator=self.generator,
                 device=torch_device,
+                dtype=dtype,
             ),
             "pooled_projections": randn_tensor(
-                (batch_size, pooled_projection_dim), generator=self.generator, device=torch_device
+                (batch_size, pooled_projection_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=dtype,
             ),
             "encoder_attention_mask": torch.ones((batch_size, sequence_length)).to(torch_device),
             "guidance": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(
-                torch_device, dtype=torch.float32
+                torch_device, dtype=dtype or torch.float32
             ),
         }
 
@@ -127,9 +141,17 @@ class TestHunyuanVideoTransformerCompile(HunyuanVideoTransformerTesterConfig, To
 class TestHunyuanVideoTransformerBitsAndBytes(HunyuanVideoTransformerTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for HunyuanVideo Transformer."""
 
+    @property
+    def torch_dtype(self):
+        return torch.float16
+
 
 class TestHunyuanVideoTransformerTorchAo(HunyuanVideoTransformerTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for HunyuanVideo Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
 
 
 # ======================== HunyuanVideo Image-to-Video (Latent Concat) ========================
