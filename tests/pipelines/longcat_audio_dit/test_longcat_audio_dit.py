@@ -42,7 +42,6 @@ class DummyTokenizer:
         )
 
 
-@require_torch_accelerator
 class LongCatAudioDiTPipelineFastTests(unittest.TestCase):
     pipeline_class = LongCatAudioDiTPipeline
 
@@ -133,6 +132,22 @@ class LongCatAudioDiTPipelineFastTests(unittest.TestCase):
         self.assertEqual(output.ndim, 3)
         self.assertEqual(output.shape[0], 2)
         self.assertEqual(output.shape[1], 1)
+        self.assertGreater(output.shape[-1], 0)
+
+    def test_save_pretrained_roundtrip(self):
+        import tempfile
+
+        device = "cpu"
+        pipe = self.pipeline_class(**self.get_dummy_components())
+        pipe.to(device)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipe.save_pretrained(tmp_dir)
+            reloaded = self.pipeline_class.from_pretrained(tmp_dir, tokenizer=DummyTokenizer(), local_files_only=True)
+            output = reloaded(**self.get_dummy_inputs(device, seed=0)).audios
+
+        self.assertIsInstance(reloaded, LongCatAudioDiTPipeline)
+        self.assertEqual(output.ndim, 3)
         self.assertGreater(output.shape[-1], 0)
 
     def test_from_pretrained_local_dir(self):

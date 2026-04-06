@@ -25,6 +25,8 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput
 from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention import AttentionModuleMixin
+from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_utils import ModelMixin
 
 
@@ -106,8 +108,8 @@ def _rotate_half(hidden_states: torch.Tensor) -> torch.Tensor:
 
 def _apply_rotary_emb(hidden_states: torch.Tensor, rope: tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
     cos, sin = rope
-    cos = cos[None, None].to(hidden_states.device)
-    sin = sin[None, None].to(hidden_states.device)
+    cos = cos[None, :, None].to(hidden_states.device)
+    sin = sin[None, :, None].to(hidden_states.device)
     return (hidden_states.float() * cos + _rotate_half(hidden_states).float() * sin).to(hidden_states.dtype)
 
 
@@ -205,25 +207,55 @@ def _modulate(
     return hidden_states * (1 + scale) + shift
 
 
-def _masked_attention(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    query_mask: torch.BoolTensor | None = None,
-    key_mask: torch.BoolTensor | None = None,
-) -> torch.Tensor:
-    attn_mask = None
-    if key_mask is not None:
-        attn_mask = key_mask[:, None, None, :].expand(-1, query.shape[1], query.shape[2], -1)
-    hidden_states = F.scaled_dot_product_attention(
-        query, key, value, attn_mask=attn_mask, dropout_p=0.0, is_causal=False
-    )
-    if query_mask is not None:
-        hidden_states = hidden_states * query_mask[:, None, :, None].to(hidden_states.dtype)
-    return hidden_states
+class AudioDiTSelfAttnProcessor:
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(
+        self,
+        attn: "AudioDiTSelfAttention",
+        hidden_states: torch.Tensor,
+        mask: torch.BoolTensor | None = None,
+        rope: tuple | None = None,
+    ) -> torch.Tensor:
+        batch_size = hidden_states.shape[0]
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        if attn.qk_norm:
+            query = attn.q_norm(query)
+            key = attn.k_norm(key)
+
+        head_dim = attn.inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim)
+        key = key.view(batch_size, -1, attn.heads, head_dim)
+        value = value.view(batch_size, -1, attn.heads, head_dim)
+
+        if rope is not None:
+            query = _apply_rotary_emb(query, rope)
+            key = _apply_rotary_emb(key, rope)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        if mask is not None:
+            hidden_states = hidden_states * mask[:, :, None, None].to(hidden_states.dtype)
+
+        hidden_states = hidden_states.flatten(2, 3).to(query.dtype)
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
 
 
-class AudioDiTSelfAttention(nn.Module):
+class AudioDiTSelfAttention(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = AudioDiTSelfAttnProcessor
+    _available_processors = [AudioDiTSelfAttnProcessor]
     def __init__(
         self,
         dim: int,
@@ -245,32 +277,67 @@ class AudioDiTSelfAttention(nn.Module):
             self.q_norm = AudioDiTRMSNorm(self.inner_dim, eps=eps)
             self.k_norm = AudioDiTRMSNorm(self.inner_dim, eps=eps)
         self.to_out = nn.ModuleList([nn.Linear(self.inner_dim, dim, bias=bias), nn.Dropout(dropout)])
+        self.set_processor(self._default_processor_cls())
 
     def forward(
         self, hidden_states: torch.Tensor, mask: torch.BoolTensor | None = None, rope: tuple | None = None
     ) -> torch.Tensor:
+        return self.processor(self, hidden_states, mask=mask, rope=rope)
+
+
+class AudioDiTCrossAttnProcessor:
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(
+        self,
+        attn: "AudioDiTCrossAttention",
+        hidden_states: torch.Tensor,
+        cond: torch.Tensor,
+        mask: torch.BoolTensor | None = None,
+        cond_mask: torch.BoolTensor | None = None,
+        rope: tuple | None = None,
+        cond_rope: tuple | None = None,
+    ) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
-        query = self.to_q(hidden_states)
-        key = self.to_k(hidden_states)
-        value = self.to_v(hidden_states)
-        if self.qk_norm:
-            query = self.q_norm(query)
-            key = self.k_norm(key)
-        head_dim = self.inner_dim // self.heads
-        query = query.view(batch_size, -1, self.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, self.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, self.heads, head_dim).transpose(1, 2)
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(cond)
+        value = attn.to_v(cond)
+
+        if attn.qk_norm:
+            query = attn.q_norm(query)
+            key = attn.k_norm(key)
+
+        head_dim = attn.inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim)
+        key = key.view(batch_size, -1, attn.heads, head_dim)
+        value = value.view(batch_size, -1, attn.heads, head_dim)
+
         if rope is not None:
             query = _apply_rotary_emb(query, rope)
-            key = _apply_rotary_emb(key, rope)
-        hidden_states = _masked_attention(query, key, value, query_mask=mask, key_mask=mask)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, self.inner_dim).to(query.dtype)
-        hidden_states = self.to_out[0](hidden_states)
-        hidden_states = self.to_out[1](hidden_states)
+        if cond_rope is not None:
+            key = _apply_rotary_emb(key, cond_rope)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=cond_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        if mask is not None:
+            hidden_states = hidden_states * mask[:, :, None, None].to(hidden_states.dtype)
+
+        hidden_states = hidden_states.flatten(2, 3).to(query.dtype)
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
 
 
-class AudioDiTCrossAttention(nn.Module):
+class AudioDiTCrossAttention(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = AudioDiTCrossAttnProcessor
+    _available_processors = [AudioDiTCrossAttnProcessor]
     def __init__(
         self,
         q_dim: int,
@@ -293,6 +360,7 @@ class AudioDiTCrossAttention(nn.Module):
             self.q_norm = AudioDiTRMSNorm(self.inner_dim, eps=eps)
             self.k_norm = AudioDiTRMSNorm(self.inner_dim, eps=eps)
         self.to_out = nn.ModuleList([nn.Linear(self.inner_dim, q_dim, bias=bias), nn.Dropout(dropout)])
+        self.set_processor(self._default_processor_cls())
 
     def forward(
         self,
@@ -303,26 +371,15 @@ class AudioDiTCrossAttention(nn.Module):
         rope: tuple | None = None,
         cond_rope: tuple | None = None,
     ) -> torch.Tensor:
-        batch_size = hidden_states.shape[0]
-        query = self.to_q(hidden_states)
-        key = self.to_k(cond)
-        value = self.to_v(cond)
-        if self.qk_norm:
-            query = self.q_norm(query)
-            key = self.k_norm(key)
-        head_dim = self.inner_dim // self.heads
-        query = query.view(batch_size, -1, self.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, self.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, self.heads, head_dim).transpose(1, 2)
-        if rope is not None:
-            query = _apply_rotary_emb(query, rope)
-        if cond_rope is not None:
-            key = _apply_rotary_emb(key, cond_rope)
-        hidden_states = _masked_attention(query, key, value, query_mask=mask, key_mask=cond_mask)
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, self.inner_dim).to(query.dtype)
-        hidden_states = self.to_out[0](hidden_states)
-        hidden_states = self.to_out[1](hidden_states)
-        return hidden_states
+        return self.processor(
+            self,
+            hidden_states,
+            cond=cond,
+            mask=mask,
+            cond_mask=cond_mask,
+            rope=rope,
+            cond_rope=cond_rope,
+        )
 
 
 class AudioDiTFeedForward(nn.Module):

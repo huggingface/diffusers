@@ -191,6 +191,38 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
+        try:
+            cls.load_config(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                subfolder=subfolder,
+                local_dir=local_dir,
+                local_dir_use_symlinks=local_dir_use_symlinks,
+            )
+        except (EnvironmentError, OSError, ValueError):
+            pass
+        else:
+            return super().from_pretrained(
+                pretrained_model_name_or_path,
+                tokenizer=tokenizer,
+                torch_dtype=torch_dtype,
+                local_files_only=local_files_only,
+                cache_dir=cache_dir,
+                local_dir=local_dir,
+                local_dir_use_symlinks=local_dir_use_symlinks,
+                force_download=force_download,
+                proxies=proxies,
+                token=token,
+                revision=revision,
+                subfolder=subfolder,
+                **kwargs,
+            )
+
         if kwargs:
             logger.warning("Ignoring unsupported LongCatAudioDiTPipeline.from_pretrained kwargs: %s", sorted(kwargs))
 
