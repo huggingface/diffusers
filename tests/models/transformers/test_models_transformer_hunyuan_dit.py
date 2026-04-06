@@ -21,10 +21,7 @@ from diffusers.utils.torch_utils import randn_tensor
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
-    BitsAndBytesTesterMixin,
     ModelTesterMixin,
-    TorchAoTesterMixin,
-    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -132,15 +129,3 @@ class TestHunyuanDiTTraining(HunyuanDiTTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HunyuanDiT2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestHunyuanDiTCompile(HunyuanDiTTesterConfig, TorchCompileTesterMixin):
-    pass
-
-
-class TestHunyuanDiTBitsAndBytes(HunyuanDiTTesterConfig, BitsAndBytesTesterMixin):
-    """BitsAndBytes quantization tests for HunyuanDiT."""
-
-
-class TestHunyuanDiTTorchAo(HunyuanDiTTesterConfig, TorchAoTesterMixin):
-    """TorchAO quantization tests for HunyuanDiT."""

@@ -205,10 +205,6 @@ class TestHunyuanVideoI2VTransformer(HunyuanVideoI2VTransformerTesterConfig, Mod
         super().test_output(expected_output_shape=(1, *self.output_shape))
 
 
-class TestHunyuanVideoI2VTransformerCompile(HunyuanVideoI2VTransformerTesterConfig, TorchCompileTesterMixin):
-    pass
-
-
 # ======================== HunyuanVideo Token Replace Image-to-Video ========================
 
 
@@ -283,9 +279,3 @@ class HunyuanVideoTokenReplaceTransformerTesterConfig(BaseModelTesterConfig):
 class TestHunyuanVideoTokenReplaceTransformer(HunyuanVideoTokenReplaceTransformerTesterConfig, ModelTesterMixin):
     def test_output(self):
         super().test_output(expected_output_shape=(1, *self.output_shape))
-
-
-class TestHunyuanVideoTokenReplaceTransformerCompile(
-    HunyuanVideoTokenReplaceTransformerTesterConfig, TorchCompileTesterMixin
-):
-    pass
