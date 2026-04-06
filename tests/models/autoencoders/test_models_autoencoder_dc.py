@@ -81,6 +81,7 @@ class AutoencoderDCTesterConfig(BaseModelTesterConfig):
 class TestAutoencoderDC(AutoencoderDCTesterConfig, ModelTesterMixin):
     base_precision = 1e-2
 
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
     def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
         if dtype == torch.bfloat16 and IS_GITHUB_ACTIONS:
             pytest.skip("Skipping bf16 test inside GitHub Actions environment")
