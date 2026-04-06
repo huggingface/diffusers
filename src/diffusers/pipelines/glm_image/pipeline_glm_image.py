@@ -545,6 +545,7 @@ class GlmImagePipeline(DiffusionPipeline):
     def encode_prompt(
         self,
         prompt: str | list[str],
+        negative_prompt: str | list[str] | None = None,
         do_classifier_free_guidance: bool = True,
         num_images_per_prompt: int = 1,
         prompt_embeds: torch.Tensor | None = None,
@@ -588,10 +589,16 @@ class GlmImagePipeline(DiffusionPipeline):
         if num_images_per_prompt > 1:
             prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        # For GLM-Image, negative_prompt must be "" instead of None
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            negative_prompt = ""
-            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+            if negative_prompt is None:
+                negative_prompt = ""
+            if isinstance(negative_prompt, str):
+                negative_prompt = batch_size * [negative_prompt]
+            if len(negative_prompt) != batch_size:
+                raise ValueError(
+                    f"`negative_prompt` must have the same length as `prompt`, "
+                    f"but got {len(negative_prompt)} and {batch_size}."
+                )
             negative_prompt_embeds = self._get_glyph_embeds(negative_prompt, max_sequence_length, device, dtype)
 
             if num_images_per_prompt > 1:
@@ -721,6 +728,7 @@ class GlmImagePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: str | list[str] | None = None,
+        negative_prompt: str | list[str] | None = None,
         image: torch.Tensor
         | PIL.Image.Image
         | np.ndarray
@@ -761,6 +769,9 @@ class GlmImagePipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation. Must contain shape info in the format '<sop>H
                 W<eop>' where H and W are token dimensions (d32). Example: "A beautiful sunset<sop>36 24<eop>"
                 generates a 1152x768 image.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, an empty string is used
+                for unconditional guidance.
             image: Optional condition images for image-to-image generation.
             height (`int`, *optional*):
                 The height in pixels. If not provided, derived from prompt shape info.
@@ -855,7 +866,8 @@ class GlmImagePipeline(DiffusionPipeline):
         # 5. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
-            self.do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
