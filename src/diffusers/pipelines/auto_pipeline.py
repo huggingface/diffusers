@@ -77,6 +77,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .lumina import LuminaPipeline
 from .lumina2 import Lumina2Pipeline
+from .nucleusmoe_image import NucleusMoEImagePipeline
 from .ovis_image import OvisImagePipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
@@ -179,6 +180,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("helios", HeliosPipeline),
         ("helios-pyramid", HeliosPyramidPipeline),
         ("cogview4-control", CogView4ControlPipeline),
+        ("nucleusmoe-image", NucleusMoEImagePipeline),
         ("qwenimage", QwenImagePipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
         ("z-image", ZImagePipeline),
