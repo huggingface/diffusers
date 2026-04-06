@@ -612,6 +612,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         self,
         image: list[PIL.Image.Image] | PIL.Image.Image | None = None,
         prompt: str | list[str] = None,
+        negative_prompt: str | list[str] | None = None,
         height: int | None = None,
         width: int | None = None,
         num_inference_steps: int = 50,
@@ -621,7 +622,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         generator: torch.Generator | list[torch.Generator] | None = None,
         latents: torch.Tensor | None = None,
         prompt_embeds: torch.Tensor | None = None,
-        negative_prompt_embeds: str | list[str] | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
@@ -643,6 +644,10 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, an empty string is used
+                for unconditional guidance. Only used when `do_classifier_free_guidance` is active
+                (i.e., `guidance_scale > 1` and model is not distilled).
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
@@ -674,8 +679,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. Note that "" is used as the negative prompt in this pipeline.
-                If not provided, will be generated from "".
+                Pre-generated negative text embeddings. If not provided, will be generated from `negative_prompt`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -742,9 +746,15 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         )
 
         if self.do_classifier_free_guidance:
-            negative_prompt = ""
-            if prompt is not None and isinstance(prompt, list):
+            if negative_prompt is None:
+                negative_prompt = ""
+            if prompt is not None and isinstance(prompt, list) and isinstance(negative_prompt, str):
                 negative_prompt = [negative_prompt] * len(prompt)
+            if isinstance(prompt, list) and isinstance(negative_prompt, list) and len(prompt) != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt` must have the same length as `prompt`, "
+                    f"but got {len(negative_prompt)} and {len(prompt)}."
+                )
             negative_prompt_embeds, negative_text_ids = self.encode_prompt(
                 prompt=negative_prompt,
                 prompt_embeds=negative_prompt_embeds,
