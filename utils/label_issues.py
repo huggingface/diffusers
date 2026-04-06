@@ -64,6 +64,7 @@ VALID_LABELS = {
     "torchao",
     "bitsandbytes",
     "needs-code-example",
+    "needs-env-info",
     "new-pipeline/model",
 }
 
@@ -109,6 +110,9 @@ def main():
             existing = get_existing_components()
             if not any(model_name.lower() in name for name in existing):
                 labels.append("new-pipeline/model")
+
+        if "bug" in labels and "Diffusers version:" not in body:
+            labels.append("needs-env-info")
 
         print(json.dumps(labels))
     except Exception:
