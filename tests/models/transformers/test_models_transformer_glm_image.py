@@ -41,7 +41,7 @@ class GlmImageTransformerTesterConfig(BaseModelTesterConfig):
 
     @property
     def output_shape(self) -> tuple:
-        return (16, 8, 8)
+        return (4, 8, 8)
 
     @property
     def input_shape(self) -> tuple:
