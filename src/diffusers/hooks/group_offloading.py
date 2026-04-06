@@ -166,6 +166,13 @@ class ModuleGroup:
         else:
             self.cpu_param_dict = self._init_cpu_param_dict()
 
+        # Prevents premature GPU memory reclamation for TorchAO tensors when record_stream is used.
+        # _restore_torchao_tensor drops Python references to GPU inner tensors (e.g. qdata, scale)
+        # via setattr, but unlike regular tensors the CUDA caching allocator's record_stream mark
+        # alone is not enough to keep them alive. This list holds references until the next onload's
+        # stream.synchronize(), matching the lifetime that record_stream provides for regular tensors.
+        self._torchao_gpu_tensors: list[torch.Tensor] = []
+
         self._torch_accelerator_module = (
             getattr(torch, torch.accelerator.current_accelerator().type)
             if hasattr(torch, "accelerator")
@@ -178,6 +185,7 @@ class ModuleGroup:
         # (e.g. `.qdata`, `.scale`), so we must call `.cpu()` on the tensor directly.
         t = tensor.cpu() if _is_torchao_tensor(tensor) else tensor.data.cpu()
         return t if low_cpu_mem_usage else t.pin_memory()
+
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
@@ -281,6 +289,7 @@ class ModuleGroup:
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
             self.stream.synchronize()
+            self._torchao_gpu_tensors.clear()
 
         context = nullcontext() if self.stream is None else self._torch_accelerator_module.stream(self.stream)
         default_stream = self._torch_accelerator_module.current_stream() if self.stream is not None else None
@@ -312,6 +321,12 @@ class ModuleGroup:
         for tensor_obj in self.tensor_to_key.keys():
             tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
 
+    def _save_gpu_inner_tensors(self, tensor):
+        """Save references to GPU inner tensors before _restore_torchao_tensor drops them."""
+        if self.record_stream and _is_torchao_tensor(tensor):
+            for attr_name in _get_torchao_inner_tensor_names(tensor):
+                self._torchao_gpu_tensors.append(getattr(tensor, attr_name))
+
     def _offload_to_memory(self):
         if self.stream is not None:
             if not self.record_stream:
@@ -320,16 +335,19 @@ class ModuleGroup:
             for group_module in self.modules:
                 for param in group_module.parameters():
                     if _is_torchao_tensor(param):
+                        self._save_gpu_inner_tensors(param)
                         _restore_torchao_tensor(param, self.cpu_param_dict[param])
                     else:
                         param.data = self.cpu_param_dict[param]
             for param in self.parameters:
                 if _is_torchao_tensor(param):
+                    self._save_gpu_inner_tensors(param)
                     _restore_torchao_tensor(param, self.cpu_param_dict[param])
                 else:
                     param.data = self.cpu_param_dict[param]
             for buffer in self.buffers:
                 if _is_torchao_tensor(buffer):
+                    self._save_gpu_inner_tensors(buffer)
                     _restore_torchao_tensor(buffer, self.cpu_param_dict[buffer])
                 else:
                     buffer.data = self.cpu_param_dict[buffer]
