@@ -293,11 +293,11 @@ class AudioDiTCrossAttnProcessor:
         self,
         attn: "AudioDiTCrossAttention",
         hidden_states: torch.Tensor,
-        cond: torch.Tensor,
-        mask: torch.BoolTensor | None = None,
-        cond_mask: torch.BoolTensor | None = None,
-        rope: tuple | None = None,
-        cond_rope: tuple | None = None,
+        encoder_hidden_states: torch.Tensor,
+        post_attention_mask: torch.BoolTensor | None = None,
+        attention_mask: torch.BoolTensor | None = None,
+        audio_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        prompt_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
         query = attn.to_q(hidden_states)
@@ -422,9 +422,11 @@ class AudioDiTBlock(nn.Module):
             self.adaln_mlp = AudioDiTAdaLNMLP(dim, dim * 6, bias=True)
         elif adaln_type == "global":
             self.adaln_scale_shift = nn.Parameter(torch.randn(dim * 6) / dim**0.5)
+
         self.self_attn = AudioDiTSelfAttention(
             dim, heads, dim_head, dropout=dropout, bias=bias, qk_norm=qk_norm, eps=eps
         )
+
         self.use_cross_attn = cross_attn
         if cross_attn:
             self.cross_attn = AudioDiTCrossAttention(

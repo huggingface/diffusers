@@ -56,10 +56,12 @@ class Snake1d(nn.Module):
 
 def _get_vae_activation(name: str, channels: int = 0) -> nn.Module:
     if name == "elu":
-        return nn.ELU()
-    if name == "snake":
-        return Snake1d(channels)
-    raise ValueError(f"Unknown activation: {name}")
+        act = nn.ELU()
+    elif name == "snake":
+        act = Snake1d(channels)
+    else:
+        raise ValueError(f"Unknown activation: {name}")
+    return act
 
 
 def _pixel_unshuffle_1d(hidden_states: torch.Tensor, factor: int) -> torch.Tensor:
@@ -150,9 +152,11 @@ class VaeEncoderBlock(nn.Module):
         )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        if self.residual is None:
-            return self.layers(hidden_states)
-        return self.layers(hidden_states) + self.residual(hidden_states)
+        output_hidden_states = self.layers(hidden_states)
+        if self.residual is not None:
+            residual = self.residual(hidden_states)
+            output_hidden_states = output_hidden_states + residual
+        return output_hidden_states
 
 
 class VaeDecoderBlock(nn.Module):
@@ -181,9 +185,11 @@ class VaeDecoderBlock(nn.Module):
         )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        if self.residual is None:
-            return self.layers(hidden_states)
-        return self.layers(hidden_states) + self.residual(hidden_states)
+        output_hidden_states = self.layers(hidden_states)
+        if self.residual is not None:
+            residual = self.residual(hidden_states)
+            output_hidden_states = output_hidden_states + residual
+        return output_hidden_states
 
 
 class AudioDiTVaeEncoder(nn.Module):
@@ -191,8 +197,8 @@ class AudioDiTVaeEncoder(nn.Module):
         self,
         in_channels: int = 1,
         channels: int = 128,
-        c_mults=None,
-        strides=None,
+        c_mults: list[int] | None = None,
+        strides: list[int] | None = None,
         latent_dim: int = 64,
         encoder_latent_dim: int = 128,
         use_snake: bool = True,
@@ -227,10 +233,12 @@ class AudioDiTVaeEncoder(nn.Module):
         )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        if self.shortcut is None:
-            return self.layers(hidden_states)
         hidden_states = self.layers[:-1](hidden_states)
-        return self.layers[-1](hidden_states) + self.shortcut(hidden_states)
+        output_hidden_states = self.layers[-1](hidden_states)
+        if self.shortcut is not None:
+            shortcut = self.shortcut(hidden_states)
+            output_hidden_states = output_hidden_states + shortcut
+        return output_hidden_states
 
 
 class AudioDiTVaeDecoder(nn.Module):
@@ -238,8 +246,8 @@ class AudioDiTVaeDecoder(nn.Module):
         self,
         in_channels: int = 1,
         channels: int = 128,
-        c_mults=None,
-        strides=None,
+        c_mults: list[int] | None = None,
+        strides: list[int] | None = None,
         latent_dim: int = 64,
         use_snake: bool = True,
         in_shortcut: str = "duplicating",
@@ -277,10 +285,12 @@ class AudioDiTVaeDecoder(nn.Module):
         self.layers = nn.Sequential(*layers)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        if self.shortcut is None:
-            return self.layers(hidden_states)
-        hidden_states = self.shortcut(hidden_states) + self.layers[0](hidden_states)
-        return self.layers[1:](hidden_states)
+        hidden_states = self.layers[:-1](hidden_states)
+        output_hidden_states = self.layers[-1](hidden_states)
+        if self.shortcut is not None:
+            shortcut = self.shortcut(hidden_states)
+            output_hidden_states = output_hidden_states + shortcut
+        return output_hidden_states
 
 
 @dataclass
@@ -299,8 +309,8 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
         self,
         in_channels: int = 1,
         channels: int = 128,
-        c_mults=None,
-        strides=None,
+        c_mults: list[int] | None = None,
+        strides: list[int] | None = None,
         latent_dim: int = 64,
         encoder_latent_dim: int = 128,
         use_snake: bool = True,
