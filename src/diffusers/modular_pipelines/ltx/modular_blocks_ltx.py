@@ -35,8 +35,8 @@ class LTXCoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block that takes encoded conditions and runs the denoising process.
 
       Components:
-          transformer (`LTXVideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
+          (`LTXVideoTransformer3DModel`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -96,11 +96,11 @@ class LTXCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Denoise block for image-to-video that takes encoded conditions and an image, and runs the denoising process.
+    Denoise block for image-to-video that takes encoded conditions and image latents, and runs the denoising process.
 
       Components:
-          transformer (`LTXVideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
+          (`LTXVideoTransformer3DModel`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -165,8 +165,8 @@ class LTXBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX Video text-to-video.
 
       Components:
-          text_encoder (`T5EncoderModel`) tokenizer (`T5TokenizerFast`) guider (`ClassifierFreeGuidance`) transformer
-          (`LTXVideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLLTXVideo`)
+          text_encoder (`T5EncoderModel`) tokenizer (`T5TokenizerFast`) guider (`ClassifierFreeGuidance`) scheduler
+          (`FlowMatchEulerDiscreteScheduler`) transformer (`LTXVideoTransformer3DModel`) vae (`AutoencoderKLLTXVideo`)
           video_processor (`VideoProcessor`)
 
       Inputs:
@@ -275,8 +275,8 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
 
       Components:
           text_encoder (`T5EncoderModel`) tokenizer (`T5TokenizerFast`) guider (`ClassifierFreeGuidance`) vae
-          (`AutoencoderKLLTXVideo`) video_processor (`VideoProcessor`) transformer (`LTXVideoTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          (`AutoencoderKLLTXVideo`) video_processor (`VideoProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          transformer (`LTXVideoTransformer3DModel`)
 
       Inputs:
           prompt (`str`):

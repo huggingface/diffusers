@@ -17,7 +17,6 @@ import inspect
 import numpy as np
 import torch
 
-from ...models import LTXVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
@@ -119,12 +118,6 @@ class LTXTextInputStep(ModularPipelineBlocks):
             "  1. Determines `batch_size` and `dtype` based on `prompt_embeds`\n"
             "  2. Adjusts input tensor shapes based on `batch_size` and `num_videos_per_prompt`"
         )
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("transformer", LTXVideoTransformer3DModel),
-        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -281,7 +274,6 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("generator"),
             InputParam.template("batch_size", required=True),
-            InputParam.template("dtype"),
         ]
 
     @property
@@ -339,7 +331,6 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("generator"),
             InputParam.template("batch_size", required=True),
-            InputParam.template("dtype"),
         ]
 
     @property
