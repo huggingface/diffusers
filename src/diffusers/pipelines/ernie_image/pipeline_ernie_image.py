@@ -52,6 +52,7 @@ class ErnieImagePipeline(DiffusionPipeline):
     model_cpu_offload_seq = "pe->text_encoder->transformer->vae"
     # For SGLang fallback ...
     _optional_components = ["pe", "pe_tokenizer"]
+    _callback_tensor_inputs = ["latents"]
 
     def __init__(
         self,
@@ -93,6 +94,7 @@ class ErnieImagePipeline(DiffusionPipeline):
 
         torch_dtype = kwargs.pop("torch_dtype", torch.bfloat16)
         trust_remote_code = kwargs.pop("trust_remote_code", True)
+        device_map = kwargs.pop("device_map", None)
 
         # Determine whether this is a local directory or a Hub repo ID.
         # For local paths we join sub-directories; for Hub IDs we use `subfolder`.
@@ -133,6 +135,8 @@ class ErnieImagePipeline(DiffusionPipeline):
             **_path_or_subfolder("pe"),
             torch_dtype=torch_dtype,
             trust_remote_code=trust_remote_code,
+            low_cpu_mem_usage=True,
+            **({"device_map": device_map} if device_map else {}),
         )
 
         # Load PE tokenizer (auto-picks up chat_template.jinja in the same dir)
@@ -185,8 +189,13 @@ class ErnieImagePipeline(DiffusionPipeline):
             tokenize=False,
             add_generation_prompt=False,  # "Output:" is already in the user block
         )
-        # pe_device = next(self.pe.parameters()).device
-        inputs = self.pe_tokenizer(input_text, return_tensors="pt").to(device)
+        # When accelerate offload hooks are installed, use the hook's execution_device
+        # to ensure inputs land on the same device as the model weights during forward()
+        if hasattr(self.pe, "_hf_hook") and hasattr(self.pe._hf_hook, "execution_device"):
+            pe_device = self.pe._hf_hook.execution_device
+        else:
+            pe_device = device
+        inputs = self.pe_tokenizer(input_text, return_tensors="pt").to(pe_device)
 
         output_ids = self.pe.generate(
             **inputs,
@@ -314,8 +323,8 @@ class ErnieImagePipeline(DiffusionPipeline):
         latents: Optional[torch.Tensor] = None,
         output_type: str = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
-        callback_steps: int = 1,
+        callback_on_step_end: Optional[Callable[[int, int, dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_length: int = 1536,
         use_pe: bool = True,    # 默认使用PE进行改写
     ):
@@ -334,8 +343,12 @@ class ErnieImagePipeline(DiffusionPipeline):
             latents: Pre-generated latents (optional)
             output_type: "pil" or "latent"
             return_dict: Whether to return a dataclass
-            callback: Optional callback function
-            callback_steps: Steps between callbacks
+            callback_on_step_end: Optional callback invoked at the end of each denoising step.
+                Called as `callback_on_step_end(pipeline, step, timestep, callback_kwargs)` where
+                `callback_kwargs` contains the tensors listed in `callback_on_step_end_tensor_inputs`.
+                The callback may return a dict to override those tensors for subsequent steps.
+            callback_on_step_end_tensor_inputs: List of tensor names passed into the callback kwargs.
+                Must be a subset of `_callback_tensor_inputs` (default: `["latents"]`).
             max_length: Max token length for text encoding
 
         Returns:
@@ -344,7 +357,6 @@ class ErnieImagePipeline(DiffusionPipeline):
         device = self._execution_device
         dtype = self.transformer.dtype
 
-        self.pe.to(device)
         # Validate dimensions
         if height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0:
             raise ValueError(f"Height and width must be divisible by {self.vae_scale_factor}")
@@ -353,7 +365,7 @@ class ErnieImagePipeline(DiffusionPipeline):
         if isinstance(prompt, str):
             prompt = [prompt]
 
-        # [Phase 1] PE: enhance prompts, then offload to CPU
+        # [Phase 1] PE: enhance prompts
         if use_pe and self.pe is not None and self.pe_tokenizer is not None:
             prompt = [
                 self._enhance_prompt_with_pe(p, device, width=width, height=height, max_length=max_length)
@@ -371,7 +383,7 @@ class ErnieImagePipeline(DiffusionPipeline):
         if len(negative_prompt) != batch_size:
             raise ValueError(f"negative_prompt must have same length as prompt ({batch_size})")
 
-        # [Phase 2] Text encoding, then offload text_encoder to CPU
+        # [Phase 2] Text encoding
         text_hiddens = self.encode_prompt(prompt, device, num_images_per_prompt, max_length)
 
         # CFG with negative prompt
@@ -396,7 +408,8 @@ class ErnieImagePipeline(DiffusionPipeline):
             )
 
         # Setup scheduler
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        sigmas = torch.linspace(1.0, 0.0, num_inference_steps + 1)
+        self.scheduler.set_timesteps(sigmas=sigmas[:-1], device=device)
 
         # Denoising loop
         if do_cfg:
@@ -404,33 +417,38 @@ class ErnieImagePipeline(DiffusionPipeline):
         else:
             cfg_text_hiddens = text_hiddens
         
-        for i, t in enumerate(self.scheduler.timesteps):
-            if do_cfg:
-                latent_model_input = torch.cat([latents, latents], dim=0)
-                t_batch = torch.full((total_batch_size * 2,), t.item(), device=device, dtype=dtype)
-            else:
-                latent_model_input = latents
-                t_batch = torch.full((total_batch_size,), t.item(), device=device, dtype=dtype)
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(self.scheduler.timesteps):
+                if do_cfg:
+                    latent_model_input = torch.cat([latents, latents], dim=0)
+                    t_batch = torch.full((total_batch_size * 2,), t.item(), device=device, dtype=dtype)
+                else:
+                    latent_model_input = latents
+                    t_batch = torch.full((total_batch_size,), t.item(), device=device, dtype=dtype)
 
-            # Model prediction
-            pred = self.transformer(
-                hidden_states=latent_model_input,
-                timestep=t_batch,
-                encoder_hidden_states=cfg_text_hiddens,
-                return_dict=False,
-            )[0]
+                # Model prediction
+                pred = self.transformer(
+                    hidden_states=latent_model_input,
+                    timestep=t_batch,
+                    encoder_hidden_states=cfg_text_hiddens,
+                    return_dict=False,
+                )[0]
 
-            # Apply CFG
-            if do_cfg:
-                pred_uncond, pred_cond = pred.chunk(2, dim=0)
-                pred = pred_uncond + guidance_scale * (pred_cond - pred_uncond)
+                # Apply CFG
+                if do_cfg:
+                    pred_uncond, pred_cond = pred.chunk(2, dim=0)
+                    pred = pred_uncond + guidance_scale * (pred_cond - pred_uncond)
 
-            # Scheduler step
-            latents = self.scheduler.step(pred, t, latents).prev_sample
+                # Scheduler step
+                latents = self.scheduler.step(pred, t, latents).prev_sample
 
-            # Callback
-            if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                # Callback
+                if callback_on_step_end is not None:
+                    callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    latents = callback_outputs.pop("latents", latents)
+
+                progress_bar.update()
 
         if output_type == "latent":
             return latents
@@ -453,6 +471,9 @@ class ErnieImagePipeline(DiffusionPipeline):
 
         if output_type == "pil":
             images = [Image.fromarray((img * 255).astype("uint8")) for img in images]
+
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (images,)

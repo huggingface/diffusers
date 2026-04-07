@@ -37,6 +37,8 @@ from diffusers.utils import load_image
 
 pipe = ErnieImagePipeline.from_pretrained("baidu/ERNIE-Image-Turbo", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
+# 如果显存不足，可以开启offload
+pipe.enable_model_cpu_offload()
 
 prompt = "一只黑白相间的中华田园犬"
 images = pipe(
