@@ -14,15 +14,21 @@
 
 import ast
 import re
+import tempfile
+import types
+import typing
 from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass, field
-from textwrap import dedent
 
 from ..utils import logging
 from . import BaseDiffusersCLICommand
 
 
 logger = logging.get_logger("diffusers-cli/daggr")
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
 INTERNAL_TYPE_NAMES = {
     "Tensor",
@@ -46,6 +52,14 @@ SLIDER_PARAMS = {
     "controlnet_conditioning_scale": {"minimum": 0, "maximum": 2, "step": 0.1},
 }
 
+DROPDOWN_PARAMS = {
+    "output_type": {"choices": ["pil", "np", "pt", "latent"], "value": "pil"},
+}
+
+# ---------------------------------------------------------------------------
+# Data structures
+# ---------------------------------------------------------------------------
+
 
 @dataclass
 class BlockInfo:
@@ -60,12 +74,21 @@ class BlockInfo:
     sub_block_names: list = field(default_factory=list)
 
 
+# ---------------------------------------------------------------------------
+# CLI command
+# ---------------------------------------------------------------------------
+
+
 def daggr_command_factory(args: Namespace):
     return DaggrCommand(
         repo_id=args.repo_id,
         output=args.output,
         workflow=getattr(args, "workflow", None),
         trigger_inputs=getattr(args, "trigger_inputs", None),
+        deploy=getattr(args, "deploy", None),
+        hardware=getattr(args, "hardware", "cpu-basic"),
+        private=getattr(args, "private", False),
+        requirements=getattr(args, "requirements", None),
     )
 
 
@@ -96,6 +119,31 @@ class DaggrCommand(BaseDiffusersCLICommand):
             default=None,
             help="Trigger input names for manual conditional resolution.",
         )
+        daggr_parser.add_argument(
+            "--deploy",
+            type=str,
+            default=None,
+            metavar="SPACE_NAME",
+            help="Deploy the generated app to a HuggingFace Space via daggr deploy.",
+        )
+        daggr_parser.add_argument(
+            "--hardware",
+            type=str,
+            default="cpu-basic",
+            help="Hardware tier for the deployed Space (default: cpu-basic). E.g. a10g-small, a100-large.",
+        )
+        daggr_parser.add_argument(
+            "--private",
+            action="store_true",
+            default=False,
+            help="Make the deployed Space private.",
+        )
+        daggr_parser.add_argument(
+            "--requirements",
+            type=str,
+            default=None,
+            help="Path to a requirements.txt file for the deployed Space.",
+        )
         daggr_parser.set_defaults(func=daggr_command_factory)
 
     def __init__(
@@ -104,11 +152,19 @@ class DaggrCommand(BaseDiffusersCLICommand):
         output: str | None = None,
         workflow: str | None = None,
         trigger_inputs: list | None = None,
+        deploy: str | None = None,
+        hardware: str = "cpu-basic",
+        private: bool = False,
+        requirements: str | None = None,
     ):
         self.repo_id = repo_id
         self.output = output
         self.workflow = workflow
         self.trigger_inputs = trigger_inputs
+        self.deploy = deploy
+        self.hardware = hardware
+        self.private = private
+        self.requirements = requirements
 
     def run(self):
         from ..modular_pipelines.modular_pipeline import ModularPipeline
@@ -129,21 +185,23 @@ class DaggrCommand(BaseDiffusersCLICommand):
             logger.info("Resolving default execution blocks...")
             exec_blocks = blocks.get_execution_blocks()
 
-        block_infos = _analyze_blocks(exec_blocks)
+        block_infos = _get_block_info(exec_blocks)
         _filter_outputs(block_infos)
         _classify_inputs(block_infos)
 
         workflow_label = self.workflow or "default"
+        workflow_resolve_code = self._get_workflow_resolve_code()
 
-        if self.output:
-            workflow_resolve_code = self._get_workflow_resolve_code()
-            code = _generate_code(block_infos, self.repo_id, blocks_class_name, workflow_label, workflow_resolve_code)
+        code = _generate_code(block_infos, self.repo_id, blocks_class_name, workflow_label, workflow_resolve_code)
 
-            try:
-                ast.parse(code)
-            except SyntaxError as e:
-                logger.warning(f"Generated code has syntax error: {e}")
+        try:
+            ast.parse(code)
+        except SyntaxError as e:
+            logger.warning(f"Generated code has syntax error: {e}")
 
+        if self.deploy:
+            self._deploy_to_space(code)
+        elif self.output:
             with open(self.output, "w") as f:
                 f.write(code)
 
@@ -154,8 +212,46 @@ class DaggrCommand(BaseDiffusersCLICommand):
             print(f"\nRun with: python {self.output}")
         else:
             print(f"Launching daggr app for {blocks_class_name} ({workflow_label} workflow)...")
-            graph = _build_graph(block_infos, pipeline, exec_blocks, blocks_class_name, workflow_label)
-            graph.launch()
+            tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, prefix="daggr_")
+            tmp.write(code)
+            tmp.close()
+            logger.info(f"Generated temp script: {tmp.name}")
+            exec(compile(code, tmp.name, "exec"), {"__name__": "__main__"})
+
+    def _deploy_to_space(self, code):
+        import os
+        from pathlib import Path
+
+        from daggr.cli import _deploy
+
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, prefix="daggr_")
+        tmp.write(code)
+        tmp.close()
+
+        req_path = self.requirements
+        if not req_path:
+            requirements = "diffusers[torch]\ntransformers\naccelerate\nsentencepiece\nbitsandbytes\ndaggr\ngradio\n"
+            req_file = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix="daggr_req_")
+            req_file.write(requirements)
+            req_file.close()
+            req_path = req_file.name
+
+        secrets = {}
+        hf_token = os.environ.get("HF_TOKEN")
+        if hf_token:
+            secrets["HF_TOKEN"] = hf_token
+
+        _deploy(
+            script_path=Path(tmp.name),
+            name=self.deploy,
+            title=None,
+            org=None,
+            private=self.private,
+            hardware=self.hardware,
+            secrets=secrets,
+            requirements_path=req_path,
+            dry_run=False,
+        )
 
     def _get_workflow_resolve_code(self):
         if self.workflow:
@@ -172,7 +268,7 @@ class DaggrCommand(BaseDiffusersCLICommand):
 # ---------------------------------------------------------------------------
 
 
-def _analyze_blocks(exec_blocks):
+def _get_block_info(exec_blocks):
     block_infos = []
     for name, block in exec_blocks.sub_blocks.items():
         info = BlockInfo(
@@ -184,53 +280,6 @@ def _analyze_blocks(exec_blocks):
         )
         block_infos.append(info)
     return block_infos
-
-
-def _collapse_block_infos(block_infos):
-    from collections import OrderedDict
-
-    groups = OrderedDict()
-    for info in block_infos:
-        prefix = info.name.split(".")[0] if "." in info.name else info.name
-        groups.setdefault(prefix, []).append(info)
-
-    collapsed = []
-    for prefix, group in groups.items():
-        if len(group) == 1:
-            collapsed.append(group[0])
-            continue
-
-        external_inputs = []
-        seen_input_names = set()
-        prior_outputs = set()
-        for info in group:
-            for inp in info.inputs:
-                if inp.name and inp.name not in prior_outputs and inp.name not in seen_input_names:
-                    external_inputs.append(inp)
-                    seen_input_names.add(inp.name)
-            for out in info.outputs:
-                if out.name:
-                    prior_outputs.add(out.name)
-
-        all_outputs = []
-        seen_output_names = set()
-        for info in group:
-            for out in info.outputs:
-                if out.name and out.name not in seen_output_names:
-                    all_outputs.append(out)
-                    seen_output_names.add(out.name)
-
-        merged = BlockInfo(
-            name=prefix,
-            class_name=group[0].class_name,
-            description=prefix.replace("_", " ").title(),
-            inputs=external_inputs,
-            outputs=all_outputs,
-            sub_block_names=[info.name for info in group],
-        )
-        collapsed.append(merged)
-
-    return collapsed
 
 
 def _filter_outputs(block_infos):
@@ -246,7 +295,8 @@ def _filter_outputs(block_infos):
         info.outputs = [
             out
             for out in info.outputs
-            if out.name in downstream_input_names or (is_last and not _is_internal_type(out.type_hint))
+            if out.name in downstream_input_names
+            or (is_last and (_contains_pil_image(out.type_hint) or not _is_internal_type(out.type_hint)))
         ]
 
 
@@ -322,6 +372,24 @@ def _is_internal_type(type_hint):
     return False
 
 
+def _contains_pil_image(type_hint):
+    from PIL import Image
+
+    if type_hint is Image.Image:
+        return True
+    args = typing.get_args(type_hint)
+    return any(_contains_pil_image(a) for a in args) if args else False
+
+
+def _is_list_or_tuple_type(type_hint):
+    origin = typing.get_origin(type_hint)
+    if origin in (list, tuple):
+        return True
+    if origin is typing.Union or origin is types.UnionType:
+        return any(_is_list_or_tuple_type(a) for a in typing.get_args(type_hint))
+    return False
+
+
 def _resolve_from_template(inp):
     from ..modular_pipelines.modular_pipeline_utils import INPUT_PARAM_TEMPLATES
 
@@ -339,9 +407,12 @@ def _resolve_from_template(inp):
 def _is_user_facing(inp):
     type_hint, _ = _resolve_from_template(inp)
     if type_hint is not None:
+        if _contains_pil_image(type_hint):
+            return True
         return not _is_internal_type(type_hint)
     if inp.name in SLIDER_PARAMS:
         return True
+
     return False
 
 
@@ -353,11 +424,16 @@ def _sanitize_name(name):
 
 
 # ---------------------------------------------------------------------------
-# Gradio component code strings
+# Gradio component code strings (for code generation)
 # ---------------------------------------------------------------------------
 
 
 def _type_hint_to_gradio(type_hint, param_name, default=None):
+    if param_name in DROPDOWN_PARAMS:
+        opts = DROPDOWN_PARAMS[param_name]
+        val = default if default is not None else opts.get("value")
+        return f'gr.Dropdown(label="{param_name}", choices={opts["choices"]!r}, value={val!r})'
+
     if param_name in SLIDER_PARAMS:
         opts = SLIDER_PARAMS[param_name]
         val = default if default is not None else opts.get("minimum", 0)
@@ -370,10 +446,12 @@ def _type_hint_to_gradio(type_hint, param_name, default=None):
     if type_hint is not None and _is_internal_type(type_hint):
         return None
 
+    if type_hint is not None and _contains_pil_image(type_hint):
+        return f'gr.Image(label="{param_name}")'
+
     if type_hint is str:
-        lines = 1
         default_repr = f", value={default!r}" if default is not None else ""
-        return f'gr.Textbox(label="{param_name}", lines={lines}{default_repr})'
+        return f'gr.Textbox(label="{param_name}", lines=1{default_repr})'
 
     if type_hint is int:
         val = f", value={default!r}" if default is not None else ""
@@ -387,13 +465,6 @@ def _type_hint_to_gradio(type_hint, param_name, default=None):
         val = default if default is not None else False
         return f'gr.Checkbox(label="{param_name}", value={val!r})'
 
-    if type_hint is not None:
-        type_str = str(type_hint)
-        if "Image" in type_str:
-            if "list" in type_str.lower():
-                return f'gr.Gallery(label="{param_name}")'
-            return f'gr.Image(label="{param_name}")'
-
     if default is not None:
         return f'gr.Textbox(label="{param_name}", value={default!r})'
 
@@ -401,16 +472,13 @@ def _type_hint_to_gradio(type_hint, param_name, default=None):
 
 
 def _output_type_to_gradio(type_hint, param_name):
-    type_str = str(type_hint) if type_hint is not None else ""
-    if "Image" in type_str:
-        if "list" in type_str.lower():
-            return f'gr.Gallery(label="{param_name}")'
+    if type_hint is not None and _contains_pil_image(type_hint):
         return f'gr.Image(label="{param_name}")'
     if type_hint is str:
         return f'gr.Textbox(label="{param_name}")'
     if type_hint is int or type_hint is float:
         return f'gr.Number(label="{param_name}")'
-    return f'gr.Textbox(label="{param_name}", interactive=False)'
+    return f'gr.Textbox(label="{param_name}", visible=False)'
 
 
 # ---------------------------------------------------------------------------
@@ -421,61 +489,155 @@ def _output_type_to_gradio(type_hint, param_name):
 def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, workflow_resolve_code):
     sections = []
 
+    # Collect blocks that need image pre/postprocessing
+    blocks_with_image_inputs = {}
+    blocks_with_parseable_inputs = {}
+    blocks_with_image_outputs = set()
+
+    for info in block_infos:
+        img_names = set()
+        parse_names = set()
+        for inp in info.inputs:
+            if inp.name is None:
+                continue
+            resolved_type, _ = _resolve_from_template(inp)
+            if resolved_type is not None and _contains_pil_image(resolved_type):
+                img_names.add(inp.name)
+            elif resolved_type is not None and _is_list_or_tuple_type(resolved_type):
+                parse_names.add(inp.name)
+        if img_names:
+            blocks_with_image_inputs[info.name] = img_names
+        if parse_names:
+            blocks_with_parseable_inputs[info.name] = parse_names
+        if any(out.type_hint is not None and _contains_pil_image(out.type_hint) for out in info.outputs):
+            blocks_with_image_outputs.add(info.name)
+
+    needs_image_io = blocks_with_image_inputs or blocks_with_image_outputs
+    needs_parsing = bool(blocks_with_parseable_inputs)
+
+    # Header
+    extra_imports = ""
+    if needs_parsing:
+        extra_imports += "import ast\n"
+    if needs_image_io:
+        extra_imports += "import tempfile\n"
+    if extra_imports:
+        extra_imports += "\n"
+
     sections.append(
-        dedent(f"""\
-        \"""Daggr app for {blocks_class_name} ({workflow_label} workflow)
-        Generated by: diffusers-cli daggr
-        \"""
-
-        import gradio as gr from daggr import FnNode, InputNode, Graph
-
-
-        _pipeline = None _exec_blocks = None
-
-
-        def _get_pipeline():
-            global _pipeline, _exec_blocks if _pipeline is None:
-                from diffusers import ModularPipeline
-
-                _pipeline = ModularPipeline.from_pretrained({repo_id!r}, trust_remote_code=True)
-                _pipeline.load_components() _exec_blocks = {workflow_resolve_code}
-            return _pipeline, _exec_blocks
-    """)
+        f'"""Daggr app for {blocks_class_name} ({workflow_label} workflow)\n'
+        f"Generated by: diffusers-cli daggr\n"
+        f'"""\n'
+        f"\n"
+        f"import os\n"
+        f"{extra_imports}"
+        f"import gradio as gr\n"
+        f"from daggr import FnNode, InputNode, Graph\n"
+        f"\n"
+        f"\n"
+        f"_pipeline = None\n"
+        f"_exec_blocks = None\n"
+        f"_state = None\n"
+        f"\n"
+        f"\n"
+        f"def _get_pipeline():\n"
+        f"    global _pipeline, _exec_blocks, _state\n"
+        f"    if _pipeline is None:\n"
+        f"        from diffusers import ModularPipeline\n"
+        f"        from diffusers.modular_pipelines.modular_pipeline import PipelineState\n"
+        f"\n"
+        f"        import torch\n"
+        f"\n"
+        f'        _token = os.environ.get("HF_TOKEN")\n'
+        f'        _device = "cuda" if torch.cuda.is_available() else "cpu"\n'
+        f"        _pipeline = ModularPipeline.from_pretrained({repo_id!r}, trust_remote_code=True, token=_token)\n"
+        f"        _pipeline.load_components(torch_dtype=torch.bfloat16, device_map=_device)\n"
+        f"        _exec_blocks = {workflow_resolve_code}\n"
+        f"        _state = PipelineState()\n"
+        f"    return _pipeline, _exec_blocks, _state\n"
     )
 
+    # Pre/postprocess helpers (only if needed)
+    if needs_image_io:
+        sections.append(
+            "\ndef _save_image(val):\n"
+            "    from PIL import Image as PILImage\n"
+            "\n"
+            "    if isinstance(val, list):\n"
+            "        paths = [_save_image(item) for item in val]\n"
+            "        return paths[0] if paths else None\n"
+            "    if isinstance(val, PILImage.Image):\n"
+            '        f = tempfile.NamedTemporaryFile(suffix=".png", delete=False)\n'
+            "        val.save(f.name)\n"
+            "        return f.name\n"
+            "    return val\n"
+        )
+
+    # Block functions
     for info in block_infos:
         fn_name = f"run_{_sanitize_name(info.name)}"
         input_names = [inp.name for inp in info.inputs if inp.name is not None]
         params = ", ".join(input_names)
 
-        set_lines = "\n".join(f'    state.set("{n}", {n})' for n in input_names)
+        body_lines = []
+        body_lines.append("    pipe, exec_blocks, state = _get_pipeline()")
+
+        # Preprocess user inputs
+        user_input_names = {inp.name for inp in info.user_inputs}
+
+        if info.name in blocks_with_image_inputs:
+            body_lines.append("    from PIL import Image as PILImage")
+            body_lines.append("")
+            for img_name in blocks_with_image_inputs[info.name]:
+                body_lines.append(f"    if {img_name} is not None and isinstance({img_name}, str):")
+                body_lines.append(f"        {img_name} = PILImage.open({img_name})")
+
+        if info.name in blocks_with_parseable_inputs:
+            for parse_name in blocks_with_parseable_inputs[info.name]:
+                body_lines.append(f"    if {parse_name} is not None and isinstance({parse_name}, str):")
+                body_lines.append(
+                    f"        {parse_name} = ast.literal_eval({parse_name}.strip()) if {parse_name}.strip() else None"
+                )
+
+        # Only set user-provided inputs into shared state (port connections already in state)
+        for n in input_names:
+            if n in user_input_names:
+                body_lines.append(f'    state.set("{n}", {n})')
 
         if info.sub_block_names:
-            block_calls = "\n".join(
-                f'    _, state = exec_blocks.sub_blocks["{n}"](pipe, state)' for n in info.sub_block_names
-            )
+            for n in info.sub_block_names:
+                body_lines.append(f'    _, state = exec_blocks.sub_blocks["{n}"](pipe, state)')
         else:
-            block_calls = f'    _, state = exec_blocks.sub_blocks["{info.name}"](pipe, state)'
+            body_lines.append(f'    _, state = exec_blocks.sub_blocks["{info.name}"](pipe, state)')
 
+        has_image_out = info.name in blocks_with_image_outputs
+
+        # Return serializable values for daggr; real tensor data stays in shared state
         if len(info.outputs) == 0:
-            return_line = "    return None"
+            body_lines.append("    return None")
         elif len(info.outputs) == 1:
-            return_line = f'    return state.get("{info.outputs[0].name}")'
+            out = info.outputs[0]
+            if has_image_out and _contains_pil_image(out.type_hint):
+                body_lines.append(f'    return _save_image(state.get("{out.name}"))')
+            elif out.type_hint is not None and _is_internal_type(out.type_hint):
+                body_lines.append(f'    return "{out.name}"')
+            else:
+                body_lines.append(f'    return state.get("{out.name}")')
         else:
-            out_exprs = ", ".join(f'"{o.name}": state.get("{o.name}")' for o in info.outputs)
-            return_line = f"    return {{{out_exprs}}}"
+            ret_exprs = []
+            for o in info.outputs:
+                if has_image_out and o.type_hint is not None and _contains_pil_image(o.type_hint):
+                    ret_exprs.append(f'_save_image(state.get("{o.name}"))')
+                elif o.type_hint is not None and _is_internal_type(o.type_hint):
+                    ret_exprs.append(f'"{o.name}"')
+                else:
+                    ret_exprs.append(f'state.get("{o.name}")')
+            body_lines.append(f"    return {', '.join(ret_exprs)}")
 
-        sections.append(
-            dedent(f"""\
+        body = "\n".join(body_lines)
+        sections.append(f"\n\ndef {fn_name}({params}):\n{body}\n")
 
-            def {fn_name}({params}):
-                from diffusers.modular_pipelines.modular_pipeline import PipelineState
-
-                pipe, exec_blocks = _get_pipeline() state = PipelineState()
-            {set_lines} {block_calls} {return_line}
-        """)
-        )
-
+    # Pipeline blocks
     sections.append("\n# -- Pipeline Blocks --")
 
     node_var_names = {}
@@ -542,175 +704,6 @@ def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, work
     graph_name = f"{blocks_class_name} - {workflow_label}"
     nodes_str = ", ".join(all_node_vars)
 
-    sections.append(
-        dedent(f"""
-
-        # -- Graph -- graph = Graph("{graph_name}", nodes=[{nodes_str}]) graph.launch()
-    """)
-    )
+    sections.append(f'\n\n# -- Graph --\ngraph = Graph("{graph_name}", nodes=[{nodes_str}])\ngraph.launch()\n')
 
     return "\n".join(sections)
-
-
-# ---------------------------------------------------------------------------
-# Direct graph construction (default launch path)
-# ---------------------------------------------------------------------------
-
-
-def _create_gradio_component(type_hint, param_name, default=None):
-    import gradio as gr
-
-    if param_name in SLIDER_PARAMS:
-        opts = SLIDER_PARAMS[param_name]
-        val = default if default is not None else opts.get("minimum", 0)
-        return gr.Slider(
-            label=param_name, value=val, minimum=opts["minimum"], maximum=opts["maximum"], step=opts["step"]
-        )
-
-    if type_hint is not None and _is_internal_type(type_hint):
-        return None
-
-    if type_hint is str:
-        lines = 1
-        kwargs = {"label": param_name, "lines": lines}
-        if default is not None:
-            kwargs["value"] = default
-        return gr.Textbox(**kwargs)
-
-    if type_hint is int:
-        kwargs = {"label": param_name, "precision": 0}
-        if default is not None:
-            kwargs["value"] = default
-        return gr.Number(**kwargs)
-
-    if type_hint is float:
-        kwargs = {"label": param_name}
-        if default is not None:
-            kwargs["value"] = default
-        return gr.Number(**kwargs)
-
-    if type_hint is bool:
-        val = default if default is not None else False
-        return gr.Checkbox(label=param_name, value=val)
-
-    if type_hint is not None:
-        type_str = str(type_hint)
-        if "Image" in type_str:
-            if "list" in type_str.lower():
-                return gr.Gallery(label=param_name)
-            return gr.Image(label=param_name)
-
-    if default is not None:
-        return gr.Textbox(label=param_name, value=default)
-
-    return gr.Textbox(label=param_name)
-
-
-def _create_output_component(type_hint, param_name):
-    import gradio as gr
-
-    type_str = str(type_hint) if type_hint is not None else ""
-    if "Image" in type_str:
-        if "list" in type_str.lower():
-            return gr.Gallery(label=param_name)
-        return gr.Image(label=param_name)
-    if type_hint is str:
-        return gr.Textbox(label=param_name)
-    if type_hint is int or type_hint is float:
-        return gr.Number(label=param_name)
-    return gr.Textbox(label=param_name, interactive=False)
-
-
-def _build_graph(block_infos, pipeline, exec_blocks, blocks_class_name, workflow_label):
-    import inspect
-
-    from daggr import FnNode, Graph, InputNode
-
-    from ..modular_pipelines.modular_pipeline import PipelineState
-
-    _components_loaded = False
-
-    def _ensure_components():
-        nonlocal _components_loaded
-        if not _components_loaded:
-            pipeline.load_components()
-            _components_loaded = True
-
-    fn_nodes = {}
-    input_nodes = []
-    user_input_sources = {}
-
-    for info in block_infos:
-        block_outputs = info.outputs
-        input_names = [inp.name for inp in info.inputs if inp.name is not None]
-
-        if info.sub_block_names:
-            sub_blocks = [exec_blocks.sub_blocks[n] for n in info.sub_block_names]
-        else:
-            sub_blocks = [exec_blocks.sub_blocks[info.name]]
-
-        def _make_wrapper(blocks_to_run, outputs, param_names):
-            def wrapper(**kwargs):
-                _ensure_components()
-                state = PipelineState()
-                for k, v in kwargs.items():
-                    state.set(k, v)
-                for blk in blocks_to_run:
-                    _, state = blk(pipeline, state)
-                if len(outputs) == 0:
-                    return None
-                elif len(outputs) == 1:
-                    return state.get(outputs[0].name)
-                else:
-                    return tuple(state.get(o.name) for o in outputs)
-
-            params = [inspect.Parameter(n, inspect.Parameter.POSITIONAL_OR_KEYWORD) for n in param_names]
-            wrapper.__signature__ = inspect.Signature(params)
-            return wrapper
-
-        wrapper_fn = _make_wrapper(sub_blocks, block_outputs, input_names)
-        display_name = info.name.replace("_", " ").replace(".", " > ").title()
-
-        new_user_inputs = [inp for inp in info.user_inputs if inp.name not in user_input_sources]
-        for inp in new_user_inputs:
-            resolved_type, resolved_default = _resolve_from_template(inp)
-            comp = _create_gradio_component(resolved_type, inp.name, resolved_default)
-            if comp is not None:
-                input_node = InputNode(inp.name, ports={inp.name: comp})
-                input_nodes.append(input_node)
-                user_input_sources[inp.name] = input_node
-
-        inputs_dict = {}
-        for inp in info.inputs:
-            if inp.name is None:
-                continue
-            connected = False
-            for conn_name, source_block in info.port_connections:
-                if conn_name == inp.name:
-                    inputs_dict[inp.name] = getattr(fn_nodes[source_block], inp.name)
-                    connected = True
-                    break
-            if not connected:
-                if inp.name in user_input_sources:
-                    inputs_dict[inp.name] = getattr(user_input_sources[inp.name], inp.name)
-                elif inp.default is not None:
-                    inputs_dict[inp.name] = inp.default
-                else:
-                    inputs_dict[inp.name] = None
-
-        outputs_dict = {}
-        for out in block_outputs:
-            comp = _create_output_component(out.type_hint, out.name)
-            outputs_dict[out.name] = comp
-
-        fn_node = FnNode(
-            fn=wrapper_fn,
-            name=display_name,
-            inputs=inputs_dict if inputs_dict else None,
-            outputs=outputs_dict if outputs_dict else None,
-        )
-        fn_nodes[info.name] = fn_node
-
-    all_nodes = input_nodes + [fn_nodes[info.name] for info in block_infos]
-    graph_name = f"{blocks_class_name} - {workflow_label}"
-    return Graph(graph_name, nodes=all_nodes)
