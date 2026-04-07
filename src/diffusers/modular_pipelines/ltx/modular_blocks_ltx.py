@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from ...utils import logging
-from ..modular_pipeline import SequentialPipelineBlocks
+from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
     LTXImage2VideoPrepareLatentsStep,
@@ -99,8 +99,8 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block for image-to-video that takes encoded conditions and an image, and runs the denoising process.
 
       Components:
-          transformer (`LTXVideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) vae
-          (`AutoencoderKLLTXVideo`) video_processor (`VideoProcessor`) guider (`ClassifierFreeGuidance`)
+          transformer (`LTXVideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -127,12 +127,12 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
-          image (`Image | list`):
-              Reference image(s) for denoising. Can be a single image or list of images.
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
+          image_latents (`Tensor`):
+              TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
 
@@ -145,15 +145,14 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         LTXTextInputStep,
         LTXSetTimestepsStep,
-        LTXVaeEncoderStep,
         LTXImage2VideoPrepareLatentsStep,
         LTXImage2VideoDenoiseStep,
     ]
-    block_names = ["input", "set_timesteps", "vae_encoder", "prepare_latents", "denoise"]
+    block_names = ["input", "set_timesteps", "prepare_latents", "denoise"]
 
     @property
     def description(self):
-        return "Denoise block for image-to-video that takes encoded conditions and an image, and runs the denoising process."
+        return "Denoise block for image-to-video that takes encoded conditions and image latents, and runs the denoising process."
 
     @property
     def outputs(self):
@@ -229,14 +228,55 @@ class LTXBlocks(SequentialPipelineBlocks):
 
 
 # auto_docstring
+class LTXAutoVaeEncoderStep(AutoPipelineBlocks):
+    """
+    VAE encoder step that encodes the image input into its latent representation.
+      This is an auto pipeline block that works for image-to-video tasks.
+       - `LTXVaeEncoderStep` is used when `image` is provided.
+       - If `image` is not provided, step will be skipped.
+
+      Components:
+          vae (`AutoencoderKLLTXVideo`) video_processor (`VideoProcessor`)
+
+      Inputs:
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          height (`int`, *optional*, defaults to 512):
+              The height in pixels of the generated image.
+          width (`int`, *optional*, defaults to 704):
+              The width in pixels of the generated image.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+
+      Outputs:
+          image_latents (`Tensor`):
+              Encoded image latents from the VAE encoder
+    """
+
+    model_name = "ltx"
+    block_classes = [LTXVaeEncoderStep]
+    block_names = ["vae_encoder"]
+    block_trigger_inputs = ["image"]
+
+    @property
+    def description(self):
+        return (
+            "VAE encoder step that encodes the image input into its latent representation.\n"
+            "This is an auto pipeline block that works for image-to-video tasks.\n"
+            " - `LTXVaeEncoderStep` is used when `image` is provided.\n"
+            " - If `image` is not provided, step will be skipped."
+        )
+
+
+# auto_docstring
 class LTXImage2VideoBlocks(SequentialPipelineBlocks):
     """
     Modular pipeline blocks for LTX Video image-to-video.
 
       Components:
-          text_encoder (`T5EncoderModel`) tokenizer (`T5TokenizerFast`) guider (`ClassifierFreeGuidance`) transformer
-          (`LTXVideoTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLLTXVideo`)
-          video_processor (`VideoProcessor`)
+          text_encoder (`T5EncoderModel`) tokenizer (`T5TokenizerFast`) guider (`ClassifierFreeGuidance`) vae
+          (`AutoencoderKLLTXVideo`) video_processor (`VideoProcessor`) transformer (`LTXVideoTransformer3DModel`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           prompt (`str`):
@@ -245,6 +285,14 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 128):
               Maximum sequence length for prompt encoding.
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          height (`int`, *optional*, defaults to 512):
+              The height in pixels of the generated image.
+          width (`int`, *optional*, defaults to 704):
+              The width in pixels of the generated image.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           num_inference_steps (`int`, *optional*, defaults to 50):
@@ -253,18 +301,12 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          height (`int`, *optional*, defaults to 512):
-              The height in pixels of the generated image.
-          width (`int`, *optional*, defaults to 704):
-              The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 161):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
-          image (`Image | list`):
-              Reference image(s) for denoising. Can be a single image or list of images.
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
+          image_latents (`Tensor`):
+              TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           attention_kwargs (`dict`, *optional*):
@@ -284,10 +326,11 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
     model_name = "ltx"
     block_classes = [
         LTXTextEncoderStep,
+        LTXAutoVaeEncoderStep,
         LTXImage2VideoCoreDenoiseStep,
         LTXVaeDecoderStep,
     ]
-    block_names = ["text_encoder", "denoise", "decode"]
+    block_names = ["text_encoder", "vae_encoder", "denoise", "decode"]
 
     @property
     def description(self):
