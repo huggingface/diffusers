@@ -420,6 +420,7 @@ else:
         "SkyReelsV2ImageToVideoPipeline",
         "SkyReelsV2Pipeline",
     ]
+    _import_structure["nucleusmoe_image"] = ["NucleusMoEImagePipeline"]
     _import_structure["qwenimage"] = [
         "QwenImagePipeline",
         "QwenImageImg2ImgPipeline",
@@ -768,6 +769,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .mochi import MochiPipeline
+        from .nucleusmoe_image import NucleusMoEImagePipeline
         from .omnigen import OmniGenPipeline
         from .ovis_image import OvisImagePipeline
         from .pag import (
