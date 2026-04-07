@@ -50,6 +50,8 @@ class ErnieImagePipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "pe->text_encoder->transformer->vae"
+    # For SGLang fallback ...
+    _optional_components = ["pe", "pe_tokenizer"]
 
     def __init__(
         self,
@@ -350,8 +352,8 @@ class ErnieImagePipeline(DiffusionPipeline):
         # Handle prompts
         if isinstance(prompt, str):
             prompt = [prompt]
-            
-        # Enhance prompts with PE if enabled
+
+        # [Phase 1] PE: enhance prompts, then offload to CPU
         if use_pe and self.pe is not None and self.pe_tokenizer is not None:
             prompt = [
                 self._enhance_prompt_with_pe(p, device, width=width, height=height, max_length=max_length)
@@ -369,7 +371,7 @@ class ErnieImagePipeline(DiffusionPipeline):
         if len(negative_prompt) != batch_size:
             raise ValueError(f"negative_prompt must have same length as prompt ({batch_size})")
 
-        # Encode prompts
+        # [Phase 2] Text encoding, then offload text_encoder to CPU
         text_hiddens = self.encode_prompt(prompt, device, num_images_per_prompt, max_length)
 
         # CFG with negative prompt
