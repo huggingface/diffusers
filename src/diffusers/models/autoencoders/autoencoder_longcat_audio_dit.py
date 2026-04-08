@@ -285,12 +285,10 @@ class AudioDiTVaeDecoder(nn.Module):
         self.layers = nn.Sequential(*layers)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.layers[:-1](hidden_states)
-        output_hidden_states = self.layers[-1](hidden_states)
-        if self.shortcut is not None:
-            shortcut = self.shortcut(hidden_states)
-            output_hidden_states = output_hidden_states + shortcut
-        return output_hidden_states
+        if self.shortcut is None:
+            return self.layers(hidden_states)
+        hidden_states = self.shortcut(hidden_states) + self.layers[0](hidden_states)
+        return self.layers[1:](hidden_states)
 
 
 @dataclass
