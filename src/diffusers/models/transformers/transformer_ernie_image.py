@@ -1,5 +1,4 @@
-# Copyright (c) 2025, Baidu Inc. All rights reserved.
-# Author: fengzhida (fengzhida@baidu.com)
+# Copyright 2025 Baidu ERNIE-Image Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

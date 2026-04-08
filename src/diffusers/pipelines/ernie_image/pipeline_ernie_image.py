@@ -1,5 +1,4 @@
-# Copyright (c) 2025, Baidu Inc. All rights reserved.
-# Author: fengzhida (fengzhida@baidu.com)
+# Copyright 2025 Baidu ERNIE-Image Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,20 +21,14 @@ import os
 import numpy as np
 import torch
 from PIL import Image
-from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Union
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import BaseOutput
 from ...models import AutoencoderKLFlux2
 from ...models.transformers import ErnieImageTransformer2DModel
-
-
-@dataclass
-class ErnieImagePipelineOutput(BaseOutput):
-    images: List[Image.Image]
+from .pipeline_output import ErnieImagePipelineOutput
 
 
 class ErnieImagePipeline(DiffusionPipeline):
@@ -168,7 +161,6 @@ class ErnieImagePipeline(DiffusionPipeline):
         width: int = 1024,
         height: int = 1024,
         system_prompt: Optional[str] = None,
-        max_length: int = 1536,
         temperature: float = 0.6,
         top_p: float = 0.95,
     ) -> str:
@@ -196,10 +188,9 @@ class ErnieImagePipeline(DiffusionPipeline):
         else:
             pe_device = device
         inputs = self.pe_tokenizer(input_text, return_tensors="pt").to(pe_device)
-
         output_ids = self.pe.generate(
             **inputs,
-            max_new_tokens=max_length,
+            max_new_tokens=self.pe_tokenizer.model_max_length,
             do_sample=temperature != 1.0 or top_p != 1.0,
             temperature=temperature,
             top_p=top_p,
@@ -216,7 +207,6 @@ class ErnieImagePipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         device: torch.device,
         num_images_per_prompt: int = 1,
-        max_length: int = 64,
     ) -> List[torch.Tensor]:
         """Encode text prompts to embeddings."""
         if isinstance(prompt, str):
@@ -229,7 +219,6 @@ class ErnieImagePipeline(DiffusionPipeline):
                 p,
                 add_special_tokens=True,
                 truncation=True,
-                max_length=max_length,
                 padding=False,
             )["input_ids"]
 
@@ -260,7 +249,6 @@ class ErnieImagePipeline(DiffusionPipeline):
         negative_prompt: List[str],
         device: torch.device,
         num_images_per_prompt: int = 1,
-        max_length: int = 64,
     ) -> List[torch.Tensor]:
         """Encode negative prompts for CFG."""
         text_hiddens = []
@@ -270,7 +258,6 @@ class ErnieImagePipeline(DiffusionPipeline):
                 np,
                 add_special_tokens=True,
                 truncation=True,
-                max_length=max_length,
                 padding=False,
             )["input_ids"]
 
@@ -314,10 +301,10 @@ class ErnieImagePipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = "",
-        height: int = 256,
-        width: int = 256,
+        height: int = 1024,
+        width: int = 1024,
         num_inference_steps: int = 50,
-        guidance_scale: float = 5.0,
+        guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.Tensor] = None,
@@ -325,7 +312,6 @@ class ErnieImagePipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        max_length: int = 1536,
         use_pe: bool = True,    # 默认使用PE进行改写
     ):
         """
@@ -334,10 +320,10 @@ class ErnieImagePipeline(DiffusionPipeline):
         Args:
             prompt: Text prompt(s)
             negative_prompt: Negative prompt(s) for CFG. Default is "".
-            height: Image height (must be divisible by 16)
-            width: Image width (must be divisible by 16)
+            height: Image height in pixels (must be divisible by 16). Default: 1024.
+            width: Image width in pixels (must be divisible by 16). Default: 1024.
             num_inference_steps: Number of denoising steps
-            guidance_scale: CFG scale (1.0 = no guidance)
+            guidance_scale: CFG scale (1.0 = no guidance). Default: 4.0.
             num_images_per_prompt: Number of images per prompt
             generator: Random generator for reproducibility
             latents: Pre-generated latents (optional)
@@ -349,10 +335,10 @@ class ErnieImagePipeline(DiffusionPipeline):
                 The callback may return a dict to override those tensors for subsequent steps.
             callback_on_step_end_tensor_inputs: List of tensor names passed into the callback kwargs.
                 Must be a subset of `_callback_tensor_inputs` (default: `["latents"]`).
-            max_length: Max token length for text encoding
+            use_pe: Whether to use the PE model to enhance prompts before generation.
 
         Returns:
-            Generated images
+            :class:`ErnieImagePipelineOutput` with `images` and `revised_prompts`.
         """
         device = self._execution_device
         dtype = self.transformer.dtype
@@ -366,11 +352,13 @@ class ErnieImagePipeline(DiffusionPipeline):
             prompt = [prompt]
 
         # [Phase 1] PE: enhance prompts
+        revised_prompts: Optional[List[str]] = None
         if use_pe and self.pe is not None and self.pe_tokenizer is not None:
             prompt = [
-                self._enhance_prompt_with_pe(p, device, width=width, height=height, max_length=max_length)
+                self._enhance_prompt_with_pe(p, device, width=width, height=height)
                 for p in prompt
             ]
+            revised_prompts = list(prompt)
 
         batch_size = len(prompt)
         total_batch_size = batch_size * num_images_per_prompt
@@ -384,13 +372,13 @@ class ErnieImagePipeline(DiffusionPipeline):
             raise ValueError(f"negative_prompt must have same length as prompt ({batch_size})")
 
         # [Phase 2] Text encoding
-        text_hiddens = self.encode_prompt(prompt, device, num_images_per_prompt, max_length)
+        text_hiddens = self.encode_prompt(prompt, device, num_images_per_prompt)
 
         # CFG with negative prompt
         do_cfg = guidance_scale > 1.0
         if do_cfg:
             uncond_text_hiddens = self._encode_negative_prompt(
-                negative_prompt, device, num_images_per_prompt, max_length
+                negative_prompt, device, num_images_per_prompt
             )
 
         # Latent dimensions
@@ -478,4 +466,4 @@ class ErnieImagePipeline(DiffusionPipeline):
         if not return_dict:
             return (images,)
 
-        return ErnieImagePipelineOutput(images=images)
+        return ErnieImagePipelineOutput(images=images, revised_prompts=revised_prompts)
