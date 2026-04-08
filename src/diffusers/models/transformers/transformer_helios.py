@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from functools import lru_cache
 from typing import Any
 
 import torch
@@ -343,7 +342,6 @@ class HeliosRotaryPosEmbed(nn.Module):
         return freqs.cos(), freqs.sin()
 
     @torch.no_grad()
-    @lru_cache(maxsize=32)
     def _get_spatial_meshgrid(self, height, width, device_str):
         device = torch.device(device_str)
         grid_y_coords = torch.arange(height, device=device, dtype=torch.float32)

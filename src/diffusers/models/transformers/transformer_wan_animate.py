@@ -166,8 +166,7 @@ class MotionConv2d(nn.Module):
             # NOTE: the original implementation uses a 2D upfirdn operation with the upsampling and downsampling rates
             # set to 1, which should be equivalent to a 2D convolution
             expanded_kernel = self.blur_kernel[None, None, :, :].expand(self.in_channels, 1, -1, -1)
-            x = x.to(expanded_kernel.dtype)
-            x = F.conv2d(x, expanded_kernel, padding=self.blur_padding, groups=self.in_channels)
+            x = F.conv2d(x, expanded_kernel.to(x.dtype), padding=self.blur_padding, groups=self.in_channels)
 
         # Main Conv2D with scaling
         x = x.to(self.weight.dtype)
@@ -1029,6 +1028,7 @@ class WanAnimateTransformer3DModel(
         "norm2",
         "norm3",
         "motion_synthesis_weight",
+        "rope",
     ]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["WanTransformerBlock"]
