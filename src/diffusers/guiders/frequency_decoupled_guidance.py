@@ -275,7 +275,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
                     pred_guided_pyramid.append(pred)
                 else:
                     # Add the current pred_cond_pyramid level as the "non-FDG" prediction
-                    pred_guided_pyramid.append(pred_cond_freq)
+                    pred_guided_pyramid.append(pred_cond_pyramid[level])
 
             # Convert from frequency space back to data (e.g. pixel) space by applying inverse freq transform
             pred = build_image_from_pyramid(pred_guided_pyramid)

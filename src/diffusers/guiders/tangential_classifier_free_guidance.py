@@ -101,7 +101,7 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
 
     @property
     def is_conditional(self) -> bool:
-        return self._num_outputs_prepared == 1
+        return self._count_prepared == 1
 
     @property
     def num_conditions(self) -> int:
