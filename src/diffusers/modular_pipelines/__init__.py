@@ -70,6 +70,11 @@ else:
         "FluxKontextAutoBlocks",
         "FluxKontextModularPipeline",
     ]
+    _import_structure["ltx2"] = [
+        "LTX2AutoBlocks",
+        "LTX2Blocks",
+        "LTX2ModularPipeline",
+    ]
     _import_structure["flux2"] = [
         "Flux2AutoBlocks",
         "Flux2KleinAutoBlocks",
@@ -103,6 +108,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .components_manager import ComponentsManager
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
+        from .ltx2 import LTX2AutoBlocks, LTX2Blocks, LTX2ModularPipeline
         from .flux2 import (
             Flux2AutoBlocks,
             Flux2KleinAutoBlocks,

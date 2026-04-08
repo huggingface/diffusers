@@ -274,10 +274,14 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `torch.Tensor`:
                 A tensor of adjusted timesteps such that the final value equals `self.config.shift_terminal`.
         """
-        one_minus_z = 1 - t
-        scale_factor = one_minus_z[-1] / (1 - self.config.shift_terminal)
-        stretched_t = 1 - (one_minus_z / scale_factor)
-        return stretched_t
+        # Compute in float32 (matching reference ltx_core scheduler) to avoid
+        # float64 intermediates from numpy scalar / Python float promotion.
+        is_numpy = isinstance(t, np.ndarray)
+        t_tensor = torch.as_tensor(t, dtype=torch.float32)
+        one_minus_z = 1.0 - t_tensor
+        scale_factor = one_minus_z[-1] / (1.0 - self.config.shift_terminal)
+        stretched_t = 1.0 - (one_minus_z / scale_factor)
+        return stretched_t.numpy() if is_numpy else stretched_t
 
     def set_timesteps(
         self,
@@ -510,7 +514,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             noise = torch.randn_like(sample)
             prev_sample = (1.0 - next_sigma) * x0 + next_sigma * noise
         else:
-            prev_sample = sample + dt * model_output
+            prev_sample = sample + model_output.to(sample.dtype) * dt
 
         # upon completion increase step index by one
         self._step_index += 1
@@ -646,7 +650,12 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return sigmas
 
     def _time_shift_exponential(self, mu: float, sigma: float, t: torch.Tensor) -> torch.Tensor:
-        return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
+        # Compute in float32 (matching reference ltx_core scheduler) to avoid
+        # float64 intermediate precision from math.exp() + numpy promotion.
+        t_tensor = torch.as_tensor(t, dtype=torch.float32)
+        exp_mu = math.exp(mu)
+        result = exp_mu / (exp_mu + (1 / t_tensor - 1) ** sigma)
+        return result.numpy() if isinstance(t, np.ndarray) else result
 
     def _time_shift_linear(self, mu: float, sigma: float, t: torch.Tensor) -> torch.Tensor:
         return mu / (mu + (1 / t - 1) ** sigma)

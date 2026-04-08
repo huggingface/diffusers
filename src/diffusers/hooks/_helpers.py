@@ -55,6 +55,9 @@ class AttentionProcessorRegistry:
     # TODO(aryan): this is only required for the time being because we need to do the registrations
     # for classes. If we do it eagerly, i.e. call the functions in global scope, we will get circular
     # import errors because of the models imported in this file.
+    # YiYi TODO: Decentralize both AttentionProcessorRegistry and TransformerBlockRegistry.
+    # Move metadata to class attributes on each model class (e.g. `_return_hidden_states_index`,
+    # `skip_output` staticmethod) instead of maintaining this central registry. 
     _is_registered = False
 
     @classmethod
@@ -167,6 +170,7 @@ def _register_attention_processors_metadata():
             skip_processor_output_fn=_skip_proc_output_fn_Attention_ZSingleStreamAttnProcessor,
         ),
     )
+
 
 
 def _register_transformer_blocks_metadata():

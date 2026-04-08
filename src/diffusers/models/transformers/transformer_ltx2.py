@@ -37,16 +37,16 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 def apply_interleaved_rotary_emb(x: torch.Tensor, freqs: tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
     cos, sin = freqs
+    cos, sin = cos.to(x.dtype), sin.to(x.dtype)
     x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, C // 2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
-    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+    out = x * cos + x_rotated * sin
     return out
 
 
 def apply_split_rotary_emb(x: torch.Tensor, freqs: tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
     cos, sin = freqs
 
-    x_dtype = x.dtype
     needs_reshape = False
     if x.ndim != 4 and cos.ndim == 4:
         # cos is (b, h, t, r) -> reshape x to (b, h, t, dim_per_head)
@@ -61,12 +61,12 @@ def apply_split_rotary_emb(x: torch.Tensor, freqs: tuple[torch.Tensor, torch.Ten
     r = last // 2
 
     # (..., 2, r)
-    split_x = x.reshape(*x.shape[:-1], 2, r).float()  # Explicitly upcast to float
+    split_x = x.reshape(*x.shape[:-1], 2, r)
     first_x = split_x[..., :1, :]  # (..., 1, r)
     second_x = split_x[..., 1:, :]  # (..., 1, r)
 
-    cos_u = cos.unsqueeze(-2)  # broadcast to (..., 1, r) against (..., 2, r)
-    sin_u = sin.unsqueeze(-2)
+    cos_u = cos.to(x.dtype).unsqueeze(-2)  # broadcast to (..., 1, r) against (..., 2, r)
+    sin_u = sin.to(x.dtype).unsqueeze(-2)
 
     out = split_x * cos_u
     first_out = out[..., :1, :]
@@ -80,7 +80,6 @@ def apply_split_rotary_emb(x: torch.Tensor, freqs: tuple[torch.Tensor, torch.Ten
     if needs_reshape:
         out = out.swapaxes(1, 2).reshape(b, t, -1)
 
-    out = out.to(dtype=x_dtype)
     return out
 
 
@@ -382,6 +381,8 @@ class LTX2Attention(torch.nn.Module, AttentionModuleMixin):
             self.to_gate_logits = torch.nn.Linear(query_dim, heads, bias=True)
         else:
             self.to_gate_logits = None
+
+        self.is_cross_attention = cross_attention_dim is not None
 
         if processor is None:
             processor = self._default_processor_cls()
@@ -1492,7 +1493,9 @@ class LTX2VideoTransformer3DModel(
             temb_prompt = temb_prompt_audio = None
 
         # 3.2. Prepare global modality cross attention modulation parameters
-        video_ca_timestep = audio_sigma.flatten() if use_cross_timestep else timestep.flatten()
+        # Reference always uses cross-modality sigma for cross-attention timestep:
+        # video cross-attn uses audio_sigma, audio cross-attn uses sigma (video sigma).
+        video_ca_timestep = audio_sigma.flatten()
         video_cross_attn_scale_shift, _ = self.av_cross_attn_video_scale_shift(
             video_ca_timestep,
             batch_size=batch_size,
@@ -1508,7 +1511,7 @@ class LTX2VideoTransformer3DModel(
         )
         video_cross_attn_a2v_gate = video_cross_attn_a2v_gate.view(batch_size, -1, video_cross_attn_a2v_gate.shape[-1])
 
-        audio_ca_timestep = sigma.flatten() if use_cross_timestep else audio_timestep.flatten()
+        audio_ca_timestep = sigma.flatten()
         audio_cross_attn_scale_shift, _ = self.av_cross_attn_audio_scale_shift(
             audio_ca_timestep,
             batch_size=batch_size,

@@ -24,6 +24,7 @@ if is_torch_available():
     from .classifier_free_zero_star_guidance import ClassifierFreeZeroStarGuidance
     from .frequency_decoupled_guidance import FrequencyDecoupledGuidance
     from .guider_utils import BaseGuidance
+    from .ltx2_multi_modal_guidance import LTX2MultiModalGuidance
     from .magnitude_aware_guidance import MagnitudeAwareGuidance
     from .perturbed_attention_guidance import PerturbedAttentionGuidance
     from .skip_layer_guidance import SkipLayerGuidance
