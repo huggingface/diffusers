@@ -186,7 +186,6 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._normalize_latents
 def _normalize_latents(
     latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
 ) -> torch.Tensor:

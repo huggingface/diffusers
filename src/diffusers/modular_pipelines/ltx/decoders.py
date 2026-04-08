@@ -28,7 +28,6 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 logger = logging.get_logger(__name__)
 
 
-# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._unpack_latents
 def _unpack_latents(
     latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
 ) -> torch.Tensor:
@@ -42,7 +41,6 @@ def _unpack_latents(
     return latents
 
 
-# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._denormalize_latents
 def _denormalize_latents(
     latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
 ) -> torch.Tensor:

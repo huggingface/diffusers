@@ -34,7 +34,6 @@ from .modular_pipeline import LTXModularPipeline
 logger = logging.get_logger(__name__)
 
 
-# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._pack_latents
 def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1) -> torch.Tensor:
     # Unpacked latents of shape are [B, C, F, H, W] are patched into tokens of shape
     # [B, C, F // p_t, p_t, H // p, p, W // p, p].
@@ -60,7 +59,6 @@ def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int 
     return latents
 
 
-# Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._unpack_latents
 def _unpack_latents(
     latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
 ) -> torch.Tensor:
