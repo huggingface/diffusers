@@ -17,6 +17,7 @@ Ernie-Image Transformer2DModel for HuggingFace Diffusers.
 """
 
 import math
+import inspect
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -25,11 +26,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..embeddings import Timesteps
+from ..embeddings import TimestepEmbedding
 from ..modeling_utils import ModelMixin
 from ...utils import BaseOutput
 from ..normalization import RMSNorm
 from ..attention_processor import Attention
 from ..attention_dispatch import dispatch_attention_fn
+from ..attention import AttentionMixin, AttentionModuleMixin
 
 
 @dataclass
@@ -45,7 +48,7 @@ def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     return out.float()
 
 
-class EmbedND3(nn.Module):
+class ErnieImageEmbedND3(nn.Module):
     def __init__(self, dim: int, theta: int, axes_dim: Tuple[int, int, int]):
         super().__init__()
         self.dim = dim
@@ -68,18 +71,6 @@ class PatchEmbedDynamic(nn.Module):
         x = self.proj(x)
         B, D, Hp, Wp = x.shape
         return x.reshape(B, D, Hp * Wp).transpose(1, 2).contiguous()
-
-
-class TimestepEmbedding(nn.Module):
-    def __init__(self, in_channels: int, time_embed_dim: int):
-        super().__init__()
-        self.linear_1 = nn.Linear(in_channels, time_embed_dim)
-        self.act = nn.SiLU()
-        self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim)
-
-    def forward(self, sample: torch.Tensor) -> torch.Tensor:
-        sample = sample.to(self.linear_1.weight.dtype)
-        return self.linear_2(self.act(self.linear_1(sample)))
 
 
 class ErnieImageSingleStreamAttnProcessor:
@@ -157,6 +148,89 @@ class ErnieImageSingleStreamAttnProcessor:
 
         return output
 
+class ErnieImageAttention(torch.nn.Module, AttentionModuleMixin):
+    _default_processor_cls = ErnieImageSingleStreamAttnProcessor
+    _available_processors = [ErnieImageSingleStreamAttnProcessor]
+
+    def __init__(
+        self,
+        query_dim: int,
+        heads: int = 8,
+        dim_head: int = 64,
+        dropout: float = 0.0,
+        bias: bool = False,
+        qk_norm: str = "rms_norm",
+        added_kv_proj_dim: int | None = None,
+        added_proj_bias: bool | None = True,
+        out_bias: bool = True,
+        eps: float = 1e-5,
+        out_dim: int = None,
+        elementwise_affine: bool = True,
+        processor=None,
+    ):
+        super().__init__()
+
+        self.head_dim = dim_head
+        self.inner_dim = out_dim if out_dim is not None else dim_head * heads
+        self.query_dim = query_dim
+        self.out_dim = out_dim if out_dim is not None else query_dim
+        self.heads = out_dim // dim_head if out_dim is not None else heads
+
+        self.use_bias = bias
+        self.dropout = dropout
+
+        self.added_kv_proj_dim = added_kv_proj_dim
+        self.added_proj_bias = added_proj_bias
+
+        self.to_q = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_k = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_v = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+
+        # QK Norm
+        if qk_norm == "layer_norm":
+            self.norm_q = torch.nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+            self.norm_k = torch.nn.LayerNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+        elif qk_norm == "rms_norm":
+            self.norm_q = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+            self.norm_k = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+        else:
+            raise ValueError(
+                f"unknown qk_norm: {qk_norm}. Should be one of None, 'layer_norm', 'fp32_layer_norm', 'layer_norm_across_heads', 'rms_norm', 'rms_norm_across_heads', 'l2'."
+            )
+
+        self.to_out = torch.nn.ModuleList([])
+        self.to_out.append(torch.nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
+        self.to_out.append(torch.nn.Dropout(dropout))
+
+        if added_kv_proj_dim is not None:
+            self.norm_added_q = torch.nn.RMSNorm(dim_head, eps=eps)
+            self.norm_added_k = torch.nn.RMSNorm(dim_head, eps=eps)
+            self.add_q_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+            self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+            self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
+            self.to_add_out = torch.nn.Linear(self.inner_dim, query_dim, bias=out_bias)
+
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
+        unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters]
+        if len(unused_kwargs) > 0:
+            logger.warning(
+                f"joint_attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
+            )
+        kwargs = {k: w for k, w in kwargs.items() if k in attn_parameters}
+        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, image_rotary_emb, **kwargs)
+
 
 class FeedForward(nn.Module):
     def __init__(self, hidden_size: int, ffn_hidden_size: int):
@@ -173,9 +247,8 @@ class SharedAdaLNBlock(nn.Module):
     def __init__(self, hidden_size: int, num_heads: int, ffn_hidden_size: int, eps: float = 1e-6, qk_layernorm: bool = True):
         super().__init__()
         self.adaLN_sa_ln = RMSNorm(hidden_size, eps=eps)
-        self.self_attention = Attention(
+        self.self_attention = ErnieImageAttention(
             query_dim=hidden_size,
-            cross_attention_dim=None,
             dim_head=hidden_size // num_heads,
             heads=num_heads,
             qk_norm="rms_norm" if qk_layernorm else None,
@@ -192,7 +265,7 @@ class SharedAdaLNBlock(nn.Module):
         x = self.adaLN_sa_ln(x)
         x = self._modulate(x, shift_msa, scale_msa)
         x_bsh = x.permute(1, 0, 2)  # [S, B, H] → [B, S, H] for diffusers Attention (batch-first)
-        attn_out = self.self_attention(x_bsh, attention_mask=attention_mask, freqs_cis=rotary_pos_emb)
+        attn_out = self.self_attention(x_bsh, attention_mask=attention_mask, image_rotary_emb=rotary_pos_emb)
         attn_out = attn_out.permute(1, 0, 2)  # [B, S, H] → [S, B, H]
         x = residual + self._apply_gate(gate_msa, attn_out)
         residual = x
@@ -261,7 +334,7 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         self.text_proj = nn.Linear(text_in_dim, hidden_size, bias=False) if text_in_dim != hidden_size else None
         self.time_proj = Timesteps(hidden_size, flip_sin_to_cos=False, downscale_freq_shift=0)
         self.time_embedding = TimestepEmbedding(hidden_size, hidden_size)
-        self.pos_embed = EmbedND3(dim=self.head_dim, theta=rope_theta, axes_dim=rope_axes_dim)
+        self.pos_embed = ErnieImageEmbedND3(dim=self.head_dim, theta=rope_theta, axes_dim=rope_axes_dim)
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size))
         nn.init.zeros_(self.adaLN_modulation[-1].weight)
         nn.init.zeros_(self.adaLN_modulation[-1].bias)
@@ -271,14 +344,22 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         nn.init.zeros_(self.final_linear.weight)
         nn.init.zeros_(self.final_linear.bias)
 
-    def forward(self, hidden_states: torch.Tensor, timestep: torch.Tensor, encoder_hidden_states: List[torch.Tensor], return_dict: bool = True):
+    def forward(
+        self, 
+        hidden_states: torch.Tensor, 
+        timestep: torch.Tensor, 
+        # encoder_hidden_states: List[torch.Tensor], 
+        text_bth: torch.Tensor,
+        text_lens: torch.Tensor,
+        return_dict: bool = True
+    ):
         device, dtype = hidden_states.device, hidden_states.dtype
         B, C, H, W = hidden_states.shape
         p, Hp, Wp = self.patch_size, H // self.patch_size, W // self.patch_size
         N_img = Hp * Wp
 
         img_sbh = self.x_embedder(hidden_states).transpose(0, 1).contiguous()
-        text_bth, text_lens = self._pad_text(encoder_hidden_states, device, dtype)
+        # text_bth, text_lens = self._pad_text(encoder_hidden_states, device, dtype)
         if self.text_proj is not None and text_bth.numel() > 0:
             text_bth = self.text_proj(text_bth)
         Tmax = text_bth.shape[1]
@@ -298,7 +379,9 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         attention_mask = torch.cat([torch.ones((B, N_img), device=device, dtype=torch.bool), valid_text], dim=1)[:, None, None, :]
 
         # AdaLN
-        c = self.time_embedding(self.time_proj(timestep.to(dtype)))
+        sample = self.time_proj(timestep.to(dtype))
+        sample = sample.to(self.time_embedding.linear_1.weight.dtype)
+        c = self.time_embedding(sample)
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = [t.unsqueeze(0).expand(S, -1, -1).contiguous() for t in self.adaLN_modulation(c).chunk(6, dim=-1)]
         for layer in self.layers:
             x = layer(x, rotary_pos_emb, shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, attention_mask)
@@ -308,14 +391,3 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
 
         return ErnieImageTransformer2DModelOutput(sample=output) if return_dict else (output,)
 
-    def _pad_text(self, text_hiddens: List[torch.Tensor], device: torch.device, dtype: torch.dtype):
-        B = len(text_hiddens)
-        if B == 0:
-            return torch.zeros((0, 0, self.text_in_dim), device=device, dtype=dtype), torch.zeros((0,), device=device, dtype=torch.long)
-        normalized = [th.squeeze(1).to(device).to(dtype) if th.dim() == 3 else th.to(device).to(dtype) for th in text_hiddens]
-        lens = torch.tensor([t.shape[0] for t in normalized], device=device, dtype=torch.long)
-        Tmax = int(lens.max().item())
-        text_bth = torch.zeros((B, Tmax, self.text_in_dim), device=device, dtype=dtype)
-        for i, t in enumerate(normalized):
-            text_bth[i, :t.shape[0], :] = t
-        return text_bth, lens

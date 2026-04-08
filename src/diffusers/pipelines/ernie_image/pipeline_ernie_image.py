@@ -49,13 +49,13 @@ class ErnieImagePipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        transformer,
-        vae,
-        text_encoder,
-        tokenizer,
+        transformer: ErnieImageTransformer2DModel,
+        vae: AutoencoderKLFlux2,
+        text_encoder: AutoModel,
+        tokenizer: AutoTokenizer,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        pe=None,
-        pe_tokenizer=None,
+        pe: Optional[AutoModelForCausalLM] = None,
+        pe_tokenizer: Optional[AutoTokenizer] = None,
     ):
         super().__init__()
         self.register_modules(
@@ -69,89 +69,13 @@ class ErnieImagePipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 16  # VAE downsample factor
 
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: str, **kwargs):
-        """
-        Load pipeline from a pretrained model directory.
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
 
-        Args:
-            pretrained_model_name_or_path: Path to the saved pipeline directory
-            **kwargs: Additional arguments passed to component loaders
-                - torch_dtype: Data type for model weights (default: torch.bfloat16)
-                - device_map: Device map for model loading
-                - trust_remote_code: Whether to trust remote code for text encoder
-
-        Returns:
-            ErnieImagePipeline instance
-        """
-
-        torch_dtype = kwargs.pop("torch_dtype", torch.bfloat16)
-        trust_remote_code = kwargs.pop("trust_remote_code", True)
-        device_map = kwargs.pop("device_map", None)
-
-        # Determine whether this is a local directory or a Hub repo ID.
-        # For local paths we join sub-directories; for Hub IDs we use `subfolder`.
-        is_local = os.path.isdir(pretrained_model_name_or_path)
-
-        def _path_or_subfolder(subfolder: str):
-            if is_local:
-                return {"pretrained_model_name_or_path": os.path.join(pretrained_model_name_or_path, subfolder)}
-            return {"pretrained_model_name_or_path": pretrained_model_name_or_path, "subfolder": subfolder}
-
-        # Load transformer
-        transformer = ErnieImageTransformer2DModel.from_pretrained(
-            **_path_or_subfolder("transformer"),
-            torch_dtype=torch_dtype,
-        )
-
-        # Load VAE
-        vae = AutoencoderKLFlux2.from_pretrained(
-            **_path_or_subfolder("vae"),
-            torch_dtype=torch_dtype,
-        )
-
-        # Load text encoder
-        text_encoder = AutoModel.from_pretrained(
-            **_path_or_subfolder("text_encoder"),
-            torch_dtype=torch_dtype,
-            trust_remote_code=trust_remote_code,
-        )
-
-        # Load tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(
-            **_path_or_subfolder("tokenizer"),
-            trust_remote_code=trust_remote_code,
-        )
-
-        # Load PE
-        pe = AutoModelForCausalLM.from_pretrained(
-            **_path_or_subfolder("pe"),
-            torch_dtype=torch_dtype,
-            trust_remote_code=trust_remote_code,
-            low_cpu_mem_usage=True,
-            **({"device_map": device_map} if device_map else {}),
-        )
-
-        # Load PE tokenizer (auto-picks up chat_template.jinja in the same dir)
-        pe_tokenizer = AutoTokenizer.from_pretrained(
-            **_path_or_subfolder("pe"),
-            trust_remote_code=trust_remote_code,
-        )
-
-        # Load scheduler
-        scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-            **_path_or_subfolder("scheduler"),
-        )
-
-        return cls(
-            transformer=transformer,
-            vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            pe=pe,
-            pe_tokenizer=pe_tokenizer,
-            scheduler=scheduler,
-        )
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1.0
 
     @torch.no_grad()
     def _enhance_prompt_with_pe(
@@ -181,13 +105,7 @@ class ErnieImagePipeline(DiffusionPipeline):
             tokenize=False,
             add_generation_prompt=False,  # "Output:" is already in the user block
         )
-        # When accelerate offload hooks are installed, use the hook's execution_device
-        # to ensure inputs land on the same device as the model weights during forward()
-        if hasattr(self.pe, "_hf_hook") and hasattr(self.pe._hf_hook, "execution_device"):
-            pe_device = self.pe._hf_hook.execution_device
-        else:
-            pe_device = device
-        inputs = self.pe_tokenizer(input_text, return_tensors="pt").to(pe_device)
+        inputs = self.pe_tokenizer(input_text, return_tensors="pt").to(device)
         output_ids = self.pe.generate(
             **inputs,
             max_new_tokens=self.pe_tokenizer.model_max_length,
@@ -296,6 +214,19 @@ class ErnieImagePipeline(DiffusionPipeline):
         latents = latents.permute(0, 1, 4, 2, 5, 3)
         return latents.reshape(b, c // 4, h * 2, w * 2)
 
+    def _pad_text(self, text_hiddens: List[torch.Tensor], device: torch.device, dtype: torch.dtype):
+        text_in_dim = self.transformer.config.text_in_dim
+        B = len(text_hiddens)
+        if B == 0:
+            return torch.zeros((0, 0, text_in_dim), device=device, dtype=dtype), torch.zeros((0,), device=device, dtype=torch.long)
+        normalized = [th.squeeze(1).to(device).to(dtype) if th.dim() == 3 else th.to(device).to(dtype) for th in text_hiddens]
+        lens = torch.tensor([t.shape[0] for t in normalized], device=device, dtype=torch.long)
+        Tmax = int(lens.max().item())
+        text_bth = torch.zeros((B, Tmax, text_in_dim), device=device, dtype=dtype)
+        for i, t in enumerate(normalized):
+            text_bth[i, :t.shape[0], :] = t
+        return text_bth, lens
+
     @torch.no_grad()
     def __call__(
         self,
@@ -343,6 +274,7 @@ class ErnieImagePipeline(DiffusionPipeline):
         device = self._execution_device
         dtype = self.transformer.dtype
 
+        self._guidance_scale = guidance_scale
         # Validate dimensions
         if height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0:
             raise ValueError(f"Height and width must be divisible by {self.vae_scale_factor}")
@@ -375,8 +307,7 @@ class ErnieImagePipeline(DiffusionPipeline):
         text_hiddens = self.encode_prompt(prompt, device, num_images_per_prompt)
 
         # CFG with negative prompt
-        do_cfg = guidance_scale > 1.0
-        if do_cfg:
+        if self.do_classifier_free_guidance:
             uncond_text_hiddens = self._encode_negative_prompt(
                 negative_prompt, device, num_images_per_prompt
             )
@@ -400,14 +331,14 @@ class ErnieImagePipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(sigmas=sigmas[:-1], device=device)
 
         # Denoising loop
-        if do_cfg:
+        if self.do_classifier_free_guidance:
             cfg_text_hiddens = list(uncond_text_hiddens) + list(text_hiddens)
         else:
             cfg_text_hiddens = text_hiddens
         
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(self.scheduler.timesteps):
-                if do_cfg:
+                if self.do_classifier_free_guidance:
                     latent_model_input = torch.cat([latents, latents], dim=0)
                     t_batch = torch.full((total_batch_size * 2,), t.item(), device=device, dtype=dtype)
                 else:
@@ -415,15 +346,18 @@ class ErnieImagePipeline(DiffusionPipeline):
                     t_batch = torch.full((total_batch_size,), t.item(), device=device, dtype=dtype)
 
                 # Model prediction
+                text_bth, text_lens = self._pad_text(cfg_text_hiddens, device, dtype)
                 pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=t_batch,
-                    encoder_hidden_states=cfg_text_hiddens,
+                    # encoder_hidden_states=cfg_text_hiddens,
+                    text_bth=text_bth,
+                    text_lens=text_lens,
                     return_dict=False,
                 )[0]
 
                 # Apply CFG
-                if do_cfg:
+                if self.do_classifier_free_guidance:
                     pred_uncond, pred_cond = pred.chunk(2, dim=0)
                     pred = pred_uncond + guidance_scale * (pred_cond - pred_uncond)
 
