@@ -56,6 +56,73 @@ DROPDOWN_PARAMS = {
     "output_type": {"choices": ["pil", "np", "pt", "latent"], "value": "pil"},
 }
 
+DEFAULT_REQUIREMENTS = (
+    "torch --index-url https://download.pytorch.org/whl/cu129\n"
+    "diffusers\n"
+    "transformers\n"
+    "accelerate\n"
+    "sentencepiece\n"
+    "bitsandbytes\n"
+    "daggr\n"
+    "gradio\n"
+)
+
+# ---------------------------------------------------------------------------
+# Code templates (string concat so formatters can't mangle newlines)
+# ---------------------------------------------------------------------------
+
+_HEADER_TEMPLATE = (
+    "import os\n"
+    "{extra_imports}\n"
+    "import gradio as gr\n"
+    "from daggr import FnNode, InputNode, Graph\n"
+    "\n"
+    "\n"
+    "_pipeline = None\n"
+    "_exec_blocks = None\n"
+    "_tensor_store = {{}}\n"
+    "\n"
+    "\n"
+    "def _get_pipeline():\n"
+    "    global _pipeline, _exec_blocks\n"
+    "    if _pipeline is None:\n"
+    "        from diffusers import ModularPipeline\n"
+    "        import torch\n"
+    "\n"
+    '        _token = os.environ.get("HF_TOKEN")\n'
+    '        _device = "cuda" if torch.cuda.is_available() else "cpu"\n'
+    "        _pipeline = ModularPipeline.from_pretrained({repo_id}, trust_remote_code=True, token=_token)\n"
+    "        _pipeline.load_components(torch_dtype=torch.bfloat16, device_map=_device)\n"
+    "        _exec_blocks = {workflow_resolve_code}\n"
+    "    return _pipeline, _exec_blocks"
+)
+
+_SAVE_IMAGE_TEMPLATE = (
+    "\n"
+    "\n"
+    "def _save_image(val):\n"
+    "    from PIL import Image as PILImage\n"
+    "\n"
+    "    if isinstance(val, list):\n"
+    "        paths = [_save_image(item) for item in val]\n"
+    "        return paths[0] if paths else None\n"
+    "    if isinstance(val, PILImage.Image):\n"
+    '        f = tempfile.NamedTemporaryFile(suffix=".png", delete=False)\n'
+    "        val.save(f.name)\n"
+    "        return f.name\n"
+    "    return val"
+)
+
+_CACHE_DISABLE_TEMPLATE = (
+    "\n"
+    "# Disable result caching so every run executes all nodes fresh\n"
+    "from daggr.state import SessionState\n"
+    "SessionState.get_latest_result = lambda *a, **kw: None\n"
+    "SessionState.get_result_by_index = lambda *a, **kw: None\n"
+    "SessionState.save_result = lambda *a, **kw: None\n"
+)
+
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -99,7 +166,7 @@ class DaggrCommand(BaseDiffusersCLICommand):
         daggr_parser.add_argument(
             "repo_id",
             type=str,
-            help="HuggingFace Hub repo ID containing a modular pipeline (with modular_model_index.json).",
+            help="HuggingFace Hub repo ID containing a modular pipeline.",
         )
         daggr_parser.add_argument(
             "--output",
@@ -191,7 +258,6 @@ class DaggrCommand(BaseDiffusersCLICommand):
 
         workflow_label = self.workflow or "default"
         workflow_resolve_code = self._get_workflow_resolve_code()
-
         code = _generate_code(block_infos, self.repo_id, blocks_class_name, workflow_label, workflow_resolve_code)
 
         try:
@@ -204,7 +270,6 @@ class DaggrCommand(BaseDiffusersCLICommand):
         elif self.output:
             with open(self.output, "w") as f:
                 f.write(code)
-
             print(f"Generated daggr app: {self.output}")
             print(f"  Pipeline: {blocks_class_name}")
             print(f"  Workflow: {workflow_label}")
@@ -230,9 +295,8 @@ class DaggrCommand(BaseDiffusersCLICommand):
 
         req_path = self.requirements
         if not req_path:
-            requirements = "diffusers[torch]\ntransformers\naccelerate\nsentencepiece\nbitsandbytes\ndaggr\ngradio\n"
             req_file = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix="daggr_req_")
-            req_file.write(requirements)
+            req_file.write(DEFAULT_REQUIREMENTS)
             req_file.close()
             req_path = req_file.name
 
@@ -241,11 +305,16 @@ class DaggrCommand(BaseDiffusersCLICommand):
         if hf_token:
             secrets["HF_TOKEN"] = hf_token
 
+        deploy_name = self.deploy
+        deploy_org = None
+        if "/" in deploy_name:
+            deploy_org, deploy_name = deploy_name.rsplit("/", 1)
+
         _deploy(
             script_path=Path(tmp.name),
-            name=self.deploy,
+            name=deploy_name,
             title=None,
-            org=None,
+            org=deploy_org,
             private=self.private,
             hardware=self.hardware,
             secrets=secrets,
@@ -271,14 +340,15 @@ class DaggrCommand(BaseDiffusersCLICommand):
 def _get_block_info(exec_blocks):
     block_infos = []
     for name, block in exec_blocks.sub_blocks.items():
-        info = BlockInfo(
-            name=name,
-            class_name=block.__class__.__name__,
-            description=getattr(block, "description", "") or "",
-            inputs=list(block.inputs) if hasattr(block, "inputs") else [],
-            outputs=list(block.intermediate_outputs) if hasattr(block, "intermediate_outputs") else [],
+        block_infos.append(
+            BlockInfo(
+                name=name,
+                class_name=block.__class__.__name__,
+                description=getattr(block, "description", "") or "",
+                inputs=list(block.inputs) if hasattr(block, "inputs") else [],
+                outputs=list(block.intermediate_outputs) if hasattr(block, "intermediate_outputs") else [],
+            )
         )
-        block_infos.append(info)
     return block_infos
 
 
@@ -304,9 +374,7 @@ def _classify_inputs(block_infos):
     all_prior_outputs = {}
 
     for info in block_infos:
-        user_inputs = []
-        port_connections = []
-        fixed_inputs = []
+        user_inputs, port_connections, fixed_inputs = [], [], []
 
         for inp in info.inputs:
             if inp.name is None:
@@ -325,19 +393,6 @@ def _classify_inputs(block_infos):
         for out in info.outputs:
             if out.name:
                 all_prior_outputs[out.name] = info.name
-
-    for info in block_infos:
-        if not info.port_connections and not info.user_inputs:
-            output_names = [o.name for o in info.outputs]
-            consumed = any(
-                o_name in {c[0] for other in block_infos for c in other.port_connections} for o_name in output_names
-            )
-            if not consumed and output_names:
-                logger.warning(
-                    f"Block '{info.name}' appears disconnected: "
-                    f"outputs {output_names} are not consumed by any downstream block. "
-                    f"inputs={[i.name for i in info.inputs]}"
-                )
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +467,6 @@ def _is_user_facing(inp):
         return not _is_internal_type(type_hint)
     if inp.name in SLIDER_PARAMS:
         return True
-
     return False
 
 
@@ -424,7 +478,7 @@ def _sanitize_name(name):
 
 
 # ---------------------------------------------------------------------------
-# Gradio component code strings (for code generation)
+# Gradio component code strings
 # ---------------------------------------------------------------------------
 
 
@@ -439,35 +493,27 @@ def _type_hint_to_gradio(type_hint, param_name, default=None):
         val = default if default is not None else opts.get("minimum", 0)
         return (
             f'gr.Slider(label="{param_name}", value={val!r}, '
-            f"minimum={opts['minimum']}, maximum={opts['maximum']}, "
-            f"step={opts['step']})"
+            f"minimum={opts['minimum']}, maximum={opts['maximum']}, step={opts['step']})"
         )
 
     if type_hint is not None and _is_internal_type(type_hint):
         return None
-
     if type_hint is not None and _contains_pil_image(type_hint):
         return f'gr.Image(label="{param_name}")'
-
     if type_hint is str:
         default_repr = f", value={default!r}" if default is not None else ""
         return f'gr.Textbox(label="{param_name}", lines=1{default_repr})'
-
     if type_hint is int:
         val = f", value={default!r}" if default is not None else ""
         return f'gr.Number(label="{param_name}", precision=0{val})'
-
     if type_hint is float:
         val = f", value={default!r}" if default is not None else ""
         return f'gr.Number(label="{param_name}"{val})'
-
     if type_hint is bool:
         val = default if default is not None else False
         return f'gr.Checkbox(label="{param_name}", value={val!r})'
-
     if default is not None:
         return f'gr.Textbox(label="{param_name}", value={default!r})'
-
     return f'gr.Textbox(label="{param_name}")'
 
 
@@ -489,14 +535,14 @@ def _output_type_to_gradio(type_hint, param_name):
 def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, workflow_resolve_code):
     sections = []
 
-    # Collect blocks that need image pre/postprocessing
+    # Pre-compute metadata
     blocks_with_image_inputs = {}
     blocks_with_parseable_inputs = {}
     blocks_with_image_outputs = set()
+    port_conn_source = {}
 
     for info in block_infos:
-        img_names = set()
-        parse_names = set()
+        img_names, parse_names = set(), set()
         for inp in info.inputs:
             if inp.name is None:
                 continue
@@ -511,79 +557,42 @@ def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, work
             blocks_with_parseable_inputs[info.name] = parse_names
         if any(out.type_hint is not None and _contains_pil_image(out.type_hint) for out in info.outputs):
             blocks_with_image_outputs.add(info.name)
+        for conn_name, source_block in info.port_connections:
+            port_conn_source[(info.name, conn_name)] = source_block
 
     needs_image_io = blocks_with_image_inputs or blocks_with_image_outputs
     needs_parsing = bool(blocks_with_parseable_inputs)
 
-    # Header
+    # -- Header & helpers --
     extra_imports = ""
     if needs_parsing:
         extra_imports += "import ast\n"
     if needs_image_io:
         extra_imports += "import tempfile\n"
-    if extra_imports:
-        extra_imports += "\n"
 
-    sections.append(
-        f'"""Daggr app for {blocks_class_name} ({workflow_label} workflow)\n'
-        f"Generated by: diffusers-cli daggr\n"
-        f'"""\n'
-        f"\n"
-        f"import os\n"
-        f"{extra_imports}"
-        f"import gradio as gr\n"
-        f"from daggr import FnNode, InputNode, Graph\n"
-        f"\n"
-        f"\n"
-        f"_pipeline = None\n"
-        f"_exec_blocks = None\n"
-        f"_state = None\n"
-        f"\n"
-        f"\n"
-        f"def _get_pipeline():\n"
-        f"    global _pipeline, _exec_blocks, _state\n"
-        f"    if _pipeline is None:\n"
-        f"        from diffusers import ModularPipeline\n"
-        f"        from diffusers.modular_pipelines.modular_pipeline import PipelineState\n"
-        f"\n"
-        f"        import torch\n"
-        f"\n"
-        f'        _token = os.environ.get("HF_TOKEN")\n'
-        f'        _device = "cuda" if torch.cuda.is_available() else "cpu"\n'
-        f"        _pipeline = ModularPipeline.from_pretrained({repo_id!r}, trust_remote_code=True, token=_token)\n"
-        f"        _pipeline.load_components(torch_dtype=torch.bfloat16, device_map=_device)\n"
-        f"        _exec_blocks = {workflow_resolve_code}\n"
-        f"        _state = PipelineState()\n"
-        f"    return _pipeline, _exec_blocks, _state\n"
+    sections.append(f'"""Daggr app for {blocks_class_name} ({workflow_label} workflow)')
+    sections.append("Generated by: diffusers-cli daggr")
+    sections.append('"""')
+    header = _HEADER_TEMPLATE.format(
+        extra_imports=extra_imports, repo_id=repr(repo_id), workflow_resolve_code=workflow_resolve_code
     )
+    sections.extend(header.splitlines())
 
-    # Pre/postprocess helpers (only if needed)
     if needs_image_io:
-        sections.append(
-            "\ndef _save_image(val):\n"
-            "    from PIL import Image as PILImage\n"
-            "\n"
-            "    if isinstance(val, list):\n"
-            "        paths = [_save_image(item) for item in val]\n"
-            "        return paths[0] if paths else None\n"
-            "    if isinstance(val, PILImage.Image):\n"
-            '        f = tempfile.NamedTemporaryFile(suffix=".png", delete=False)\n'
-            "        val.save(f.name)\n"
-            "        return f.name\n"
-            "    return val\n"
-        )
+        sections.extend(_SAVE_IMAGE_TEMPLATE.splitlines())
 
-    # Block functions
+    # -- Block functions --
     for info in block_infos:
         fn_name = f"run_{_sanitize_name(info.name)}"
         input_names = [inp.name for inp in info.inputs if inp.name is not None]
-        params = ", ".join(input_names)
+        port_conn_names = {c for c, _ in info.port_connections}
+        has_image_out = info.name in blocks_with_image_outputs
 
         body_lines = []
-        body_lines.append("    pipe, exec_blocks, state = _get_pipeline()")
-
-        # Preprocess user inputs
-        user_input_names = {inp.name for inp in info.user_inputs}
+        body_lines.append("    from diffusers.modular_pipelines.modular_pipeline import PipelineState")
+        body_lines.append("")
+        body_lines.append("    pipe, exec_blocks = _get_pipeline()")
+        body_lines.append("    state = PipelineState()")
 
         if info.name in blocks_with_image_inputs:
             body_lines.append("    from PIL import Image as PILImage")
@@ -599,9 +608,11 @@ def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, work
                     f"        {parse_name} = ast.literal_eval({parse_name}.strip()) if {parse_name}.strip() else None"
                 )
 
-        # Only set user-provided inputs into shared state (port connections already in state)
         for n in input_names:
-            if n in user_input_names:
+            if n in port_conn_names:
+                source = port_conn_source[(info.name, n)]
+                body_lines.append(f'    state.set("{n}", _tensor_store.get("{source}:{n}", {n}))')
+            else:
                 body_lines.append(f'    state.set("{n}", {n})')
 
         if info.sub_block_names:
@@ -610,9 +621,10 @@ def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, work
         else:
             body_lines.append(f'    _, state = exec_blocks.sub_blocks["{info.name}"](pipe, state)')
 
-        has_image_out = info.name in blocks_with_image_outputs
+        for o in info.outputs:
+            if o.type_hint is not None and _is_internal_type(o.type_hint):
+                body_lines.append(f'    _tensor_store["{info.name}:{o.name}"] = state.get("{o.name}")')
 
-        # Return serializable values for daggr; real tensor data stays in shared state
         if len(info.outputs) == 0:
             body_lines.append("    return None")
         elif len(info.outputs) == 1:
@@ -620,25 +632,25 @@ def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, work
             if has_image_out and _contains_pil_image(out.type_hint):
                 body_lines.append(f'    return _save_image(state.get("{out.name}"))')
             elif out.type_hint is not None and _is_internal_type(out.type_hint):
-                body_lines.append(f'    return "{out.name}"')
+                body_lines.append(f'    return "{info.name}:{out.name}"')
             else:
                 body_lines.append(f'    return state.get("{out.name}")')
         else:
-            ret_exprs = []
+            parts = []
             for o in info.outputs:
                 if has_image_out and o.type_hint is not None and _contains_pil_image(o.type_hint):
-                    ret_exprs.append(f'_save_image(state.get("{o.name}"))')
+                    parts.append(f'_save_image(state.get("{o.name}"))')
                 elif o.type_hint is not None and _is_internal_type(o.type_hint):
-                    ret_exprs.append(f'"{o.name}"')
+                    parts.append(f'"{info.name}:{o.name}"')
                 else:
-                    ret_exprs.append(f'state.get("{o.name}")')
-            body_lines.append(f"    return {', '.join(ret_exprs)}")
+                    parts.append(f'state.get("{o.name}")')
+            body_lines.append(f"    return {', '.join(parts)}")
 
         body = "\n".join(body_lines)
-        sections.append(f"\n\ndef {fn_name}({params}):\n{body}\n")
+        sections.append(f"\n\ndef {fn_name}({', '.join(input_names)}):\n{body}\n")
 
-    # Pipeline blocks
-    sections.append("\n# -- Pipeline Blocks --")
+    # -- Node definitions --
+    sections.append("\n\n# -- Pipeline Blocks --")
 
     node_var_names = {}
     input_node_var_names = []
@@ -650,8 +662,9 @@ def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, work
         fn_name = f"run_{_sanitize_name(info.name)}"
         display_name = info.name.replace("_", " ").replace(".", " > ").title()
 
-        new_user_inputs = [inp for inp in info.user_inputs if inp.name not in user_input_sources]
-        for inp in new_user_inputs:
+        for inp in info.user_inputs:
+            if inp.name in user_input_sources:
+                continue
             resolved_type, resolved_default = _resolve_from_template(inp)
             gradio_comp = _type_hint_to_gradio(resolved_type, inp.name, resolved_default)
             if gradio_comp:
@@ -669,14 +682,12 @@ def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, work
             connected = False
             for conn_name, source_block in info.port_connections:
                 if conn_name == inp.name:
-                    source_var = node_var_names[source_block]
-                    input_entries.append(f'    "{inp.name}": {source_var}.{inp.name},')
+                    input_entries.append(f'    "{inp.name}": {node_var_names[source_block]}.{inp.name},')
                     connected = True
                     break
             if not connected:
                 if inp.name in user_input_sources:
-                    src = user_input_sources[inp.name]
-                    input_entries.append(f'    "{inp.name}": {src}.{inp.name},')
+                    input_entries.append(f'    "{inp.name}": {user_input_sources[inp.name]}.{inp.name},')
                 elif inp.default is not None:
                     input_entries.append(f'    "{inp.name}": {inp.default!r},')
                 else:
@@ -684,10 +695,9 @@ def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, work
 
         output_entries = []
         for out in info.outputs:
-            gradio_out = _output_type_to_gradio(out.type_hint, out.name)
-            output_entries.append(f'    "{out.name}": {gradio_out},')
+            output_entries.append(f'    "{out.name}": {_output_type_to_gradio(out.type_hint, out.name)},')
 
-        node_parts = [f"{var_name} = FnNode(", f"    fn={fn_name},", f'    name="{display_name}",']
+        node_parts = [f"\n{var_name} = FnNode(", f"    fn={fn_name},", f'    name="{display_name}",']
         if input_entries:
             node_parts.append("    inputs={")
             node_parts.extend(input_entries)
@@ -697,13 +707,20 @@ def _generate_code(block_infos, repo_id, blocks_class_name, workflow_label, work
             node_parts.extend(output_entries)
             node_parts.append("    },")
         node_parts.append(")")
+        sections.append("\n".join(node_parts))
 
-        sections.append("\n" + "\n".join(node_parts))
-
+    # -- Graph launch with cache disabled --
     all_node_vars = input_node_var_names + [node_var_names[info.name] for info in block_infos]
     graph_name = f"{blocks_class_name} - {workflow_label}"
     nodes_str = ", ".join(all_node_vars)
 
-    sections.append(f'\n\n# -- Graph --\ngraph = Graph("{graph_name}", nodes=[{nodes_str}])\ngraph.launch()\n')
+    sections.append("")
+    sections.append("")
+    sections.append("# -- Graph --")
+    sections.extend(_CACHE_DISABLE_TEMPLATE.splitlines())
+    sections.append("")
+    sections.append(f'graph = Graph("{graph_name}", nodes=[{nodes_str}])')
+    sections.append("graph.launch()")
+    sections.append("")
 
     return "\n".join(sections)

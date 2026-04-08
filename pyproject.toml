@@ -2,6 +2,7 @@
 line-length = 119
 extend-exclude = [
     "src/diffusers/pipelines/flux2/system_messages.py",
+    "src/diffusers/commands/daggr_app.py",
 ]
 
 [tool.ruff.lint]
