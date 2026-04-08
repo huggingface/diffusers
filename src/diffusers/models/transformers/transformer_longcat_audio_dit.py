@@ -24,29 +24,16 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from ..attention import AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_utils import ModelMixin
+from ..normalization import RMSNorm
 
 
 @dataclass
 class LongCatAudioDiTTransformerOutput(BaseOutput):
     sample: torch.Tensor
-
-
-class AudioDiTRMSNorm(nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-6):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        normalized = hidden_states.float() * torch.rsqrt(
-            hidden_states.float().pow(2).mean(dim=-1, keepdim=True) + self.eps
-        )
-        return normalized.to(hidden_states.dtype) * self.weight
-
 
 class AudioDiTSinusPositionEmbedding(nn.Module):
     def __init__(self, dim: int):
@@ -79,26 +66,21 @@ class AudioDiTRotaryEmbedding(nn.Module):
         self.dim = dim
         self.max_position_embeddings = max_position_embeddings
         self.base = base
-        self._cos = None
-        self._sin = None
-        self._cached_len = 0
-        self._cached_device = None
 
-    def _build(self, seq_len: int, device: torch.device, dtype: torch.dtype):
+    @lru_cache_unless_export(maxsize=128)
+    def _build(self, seq_len: int, device: torch.device | None = None) -> tuple[torch.Tensor, torch.Tensor]:
         inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2, dtype=torch.int64).float() / self.dim))
-        steps = torch.arange(seq_len, dtype=torch.int64).type_as(inv_freq)
+        if device is not None:
+            inv_freq = inv_freq.to(device)
+        steps = torch.arange(seq_len, dtype=torch.int64, device=inv_freq.device).type_as(inv_freq)
         freqs = torch.outer(steps, inv_freq)
         embeddings = torch.cat((freqs, freqs), dim=-1)
-        self._cos = embeddings.cos().to(dtype=dtype, device=device)
-        self._sin = embeddings.sin().to(dtype=dtype, device=device)
-        self._cached_len = seq_len
-        self._cached_device = device
+        return embeddings.cos().contiguous(), embeddings.sin().contiguous()
 
     def forward(self, hidden_states: torch.Tensor, seq_len: int | None = None) -> tuple[torch.Tensor, torch.Tensor]:
         seq_len = hidden_states.shape[1] if seq_len is None else seq_len
-        if self._cos is None or seq_len > self._cached_len or self._cached_device != hidden_states.device:
-            self._build(max(seq_len, self.max_position_embeddings), hidden_states.device, hidden_states.dtype)
-        return self._cos[:seq_len].to(hidden_states.dtype), self._sin[:seq_len].to(hidden_states.dtype)
+        cos, sin = self._build(max(seq_len, self.max_position_embeddings), hidden_states.device)
+        return cos[:seq_len].to(dtype=hidden_states.dtype), sin[:seq_len].to(dtype=hidden_states.dtype)
 
 
 def _rotate_half(hidden_states: torch.Tensor) -> torch.Tensor:
@@ -198,22 +180,13 @@ class AudioDiTAdaLayerNormZeroFinal(nn.Module):
         return hidden_states
 
 
-def _modulate(
-    hidden_states: torch.Tensor, scale: torch.Tensor, shift: torch.Tensor, eps: float = 1e-6
-) -> torch.Tensor:
-    hidden_states = F.layer_norm(hidden_states.float(), (hidden_states.shape[-1],), eps=eps).type_as(hidden_states)
-    if scale.ndim == 2:
-        return hidden_states * (1 + scale[:, None]) + shift[:, None]
-    return hidden_states * (1 + scale) + shift
-
-
 class AudioDiTSelfAttnProcessor:
     _attention_backend = None
     _parallel_config = None
 
     def __call__(
         self,
-        attn: "AudioDiTSelfAttention",
+        attn: "AudioDiTAttention",
         hidden_states: torch.Tensor,
         mask: torch.BoolTensor | None = None,
         rope: tuple | None = None,
@@ -253,36 +226,55 @@ class AudioDiTSelfAttnProcessor:
         return hidden_states
 
 
-class AudioDiTSelfAttention(nn.Module, AttentionModuleMixin):
-    _default_processor_cls = AudioDiTSelfAttnProcessor
-    _available_processors = [AudioDiTSelfAttnProcessor]
+class AudioDiTAttention(nn.Module, AttentionModuleMixin):
     def __init__(
         self,
-        dim: int,
+        q_dim: int,
+        kv_dim: int | None,
         heads: int,
         dim_head: int,
         dropout: float = 0.0,
         bias: bool = True,
         qk_norm: bool = False,
         eps: float = 1e-6,
+        processor: AttentionModuleMixin | None = None,
     ):
         super().__init__()
+        kv_dim = q_dim if kv_dim is None else kv_dim
         self.heads = heads
         self.inner_dim = dim_head * heads
-        self.to_q = nn.Linear(dim, self.inner_dim, bias=bias)
-        self.to_k = nn.Linear(dim, self.inner_dim, bias=bias)
-        self.to_v = nn.Linear(dim, self.inner_dim, bias=bias)
+        self.to_q = nn.Linear(q_dim, self.inner_dim, bias=bias)
+        self.to_k = nn.Linear(kv_dim, self.inner_dim, bias=bias)
+        self.to_v = nn.Linear(kv_dim, self.inner_dim, bias=bias)
         self.qk_norm = qk_norm
         if qk_norm:
-            self.q_norm = AudioDiTRMSNorm(self.inner_dim, eps=eps)
-            self.k_norm = AudioDiTRMSNorm(self.inner_dim, eps=eps)
-        self.to_out = nn.ModuleList([nn.Linear(self.inner_dim, dim, bias=bias), nn.Dropout(dropout)])
-        self.set_processor(self._default_processor_cls())
+            self.q_norm = RMSNorm(self.inner_dim, eps=eps)
+            self.k_norm = RMSNorm(self.inner_dim, eps=eps)
+        self.to_out = nn.ModuleList([nn.Linear(self.inner_dim, q_dim, bias=bias), nn.Dropout(dropout)])
+        self.set_processor(processor or AudioDiTSelfAttnProcessor())
 
     def forward(
-        self, hidden_states: torch.Tensor, mask: torch.BoolTensor | None = None, rope: tuple | None = None
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        post_attention_mask: torch.BoolTensor | None = None,
+        attention_mask: torch.BoolTensor | None = None,
+        audio_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        prompt_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        mask: torch.BoolTensor | None = None,
+        rope: tuple | None = None,
     ) -> torch.Tensor:
-        return self.processor(self, hidden_states, mask=mask, rope=rope)
+        if encoder_hidden_states is None:
+            return self.processor(self, hidden_states, mask=mask, rope=rope)
+        return self.processor(
+            self,
+            hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            post_attention_mask=post_attention_mask,
+            attention_mask=attention_mask,
+            audio_rotary_emb=audio_rotary_emb,
+            prompt_rotary_emb=prompt_rotary_emb,
+        )
 
 
 class AudioDiTCrossAttnProcessor:
@@ -291,7 +283,7 @@ class AudioDiTCrossAttnProcessor:
 
     def __call__(
         self,
-        attn: "AudioDiTCrossAttention",
+        attn: "AudioDiTAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         post_attention_mask: torch.BoolTensor | None = None,
@@ -335,53 +327,6 @@ class AudioDiTCrossAttnProcessor:
         return hidden_states
 
 
-class AudioDiTCrossAttention(nn.Module, AttentionModuleMixin):
-    _default_processor_cls = AudioDiTCrossAttnProcessor
-    _available_processors = [AudioDiTCrossAttnProcessor]
-    def __init__(
-        self,
-        q_dim: int,
-        kv_dim: int,
-        heads: int,
-        dim_head: int,
-        dropout: float = 0.0,
-        bias: bool = True,
-        qk_norm: bool = False,
-        eps: float = 1e-6,
-    ):
-        super().__init__()
-        self.heads = heads
-        self.inner_dim = dim_head * heads
-        self.to_q = nn.Linear(q_dim, self.inner_dim, bias=bias)
-        self.to_k = nn.Linear(kv_dim, self.inner_dim, bias=bias)
-        self.to_v = nn.Linear(kv_dim, self.inner_dim, bias=bias)
-        self.qk_norm = qk_norm
-        if qk_norm:
-            self.q_norm = AudioDiTRMSNorm(self.inner_dim, eps=eps)
-            self.k_norm = AudioDiTRMSNorm(self.inner_dim, eps=eps)
-        self.to_out = nn.ModuleList([nn.Linear(self.inner_dim, q_dim, bias=bias), nn.Dropout(dropout)])
-        self.set_processor(self._default_processor_cls())
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        post_attention_mask: torch.BoolTensor | None = None,
-        attention_mask: torch.BoolTensor | None = None,
-        audio_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
-        prompt_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
-    ) -> torch.Tensor:
-        return self.processor(
-            self,
-            hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            post_attention_mask=post_attention_mask,
-            attention_mask=attention_mask,
-            audio_rotary_emb=audio_rotary_emb,
-            prompt_rotary_emb=prompt_rotary_emb,
-        )
-
-
 class AudioDiTFeedForward(nn.Module):
     def __init__(self, dim: int, mult: float = 4.0, dropout: float = 0.0, bias: bool = True):
         super().__init__()
@@ -423,14 +368,22 @@ class AudioDiTBlock(nn.Module):
         elif adaln_type == "global":
             self.adaln_scale_shift = nn.Parameter(torch.randn(dim * 6) / dim**0.5)
 
-        self.self_attn = AudioDiTSelfAttention(
-            dim, heads, dim_head, dropout=dropout, bias=bias, qk_norm=qk_norm, eps=eps
+        self.self_attn = AudioDiTAttention(
+            dim, None, heads, dim_head, dropout=dropout, bias=bias, qk_norm=qk_norm, eps=eps
         )
 
         self.use_cross_attn = cross_attn
         if cross_attn:
-            self.cross_attn = AudioDiTCrossAttention(
-                dim, cond_dim, heads, dim_head, dropout=dropout, bias=bias, qk_norm=qk_norm, eps=eps
+            self.cross_attn = AudioDiTAttention(
+                dim,
+                cond_dim,
+                heads,
+                dim_head,
+                dropout=dropout,
+                bias=bias,
+                qk_norm=qk_norm,
+                eps=eps,
+                processor=AudioDiTCrossAttnProcessor(),
             )
             self.cross_attn_norm = (
                 nn.LayerNorm(dim, elementwise_affine=True, eps=eps) if cross_attn_norm else nn.Identity()
@@ -464,7 +417,8 @@ class AudioDiTBlock(nn.Module):
             adaln_out = adaln_global_out + self.adaln_scale_shift.unsqueeze(0)
             gate_sa, scale_sa, shift_sa, gate_ffn, scale_ffn, shift_ffn = torch.chunk(adaln_out, 6, dim=-1)
 
-        norm_hidden_states = _modulate(hidden_states, scale_sa, shift_sa)
+        norm_hidden_states = F.layer_norm(hidden_states.float(), (hidden_states.shape[-1],), eps=1e-6).type_as(hidden_states)
+        norm_hidden_states = norm_hidden_states * (1 + scale_sa[:, None]) + shift_sa[:, None]
         attn_output = self.self_attn(norm_hidden_states, mask=mask, rope=rope)
         hidden_states = hidden_states + gate_sa.unsqueeze(1) * attn_output
 
@@ -479,7 +433,8 @@ class AudioDiTBlock(nn.Module):
             )
             hidden_states = hidden_states + cross_output
 
-        norm_hidden_states = _modulate(hidden_states, scale_ffn, shift_ffn)
+        norm_hidden_states = F.layer_norm(hidden_states.float(), (hidden_states.shape[-1],), eps=1e-6).type_as(hidden_states)
+        norm_hidden_states = norm_hidden_states * (1 + scale_ffn[:, None]) + shift_ffn[:, None]
         ff_output = self.ffn(norm_hidden_states)
         hidden_states = hidden_states + gate_ffn.unsqueeze(1) * ff_output
         return hidden_states
@@ -511,9 +466,6 @@ class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
         super().__init__()
         dim = dit_dim
         dim_head = dim // dit_heads
-        self.long_skip = long_skip
-        self.adaln_type = adaln_type
-        self.adaln_use_text_cond = adaln_use_text_cond
         self.time_embed = AudioDiTTimestepEmbedding(dim)
         self.input_embed = AudioDiTEmbedder(latent_dim, dim)
         self.text_embed = AudioDiTEmbedder(dit_text_dim, dim)
@@ -554,12 +506,12 @@ class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
         self._initialize_weights(bias=bias)
 
     def _initialize_weights(self, bias: bool = True):
-        if self.adaln_type == "local":
+        if self.config.adaln_type == "local":
             for block in self.blocks:
                 nn.init.constant_(block.adaln_mlp.mlp[-1].weight, 0)
                 if bias:
                     nn.init.constant_(block.adaln_mlp.mlp[-1].bias, 0)
-        elif self.adaln_type == "global":
+        elif self.config.adaln_type == "global":
             nn.init.constant_(self.adaln_global_mlp.mlp[-1].weight, 0)
             if bias:
                 nn.init.constant_(self.adaln_global_mlp.mlp[-1].bias, 0)
@@ -596,11 +548,11 @@ class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
         if self.use_latent_condition and latent_cond is not None:
             latent_cond = self.latent_embed(latent_cond.to(dtype), attention_mask)
             hidden_states = self.latent_cond_embedder(torch.cat([hidden_states, latent_cond], dim=-1))
-        residual = hidden_states.clone() if self.long_skip else None
+        residual = hidden_states.clone() if self.config.long_skip else None
         rope = self.rotary_embed(hidden_states, hidden_states.shape[1])
         cond_rope = self.rotary_embed(encoder_hidden_states, encoder_hidden_states.shape[1])
-        if self.adaln_type == "global":
-            if self.adaln_use_text_cond:
+        if self.config.adaln_type == "global":
+            if self.config.adaln_use_text_cond:
                 text_len = text_mask.sum(1).clamp(min=1).to(encoder_hidden_states.dtype)
                 text_mean = encoder_hidden_states.sum(1) / text_len.unsqueeze(1)
                 norm_cond = timestep_embed + text_mean
@@ -630,7 +582,7 @@ class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
                     rope=rope,
                     cond_rope=cond_rope,
                 )
-        if self.long_skip:
+        if self.config.long_skip:
             hidden_states = hidden_states + residual
         hidden_states = self.norm_out(hidden_states, norm_cond)
         hidden_states = self.proj_out(hidden_states)

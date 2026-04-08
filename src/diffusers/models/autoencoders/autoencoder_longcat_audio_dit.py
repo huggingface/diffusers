@@ -64,16 +64,6 @@ def _get_vae_activation(name: str, channels: int = 0) -> nn.Module:
     return act
 
 
-def _pixel_unshuffle_1d(hidden_states: torch.Tensor, factor: int) -> torch.Tensor:
-    batch, channels, width = hidden_states.size()
-    return (
-        hidden_states.view(batch, channels, width // factor, factor)
-        .permute(0, 1, 3, 2)
-        .contiguous()
-        .view(batch, channels * factor, width // factor)
-    )
-
-
 def _pixel_shuffle_1d(hidden_states: torch.Tensor, factor: int) -> torch.Tensor:
     batch, channels, width = hidden_states.size()
     return (
@@ -92,9 +82,14 @@ class DownsampleShortcut(nn.Module):
         self.out_channels = out_channels
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        hidden_states = _pixel_unshuffle_1d(hidden_states, self.factor)
-        batch, _channels, width = hidden_states.shape
-        return hidden_states.view(batch, self.out_channels, self.group_size, width).mean(dim=2)
+        batch, channels, width = hidden_states.shape
+        hidden_states = (
+            hidden_states.view(batch, channels, width // self.factor, self.factor)
+            .permute(0, 1, 3, 2)
+            .contiguous()
+            .view(batch, channels * self.factor, width // self.factor)
+        )
+        return hidden_states.view(batch, self.out_channels, self.group_size, width // self.factor).mean(dim=2)
 
 
 class UpsampleShortcut(nn.Module):
@@ -110,15 +105,14 @@ class UpsampleShortcut(nn.Module):
 
 class VaeResidualUnit(nn.Module):
     def __init__(
-        self, in_channels: int, out_channels: int, dilation: int, kernel_size: int = 7, use_snake: bool = False
+        self, in_channels: int, out_channels: int, dilation: int, kernel_size: int = 7, act_fn: str = "snake"
     ):
         super().__init__()
         padding = (dilation * (kernel_size - 1)) // 2
-        activation = "snake" if use_snake else "elu"
         self.layers = nn.Sequential(
-            _get_vae_activation(activation, channels=out_channels),
+            _get_vae_activation(act_fn, channels=out_channels),
             _wn_conv1d(in_channels, out_channels, kernel_size, dilation=dilation, padding=padding),
-            _get_vae_activation(activation, channels=out_channels),
+            _get_vae_activation(act_fn, channels=out_channels),
             _wn_conv1d(out_channels, out_channels, kernel_size=1),
         )
 
@@ -132,17 +126,16 @@ class VaeEncoderBlock(nn.Module):
         in_channels: int,
         out_channels: int,
         stride: int,
-        use_snake: bool = False,
+        act_fn: str = "snake",
         downsample_shortcut: str = "none",
     ):
         super().__init__()
         layers = [
-            VaeResidualUnit(in_channels, in_channels, dilation=1, use_snake=use_snake),
-            VaeResidualUnit(in_channels, in_channels, dilation=3, use_snake=use_snake),
-            VaeResidualUnit(in_channels, in_channels, dilation=9, use_snake=use_snake),
+            VaeResidualUnit(in_channels, in_channels, dilation=1, act_fn=act_fn),
+            VaeResidualUnit(in_channels, in_channels, dilation=3, act_fn=act_fn),
+            VaeResidualUnit(in_channels, in_channels, dilation=9, act_fn=act_fn),
         ]
-        activation = "snake" if use_snake else "elu"
-        layers.append(_get_vae_activation(activation, channels=in_channels))
+        layers.append(_get_vae_activation(act_fn, channels=in_channels))
         layers.append(
             _wn_conv1d(in_channels, out_channels, kernel_size=2 * stride, stride=stride, padding=math.ceil(stride / 2))
         )
@@ -165,19 +158,18 @@ class VaeDecoderBlock(nn.Module):
         in_channels: int,
         out_channels: int,
         stride: int,
-        use_snake: bool = False,
+        act_fn: str = "snake",
         upsample_shortcut: str = "none",
     ):
         super().__init__()
-        activation = "snake" if use_snake else "elu"
         layers = [
-            _get_vae_activation(activation, channels=in_channels),
+            _get_vae_activation(act_fn, channels=in_channels),
             _wn_conv_transpose1d(
                 in_channels, out_channels, kernel_size=2 * stride, stride=stride, padding=math.ceil(stride / 2)
             ),
-            VaeResidualUnit(out_channels, out_channels, dilation=1, use_snake=use_snake),
-            VaeResidualUnit(out_channels, out_channels, dilation=3, use_snake=use_snake),
-            VaeResidualUnit(out_channels, out_channels, dilation=9, use_snake=use_snake),
+            VaeResidualUnit(out_channels, out_channels, dilation=1, act_fn=act_fn),
+            VaeResidualUnit(out_channels, out_channels, dilation=3, act_fn=act_fn),
+            VaeResidualUnit(out_channels, out_channels, dilation=9, act_fn=act_fn),
         ]
         self.layers = nn.Sequential(*layers)
         self.residual = (
@@ -201,7 +193,7 @@ class AudioDiTVaeEncoder(nn.Module):
         strides: list[int] | None = None,
         latent_dim: int = 64,
         encoder_latent_dim: int = 128,
-        use_snake: bool = True,
+        act_fn: str = "snake",
         downsample_shortcut: str = "averaging",
         out_shortcut: str = "averaging",
     ):
@@ -220,7 +212,7 @@ class AudioDiTVaeEncoder(nn.Module):
                     c_mults[idx] * channels_base,
                     c_mults[idx + 1] * channels_base,
                     strides[idx],
-                    use_snake=use_snake,
+                    act_fn=act_fn,
                     downsample_shortcut=downsample_shortcut,
                 )
             )
@@ -249,7 +241,7 @@ class AudioDiTVaeDecoder(nn.Module):
         c_mults: list[int] | None = None,
         strides: list[int] | None = None,
         latent_dim: int = 64,
-        use_snake: bool = True,
+        act_fn: str = "snake",
         in_shortcut: str = "duplicating",
         final_tanh: bool = False,
         upsample_shortcut: str = "duplicating",
@@ -274,12 +266,11 @@ class AudioDiTVaeDecoder(nn.Module):
                     c_mults[idx] * channels_base,
                     c_mults[idx - 1] * channels_base,
                     strides[idx - 1],
-                    use_snake=use_snake,
+                    act_fn=act_fn,
                     upsample_shortcut=upsample_shortcut,
                 )
             )
-        activation = "snake" if use_snake else "elu"
-        layers.append(_get_vae_activation(activation, channels=c_mults[0] * channels_base))
+        layers.append(_get_vae_activation(act_fn, channels=c_mults[0] * channels_base))
         layers.append(_wn_conv1d(c_mults[0] * channels_base, in_channels, kernel_size=7, padding=3, bias=False))
         layers.append(nn.Tanh() if final_tanh else nn.Identity())
         self.layers = nn.Sequential(*layers)
@@ -311,7 +302,8 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
         strides: list[int] | None = None,
         latent_dim: int = 64,
         encoder_latent_dim: int = 128,
-        use_snake: bool = True,
+        act_fn: str | None = None,
+        use_snake: bool | None = None,
         downsample_shortcut: str = "averaging",
         upsample_shortcut: str = "duplicating",
         out_shortcut: str = "averaging",
@@ -322,6 +314,11 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
         scale: float = 0.71,
     ):
         super().__init__()
+        if act_fn is None:
+            if use_snake is None:
+                act_fn = "snake"
+            else:
+                act_fn = "snake" if use_snake else "elu"
         self.encoder = AudioDiTVaeEncoder(
             in_channels=in_channels,
             channels=channels,
@@ -329,7 +326,7 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
             strides=strides,
             latent_dim=latent_dim,
             encoder_latent_dim=encoder_latent_dim,
-            use_snake=use_snake,
+            act_fn=act_fn,
             downsample_shortcut=downsample_shortcut,
             out_shortcut=out_shortcut,
         )
@@ -339,15 +336,11 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
             c_mults=c_mults,
             strides=strides,
             latent_dim=latent_dim,
-            use_snake=use_snake,
+            act_fn=act_fn,
             in_shortcut=in_shortcut,
             final_tanh=final_tanh,
             upsample_shortcut=upsample_shortcut,
         )
-
-    @property
-    def sampling_rate(self) -> int:
-        return self.config.sample_rate
 
     def encode(
         self,

@@ -25,11 +25,11 @@ import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors.torch import load_file
-from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, PreTrainedTokenizerBase, UMT5Config, UMT5EncoderModel
 
 from ...models import LongCatAudioDiTTransformer, LongCatAudioDiTVae
 from ...utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
@@ -50,7 +50,12 @@ def _normalize_text(text: str) -> str:
     return text.strip()
 
 
-def _approx_duration_from_text(text: str, max_duration: float = 30.0) -> float:
+def _approx_duration_from_text(text: str | list[str], max_duration: float = 30.0) -> float:
+    if isinstance(text, list):
+        if not text:
+            return 0.0
+        return max(_approx_duration_from_text(prompt, max_duration=max_duration) for prompt in text)
+
     en_dur_per_char = 0.082
     zh_dur_per_char = 0.21
     text = re.sub(r"\s+", "", text)
@@ -67,12 +72,6 @@ def _approx_duration_from_text(text: str, max_duration: float = 30.0) -> float:
     else:
         num_en += num_other
     return min(max_duration, num_zh * zh_dur_per_char + num_en * en_dur_per_char)
-
-
-def _approx_batch_duration_from_prompts(prompts: list[str]) -> float:
-    if not prompts:
-        return 0.0
-    return max(_approx_duration_from_text(prompt) for prompt in prompts)
 
 
 def _extract_prefixed_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict[str, torch.Tensor]:
@@ -165,9 +164,15 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         transformer: LongCatAudioDiTTransformer,
     ):
         super().__init__()
-        self.register_modules(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, transformer=transformer)
+        self.register_modules(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            transformer=transformer,
+        )
         self.sample_rate = getattr(vae.config, "sample_rate", 24000)
         self.latent_hop = getattr(vae.config, "downsampling_ratio", 2048)
+        self.vae_scale_factor = self.latent_hop
         self.latent_dim = getattr(transformer.config, "latent_dim", 64)
         self.max_wav_duration = 30.0
         self.text_norm_feat = True
@@ -317,6 +322,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         pipe = cls(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, transformer=transformer)
         pipe.sample_rate = config.get("sampling_rate", pipe.sample_rate)
         pipe.latent_hop = config.get("latent_hop", pipe.latent_hop)
+        pipe.vae_scale_factor = pipe.latent_hop
         pipe.max_wav_duration = config.get("max_wav_duration", pipe.max_wav_duration)
         pipe.text_norm_feat = config.get("text_norm_feat", pipe.text_norm_feat)
         pipe.text_add_embed = config.get("text_add_embed", pipe.text_add_embed)
@@ -357,62 +363,90 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         device: torch.device,
         dtype: torch.dtype,
         generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        if isinstance(generator, list):
-            if len(generator) != batch_size:
-                raise ValueError(
-                    f"Expected {batch_size} generators for batch size {batch_size}, but got {len(generator)}."
-                )
-            generators = generator
-        else:
-            generators = [generator] * batch_size
+        if latents is not None:
+            if latents.ndim != 3:
+                raise ValueError(f"`latents` must have shape (batch_size, duration, latent_dim), but got {tuple(latents.shape)}.")
+            if latents.shape[0] != batch_size:
+                raise ValueError(f"`latents` must have batch size {batch_size}, but got {latents.shape[0]}.")
+            if latents.shape[2] != self.latent_dim:
+                raise ValueError(f"`latents` must have latent_dim {self.latent_dim}, but got {latents.shape[2]}.")
+            return latents.to(device=device, dtype=dtype)
 
-        latents = [
-            torch.randn(
-                duration,
-                self.latent_dim,
-                device=device,
-                dtype=dtype,
-                generator=generators[idx],
-            )
-            for idx in range(batch_size)
-        ]
-        return pad_sequence(latents, padding_value=0.0, batch_first=True)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(f"Expected {batch_size} generators for batch size {batch_size}, but got {len(generator)}.")
+
+        return randn_tensor(
+            (batch_size, duration, self.latent_dim), generator=generator, device=device, dtype=dtype
+        )
+
+    def check_inputs(
+        self,
+        prompt: list[str],
+        negative_prompt: str | list[str] | None,
+        output_type: str,
+    ) -> None:
+        if len(prompt) == 0:
+            raise ValueError("`prompt` must contain at least one prompt.")
+
+        if output_type not in {"np", "pt", "latent"}:
+            raise ValueError(f"Unsupported output_type: {output_type}")
+
+        if negative_prompt is not None and not isinstance(negative_prompt, str):
+            negative_prompt = list(negative_prompt)
+            if len(negative_prompt) != len(prompt):
+                raise ValueError(
+                    f"`negative_prompt` must have batch size {len(prompt)}, but got {len(negative_prompt)} prompts."
+                )
 
     @torch.no_grad()
     def __call__(
         self,
         prompt: str | list[str],
         negative_prompt: str | list[str] | None = None,
-        audio_end_in_s: float | None = None,
-        duration: int | None = None,
+        audio_duration_s: float | None = None,
+        latents: torch.Tensor | None = None,
         num_inference_steps: int = 16,
         guidance_scale: float = 4.0,
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str = "np",
         return_dict: bool = True,
     ):
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `list[str]`): Prompt or prompts that guide audio generation.
+            negative_prompt (`str` or `list[str]`, *optional*): Negative prompt(s) for classifier-free guidance.
+            audio_duration_s (`float`, *optional*): Target audio duration in seconds. Ignored when `latents` is provided.
+            latents (`torch.Tensor`, *optional*): Pre-generated noisy latents of shape `(batch_size, duration, latent_dim)`.
+            num_inference_steps (`int`, defaults to 16): Number of denoising steps. Values below 2 are promoted to 2.
+            guidance_scale (`float`, defaults to 4.0): Guidance scale for classifier-free guidance.
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*): Random generator(s).
+            output_type (`str`, defaults to `"np"`): Output format: `"np"`, `"pt"`, or `"latent"`.
+            return_dict (`bool`, defaults to `True`): Whether to return `AudioPipelineOutput`.
+        """
         if prompt is None:
             prompt = []
         elif isinstance(prompt, str):
             prompt = [prompt]
         else:
             prompt = list(prompt)
+        self.check_inputs(prompt, negative_prompt, output_type)
         batch_size = len(prompt)
-        if batch_size == 0:
-            raise ValueError("`prompt` must contain at least one prompt.")
 
         device = self._execution_device
         normalized_prompts = [_normalize_text(text) for text in prompt]
-        if duration is None:
-            if audio_end_in_s is not None:
-                duration = int(audio_end_in_s * self.sample_rate // self.latent_hop)
-            else:
-                duration = int(
-                    _approx_batch_duration_from_prompts(normalized_prompts) * self.sample_rate // self.latent_hop
-                )
-        max_duration = int(self.max_wav_duration * self.sample_rate // self.latent_hop)
-        duration = max(1, min(duration, max_duration))
+        if latents is not None:
+            duration = latents.shape[1]
+        elif audio_duration_s is not None:
+            duration = int(audio_duration_s * self.sample_rate // self.vae_scale_factor)
+        else:
+            duration = int(_approx_duration_from_text(normalized_prompts) * self.sample_rate // self.vae_scale_factor)
+        max_duration = int(self.max_wav_duration * self.sample_rate // self.vae_scale_factor)
+        if latents is None:
+            duration = max(1, min(duration, max_duration))
 
         text_condition, text_condition_len = self.encode_prompt(normalized_prompts, device)
         duration_tensor = torch.full((batch_size,), duration, device=device, dtype=torch.long)
@@ -428,44 +462,41 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 negative_prompt = [negative_prompt] * batch_size
             else:
                 negative_prompt = list(negative_prompt)
-                if len(negative_prompt) != batch_size:
-                    raise ValueError(
-                        f"`negative_prompt` must have batch size {batch_size}, but got {len(negative_prompt)} prompts."
-                    )
             neg_text, neg_text_len = self.encode_prompt(negative_prompt, device)
             neg_text_mask = _lens_to_mask(neg_text_len, length=neg_text.shape[1])
 
         latent_cond = torch.zeros(batch_size, duration, self.latent_dim, device=device, dtype=text_condition.dtype)
-        latents = self.prepare_latents(batch_size, duration, device, text_condition.dtype, generator=generator)
-        num_inference_steps = max(2, num_inference_steps)
+        latents = self.prepare_latents(
+            batch_size, duration, device, text_condition.dtype, generator=generator, latents=latents
+        )
+        if num_inference_steps < 2:
+            logger.warning("`num_inference_steps`=%s is not supported; using 2 instead.", num_inference_steps)
+            num_inference_steps = 2
         timesteps = torch.linspace(0, 1, num_inference_steps, device=device, dtype=text_condition.dtype)
         sample = latents
 
-        def model_step(curr_t: torch.Tensor, current_sample: torch.Tensor) -> torch.Tensor:
+        for idx in range(len(timesteps) - 1):
+            curr_t = timesteps[idx]
+            dt = timesteps[idx + 1] - timesteps[idx]
             pred = self.transformer(
-                hidden_states=current_sample,
+                hidden_states=sample,
                 encoder_hidden_states=text_condition,
                 encoder_attention_mask=text_mask,
                 timestep=curr_t.expand(batch_size),
                 attention_mask=mask,
                 latent_cond=latent_cond,
             ).sample
-            if guidance_scale <= 1.0:
-                return pred
-            null_pred = self.transformer(
-                hidden_states=current_sample,
-                encoder_hidden_states=neg_text,
-                encoder_attention_mask=neg_text_mask,
-                timestep=curr_t.expand(batch_size),
-                attention_mask=mask,
-                latent_cond=latent_cond,
-            ).sample
-            return null_pred + (pred - null_pred) * guidance_scale
-
-        for idx in range(len(timesteps) - 1):
-            curr_t = timesteps[idx]
-            dt = timesteps[idx + 1] - timesteps[idx]
-            sample = sample + model_step(curr_t, sample) * dt
+            if guidance_scale > 1.0:
+                null_pred = self.transformer(
+                    hidden_states=sample,
+                    encoder_hidden_states=neg_text,
+                    encoder_attention_mask=neg_text_mask,
+                    timestep=curr_t.expand(batch_size),
+                    attention_mask=mask,
+                    latent_cond=latent_cond,
+                ).sample
+                pred = null_pred + (pred - null_pred) * guidance_scale
+            sample = sample + pred * dt
 
         if output_type == "latent":
             if not return_dict:
@@ -475,8 +506,6 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         waveform = self.vae.decode(sample.permute(0, 2, 1)).sample
         if output_type == "np":
             waveform = waveform.cpu().float().numpy()
-        elif output_type != "pt":
-            raise ValueError(f"Unsupported output_type: {output_type}")
 
         if not return_dict:
             return (waveform,)

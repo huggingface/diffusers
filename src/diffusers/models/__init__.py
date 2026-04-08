@@ -180,6 +180,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             AutoencoderVidTok,
             ConsistencyDecoderVAE,
+            LongCatAudioDiTVae,
             VQModel,
         )
         from .cache_utils import CacheMixin
@@ -232,6 +233,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoTransformer3DModel,
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
+            LongCatAudioDiTTransformer,
             LongCatImageTransformer2DModel,
             LTX2VideoTransformer3DModel,
             LTXVideoTransformer3DModel,
