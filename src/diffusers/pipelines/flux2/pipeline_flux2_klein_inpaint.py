@@ -587,10 +587,15 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         latent_image_ids = latent_image_ids.to(device)
 
         image = image.to(device=device, dtype=dtype)
-        if image.shape[1] != self.latent_channels:
+        if image.shape[1] != self.latent_channels * 4:
             image_latents = self._encode_vae_image(image=image, generator=generator)
         else:
             image_latents = image
+            latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(image_latents.device, image_latents.dtype)
+            latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(
+                image_latents.device, image_latents.dtype
+            )
+            image_latents = (image_latents - latents_bn_mean) / latents_bn_std
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand init_latents for batch_size
@@ -600,8 +605,6 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             raise ValueError(
                 f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
             )
-        else:
-            image_latents = torch.cat([image_latents], dim=0)
 
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -974,11 +977,13 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         # 2. Preprocess image
         multiple_of = self.vae_scale_factor * 2
-        if isinstance(image, torch.Tensor) and image.ndim == 4 and image.size(1) == self.latent_channels:
+        if isinstance(image, torch.Tensor) and image.ndim == 4 and image.size(1) == self.latent_channels * 4:
             init_image = image
             original_image = image
             crops_coords = None
             resize_mode = "default"
+            height = image.shape[2] * self.vae_scale_factor * 2
+            width = image.shape[3] * self.vae_scale_factor * 2
         elif image is not None:
             if isinstance(image, list) and isinstance(image[0], torch.Tensor) and image[0].ndim == 4:
                 image = torch.cat(image, dim=0)
@@ -1011,12 +1016,10 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 image, image_height, image_width, crops_coords=crops_coords, resize_mode=resize_mode
             )
 
-        init_image = init_image.to(dtype=torch.float32)
-
         # 2.2 Preprocess reference image
         processed_image_reference = None
         if image_reference is not None and not (
-            isinstance(image_reference, torch.Tensor) and image_reference.size(1) == self.latent_channels
+            isinstance(image_reference, torch.Tensor) and image_reference.size(1) == self.latent_channels * 4
         ):
             if (
                 isinstance(image_reference, list)
@@ -1045,7 +1048,13 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 image_reference_width,
                 resize_mode="crop",
             )
-            processed_image_reference = processed_image_reference.to(dtype=torch.float32)
+        else:
+            if image_reference is not None:
+                bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(image_reference.device, image_reference.dtype)
+                bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(
+                    image_reference.device, image_reference.dtype
+                )
+                processed_image_reference = (image_reference - bn_mean) / bn_std
 
         # 3. Define call parameters
         if prompt is not None and isinstance(prompt, str):
