@@ -22,7 +22,7 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin, get_type_hints
+from typing import Any, Callable, Dict, List, Union, get_args, get_origin, get_type_hints
 
 import httpx
 import numpy as np
@@ -68,7 +68,6 @@ from ..utils import (
     is_transformers_version,
     logging,
     numpy_to_pil,
-    requires_backends,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
@@ -2248,6 +2247,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 pass
 
         return not is_device_type_map and isinstance(device_map, dict) and len(device_map) > 1
+
 
 class StableDiffusionMixin:
     r"""

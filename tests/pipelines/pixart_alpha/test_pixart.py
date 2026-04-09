@@ -27,7 +27,6 @@ from diffusers import (
     PixArtAlphaPipeline,
     PixArtTransformer2DModel,
 )
-
 from diffusers.utils.import_utils import is_torch_neuronx_available
 
 from ...testing_utils import (

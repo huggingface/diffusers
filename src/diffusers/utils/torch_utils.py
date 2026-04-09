@@ -39,7 +39,14 @@ if is_torch_available():
     import torch
     from torch.fft import fftn, fftshift, ifftn, ifftshift
 
-    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "neuron": False, "default": True}
+    BACKEND_SUPPORTS_TRAINING = {
+        "cuda": True,
+        "xpu": True,
+        "cpu": True,
+        "mps": False,
+        "neuron": False,
+        "default": True,
+    }
     BACKEND_EMPTY_CACHE = {
         "cuda": torch.cuda.empty_cache,
         "xpu": torch.xpu.empty_cache,
