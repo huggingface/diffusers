@@ -84,7 +84,7 @@ jobs:
           git clone --local --bare . /tmp/local-origin.git
           git config url."file:///tmp/local-origin.git".insteadOf "$(git remote get-url origin)"
 
-      - uses: anthropics/claude-code-action@e0f2d99545298b87c2f984ab534af3a6534142ae  # v1
+      - uses: anthropics/claude-code-action@2ff1acb3ee319fa302837dad6e17c2f36c0d98ea  # v1
         env:
           CLAUDE_SYSTEM_PROMPT: |
             You are a strict code reviewer for the diffusers library (huggingface/diffusers).
