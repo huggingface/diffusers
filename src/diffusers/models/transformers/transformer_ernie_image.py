@@ -61,7 +61,7 @@ class ErnieImageEmbedND3(nn.Module):
         return torch.stack([emb, emb], dim=-1).reshape(*emb.shape[:-1], -1)  # [B, S, 1, head_dim]
 
 
-class PatchEmbedDynamic(nn.Module):
+class ErnieImagePatchEmbedDynamic(nn.Module):
     def __init__(self, in_channels: int, embed_dim: int, patch_size: int):
         super().__init__()
         self.patch_size = patch_size
@@ -69,8 +69,8 @@ class PatchEmbedDynamic(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.proj(x)
-        B, D, Hp, Wp = x.shape
-        return x.reshape(B, D, Hp * Wp).transpose(1, 2).contiguous()
+        batch_size, dim, height, width = x.shape
+        return x.reshape(batch_size, dim, height * width).transpose(1, 2).contiguous()
 
 
 class ErnieImageSingleStreamAttnProcessor:
@@ -87,7 +87,6 @@ class ErnieImageSingleStreamAttnProcessor:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
         freqs_cis: torch.Tensor | None = None,
     ) -> torch.Tensor:
@@ -148,9 +147,9 @@ class ErnieImageSingleStreamAttnProcessor:
 
         return output
 
+
 class ErnieImageAttention(torch.nn.Module, AttentionModuleMixin):
     _default_processor_cls = ErnieImageSingleStreamAttnProcessor
-    _available_processors = [ErnieImageSingleStreamAttnProcessor]
 
     def __init__(
         self,
@@ -160,7 +159,6 @@ class ErnieImageAttention(torch.nn.Module, AttentionModuleMixin):
         dropout: float = 0.0,
         bias: bool = False,
         qk_norm: str = "rms_norm",
-        added_kv_proj_dim: int | None = None,
         added_proj_bias: bool | None = True,
         out_bias: bool = True,
         eps: float = 1e-5,
@@ -179,7 +177,6 @@ class ErnieImageAttention(torch.nn.Module, AttentionModuleMixin):
         self.use_bias = bias
         self.dropout = dropout
 
-        self.added_kv_proj_dim = added_kv_proj_dim
         self.added_proj_bias = added_proj_bias
 
         self.to_q = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
@@ -200,15 +197,6 @@ class ErnieImageAttention(torch.nn.Module, AttentionModuleMixin):
 
         self.to_out = torch.nn.ModuleList([])
         self.to_out.append(torch.nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
-        self.to_out.append(torch.nn.Dropout(dropout))
-
-        if added_kv_proj_dim is not None:
-            self.norm_added_q = torch.nn.RMSNorm(dim_head, eps=eps)
-            self.norm_added_k = torch.nn.RMSNorm(dim_head, eps=eps)
-            self.add_q_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
-            self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
-            self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
-            self.to_add_out = torch.nn.Linear(self.inner_dim, query_dim, bias=out_bias)
 
         if processor is None:
             processor = self._default_processor_cls()
@@ -229,10 +217,10 @@ class ErnieImageAttention(torch.nn.Module, AttentionModuleMixin):
                 f"joint_attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
             )
         kwargs = {k: w for k, w in kwargs.items() if k in attn_parameters}
-        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, image_rotary_emb, **kwargs)
+        return self.processor(self, hidden_states, attention_mask, image_rotary_emb, **kwargs)
 
 
-class FeedForward(nn.Module):
+class ErnieImageFeedForward(nn.Module):
     def __init__(self, hidden_size: int, ffn_hidden_size: int):
         super().__init__()
         # Separate gate and up projections (matches converted weights)
@@ -243,7 +231,7 @@ class FeedForward(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.linear_fc2(self.up_proj(x) * F.gelu(self.gate_proj(x)))
 
-class SharedAdaLNBlock(nn.Module):
+class ErnieImageSharedAdaLNBlock(nn.Module):
     def __init__(self, hidden_size: int, num_heads: int, ffn_hidden_size: int, eps: float = 1e-6, qk_layernorm: bool = True):
         super().__init__()
         self.adaLN_sa_ln = RMSNorm(hidden_size, eps=eps)
@@ -258,40 +246,27 @@ class SharedAdaLNBlock(nn.Module):
             processor=ErnieImageSingleStreamAttnProcessor(),
         )
         self.adaLN_mlp_ln = RMSNorm(hidden_size, eps=eps)
-        self.mlp = FeedForward(hidden_size, ffn_hidden_size)
+        self.mlp = ErnieImageFeedForward(hidden_size, ffn_hidden_size)
 
     def forward(self, x, rotary_pos_emb, shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, attention_mask=None):
         residual = x
         x = self.adaLN_sa_ln(x)
-        x = self._modulate(x, shift_msa, scale_msa)
+        x = (x.float() * (1 + scale_msa.float()) +  shift_msa.float()).to(x.dtype)
         x_bsh = x.permute(1, 0, 2)  # [S, B, H] → [B, S, H] for diffusers Attention (batch-first)
         attn_out = self.self_attention(x_bsh, attention_mask=attention_mask, image_rotary_emb=rotary_pos_emb)
         attn_out = attn_out.permute(1, 0, 2)  # [B, S, H] → [S, B, H]
-        x = residual + self._apply_gate(gate_msa, attn_out)
+        x = residual + (gate_msa.float() * attn_out.float()).to(x.dtype)
         residual = x
-        x = self._modulate(self.adaLN_mlp_ln(x), shift_mlp, scale_mlp)
-        return residual + self._apply_gate(gate_mlp, self.mlp(x))
+        x = self.adaLN_mlp_ln(x)
+        x = (x.float() * (1 + scale_mlp.float()) +  shift_mlp.float()).to(x.dtype)
+        return residual + (gate_mlp.float() * self.mlp(x).float()).to(x.dtype)
 
-    def _modulate(self, x, shift, scale):
-        """AdaLN modulation: x * (1 + scale) + shift，在FP32下计算确保数值稳定"""
-        x_fp32 = x.float()
-        shift_fp32 = shift.float()
-        scale_fp32 = scale.float()
-        out = x_fp32 * (1 + scale_fp32) + shift_fp32
-        return out.to(x.dtype)
 
-    def _apply_gate(self, gate, x):
-        """Gate乘法在FP32下计算，对齐TE精度"""
-        return (gate.float() * x.float()).to(x.dtype)
-
-class AdaLNContinuous(nn.Module):
+class ErnieImageAdaLNContinuous(nn.Module):
     def __init__(self, hidden_size: int, eps: float = 1e-6):
         super().__init__()
         self.norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=eps)
         self.linear = nn.Linear(hidden_size, hidden_size * 2)
-        # 对齐 Megatron 实现：zero init
-        nn.init.zeros_(self.linear.weight)
-        nn.init.zeros_(self.linear.bias)
 
     def forward(self, x: torch.Tensor, conditioning: torch.Tensor) -> torch.Tensor:
         scale, shift = self.linear(conditioning).chunk(2, dim=-1)
@@ -330,7 +305,7 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         self.out_channels = out_channels
         self.text_in_dim = text_in_dim
 
-        self.x_embedder = PatchEmbedDynamic(in_channels, hidden_size, patch_size)
+        self.x_embedder = ErnieImagePatchEmbedDynamic(in_channels, hidden_size, patch_size)
         self.text_proj = nn.Linear(text_in_dim, hidden_size, bias=False) if text_in_dim != hidden_size else None
         self.time_proj = Timesteps(hidden_size, flip_sin_to_cos=False, downscale_freq_shift=0)
         self.time_embedding = TimestepEmbedding(hidden_size, hidden_size)
@@ -338,8 +313,8 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size))
         nn.init.zeros_(self.adaLN_modulation[-1].weight)
         nn.init.zeros_(self.adaLN_modulation[-1].bias)
-        self.layers = nn.ModuleList([SharedAdaLNBlock(hidden_size, num_attention_heads, ffn_hidden_size, eps, qk_layernorm=qk_layernorm) for _ in range(num_layers)])
-        self.final_norm = AdaLNContinuous(hidden_size, eps)
+        self.layers = nn.ModuleList([ErnieImageSharedAdaLNBlock(hidden_size, num_attention_heads, ffn_hidden_size, eps, qk_layernorm=qk_layernorm) for _ in range(num_layers)])
+        self.final_norm = ErnieImageAdaLNContinuous(hidden_size, eps)
         self.final_linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels)
         nn.init.zeros_(self.final_linear.weight)
         nn.init.zeros_(self.final_linear.bias)

@@ -161,43 +161,6 @@ class ErnieImagePipeline(DiffusionPipeline):
 
         return text_hiddens
 
-    @torch.no_grad()
-    def _encode_negative_prompt(
-        self,
-        negative_prompt: List[str],
-        device: torch.device,
-        num_images_per_prompt: int = 1,
-    ) -> List[torch.Tensor]:
-        """Encode negative prompts for CFG."""
-        text_hiddens = []
-
-        for np in negative_prompt:
-            ids = self.tokenizer(
-                np,
-                add_special_tokens=True,
-                truncation=True,
-                padding=False,
-            )["input_ids"]
-
-            if len(ids) == 0:
-                if self.tokenizer.bos_token_id is not None:
-                    ids = [self.tokenizer.bos_token_id]
-                else:
-                    ids = [0]
-
-            input_ids = torch.tensor([ids], device=device)
-            with torch.no_grad():
-                outputs = self.text_encoder(
-                    input_ids=input_ids,
-                    output_hidden_states=True,
-                )
-                hidden = outputs.hidden_states[-2][0]
-
-            for _ in range(num_images_per_prompt):
-                text_hiddens.append(hidden)
-
-        return text_hiddens
-
     @staticmethod
     def _patchify_latents(latents: torch.Tensor) -> torch.Tensor:
         """2x2 patchify: [B, 32, H, W] -> [B, 128, H/2, W/2]"""
@@ -214,8 +177,8 @@ class ErnieImagePipeline(DiffusionPipeline):
         latents = latents.permute(0, 1, 4, 2, 5, 3)
         return latents.reshape(b, c // 4, h * 2, w * 2)
 
-    def _pad_text(self, text_hiddens: List[torch.Tensor], device: torch.device, dtype: torch.dtype):
-        text_in_dim = self.transformer.config.text_in_dim
+    @staticmethod
+    def _pad_text(text_hiddens: List[torch.Tensor], device: torch.device, dtype: torch.dtype, text_in_dim: int):
         B = len(text_hiddens)
         if B == 0:
             return torch.zeros((0, 0, text_in_dim), device=device, dtype=dtype), torch.zeros((0,), device=device, dtype=torch.long)
@@ -308,7 +271,7 @@ class ErnieImagePipeline(DiffusionPipeline):
 
         # CFG with negative prompt
         if self.do_classifier_free_guidance:
-            uncond_text_hiddens = self._encode_negative_prompt(
+            uncond_text_hiddens = self.encode_prompt(
                 negative_prompt, device, num_images_per_prompt
             )
 
@@ -335,6 +298,7 @@ class ErnieImagePipeline(DiffusionPipeline):
             cfg_text_hiddens = list(uncond_text_hiddens) + list(text_hiddens)
         else:
             cfg_text_hiddens = text_hiddens
+        text_bth, text_lens = self._pad_text(text_hiddens=cfg_text_hiddens, device=device, dtype=dtype, text_in_dim=self.transformer.config.text_in_dim)
         
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(self.scheduler.timesteps):
@@ -346,11 +310,9 @@ class ErnieImagePipeline(DiffusionPipeline):
                     t_batch = torch.full((total_batch_size,), t.item(), device=device, dtype=dtype)
 
                 # Model prediction
-                text_bth, text_lens = self._pad_text(cfg_text_hiddens, device, dtype)
                 pred = self.transformer(
                     hidden_states=latent_model_input,
                     timestep=t_batch,
-                    # encoder_hidden_states=cfg_text_hiddens,
                     text_bth=text_bth,
                     text_lens=text_lens,
                     return_dict=False,
