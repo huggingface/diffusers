@@ -14,19 +14,20 @@
 
 import inspect
 import json
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, TypedDict, Union
 
 import numpy as np
 import torch
-from transformers import AutoProcessor
+from transformers import AutoProcessor, AutoTokenizer, PreTrainedTokenizerBase, Qwen3VLForConditionalGeneration
 
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.models.joyai_image import JoyAIFlowMatchDiscreteScheduler, Transformer3DModel, WanxVAE, load_joyai_text_encoder
+from diffusers.models.autoencoders.autoencoder_kl_joyai_image import JoyAIImageVAE
+from diffusers.models.transformers.transformer_joyai_image import JoyAIImageTransformer3DModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, empty_device_cache, get_device
+from diffusers.schedulers.scheduling_joyai_flow_match_discrete import JoyAIFlowMatchDiscreteScheduler
 from diffusers.utils import is_accelerate_available, is_accelerate_version, logging
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -34,6 +35,7 @@ from .pipeline_output import JoyAIImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)
+
 
 PRECISION_TO_TYPE = {
     "fp32": torch.float32,
@@ -43,6 +45,172 @@ PRECISION_TO_TYPE = {
     "bf16": torch.bfloat16,
     "bfloat16": torch.bfloat16,
 }
+
+
+class JoyAIDitArchConfig(TypedDict):
+    hidden_size: int
+    in_channels: int
+    heads_num: int
+    mm_double_blocks_depth: int
+    out_channels: int
+    patch_size: list[int]
+    rope_dim_list: list[int]
+    text_states_dim: int
+    rope_type: str
+    dit_modulation_type: str
+    theta: int
+    attn_backend: str
+
+
+class JoyAISchedulerArchConfig(TypedDict):
+    num_train_timesteps: int
+    shift: float
+
+
+class JoyAIImageComponents(TypedDict):
+    args: "JoyAIImageSourceConfig"
+    tokenizer: PreTrainedTokenizerBase
+    text_encoder: Qwen3VLForConditionalGeneration
+    transformer: JoyAIImageTransformer3DModel
+    scheduler: JoyAIFlowMatchDiscreteScheduler
+    vae: JoyAIImageVAE
+
+
+@dataclass
+class JoyAIImageSourceConfig:
+    source_root: Path
+    dit_precision: str = "bf16"
+    vae_precision: str = "bf16"
+    text_encoder_precision: str = "bf16"
+    text_token_max_length: int = 2048
+    enable_multi_task_training: bool = False
+    dit_arch_config: JoyAIDitArchConfig = field(
+        default_factory=lambda: {
+            "hidden_size": 4096,
+            "in_channels": 16,
+            "heads_num": 32,
+            "mm_double_blocks_depth": 40,
+            "out_channels": 16,
+            "patch_size": [1, 2, 2],
+            "rope_dim_list": [16, 56, 56],
+            "text_states_dim": 4096,
+            "rope_type": "rope",
+            "dit_modulation_type": "wanx",
+            "theta": 10000,
+            "attn_backend": "flash_attn",
+        }
+    )
+    scheduler_arch_config: JoyAISchedulerArchConfig = field(
+        default_factory=lambda: {
+            "num_train_timesteps": 1000,
+            "shift": 4.0,
+        }
+    )
+
+    @property
+    def text_encoder_arch_config(self) -> dict:
+        return {"params": {"text_encoder_ckpt": str(self.source_root / "JoyAI-Image-Und")}}
+
+
+def dtype_to_precision(torch_dtype: Optional[torch.dtype]) -> Optional[str]:
+    if torch_dtype is None:
+        return None
+    for name, value in PRECISION_TO_TYPE.items():
+        if value == torch_dtype and name in {"fp32", "fp16", "bf16"}:
+            return name
+    raise ValueError(f"Unsupported torch dtype for JoyAIImagePipeline: {torch_dtype}")
+
+
+def resolve_manifest_path(source_root: Path, manifest_value: Optional[str]) -> Optional[Path]:
+    if manifest_value is None:
+        return None
+    path = Path(manifest_value)
+    if path.parts and path.parts[0] == source_root.name:
+        path = Path(*path.parts[1:])
+    return source_root / path
+
+
+def is_joyai_source_dir(path: Path) -> bool:
+    return (
+        path.is_dir()
+        and (path / "infer_config.py").is_file()
+        and (path / "manifest.json").is_file()
+        and (path / "transformer").is_dir()
+        and (path / "vae").is_dir()
+    )
+
+
+def load_transformer_state_dict(checkpoint_path: Path) -> dict[str, torch.Tensor]:
+    state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    if "model" in state:
+        state = state["model"]
+    return state
+
+
+def load_joyai_components(
+    source_root: Union[str, Path],
+    torch_dtype: Optional[torch.dtype] = None,
+    device: Optional[Union[str, torch.device]] = None,
+) -> JoyAIImageComponents:
+    source_root = Path(source_root)
+    if not is_joyai_source_dir(source_root):
+        raise ValueError(f"Not a valid JoyAI source checkpoint directory: {source_root}")
+
+    precision = dtype_to_precision(torch_dtype)
+    cfg = JoyAIImageSourceConfig(source_root=source_root)
+
+    manifest = json.loads((source_root / "manifest.json").read_text())
+    transformer_ckpt = resolve_manifest_path(source_root, manifest.get("transformer_ckpt"))
+    vae_ckpt = source_root / "vae" / "Wan2.1_VAE.pth"
+    text_encoder_ckpt = source_root / "JoyAI-Image-Und"
+
+    if precision is not None:
+        cfg.dit_precision = precision
+        cfg.vae_precision = precision
+        cfg.text_encoder_precision = precision
+
+    load_device = torch.device(device) if device is not None else torch.device("cpu")
+    transformer = JoyAIImageTransformer3DModel(
+        dtype=PRECISION_TO_TYPE[cfg.dit_precision],
+        device=load_device,
+        **cfg.dit_arch_config,
+    )
+    state_dict = load_transformer_state_dict(transformer_ckpt)
+    if "img_in.weight" in state_dict and transformer.img_in.weight.shape != state_dict["img_in.weight"].shape:
+        value = state_dict["img_in.weight"]
+        padded = value.new_zeros(transformer.img_in.weight.shape)
+        padded[:, : value.shape[1], :, :, :] = value
+        state_dict["img_in.weight"] = padded
+    transformer.load_state_dict(state_dict, strict=True)
+    transformer = transformer.to(dtype=PRECISION_TO_TYPE[cfg.dit_precision]).eval()
+
+    vae = JoyAIImageVAE(
+        pretrained=str(vae_ckpt),
+        torch_dtype=PRECISION_TO_TYPE[cfg.vae_precision],
+        device=load_device,
+    )
+    text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(
+        str(text_encoder_ckpt),
+        torch_dtype=PRECISION_TO_TYPE[cfg.text_encoder_precision],
+        local_files_only=True,
+        trust_remote_code=True,
+    ).to(load_device).eval()
+    tokenizer = AutoTokenizer.from_pretrained(
+        str(text_encoder_ckpt),
+        local_files_only=True,
+        trust_remote_code=True,
+    )
+    scheduler = JoyAIFlowMatchDiscreteScheduler(**cfg.scheduler_arch_config)
+
+    return {
+        "args": cfg,
+        "tokenizer": tokenizer,
+        "text_encoder": text_encoder,
+        "transformer": transformer,
+        "scheduler": scheduler,
+        "vae": vae,
+    }
+
 
 PROMPT_TEMPLATE_ENCODE = {
     "image": "<|im_start|>system\n \nDescribe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
@@ -55,55 +223,6 @@ PROMPT_TEMPLATE_START_IDX = {
     "multiple_images": 34,
     "video": 91,
 }
-
-
-@dataclass
-class JoyAIImageSourceConfig:
-    source_root: Path
-    dit_precision: str = "bf16"
-    vae_precision: str = "bf16"
-    text_encoder_precision: str = "bf16"
-    text_token_max_length: int = 2048
-    enable_multi_task_training: bool = False
-    hsdp_shard_dim: int = 1
-    reshard_after_forward: bool = False
-    use_fsdp_inference: bool = False
-    cpu_offload: bool = False
-    pin_cpu_memory: bool = False
-    dit_arch_config: dict = field(default_factory=lambda: {
-        "hidden_size": 4096,
-        "in_channels": 16,
-        "heads_num": 32,
-        "mm_double_blocks_depth": 40,
-        "out_channels": 16,
-        "patch_size": [1, 2, 2],
-        "rope_dim_list": [16, 56, 56],
-        "text_states_dim": 4096,
-        "rope_type": "rope",
-        "dit_modulation_type": "wanx",
-        "theta": 10000,
-        "attn_backend": "flash_attn",
-    })
-    scheduler_arch_config: dict = field(default_factory=lambda: {
-        "num_train_timesteps": 1000,
-        "shift": 4.0,
-    })
-
-    @property
-    def text_encoder_arch_config(self) -> dict:
-        return {"params": {"text_encoder_ckpt": str(self.source_root / "JoyAI-Image-Und")}}
-
-
-def _load_transformer_state_dict(checkpoint_path: Path) -> dict[str, torch.Tensor]:
-    state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    if "model" in state:
-        state = state["model"]
-    return state
-
-
-def _build_joyai_source_config(source_root: Path) -> JoyAIImageSourceConfig:
-    return JoyAIImageSourceConfig(source_root=source_root)
-
 
 
 def retrieve_timesteps(
@@ -148,12 +267,12 @@ class JoyAIImagePipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        vae: Any,
-        text_encoder: Any,
-        tokenizer: Any,
-        transformer: Any,
-        scheduler: Any,
-        args: Any = None,
+        vae: JoyAIImageVAE,
+        text_encoder: Qwen3VLForConditionalGeneration,
+        tokenizer: PreTrainedTokenizerBase,
+        transformer: JoyAIImageTransformer3DModel,
+        scheduler: JoyAIFlowMatchDiscreteScheduler,
+        args: JoyAIImageSourceConfig | None = None,
     ):
         super().__init__()
         self.args = args
@@ -193,38 +312,10 @@ class JoyAIImagePipeline(DiffusionPipeline):
         self.prompt_template_encode_start_idx = PROMPT_TEMPLATE_START_IDX
         self._joyai_force_vae_fp32 = True
 
-    @staticmethod
-    def _dtype_to_precision(torch_dtype: Optional[torch.dtype]) -> Optional[str]:
-        if torch_dtype is None:
-            return None
-        for name, value in PRECISION_TO_TYPE.items():
-            if value == torch_dtype and name in {"fp32", "fp16", "bf16"}:
-                return name
-        raise ValueError(f"Unsupported torch dtype for JoyAIImagePipeline: {torch_dtype}")
-
-    @staticmethod
-    def _resolve_manifest_path(source_root: Path, manifest_value: Optional[str]) -> Optional[Path]:
-        if manifest_value is None:
-            return None
-        path = Path(manifest_value)
-        if path.parts and path.parts[0] == source_root.name:
-            path = Path(*path.parts[1:])
-        return source_root / path
-
-    @classmethod
-    def _is_joyai_source_dir(cls, path: Path) -> bool:
-        return (
-            path.is_dir()
-            and (path / "infer_config.py").is_file()
-            and (path / "manifest.json").is_file()
-            and (path / "transformer").is_dir()
-            and (path / "vae").is_dir()
-        )
-
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
         source_path = Path(pretrained_model_name_or_path) if pretrained_model_name_or_path is not None else None
-        if source_path is not None and cls._is_joyai_source_dir(source_path):
+        if source_path is not None and is_joyai_source_dir(source_path):
             return cls.from_joyai_sources(pretrained_model_name_or_path, **kwargs)
         return super().from_pretrained(pretrained_model_name_or_path, **kwargs)
 
@@ -233,67 +324,22 @@ class JoyAIImagePipeline(DiffusionPipeline):
         cls,
         pretrained_model_name_or_path: Union[str, Path],
         torch_dtype: Optional[torch.dtype] = None,
-        official_repo_path: Optional[Union[str, Path]] = None,
         device: Optional[Union[str, torch.device]] = None,
-        hsdp_shard_dim_override: Optional[int] = None,
         **kwargs,
     ):
-        source_root = Path(pretrained_model_name_or_path)
-        if not cls._is_joyai_source_dir(source_root):
-            raise ValueError(f"Not a valid JoyAI source checkpoint directory: {source_root}")
-
-        precision = cls._dtype_to_precision(torch_dtype)
-        cfg = _build_joyai_source_config(source_root)
-
-        manifest = json.loads((source_root / "manifest.json").read_text())
-        transformer_ckpt = cls._resolve_manifest_path(source_root, manifest.get("transformer_ckpt"))
-        vae_ckpt = source_root / "vae" / "Wan2.1_VAE.pth"
-        text_encoder_ckpt = source_root / "JoyAI-Image-Und"
-
-        if precision is not None:
-            cfg.dit_precision = precision
-            cfg.vae_precision = precision
-            cfg.text_encoder_precision = precision
-
-        if hsdp_shard_dim_override is not None:
-            cfg.hsdp_shard_dim = hsdp_shard_dim_override
-
-        load_device = torch.device(device) if device is not None else torch.device("cpu")
-        dit = Transformer3DModel(
-            args=cfg,
-            dtype=PRECISION_TO_TYPE[cfg.dit_precision],
-            device=load_device,
-            **cfg.dit_arch_config,
+        components = load_joyai_components(
+            source_root=pretrained_model_name_or_path,
+            torch_dtype=torch_dtype,
+            device=device,
         )
-        state_dict = _load_transformer_state_dict(transformer_ckpt)
-        if "img_in.weight" in state_dict and dit.img_in.weight.shape != state_dict["img_in.weight"].shape:
-            v = state_dict["img_in.weight"]
-            v_new = v.new_zeros(dit.img_in.weight.shape)
-            v_new[:, : v.shape[1], :, :, :] = v
-            state_dict["img_in.weight"] = v_new
-        dit.load_state_dict(state_dict, strict=True)
-        dit = dit.to(dtype=PRECISION_TO_TYPE[cfg.dit_precision])
-        dit = dit.eval()
-
-        vae = WanxVAE(
-            pretrained=str(vae_ckpt),
-            torch_dtype=PRECISION_TO_TYPE[cfg.vae_precision],
-            device=load_device,
-        )
-        tokenizer, text_encoder = load_joyai_text_encoder(
-            text_encoder_ckpt=str(text_encoder_ckpt),
-            torch_dtype=PRECISION_TO_TYPE[cfg.text_encoder_precision],
-            device=load_device,
-        )
-        scheduler = JoyAIFlowMatchDiscreteScheduler(**cfg.scheduler_arch_config)
 
         pipe = cls(
-            vae=vae,
-            tokenizer=tokenizer,
-            text_encoder=text_encoder,
-            transformer=dit,
-            scheduler=scheduler,
-            args=cfg,
+            vae=components["vae"],
+            tokenizer=components["tokenizer"],
+            text_encoder=components["text_encoder"],
+            transformer=components["transformer"],
+            scheduler=components["scheduler"],
+            args=components["args"],
         )
         if device is not None:
             pipe._joyai_execution_device_override = torch.device(device)
@@ -318,9 +364,9 @@ class JoyAIImagePipeline(DiffusionPipeline):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         template = self.prompt_template_encode[template_type]
         drop_idx = self.prompt_template_encode_start_idx[template_type]
-        txt = [template.format(e) for e in prompt]
+        formatted_prompts = [template.format(prompt_text) for prompt_text in prompt]
         txt_tokens = self.tokenizer(
-            txt,
+            formatted_prompts,
             max_length=self.text_token_max_length + drop_idx,
             padding=True,
             truncation=True,
@@ -340,10 +386,21 @@ class JoyAIImagePipeline(DiffusionPipeline):
             max(u.size(0) for u in attn_mask_list),
         )
         prompt_embeds = torch.stack(
-            [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
+            [
+                torch.cat(
+                    [
+                        hidden_state,
+                        hidden_state.new_zeros(max_seq_len - hidden_state.size(0), hidden_state.size(1)),
+                    ]
+                )
+                for hidden_state in split_hidden_states
+            ]
         )
         encoder_attention_mask = torch.stack(
-            [torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list]
+            [
+                torch.cat([attention_mask_row, attention_mask_row.new_zeros(max_seq_len - attention_mask_row.size(0))])
+                for attention_mask_row in attn_mask_list
+            ]
         )
         return prompt_embeds.to(dtype=dtype, device=device), encoder_attention_mask
 
@@ -417,17 +474,17 @@ class JoyAIImagePipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        prompt,
-        height,
-        width,
-        images=None,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
-        prompt_embeds_mask=None,
-        negative_prompt_embeds_mask=None,
-        callback_on_step_end_tensor_inputs=None,
-    ):
+        prompt: Optional[Union[str, List[str]]],
+        height: int,
+        width: int,
+        images: Optional[List[Any]] = None,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds_mask: Optional[torch.Tensor] = None,
+        negative_prompt_embeds_mask: Optional[torch.Tensor] = None,
+        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
+    ) -> None:
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -465,6 +522,28 @@ class JoyAIImagePipeline(DiffusionPipeline):
     def _is_sequential_cpu_offload_enabled(self) -> bool:
         return bool(getattr(self, "_joyai_sequential_cpu_offload_enabled", False))
 
+    def enable_manual_cpu_offload(
+        self,
+        device: torch.device | str,
+        components: Optional[List[str]] = None,
+    ) -> None:
+        """Enable manual CPU offload for selected components."""
+        runtime_device = torch.device(device)
+        component_names = set(components or ["text_encoder", "vae"])
+
+        invalid_components = [name for name in component_names if name not in self.components]
+        if invalid_components:
+            raise ValueError(f"Unknown components for manual cpu offload: {invalid_components}")
+
+        self._joyai_execution_device_override = runtime_device
+        self._joyai_sequential_cpu_offload_enabled = True
+        self._joyai_manual_offload_components = component_names
+
+        for name in component_names:
+            component = getattr(self, name, None)
+            if isinstance(component, torch.nn.Module):
+                component.to("cpu")
+
     def _uses_manual_sequential_offload(self, component_name: str) -> bool:
         manual_components = getattr(self, "_joyai_manual_offload_components", set())
         return self._is_sequential_cpu_offload_enabled() and component_name in manual_components
@@ -496,7 +575,7 @@ class JoyAIImagePipeline(DiffusionPipeline):
 
     def _encode_with_vae(self, videos: torch.Tensor) -> torch.Tensor:
         device = self._get_runtime_execution_device()
-        vae_dtype = self._vae_compute_dtype()
+        vae_dtype = PRECISION_TO_TYPE.get(getattr(self.args, "vae_precision", "bf16"), videos.dtype)
         videos = videos.to(device=device, dtype=vae_dtype)
 
         if self._uses_manual_sequential_offload("vae") and hasattr(self.vae, "model"):
@@ -566,8 +645,6 @@ class JoyAIImagePipeline(DiffusionPipeline):
         generator,
         latents=None,
         reference_images=None,
-        image=None,
-        last_image=None,
     ):
         shape = (
             batch_size,
@@ -696,9 +773,6 @@ class JoyAIImagePipeline(DiffusionPipeline):
         width: int,
         num_frames: int = 1,
         images: Optional[List[Any]] = None,
-        image_condition: Optional[torch.Tensor] = None,
-        last_image_condition: Optional[torch.Tensor] = None,
-        data_type: str = "image",
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         sigmas: Optional[List[float]] = None,
@@ -818,13 +892,11 @@ class JoyAIImagePipeline(DiffusionPipeline):
             generator,
             latents,
             reference_images=images,
-            image=image_condition,
-            last_image=last_image_condition,
         )
 
         target_dtype = PRECISION_TO_TYPE.get(getattr(self.args, "dit_precision", "bf16"), prompt_embeds.dtype)
         autocast_enabled = target_dtype != torch.float32 and device.type == "cuda"
-        vae_dtype = PRECISION_TO_TYPE.get(getattr(self.args, "vae_precision", "bf16"), prompt_embeds.dtype)
+        vae_dtype = self._vae_compute_dtype()
         vae_autocast_enabled = vae_dtype != torch.float32 and device.type == "cuda"
 
         self._num_timesteps = len(timesteps)

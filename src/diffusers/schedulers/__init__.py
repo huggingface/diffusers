@@ -61,6 +61,10 @@ else:
     _import_structure["scheduling_euler_discrete"] = ["EulerDiscreteScheduler"]
     _import_structure["scheduling_flow_match_euler_discrete"] = ["FlowMatchEulerDiscreteScheduler"]
     _import_structure["scheduling_flow_match_heun_discrete"] = ["FlowMatchHeunDiscreteScheduler"]
+    _import_structure["scheduling_joyai_flow_match_discrete"] = [
+        "JoyAIFlowMatchDiscreteScheduler",
+        "JoyAIFlowMatchDiscreteSchedulerOutput",
+    ]
     _import_structure["scheduling_flow_match_lcm"] = ["FlowMatchLCMScheduler"]
     _import_structure["scheduling_helios"] = ["HeliosScheduler"]
     _import_structure["scheduling_helios_dmd"] = ["HeliosDMDScheduler"]
@@ -167,6 +171,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_euler_discrete import EulerDiscreteScheduler
         from .scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
         from .scheduling_flow_match_heun_discrete import FlowMatchHeunDiscreteScheduler
+        from .scheduling_joyai_flow_match_discrete import (
+            JoyAIFlowMatchDiscreteScheduler,
+            JoyAIFlowMatchDiscreteSchedulerOutput,
+        )
         from .scheduling_flow_match_lcm import FlowMatchLCMScheduler
         from .scheduling_helios import HeliosScheduler
         from .scheduling_helios_dmd import HeliosDMDScheduler
