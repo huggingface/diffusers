@@ -124,13 +124,12 @@ def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int 
     return latents
 
 
-def _normalize_latents(
-    latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
+def _unpack_latents(
+    latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
 ) -> torch.Tensor:
-    # Normalize latents across the channel dimension [B, C, F, H, W]
-    latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
-    latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
-    latents = (latents - latents_mean) * scaling_factor / latents_std
+    batch_size = latents.size(0)
+    latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
+    latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
     return latents
 
 
@@ -343,19 +342,19 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Prepare latents step for image-to-video: takes pre-encoded image latents and creates a conditioning mask"
+            "Prepare image-to-video latents: adds noise to pre-encoded image latents and creates a conditioning mask. "
+            "Expects pure noise `latents` from LTXPrepareLatentsStep."
         )
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("image_latents", type_hint=torch.Tensor, required=True),
+            InputParam.template("latents", required=True),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam("num_frames", type_hint=int, default=161),
-            InputParam.template("latents"),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam.template("generator"),
             InputParam.template("batch_size", required=True),
         ]
 
@@ -377,37 +376,31 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
         width = block_state.width // components.vae_spatial_compression_ratio
         num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
 
-        mask_shape = (batch_size, 1, num_frames, height, width)
-
-        if block_state.latents is not None:
-            conditioning_mask = block_state.latents.new_zeros(mask_shape)
-            conditioning_mask[:, :, 0] = 1.0
-            conditioning_mask = _pack_latents(
-                conditioning_mask,
-                components.transformer_spatial_patch_size,
-                components.transformer_temporal_patch_size,
-            ).squeeze(-1)
-            block_state.latents = block_state.latents.to(device=device, dtype=torch.float32)
-            block_state.conditioning_mask = conditioning_mask
-            self.set_block_state(state, block_state)
-            return components, state
-
         init_latents = block_state.image_latents.to(device=device, dtype=torch.float32)
         if init_latents.shape[0] < batch_size:
             init_latents = init_latents.repeat_interleave(batch_size // init_latents.shape[0], dim=0)
         init_latents = init_latents.repeat(1, 1, num_frames, 1, 1)
 
-        actual_mask_shape = (
+        conditioning_mask = torch.zeros(
             init_latents.shape[0],
             1,
             init_latents.shape[2],
             init_latents.shape[3],
             init_latents.shape[4],
+            device=device,
+            dtype=torch.float32,
         )
-        conditioning_mask = torch.zeros(actual_mask_shape, device=device, dtype=torch.float32)
         conditioning_mask[:, :, 0] = 1.0
 
-        noise = randn_tensor(init_latents.shape, generator=block_state.generator, device=device, dtype=torch.float32)
+        # Unpack the pure noise latents from LTXPrepareLatentsStep to mix with image latents
+        noise = _unpack_latents(
+            block_state.latents,
+            num_frames,
+            height,
+            width,
+            components.transformer_spatial_patch_size,
+            components.transformer_temporal_patch_size,
+        )
         latents = init_latents * conditioning_mask + noise * (1 - conditioning_mask)
 
         conditioning_mask = _pack_latents(

@@ -31,7 +31,7 @@ class LTXModularPipeline(
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
-    default_blocks_name = "LTXBlocks"
+    default_blocks_name = "LTXAutoBlocks"
 
     @property
     def vae_spatial_compression_ratio(self):

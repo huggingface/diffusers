@@ -344,9 +344,6 @@ class LTXImage2VideoLoopDenoiser(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        from ...configuration_utils import FrozenDict
-        from ...guiders import ClassifierFreeGuidance
-
         return [
             ComponentSpec(
                 "guider",

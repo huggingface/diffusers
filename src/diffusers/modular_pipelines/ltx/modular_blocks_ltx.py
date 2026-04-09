@@ -145,10 +145,11 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         LTXTextInputStep,
         LTXSetTimestepsStep,
+        LTXPrepareLatentsStep,
         LTXImage2VideoPrepareLatentsStep,
         LTXImage2VideoDenoiseStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "denoise"]
+    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_i2v_latents", "denoise"]
 
     @property
     def description(self):
@@ -266,6 +267,60 @@ class LTXAutoVaeEncoderStep(AutoPipelineBlocks):
             " - `LTXVaeEncoderStep` is used when `image` is provided.\n"
             " - If `image` is not provided, step will be skipped."
         )
+
+
+# auto_docstring
+class LTXAutoCoreDenoiseStep(AutoPipelineBlocks):
+    """
+    Auto denoise block that selects the appropriate denoise pipeline based on inputs.
+      - `LTXImage2VideoCoreDenoiseStep` is used when `image_latents` is provided.
+      - `LTXCoreDenoiseStep` is used otherwise (text-to-video).
+    """
+
+    model_name = "ltx"
+    block_classes = [LTXImage2VideoCoreDenoiseStep, LTXCoreDenoiseStep]
+    block_names = ["image2video", "text2video"]
+    block_trigger_inputs = ["image_latents", None]
+
+    @property
+    def description(self):
+        return (
+            "Auto denoise block that selects the appropriate denoise pipeline based on inputs.\n"
+            " - `LTXImage2VideoCoreDenoiseStep` is used when `image_latents` is provided.\n"
+            " - `LTXCoreDenoiseStep` is used otherwise (text-to-video)."
+        )
+
+
+# auto_docstring
+class LTXAutoBlocks(SequentialPipelineBlocks):
+    """
+    Auto blocks for LTX Video that support both text-to-video and image-to-video workflows.
+
+    Supported workflows:
+      - `text2video`: requires `prompt`
+      - `image2video`: requires `image`, `prompt`
+    """
+
+    model_name = "ltx"
+    block_classes = [
+        LTXTextEncoderStep,
+        LTXAutoVaeEncoderStep,
+        LTXAutoCoreDenoiseStep,
+        LTXVaeDecoderStep,
+    ]
+    block_names = ["text_encoder", "vae_encoder", "denoise", "decode"]
+
+    @property
+    def description(self):
+        return (
+            "Auto blocks for LTX Video that support both text-to-video and image-to-video workflows.\n"
+            " - text2video: requires `prompt`\n"
+            " - image2video: requires `image`, `prompt`"
+        )
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("videos")]
 
 
 # auto_docstring
