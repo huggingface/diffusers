@@ -222,7 +222,6 @@ class QwenEmbedRope(nn.Module):
 
         # DO NOT USING REGISTER BUFFER HERE, IT WILL CAUSE COMPLEX NUMBERS LOSE ITS IMAGINARY PART
         self.scale_rope = scale_rope
-        self._device_freq_cache: dict[torch.device, tuple[torch.Tensor, torch.Tensor]] = {}
 
     def rope_params(self, index, dim, theta=10000):
         """
@@ -234,11 +233,10 @@ class QwenEmbedRope(nn.Module):
         freqs = torch.polar(torch.ones_like(freqs), freqs)
         return freqs
 
+    @lru_cache_unless_export(maxsize=None)
     def _get_device_freqs(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
-        """Return pos_freqs and neg_freqs on the given device, caching the transfer."""
-        if device not in self._device_freq_cache:
-            self._device_freq_cache[device] = (self.pos_freqs.to(device), self.neg_freqs.to(device))
-        return self._device_freq_cache[device]
+        """Return pos_freqs and neg_freqs on the given device."""
+        return self.pos_freqs.to(device), self.neg_freqs.to(device)
 
     def forward(
         self,
@@ -365,7 +363,6 @@ class QwenEmbedLayer3DRope(nn.Module):
         )
 
         self.scale_rope = scale_rope
-        self._device_freq_cache: dict[torch.device, tuple[torch.Tensor, torch.Tensor]] = {}
 
     def rope_params(self, index, dim, theta=10000):
         """
@@ -377,11 +374,10 @@ class QwenEmbedLayer3DRope(nn.Module):
         freqs = torch.polar(torch.ones_like(freqs), freqs)
         return freqs
 
+    @lru_cache_unless_export(maxsize=None)
     def _get_device_freqs(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
-        """Return pos_freqs and neg_freqs on the given device, caching the transfer."""
-        if device not in self._device_freq_cache:
-            self._device_freq_cache[device] = (self.pos_freqs.to(device), self.neg_freqs.to(device))
-        return self._device_freq_cache[device]
+        """Return pos_freqs and neg_freqs on the given device."""
+        return self.pos_freqs.to(device), self.neg_freqs.to(device)
 
     def forward(
         self,
