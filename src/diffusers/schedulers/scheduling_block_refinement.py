@@ -57,7 +57,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
     the number of refinement steps.
 
     Optionally supports editing: after all mask tokens are resolved, tokens can be replaced if the model predicts a
-    different token with confidence above `editing_threshold`.
+    different token with confidence above a positive `editing_threshold` (`None`, `0.0`, or negative disables editing).
     """
 
     order = 1
@@ -208,7 +208,8 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
             threshold (`float`, *optional*):
                 Confidence threshold for committing tokens. Defaults to config value.
             editing_threshold (`float`, *optional*):
-                Confidence threshold for editing non-mask tokens. Defaults to config value.
+                Confidence threshold for editing non-mask tokens; must be positive to enable editing. Defaults to
+                config value.
             minimal_topk (`int`, *optional*):
                 Minimum tokens to commit per step. Defaults to config value.
             prompt_mask (`torch.BoolTensor`, *optional*):
@@ -268,7 +269,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
                         transfer_index[b, idx] = True
 
         # --- Editing transfer (non-mask, non-prompt positions) ---
-        editing_enabled = editing_threshold is not None and editing_threshold >= 0.0
+        editing_enabled = editing_threshold is not None and editing_threshold > 0.0
         editing_transfer_index = torch.zeros_like(sampled_tokens, dtype=torch.bool)
         if editing_enabled:
             if prompt_mask is None:

@@ -26,7 +26,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from diffusers import BlockRefinementScheduler, LLaDA2Pipeline
 
 model_id = "inclusionAI/LLaDA2.1-mini"
-model = AutoModelForCausalLM.from_pretrained(model_id, trust_remote_code=True, dtype=torch.bfloat16, device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    model_id, trust_remote_code=True, dtype=torch.bfloat16, device_map="auto"
+)
 tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
 scheduler = BlockRefinementScheduler()
 
@@ -46,18 +48,21 @@ print(output.texts[0])
 
 ## Callbacks
 
-Callbacks run after each refinement step and can inspect or modify the current tokens.
+Callbacks run after each refinement step. Pass `callback_on_step_end_tensor_inputs` to select which tensors are
+included in `callback_kwargs`. In the current implementation, `block_x` (the sequence window being refined) and
+`transfer_index` (mask-filling commit mask) are provided; return `{"block_x": ...}` from the callback to replace the
+window.
 
 ```py
 def on_step_end(pipe, step, timestep, callback_kwargs):
-    cur_x = callback_kwargs["cur_x"]
-    # Inspect or modify `cur_x` here.
-    return {"cur_x": cur_x}
+    block_x = callback_kwargs["block_x"]
+    # Inspect or modify `block_x` here.
+    return {"block_x": block_x}
 
 out = pipe(
     prompt="Write a short poem.",
     callback_on_step_end=on_step_end,
-    callback_on_step_end_tensor_inputs=["cur_x"],
+    callback_on_step_end_tensor_inputs=["block_x"],
 )
 ```
 
@@ -68,11 +73,13 @@ LLaDA2.1 models support two modes:
 | Mode | `threshold` | `editing_threshold` | `max_post_steps` |
 |------|-------------|---------------------|------------------|
 | Quality | 0.7 | 0.5 | 16 |
-| Speed | 0.5 | 0.0 | 16 |
+| Speed | 0.5 | `None` | 16 |
 
-For LLaDA2.0 models, disable editing by passing `editing_threshold=None`.
+Pass `editing_threshold=None`, `0.0`, or a negative value to turn off post-mask editing.
 
-For all models: `block_length=32`, `temperature=0.0`, `steps=32`.
+For LLaDA2.0 models, disable editing by passing `editing_threshold=None` or `0.0`.
+
+For all models: `block_length=32`, `temperature=0.0`, `num_inference_steps=32`.
 
 ## LLaDA2Pipeline
 [[autodoc]] LLaDA2Pipeline
