@@ -533,10 +533,11 @@ class GlmImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
     """
 
     _supports_gradient_checkpointing = True
+    _repeated_blocks = ["GlmImageTransformerBlock"]
     _no_split_modules = [
         "GlmImageTransformerBlock",
         "GlmImageImageProjector",
-        "GlmImageImageProjector",
+        "GlmImageCombinedTimestepSizeEmbeddings",
     ]
     _skip_layerwise_casting_patterns = ["patch_embed", "norm", "proj_out"]
     _skip_keys = ["kv_caches"]
