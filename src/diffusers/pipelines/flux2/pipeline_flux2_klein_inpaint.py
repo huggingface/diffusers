@@ -76,9 +76,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> prompt = "Replace this ball"
         >>> img_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/klein_inpaint/the-ball-stadion-football-the-pitch-39362.jpeg"
-        >>> mask_url = (
-        ...     "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/klein_inpaint/ball_mask.png"
-        ... )
+        >>> mask_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/klein_inpaint/ball_mask.png"
         >>> image_reference_url = (
         ...     "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/klein_inpaint/ball.jpg"
         ... )
