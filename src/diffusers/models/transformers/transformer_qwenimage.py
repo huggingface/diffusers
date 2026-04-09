@@ -319,7 +319,9 @@ class QwenEmbedRope(nn.Module):
         self, frame: int, height: int, width: int, idx: int = 0, device: torch.device = None
     ) -> torch.Tensor:
         seq_lens = frame * height * width
-        pos_freqs, neg_freqs = self._get_device_freqs(device) if device is not None else (self.pos_freqs, self.neg_freqs)
+        pos_freqs, neg_freqs = (
+            self._get_device_freqs(device) if device is not None else (self.pos_freqs, self.neg_freqs)
+        )
 
         freqs_pos = pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
         freqs_neg = neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
@@ -445,7 +447,9 @@ class QwenEmbedLayer3DRope(nn.Module):
     @lru_cache_unless_export(maxsize=None)
     def _compute_video_freqs(self, frame, height, width, idx=0, device: torch.device = None):
         seq_lens = frame * height * width
-        pos_freqs, neg_freqs = self._get_device_freqs(device) if device is not None else (self.pos_freqs, self.neg_freqs)
+        pos_freqs, neg_freqs = (
+            self._get_device_freqs(device) if device is not None else (self.pos_freqs, self.neg_freqs)
+        )
 
         freqs_pos = pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
         freqs_neg = neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
@@ -466,7 +470,9 @@ class QwenEmbedLayer3DRope(nn.Module):
     @lru_cache_unless_export(maxsize=None)
     def _compute_condition_freqs(self, frame, height, width, device: torch.device = None):
         seq_lens = frame * height * width
-        pos_freqs, neg_freqs = self._get_device_freqs(device) if device is not None else (self.pos_freqs, self.neg_freqs)
+        pos_freqs, neg_freqs = (
+            self._get_device_freqs(device) if device is not None else (self.pos_freqs, self.neg_freqs)
+        )
 
         freqs_pos = pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
         freqs_neg = neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
