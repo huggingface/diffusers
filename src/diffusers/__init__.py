@@ -545,6 +545,7 @@ else:
             "HunyuanDiTControlNetPipeline",
             "HunyuanDiTPAGPipeline",
             "HunyuanDiTPipeline",
+            "JoyAIImagePipeline",
             "HunyuanImagePipeline",
             "HunyuanImageRefinerPipeline",
             "HunyuanSkyreelsImageToVideoPipeline",

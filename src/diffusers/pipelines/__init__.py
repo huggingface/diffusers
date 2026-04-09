@@ -263,6 +263,7 @@ else:
     _import_structure["helios"] = ["HeliosPipeline", "HeliosPyramidPipeline"]
     _import_structure["hidream_image"] = ["HiDreamImagePipeline"]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
+    _import_structure["joyai_image"] = ["JoyAIImagePipeline"]
     _import_structure["hunyuan_video"] = [
         "HunyuanVideoPipeline",
         "HunyuanSkyreelsImageToVideoPipeline",
@@ -706,6 +707,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
+        from .joyai_image import JoyAIImagePipeline
         from .kandinsky import (
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
