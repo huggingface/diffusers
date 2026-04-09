@@ -191,6 +191,7 @@ class JoyAIImagePipeline(DiffusionPipeline):
         self.text_token_max_length = int(getattr(self.args, "text_token_max_length", 2048))
         self.prompt_template_encode = PROMPT_TEMPLATE_ENCODE
         self.prompt_template_encode_start_idx = PROMPT_TEMPLATE_START_IDX
+        self._joyai_force_vae_fp32 = True
 
     @staticmethod
     def _dtype_to_precision(torch_dtype: Optional[torch.dtype]) -> Optional[str]:
@@ -449,6 +450,8 @@ class JoyAIImagePipeline(DiffusionPipeline):
             )
 
     def _vae_compute_dtype(self) -> torch.dtype:
+        if getattr(self, "_joyai_force_vae_fp32", False):
+            return torch.float32
         if hasattr(self.vae, "model"):
             return next(self.vae.model.parameters()).dtype
         return next(self.vae.parameters()).dtype
