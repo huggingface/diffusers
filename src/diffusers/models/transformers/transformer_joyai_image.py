@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.models import ModelMixin
-from diffusers.models.attention import AttentionModuleMixin, FeedForward
+from diffusers.models.attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from diffusers.models.attention_dispatch import AttentionBackendName, dispatch_attention_fn
 from diffusers.models.embeddings import (
     PixArtAlphaTextProjection,
@@ -100,6 +100,7 @@ class JoyAIJointAttnProcessor:
 class JoyAIJointAttention(nn.Module, AttentionModuleMixin):
     _default_processor_cls = JoyAIJointAttnProcessor
     _available_processors = [JoyAIJointAttnProcessor]
+    _supports_qkv_fusion = False
 
     def __init__(self, backend: str = "flash_attn", processor=None) -> None:
         super().__init__()
@@ -340,7 +341,7 @@ class JoyAITimeTextEmbedding(nn.Module):
         return modulation_states, encoder_hidden_states
 
 
-class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin):
+class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     _fsdp_shard_conditions: list = [
         lambda name, module: isinstance(module, JoyAIImageTransformerBlock)]
     _supports_gradient_checkpointing = True

@@ -189,9 +189,10 @@ def load_joyai_components(
         torch_dtype=PRECISION_TO_TYPE[cfg.vae_precision],
         device=load_device,
     )
+    vae = vae.to(device=load_device, dtype=PRECISION_TO_TYPE[cfg.vae_precision]).eval()
     text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(
         str(text_encoder_ckpt),
-        torch_dtype=PRECISION_TO_TYPE[cfg.text_encoder_precision],
+        dtype=PRECISION_TO_TYPE[cfg.text_encoder_precision],
         local_files_only=True,
         trust_remote_code=True,
     ).to(load_device).eval()
@@ -600,7 +601,10 @@ class JoyAIImagePipeline(DiffusionPipeline):
                 self.vae.config.latents_std = self.vae.std
 
         self.vae.to(device=device, dtype=vae_dtype)
-        return self.vae.encode(videos)
+        encoded = self.vae.encode(videos)
+        if hasattr(encoded, "latent_dist"):
+            return encoded.latent_dist.sample()
+        return encoded
 
     def _decode_with_vae(self, latents: torch.Tensor):
         device = self._get_runtime_execution_device()
