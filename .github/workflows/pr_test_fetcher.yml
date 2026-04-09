@@ -33,7 +33,7 @@ jobs:
         fetch-depth: 0
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality]"
+        uv pip install --prerelease=allow -e ".[quality]"
     - name: Environment
       run: |
         python utils/print_env.py
@@ -89,8 +89,8 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality]"
-        uv pip install accelerate
+        uv pip install --prerelease=allow -e ".[quality]"
+        uv pip install --prerelease=allow accelerate
 
     - name: Environment
       run: |
