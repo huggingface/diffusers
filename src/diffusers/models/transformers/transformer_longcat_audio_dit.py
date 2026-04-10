@@ -188,8 +188,8 @@ class AudioDiTSelfAttnProcessor:
         self,
         attn: "AudioDiTAttention",
         hidden_states: torch.Tensor,
-        mask: torch.BoolTensor | None = None,
-        rope: tuple | None = None,
+        attention_mask: torch.BoolTensor | None = None,
+        audio_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
         query = attn.to_q(hidden_states)
@@ -205,20 +205,20 @@ class AudioDiTSelfAttnProcessor:
         key = key.view(batch_size, -1, attn.heads, head_dim)
         value = value.view(batch_size, -1, attn.heads, head_dim)
 
-        if rope is not None:
-            query = _apply_rotary_emb(query, rope)
-            key = _apply_rotary_emb(key, rope)
+        if audio_rotary_emb is not None:
+            query = _apply_rotary_emb(query, audio_rotary_emb)
+            key = _apply_rotary_emb(key, audio_rotary_emb)
 
         hidden_states = dispatch_attention_fn(
             query,
             key,
             value,
-            attn_mask=mask,
+            attn_mask=attention_mask,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )
-        if mask is not None:
-            hidden_states = hidden_states * mask[:, :, None, None].to(hidden_states.dtype)
+        if attention_mask is not None:
+            hidden_states = hidden_states * attention_mask[:, :, None, None].to(hidden_states.dtype)
 
         hidden_states = hidden_states.flatten(2, 3).to(query.dtype)
         hidden_states = attn.to_out[0](hidden_states)
@@ -261,11 +261,14 @@ class AudioDiTAttention(nn.Module, AttentionModuleMixin):
         attention_mask: torch.BoolTensor | None = None,
         audio_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         prompt_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
-        mask: torch.BoolTensor | None = None,
-        rope: tuple | None = None,
     ) -> torch.Tensor:
         if encoder_hidden_states is None:
-            return self.processor(self, hidden_states, mask=mask, rope=rope)
+            return self.processor(
+                self,
+                hidden_states,
+                attention_mask=attention_mask,
+                audio_rotary_emb=audio_rotary_emb,
+            )
         return self.processor(
             self,
             hidden_states,
@@ -419,7 +422,11 @@ class AudioDiTBlock(nn.Module):
 
         norm_hidden_states = F.layer_norm(hidden_states.float(), (hidden_states.shape[-1],), eps=1e-6).type_as(hidden_states)
         norm_hidden_states = norm_hidden_states * (1 + scale_sa[:, None]) + shift_sa[:, None]
-        attn_output = self.self_attn(norm_hidden_states, mask=mask, rope=rope)
+        attn_output = self.self_attn(
+            norm_hidden_states,
+            attention_mask=mask,
+            audio_rotary_emb=rope,
+        )
         hidden_states = hidden_states + gate_sa.unsqueeze(1) * attn_output
 
         if self.use_cross_attn:

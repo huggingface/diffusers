@@ -171,8 +171,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
             transformer=transformer,
         )
         self.sample_rate = getattr(vae.config, "sample_rate", 24000)
-        self.latent_hop = getattr(vae.config, "downsampling_ratio", 2048)
-        self.vae_scale_factor = self.latent_hop
+        self.vae_scale_factor = getattr(vae.config, "downsampling_ratio", 2048)
         self.latent_dim = getattr(transformer.config, "latent_dim", 64)
         self.max_wav_duration = 30.0
         self.text_norm_feat = True
@@ -321,8 +320,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
 
         pipe = cls(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, transformer=transformer)
         pipe.sample_rate = config.get("sampling_rate", pipe.sample_rate)
-        pipe.latent_hop = config.get("latent_hop", pipe.latent_hop)
-        pipe.vae_scale_factor = pipe.latent_hop
+        pipe.vae_scale_factor = config.get("vae_scale_factor", config.get("latent_hop", pipe.vae_scale_factor))
         pipe.max_wav_duration = config.get("max_wav_duration", pipe.max_wav_duration)
         pipe.text_norm_feat = config.get("text_norm_feat", pipe.text_norm_feat)
         pipe.text_add_embed = config.get("text_add_embed", pipe.text_add_embed)

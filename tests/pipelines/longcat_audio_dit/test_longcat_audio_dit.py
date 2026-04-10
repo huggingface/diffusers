@@ -22,7 +22,13 @@ from safetensors.torch import save_file
 from transformers import UMT5Config, UMT5EncoderModel
 
 from diffusers import LongCatAudioDiTPipeline, LongCatAudioDiTTransformer, LongCatAudioDiTVae
-from tests.testing_utils import require_torch_accelerator, slow, torch_device
+
+from ...testing_utils import enable_full_determinism, require_torch_accelerator, slow, torch_device
+from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
+
+
+enable_full_determinism()
 
 
 class DummyTokenizer:
@@ -42,8 +48,16 @@ class DummyTokenizer:
         )
 
 
-class LongCatAudioDiTPipelineFastTests(unittest.TestCase):
+class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = LongCatAudioDiTPipeline
+    params = (
+        TEXT_TO_AUDIO_PARAMS - {"audio_length_in_s", "prompt_embeds", "negative_prompt_embeds", "cross_attention_kwargs"}
+    ) | {"audio_duration_s"}
+    batch_params = TEXT_TO_AUDIO_BATCH_PARAMS
+    required_optional_params = PipelineTesterMixin.required_optional_params - {"num_images_per_prompt"}
+    test_attention_slicing = False
+    test_xformers_attention = False
+    supports_dduf = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -82,7 +96,7 @@ class LongCatAudioDiTPipelineFastTests(unittest.TestCase):
 
         return {
             "prompt": prompt,
-            "audio_end_in_s": 0.1,
+            "audio_duration_s": 0.1,
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
             "generator": generator,
@@ -102,39 +116,7 @@ class LongCatAudioDiTPipelineFastTests(unittest.TestCase):
         self.assertEqual(output.shape[1], 1)
         self.assertGreater(output.shape[-1], 0)
 
-    def test_inference_batch_single_identical(self):
-        device = "cpu"
-        pipe = self.pipeline_class(**self.get_dummy_components())
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        output1 = pipe(**self.get_dummy_inputs(device, seed=42)).audios
-        output2 = pipe(**self.get_dummy_inputs(device, seed=42)).audios
-
-        self.assertTrue(torch.allclose(output1, output2, atol=1e-4))
-
-    def test_inference_batch_multiple_prompts(self):
-        device = "cpu"
-        pipe = self.pipeline_class(**self.get_dummy_components())
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device=device).manual_seed(42)
-        output = pipe(
-            prompt=["soft ocean ambience", "gentle rain ambience"],
-            audio_end_in_s=0.1,
-            num_inference_steps=2,
-            guidance_scale=1.0,
-            generator=generator,
-            output_type="pt",
-        ).audios
-
-        self.assertEqual(output.ndim, 3)
-        self.assertEqual(output.shape[0], 2)
-        self.assertEqual(output.shape[1], 1)
-        self.assertGreater(output.shape[-1], 0)
-
-    def test_save_pretrained_roundtrip(self):
+    def test_save_load_local(self):
         import tempfile
 
         device = "cpu"
@@ -149,6 +131,57 @@ class LongCatAudioDiTPipelineFastTests(unittest.TestCase):
         self.assertIsInstance(reloaded, LongCatAudioDiTPipeline)
         self.assertEqual(output.ndim, 3)
         self.assertGreater(output.shape[-1], 0)
+
+    def test_save_load_optional_components(self):
+        self.skipTest("LongCatAudioDiTPipeline does not define optional components.")
+
+    def test_inference_batch_single_identical(self):
+        self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+
+    def test_model_cpu_offload_forward_pass(self):
+        self.skipTest("LongCatAudioDiTPipeline offload coverage is not ready for the standard PipelineTesterMixin test.")
+
+    def test_cpu_offload_forward_pass_twice(self):
+        self.skipTest("LongCatAudioDiTPipeline offload coverage is not ready for the standard PipelineTesterMixin test.")
+
+    def test_sequential_cpu_offload_forward_pass(self):
+        self.skipTest("LongCatAudioDiTPipeline offload coverage is not ready for the standard PipelineTesterMixin test.")
+
+    def test_sequential_offload_forward_pass_twice(self):
+        self.skipTest("LongCatAudioDiTPipeline offload coverage is not ready for the standard PipelineTesterMixin test.")
+
+    def test_pipeline_level_group_offloading_inference(self):
+        self.skipTest("LongCatAudioDiTPipeline group offloading coverage is not ready for the standard PipelineTesterMixin test.")
+
+    def test_pipeline_with_accelerator_device_map(self):
+        self.skipTest("LongCatAudioDiTPipeline fast tests use a dummy tokenizer, so device-map roundtrip coverage is skipped here.")
+
+    def test_save_load_float16(self):
+        self.skipTest("LongCatAudioDiTPipeline fast tests use a dummy tokenizer, so float16 reload coverage is skipped here.")
+
+    def test_num_images_per_prompt(self):
+        self.skipTest("LongCatAudioDiTPipeline does not support num_images_per_prompt.")
+
+    def test_cfg(self):
+        self.skipTest("LongCatAudioDiTPipeline does not support generic CFG callback tests.")
+
+    def test_callback_inputs(self):
+        self.skipTest("LongCatAudioDiTPipeline does not expose callback inputs.")
+
+    def test_callback_cfg(self):
+        self.skipTest("LongCatAudioDiTPipeline does not expose callback CFG inputs.")
+
+    def test_serialization_with_variants(self):
+        self.skipTest("LongCatAudioDiTPipeline fast tests use a dummy tokenizer that is not variant-serializable.")
+
+    def test_loading_with_variants(self):
+        self.skipTest("LongCatAudioDiTPipeline fast tests use a dummy tokenizer that is not variant-serializable.")
+
+    def test_loading_with_incorrect_variants_raises_error(self):
+        self.skipTest("LongCatAudioDiTPipeline fast tests use a dummy tokenizer that is not variant-serializable.")
+
+    def test_encode_prompt_works_in_isolation(self):
+        self.skipTest("LongCatAudioDiTPipeline.encode_prompt has a custom signature.")
 
     def test_from_pretrained_local_dir(self):
         import tempfile
@@ -182,7 +215,7 @@ class LongCatAudioDiTPipelineFastTests(unittest.TestCase):
                 "dit_eps": 1e-6,
                 "dit_use_latent_condition": True,
                 "sampling_rate": 24000,
-                "latent_hop": 2,
+                "vae_scale_factor": 2,
                 "max_wav_duration": 30.0,
                 "text_norm_feat": True,
                 "text_add_embed": True,
@@ -194,7 +227,9 @@ class LongCatAudioDiTPipelineFastTests(unittest.TestCase):
                 json.dump(config, handle)
 
             state_dict = {}
-            state_dict.update({f"text_encoder.{k}": v for k, v in text_encoder.state_dict().items() if k != "shared.weight"})
+            state_dict.update(
+                {f"text_encoder.{k}": v for k, v in text_encoder.state_dict().items() if k != "shared.weight"}
+            )
             state_dict.update({f"transformer.{k}": v for k, v in transformer.state_dict().items()})
             state_dict.update({f"vae.{k}": v for k, v in vae.state_dict().items()})
             save_file(state_dict, model_dir / "model.safetensors")
@@ -209,7 +244,7 @@ class LongCatAudioDiTPipelineFastTests(unittest.TestCase):
 
             self.assertIsInstance(pipe, LongCatAudioDiTPipeline)
             self.assertEqual(pipe.sample_rate, 24000)
-            self.assertEqual(pipe.latent_hop, 2)
+            self.assertEqual(pipe.vae_scale_factor, 2)
             self.assertEqual(output.ndim, 3)
             self.assertGreater(output.shape[-1], 0)
 
@@ -222,35 +257,38 @@ def test_longcat_audio_top_level_imports():
 
 @slow
 @require_torch_accelerator
-def test_longcat_audio_pipeline_from_pretrained_real_local_weights():
-    model_path = Path(os.getenv("LONGCAT_AUDIO_DIT_MODEL_PATH", "/data/models/meituan-longcat/LongCat-AudioDiT-1B"))
-    tokenizer_path_env = os.getenv("LONGCAT_AUDIO_DIT_TOKENIZER_PATH")
-    if tokenizer_path_env is None:
-        raise unittest.SkipTest("LONGCAT_AUDIO_DIT_TOKENIZER_PATH is not set")
-    tokenizer_path = Path(tokenizer_path_env)
+class LongCatAudioDiTPipelineSlowTests(unittest.TestCase):
+    pipeline_class = LongCatAudioDiTPipeline
 
-    if not model_path.exists():
-        raise unittest.SkipTest(f"LongCat-AudioDiT model path not found: {model_path}")
-    if not tokenizer_path.exists():
-        raise unittest.SkipTest(f"LongCat-AudioDiT tokenizer path not found: {tokenizer_path}")
+    def test_longcat_audio_pipeline_from_pretrained_real_local_weights(self):
+        model_path = Path(os.getenv("LONGCAT_AUDIO_DIT_MODEL_PATH", "/data/models/meituan-longcat/LongCat-AudioDiT-1B"))
+        tokenizer_path_env = os.getenv("LONGCAT_AUDIO_DIT_TOKENIZER_PATH")
+        if tokenizer_path_env is None:
+            raise unittest.SkipTest("LONGCAT_AUDIO_DIT_TOKENIZER_PATH is not set")
+        tokenizer_path = Path(tokenizer_path_env)
 
-    pipe = LongCatAudioDiTPipeline.from_pretrained(
-        model_path,
-        tokenizer=tokenizer_path,
-        torch_dtype=torch.float16,
-        local_files_only=True,
-    )
-    pipe = pipe.to(torch_device)
+        if not model_path.exists():
+            raise unittest.SkipTest(f"LongCat-AudioDiT model path not found: {model_path}")
+        if not tokenizer_path.exists():
+            raise unittest.SkipTest(f"LongCat-AudioDiT tokenizer path not found: {tokenizer_path}")
 
-    result = pipe(
-        prompt="A calm ocean wave ambience with soft wind in the background.",
-        audio_end_in_s=2.0,
-        num_inference_steps=2,
-        guidance_scale=4.0,
-        output_type="pt",
-    )
+        pipe = LongCatAudioDiTPipeline.from_pretrained(
+            model_path,
+            tokenizer=tokenizer_path,
+            torch_dtype=torch.float16,
+            local_files_only=True,
+        )
+        pipe = pipe.to(torch_device)
 
-    assert result.audios.ndim == 3
-    assert result.audios.shape[0] == 1
-    assert result.audios.shape[1] == 1
-    assert result.audios.shape[-1] > 0
+        result = pipe(
+            prompt="A calm ocean wave ambience with soft wind in the background.",
+            audio_duration_s=2.0,
+            num_inference_steps=2,
+            guidance_scale=4.0,
+            output_type="pt",
+        )
+
+        assert result.audios.ndim == 3
+        assert result.audios.shape[0] == 1
+        assert result.audios.shape[1] == 1
+        assert result.audios.shape[-1] > 0
