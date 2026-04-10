@@ -90,8 +90,6 @@ else:
     ]
     _import_structure["ltx"] = [
         "LTXAutoBlocks",
-        "LTXBlocks",
-        "LTXImage2VideoBlocks",
         "LTXModularPipeline",
     ]
     _import_structure["z_image"] = [
@@ -125,7 +123,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HeliosPyramidDistilledModularPipeline,
             HeliosPyramidModularPipeline,
         )
-        from .ltx import LTXAutoBlocks, LTXBlocks, LTXImage2VideoBlocks, LTXModularPipeline
+        from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
