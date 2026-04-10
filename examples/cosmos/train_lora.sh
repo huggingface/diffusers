@@ -2,7 +2,7 @@ export MODEL_NAME="nvidia/Cosmos-Predict2.5-2B"
 export DATA_DIR="gr1_dataset/train"
 export OUT_DIR=YOUR_OUTPUT_DIR
 lora_rank=32
-revision="post-trained"
+revision="diffusers/base/post-trained"
 
 export TOKENIZERS_PARALLELISM=false
 accelerate launch --mixed_precision="bf16" train_cosmos_predict25_lora.py \
