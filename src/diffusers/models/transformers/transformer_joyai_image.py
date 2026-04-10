@@ -1,3 +1,18 @@
+# Copyright 2026 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# This model is adapted from https://github.com/jd-opensource/JoyAI-Image
+
 import math
 from typing import Any, Dict, Optional, Tuple, Union
 
@@ -18,17 +33,11 @@ from diffusers.models.embeddings import (
 from diffusers.models.normalization import RMSNorm
 
 
-def _create_modulation(
-        modulate_type: str,
-        hidden_size: int,
-        factor: int,
-        dtype=None,
-        device=None):
+def _create_modulation(modulate_type: str, hidden_size: int, factor: int, dtype=None, device=None):
     factory_kwargs = {"dtype": dtype, "device": device}
-    if modulate_type == 'wanx':
+    if modulate_type == "wanx":
         return _WanModulation(hidden_size, factor, **factory_kwargs)
-    raise ValueError(
-        f"Unknown modulation type: {modulate_type}. Only 'wanx' is supported.")
+    raise ValueError(f"Unknown modulation type: {modulate_type}. Only 'wanx' is supported.")
 
 
 class _WanModulation(nn.Module):
@@ -44,9 +53,7 @@ class _WanModulation(nn.Module):
         super().__init__()
         self.factor = factor
         self.modulate_table = nn.Parameter(
-            torch.zeros(1, factor, hidden_size,
-                        dtype=dtype, device=device) / hidden_size**0.5,
-            requires_grad=True
+            torch.zeros(1, factor, hidden_size, dtype=dtype, device=device) / hidden_size**0.5, requires_grad=True
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -131,7 +138,7 @@ class JoyAIImageTransformerBlock(nn.Module):
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         dit_modulation_type: Optional[str] = "wanx",
-        attn_backend: str = 'flash_attn',
+        attn_backend: str = "flash_attn",
     ):
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -146,24 +153,15 @@ class JoyAIImageTransformerBlock(nn.Module):
             factor=6,
             **factory_kwargs,
         )
-        self.img_norm1 = nn.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs
-        )
+        self.img_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
 
-        self.img_attn_qkv = nn.Linear(
-            hidden_size, hidden_size * 3, bias=True, **factory_kwargs
-        )
+        self.img_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=True, **factory_kwargs)
         self.img_attn_q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
         self.img_attn_k_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
-        self.img_attn_proj = nn.Linear(
-            hidden_size, hidden_size, bias=True, **factory_kwargs
-        )
+        self.img_attn_proj = nn.Linear(hidden_size, hidden_size, bias=True, **factory_kwargs)
 
-        self.img_norm2 = nn.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs
-        )
-        self.img_mlp = FeedForward(hidden_size, inner_dim=mlp_hidden_dim,
-                                   activation_fn="gelu-approximate")
+        self.img_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
+        self.img_mlp = FeedForward(hidden_size, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
 
         self.txt_mod = _create_modulation(
             modulate_type=self.dit_modulation_type,
@@ -171,25 +169,16 @@ class JoyAIImageTransformerBlock(nn.Module):
             factor=6,
             **factory_kwargs,
         )
-        self.txt_norm1 = nn.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs
-        )
+        self.txt_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
 
-        self.txt_attn_qkv = nn.Linear(
-            hidden_size, hidden_size * 3, bias=True, **factory_kwargs
-        )
+        self.txt_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=True, **factory_kwargs)
         self.txt_attn_q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
         self.txt_attn_k_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6)
-        self.txt_attn_proj = nn.Linear(
-            hidden_size, hidden_size, bias=True, **factory_kwargs
-        )
+        self.txt_attn_proj = nn.Linear(hidden_size, hidden_size, bias=True, **factory_kwargs)
         self.attn = JoyAIJointAttention(attn_backend)
 
-        self.txt_norm2 = nn.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs
-        )
-        self.txt_mlp = FeedForward(hidden_size, inner_dim=mlp_hidden_dim,
-                                   activation_fn="gelu-approximate")
+        self.txt_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
+        self.txt_mlp = FeedForward(hidden_size, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
 
     @staticmethod
     def _modulate(
@@ -204,9 +193,7 @@ class JoyAIImageTransformerBlock(nn.Module):
         return hidden_states * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
     @staticmethod
-    def _apply_gate(
-        hidden_states: torch.Tensor, gate: torch.Tensor | None = None, tanh: bool = False
-    ) -> torch.Tensor:
+    def _apply_gate(hidden_states: torch.Tensor, gate: torch.Tensor | None = None, tanh: bool = False) -> torch.Tensor:
         if gate is None:
             return hidden_states
         if tanh:
@@ -240,9 +227,7 @@ class JoyAIImageTransformerBlock(nn.Module):
         ) = self.txt_mod(vec)
 
         img_modulated = self.img_norm1(img)
-        img_modulated = self._modulate(
-            img_modulated, shift=img_mod1_shift, scale=img_mod1_scale
-        )
+        img_modulated = self._modulate(img_modulated, shift=img_mod1_shift, scale=img_mod1_scale)
         img_qkv = self.img_attn_qkv(img_modulated)
         batch_size, image_sequence_length, _ = img_qkv.shape
         img_qkv = img_qkv.view(batch_size, image_sequence_length, 3, self.heads_num, -1).permute(2, 0, 1, 3, 4)
@@ -255,9 +240,7 @@ class JoyAIImageTransformerBlock(nn.Module):
             img_k = apply_rotary_emb(img_k, vis_freqs_cis, sequence_dim=1)
 
         txt_modulated = self.txt_norm1(txt)
-        txt_modulated = self._modulate(
-            txt_modulated, shift=txt_mod1_shift, scale=txt_mod1_scale
-        )
+        txt_modulated = self._modulate(txt_modulated, shift=txt_mod1_shift, scale=txt_mod1_scale)
         txt_qkv = self.txt_attn_qkv(txt_modulated)
         _, text_sequence_length, _ = txt_qkv.shape
         txt_qkv = txt_qkv.view(batch_size, text_sequence_length, 3, self.heads_num, -1).permute(2, 0, 1, 3, 4)
@@ -268,7 +251,6 @@ class JoyAIImageTransformerBlock(nn.Module):
         if txt_freqs_cis is not None:
             raise NotImplementedError("RoPE text is not supported for inference")
 
-
         attention_output = self.attn(
             torch.cat((img_q, txt_q), dim=1),
             torch.cat((img_k, txt_k), dim=1),
@@ -278,27 +260,17 @@ class JoyAIImageTransformerBlock(nn.Module):
         )
         attention_output = attention_output.flatten(2, 3)
         image_attention_output = attention_output[:, : img.shape[1]]
-        text_attention_output = attention_output[:, img.shape[1]:]
+        text_attention_output = attention_output[:, img.shape[1] :]
 
-        img = img + self._apply_gate(self.img_attn_proj(image_attention_output),
-                               gate=img_mod1_gate)
+        img = img + self._apply_gate(self.img_attn_proj(image_attention_output), gate=img_mod1_gate)
         img = img + self._apply_gate(
-            self.img_mlp(
-                self._modulate(
-                    self.img_norm2(img), shift=img_mod2_shift, scale=img_mod2_scale
-                )
-            ),
+            self.img_mlp(self._modulate(self.img_norm2(img), shift=img_mod2_shift, scale=img_mod2_scale)),
             gate=img_mod2_gate,
         )
 
-        txt = txt + self._apply_gate(self.txt_attn_proj(text_attention_output),
-                               gate=txt_mod1_gate)
+        txt = txt + self._apply_gate(self.txt_attn_proj(text_attention_output), gate=txt_mod1_gate)
         txt = txt + self._apply_gate(
-            self.txt_mlp(
-                self._modulate(
-                    self.txt_norm2(txt), shift=txt_mod2_shift, scale=txt_mod2_scale
-                )
-            ),
+            self.txt_mlp(self._modulate(self.txt_norm2(txt), shift=txt_mod2_shift, scale=txt_mod2_scale)),
             gate=txt_mod2_gate,
         )
 
@@ -315,14 +287,11 @@ class JoyAITimeTextEmbedding(nn.Module):
     ):
         super().__init__()
 
-        self.timesteps_proj = Timesteps(
-            num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.time_embedder = TimestepEmbedding(
-            in_channels=time_freq_dim, time_embed_dim=dim)
+        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
         self.act_fn = nn.SiLU()
         self.time_proj = nn.Linear(dim, time_proj_dim)
-        self.text_embedder = PixArtAlphaTextProjection(
-            text_embed_dim, dim, act_fn="gelu_tanh")
+        self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
 
     def forward(
         self,
@@ -342,8 +311,7 @@ class JoyAITimeTextEmbedding(nn.Module):
 
 
 class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
-    _fsdp_shard_conditions: list = [
-        lambda name, module: isinstance(module, JoyAIImageTransformerBlock)]
+    _fsdp_shard_conditions: list = [lambda name, module: isinstance(module, JoyAIImageTransformerBlock)]
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -358,11 +326,11 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         mlp_width_ratio: float = 4.0,
         mm_double_blocks_depth: int = 20,
         rope_dim_list: tuple[int, int, int] = (16, 56, 56),
-        rope_type: str = 'rope',
+        rope_type: str = "rope",
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         dit_modulation_type: str = "wanx",
-        attn_backend: str = 'flash_attn',
+        attn_backend: str = "flash_attn",
         theta: int = 256,
     ):
         self.out_channels = out_channels or in_channels
@@ -377,12 +345,9 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         if hidden_size % heads_num != 0:
-            raise ValueError(
-                f"Hidden size {hidden_size} must be divisible by heads_num {heads_num}"
-            )
+            raise ValueError(f"Hidden size {hidden_size} must be divisible by heads_num {heads_num}")
 
-        self.img_in = nn.Conv3d(
-            in_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
+        self.img_in = nn.Conv3d(in_channels, hidden_size, kernel_size=patch_size, stride=patch_size)
 
         self.condition_embedder = JoyAITimeTextEmbedding(
             dim=hidden_size,
@@ -405,13 +370,8 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             ]
         )
 
-        self.norm_out = nn.LayerNorm(
-            hidden_size, elementwise_affine=False, eps=1e-6
-        )
-        self.proj_out = nn.Linear(
-            hidden_size, out_channels * math.prod(patch_size),
-            **factory_kwargs)
-
+        self.norm_out = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.proj_out = nn.Linear(hidden_size, out_channels * math.prod(patch_size), **factory_kwargs)
 
     @staticmethod
     def _get_meshgrid_nd(start, *args, dim=2):
@@ -423,6 +383,7 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             if len(value) == dim:
                 return value
             raise ValueError(f"Expected length {dim} or int, but got {value}")
+
         if len(args) == 0:
             num = as_tuple(start)
             start = (0,) * dim
@@ -448,7 +409,6 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
         return grid
 
-
     @staticmethod
     def _get_nd_rotary_pos_embed(
         rope_dim_list,
@@ -460,9 +420,7 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     ):
         """Build visual and optional text rotary embeddings."""
 
-        grid = JoyAIImageTransformer3DModel._get_meshgrid_nd(
-            start, *args, dim=len(rope_dim_list)
-        )
+        grid = JoyAIImageTransformer3DModel._get_meshgrid_nd(start, *args, dim=len(rope_dim_list))
 
         embs = []
         for i in range(len(rope_dim_list)):
@@ -502,9 +460,6 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             txt_emb = None
         return vis_emb, txt_emb
 
-
-
-
     def get_rotary_pos_embed(self, image_grid_size, text_sequence_length=None):
         target_ndim = 3
 
@@ -513,11 +468,8 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         head_dim = self.hidden_size // self.heads_num
         rope_dim_list = self.rope_dim_list
         if rope_dim_list is None:
-            rope_dim_list = [head_dim //
-                             target_ndim for _ in range(target_ndim)]
-        assert (
-            sum(rope_dim_list) == head_dim
-        ), "sum(rope_dim_list) should equal to head_dim of attention layer"
+            rope_dim_list = [head_dim // target_ndim for _ in range(target_ndim)]
+        assert sum(rope_dim_list) == head_dim, "sum(rope_dim_list) should equal to head_dim of attention layer"
         image_rotary_emb, text_rotary_emb = self._get_nd_rotary_pos_embed(
             rope_dim_list,
             image_grid_size,
@@ -535,19 +487,13 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         encoder_hidden_states_mask: torch.Tensor = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        is_multi_item = (len(hidden_states.shape) == 6)
+        is_multi_item = len(hidden_states.shape) == 6
         num_items = 0
         if is_multi_item:
             num_items = hidden_states.shape[1]
             if num_items > 1:
                 assert self.patch_size[0] == 1, "For multi-item input, patch_size[0] must be 1"
-                hidden_states = torch.cat(
-                    [
-                        hidden_states[:, -1:],
-                        hidden_states[:, :-1]
-                    ],
-                    dim=1
-                )
+                hidden_states = torch.cat([hidden_states[:, -1:], hidden_states[:, :-1]], dim=1)
             batch_size, num_items, channels, frames_per_item, height, width = hidden_states.shape
             hidden_states = hidden_states.permute(0, 2, 1, 3, 4, 5).reshape(
                 batch_size, channels, num_items * frames_per_item, height, width
@@ -568,7 +514,9 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
                 device=image_hidden_states.device,
             )
         else:
-            encoder_hidden_states_mask = encoder_hidden_states_mask.to(device=image_hidden_states.device, dtype=torch.bool)
+            encoder_hidden_states_mask = encoder_hidden_states_mask.to(
+                device=image_hidden_states.device, dtype=torch.bool
+            )
         modulation_states, text_hidden_states = self.condition_embedder(timestep, encoder_hidden_states)
         if modulation_states.shape[-1] > self.hidden_size:
             modulation_states = modulation_states.unflatten(1, (6, -1))
@@ -577,7 +525,7 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         image_seq_len = image_hidden_states.shape[1]
         image_rotary_emb, text_rotary_emb = self.get_rotary_pos_embed(
             image_grid_size=(latent_frames, latent_height, latent_width),
-            text_sequence_length=text_seq_len if self.rope_type == 'mrope' else None,
+            text_sequence_length=text_seq_len if self.rope_type == "mrope" else None,
         )
 
         attention_mask = torch.cat(
@@ -592,9 +540,9 @@ class JoyAIImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             dim=1,
         )
         attention_kwargs = {
-            'thw': [latent_frames, latent_height, latent_width],
-            'txt_len': text_seq_len,
-            'attention_mask': attention_mask,
+            "thw": [latent_frames, latent_height, latent_width],
+            "txt_len": text_seq_len,
+            "attention_mask": attention_mask,
         }
 
         for block in self.double_blocks:

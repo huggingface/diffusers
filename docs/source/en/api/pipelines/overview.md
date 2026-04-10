@@ -49,6 +49,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Kandinsky 2.2](kandinsky_v22) | text2image, image2image, inpainting |
 | [Kandinsky 3](kandinsky3) | text2image, image2image |
 | [Kolors](kolors) | text2image |
+| [JoyAI-Image](joyai_image) | image editing |
 | [Latent Consistency Models](latent_consistency_models) | text2image |
 | [Latent Diffusion](latent_diffusion) | text2image, super-resolution |
 | [Latte](latte) | text2image |

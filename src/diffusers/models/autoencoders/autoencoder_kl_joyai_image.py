@@ -1,4 +1,17 @@
-# Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# This model is adapted from https://github.com/jd-opensource/JoyAI-Image
 
 from contextlib import nullcontext
 
@@ -245,15 +258,16 @@ class AttentionBlock(nn.Module):
 
 
 class Encoder3d(nn.Module):
-
-    def __init__(self,
-                 dim=128,
-                 z_dim=4,
-                 dim_mult=[1, 2, 4, 4],
-                 num_res_blocks=2,
-                 attn_scales=[],
-                 temperal_downsample=[True, True, False],
-                 dropout=0.0):
+    def __init__(
+        self,
+        dim=128,
+        z_dim=4,
+        dim_mult=[1, 2, 4, 4],
+        num_res_blocks=2,
+        attn_scales=[],
+        temperal_downsample=[True, True, False],
+        dropout=0.0,
+    ):
         super().__init__()
         self.dim = dim
         self.z_dim = z_dim
@@ -281,8 +295,7 @@ class Encoder3d(nn.Module):
 
             # downsample block
             if i != len(dim_mult) - 1:
-                mode = 'downsample3d' if temperal_downsample[
-                    i] else 'downsample2d'
+                mode = "downsample3d" if temperal_downsample[i] else "downsample2d"
                 downsamples.append(Resample(out_dim, mode=mode))
                 scale /= 2.0
         self.downsamples = nn.ModuleList(downsamples)
@@ -311,11 +324,7 @@ class Encoder3d(nn.Module):
             cache_x = x[:, :, -CACHE_T:, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
-                cache_x = torch.cat([
-                    feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(
-                        cache_x.device), cache_x
-                ],
-                                    dim=2)
+                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
             x = self.conv1(x, feat_cache[idx])
             feat_cache[idx] = cache_x
             feat_idx[0] += 1
@@ -341,11 +350,9 @@ class Encoder3d(nn.Module):
                 cache_x = x[:, :, -CACHE_T:, :, :].clone()
                 if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                     # cache last frame of last two chunk
-                    cache_x = torch.cat([
-                        feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(
-                            cache_x.device), cache_x
-                    ],
-                                        dim=2)
+                    cache_x = torch.cat(
+                        [feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2
+                    )
                 x = layer(x, feat_cache[idx])
                 feat_cache[idx] = cache_x
                 feat_idx[0] += 1
@@ -355,15 +362,16 @@ class Encoder3d(nn.Module):
 
 
 class Decoder3d(nn.Module):
-
-    def __init__(self,
-                 dim=128,
-                 z_dim=4,
-                 dim_mult=[1, 2, 4, 4],
-                 num_res_blocks=2,
-                 attn_scales=[],
-                 temperal_upsample=[False, True, True],
-                 dropout=0.0):
+    def __init__(
+        self,
+        dim=128,
+        z_dim=4,
+        dim_mult=[1, 2, 4, 4],
+        num_res_blocks=2,
+        attn_scales=[],
+        temperal_upsample=[False, True, True],
+        dropout=0.0,
+    ):
         super().__init__()
         self.dim = dim
         self.z_dim = z_dim
@@ -374,7 +382,7 @@ class Decoder3d(nn.Module):
 
         # dimensions
         dims = [dim * u for u in [dim_mult[-1]] + dim_mult[::-1]]
-        scale = 1.0 / 2**(len(dim_mult) - 2)
+        scale = 1.0 / 2 ** (len(dim_mult) - 2)
 
         # init block
         self.conv1 = CausalConv3d(z_dim, dims[0], 3, padding=1)
@@ -402,7 +410,7 @@ class Decoder3d(nn.Module):
 
             # upsample block
             if i != len(dim_mult) - 1:
-                mode = 'upsample3d' if temperal_upsample[i] else 'upsample2d'
+                mode = "upsample3d" if temperal_upsample[i] else "upsample2d"
                 upsamples.append(Resample(out_dim, mode=mode))
                 scale *= 2.0
         self.upsamples = nn.ModuleList(upsamples)
@@ -423,11 +431,7 @@ class Decoder3d(nn.Module):
             cache_x = x[:, :, -CACHE_T:, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
-                cache_x = torch.cat([
-                    feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(
-                        cache_x.device), cache_x
-                ],
-                                    dim=2)
+                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
             x = self.conv1(x, feat_cache[idx])
             feat_cache[idx] = cache_x
             feat_idx[0] += 1
@@ -452,11 +456,9 @@ class Decoder3d(nn.Module):
                 cache_x = x[:, :, -CACHE_T:, :, :].clone()
                 if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                     # cache last frame of last two chunk
-                    cache_x = torch.cat([
-                        feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(
-                            cache_x.device), cache_x
-                    ],
-                                        dim=2)
+                    cache_x = torch.cat(
+                        [feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2
+                    )
                 x = layer(x, feat_cache[idx])
                 feat_cache[idx] = cache_x
                 feat_idx[0] += 1
@@ -474,15 +476,16 @@ def count_conv3d(model):
 
 
 class WanVAE_(nn.Module):
-
-    def __init__(self,
-                 dim=128,
-                 z_dim=4,
-                 dim_mult=[1, 2, 4, 4],
-                 num_res_blocks=2,
-                 attn_scales=[],
-                 temperal_downsample=[True, True, False],
-                 dropout=0.0):
+    def __init__(
+        self,
+        dim=128,
+        z_dim=4,
+        dim_mult=[1, 2, 4, 4],
+        num_res_blocks=2,
+        attn_scales=[],
+        temperal_downsample=[True, True, False],
+        dropout=0.0,
+    ):
         super().__init__()
         self.dim = dim
         self.z_dim = z_dim
@@ -493,12 +496,12 @@ class WanVAE_(nn.Module):
         self.temperal_upsample = temperal_downsample[::-1]
 
         # modules
-        self.encoder = Encoder3d(dim, z_dim * 2, dim_mult, num_res_blocks,
-                                 attn_scales, self.temperal_downsample, dropout)
+        self.encoder = Encoder3d(
+            dim, z_dim * 2, dim_mult, num_res_blocks, attn_scales, self.temperal_downsample, dropout
+        )
         self.conv1 = CausalConv3d(z_dim * 2, z_dim * 2, 1)
         self.conv2 = CausalConv3d(z_dim, z_dim, 1)
-        self.decoder = Decoder3d(dim, z_dim, dim_mult, num_res_blocks,
-                                 attn_scales, self.temperal_upsample, dropout)
+        self.decoder = Decoder3d(dim, z_dim, dim_mult, num_res_blocks, attn_scales, self.temperal_upsample, dropout)
 
     @property
     def quant_conv(self):
@@ -518,7 +521,7 @@ class WanVAE_(nn.Module):
                 encoded = self.encoder(x[:, :, :1, :, :], feat_cache=self._enc_feat_map, feat_idx=self._enc_conv_idx)
             else:
                 encoded_chunk = self.encoder(
-                    x[:, :, 1 + 4 * (chunk_idx - 1): 1 + 4 * chunk_idx, :, :],
+                    x[:, :, 1 + 4 * (chunk_idx - 1) : 1 + 4 * chunk_idx, :, :],
                     feat_cache=self._enc_feat_map,
                     feat_idx=self._enc_conv_idx,
                 )
@@ -555,8 +558,7 @@ class WanVAE_(nn.Module):
 
         mu = self.reparameterize(mu, log_var)
         if isinstance(scale[0], torch.Tensor):
-            mu = (mu - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(
-                1, self.z_dim, 1, 1, 1)
+            mu = (mu - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(1, self.z_dim, 1, 1, 1)
         else:
             mu = (mu - scale[0]) * scale[1]
         self.clear_cache()
@@ -566,8 +568,7 @@ class WanVAE_(nn.Module):
         self.clear_cache()
         if scale is not None:
             if isinstance(scale[0], torch.Tensor):
-                z = z / scale[1].view(1, self.z_dim, 1, 1, 1) + scale[0].view(
-                    1, self.z_dim, 1, 1, 1)
+                z = z / scale[1].view(1, self.z_dim, 1, 1, 1) + scale[0].view(1, self.z_dim, 1, 1, 1)
             else:
                 z = z / scale[1] + scale[0]
         decoded = self._decode_frames(self.post_quant_conv(z))
@@ -586,8 +587,7 @@ class WanVAE_(nn.Module):
         std = torch.exp(0.5 * log_var.clamp(-30.0, 20.0))
         mu = mu + std * torch.randn_like(std)
         if isinstance(scale[0], torch.Tensor):
-            mu = (mu - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(
-                1, self.z_dim, 1, 1, 1)
+            mu = (mu - scale[0].view(1, self.z_dim, 1, 1, 1)) * scale[1].view(1, self.z_dim, 1, 1, 1)
         else:
             mu = (mu - scale[0]) * scale[1]
         self.clear_cache()
@@ -597,7 +597,7 @@ class WanVAE_(nn.Module):
         self._conv_num = count_conv3d(self.decoder)
         self._conv_idx = [0]
         self._feat_map = [None] * self._conv_num
-        #cache encode
+        # cache encode
         self._enc_conv_num = count_conv3d(self.encoder)
         self._enc_conv_idx = [0]
         self._enc_feat_map = [None] * self._enc_conv_num
@@ -675,12 +675,40 @@ class JoyAIImageVAE(ModelMixin, ConfigMixin, AutoencoderMixin, FromOriginalModel
         temperal_downsample: list[bool] | tuple[bool, ...] = (False, True, True),
         dropout: float = 0.0,
         latents_mean: list[float] | tuple[float, ...] = (
-            -0.7571, -0.7089, -0.9113, 0.1075, -0.1745, 0.9653, -0.1517, 1.5508,
-            0.4134, -0.0715, 0.5517, -0.3632, -0.1922, -0.9497, 0.2503, -0.2921,
+            -0.7571,
+            -0.7089,
+            -0.9113,
+            0.1075,
+            -0.1745,
+            0.9653,
+            -0.1517,
+            1.5508,
+            0.4134,
+            -0.0715,
+            0.5517,
+            -0.3632,
+            -0.1922,
+            -0.9497,
+            0.2503,
+            -0.2921,
         ),
         latents_std: list[float] | tuple[float, ...] = (
-            2.8184, 1.4541, 2.3275, 2.6558, 1.2196, 1.7708, 2.6052, 2.0743,
-            3.2687, 2.1526, 2.8652, 1.5579, 1.6382, 1.1253, 2.8251, 1.9160,
+            2.8184,
+            1.4541,
+            2.3275,
+            2.6558,
+            1.2196,
+            1.7708,
+            2.6052,
+            2.0743,
+            3.2687,
+            2.1526,
+            2.8652,
+            1.5579,
+            1.6382,
+            1.1253,
+            2.8251,
+            1.9160,
         ),
         spatial_compression_ratio: int = 8,
         temporal_compression_ratio: int = 4,
@@ -733,7 +761,11 @@ class JoyAIImageVAE(ModelMixin, ConfigMixin, AutoencoderMixin, FromOriginalModel
 
     @apply_forward_hook
     def encode(self, videos: torch.Tensor, return_dict: bool = True, return_posterior: bool = False, **kwargs):
-        autocast_context = torch.amp.autocast(device_type="cuda", dtype=torch.float32) if videos.device.type == "cuda" else nullcontext()
+        autocast_context = (
+            torch.amp.autocast(device_type="cuda", dtype=torch.float32)
+            if videos.device.type == "cuda"
+            else nullcontext()
+        )
         with autocast_context:
             mean, logvar = self.model.encode(videos, scale=None, return_posterior=True)
             if return_posterior:
@@ -750,7 +782,9 @@ class JoyAIImageVAE(ModelMixin, ConfigMixin, AutoencoderMixin, FromOriginalModel
 
     @apply_forward_hook
     def decode(self, zs: torch.Tensor, return_dict: bool = True, **kwargs):
-        autocast_context = torch.amp.autocast(device_type="cuda", dtype=torch.float32) if zs.device.type == "cuda" else nullcontext()
+        autocast_context = (
+            torch.amp.autocast(device_type="cuda", dtype=torch.float32) if zs.device.type == "cuda" else nullcontext()
+        )
         with autocast_context:
             mean, inv_std = self._latent_scale_tensors(zs.device, zs.dtype)
             scale = [mean.view(-1), inv_std.view(-1)]

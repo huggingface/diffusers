@@ -171,15 +171,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_euler_discrete import EulerDiscreteScheduler
         from .scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
         from .scheduling_flow_match_heun_discrete import FlowMatchHeunDiscreteScheduler
-        from .scheduling_joyai_flow_match_discrete import (
-            JoyAIFlowMatchDiscreteScheduler,
-            JoyAIFlowMatchDiscreteSchedulerOutput,
-        )
         from .scheduling_flow_match_lcm import FlowMatchLCMScheduler
         from .scheduling_helios import HeliosScheduler
         from .scheduling_helios_dmd import HeliosDMDScheduler
         from .scheduling_heun_discrete import HeunDiscreteScheduler
         from .scheduling_ipndm import IPNDMScheduler
+        from .scheduling_joyai_flow_match_discrete import (
+            JoyAIFlowMatchDiscreteScheduler,
+            JoyAIFlowMatchDiscreteSchedulerOutput,
+        )
         from .scheduling_k_dpm_2_ancestral_discrete import KDPM2AncestralDiscreteScheduler
         from .scheduling_k_dpm_2_discrete import KDPM2DiscreteScheduler
         from .scheduling_lcm import LCMScheduler

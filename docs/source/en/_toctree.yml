@@ -370,6 +370,8 @@
         title: LatteTransformer3DModel
       - local: api/models/longcat_image_transformer2d
         title: LongCatImageTransformer2DModel
+      - local: api/models/joyai_image_transformer3d
+        title: JoyAIImageTransformer3DModel
       - local: api/models/ltx2_video_transformer3d
         title: LTX2VideoTransformer3DModel
       - local: api/models/ltx_video_transformer3d
@@ -466,6 +468,8 @@
         title: AutoencoderKLQwenImage
       - local: api/models/autoencoder_kl_wan
         title: AutoencoderKLWan
+      - local: api/models/autoencoder_kl_joyai_image
+        title: JoyAIImageVAE
       - local: api/models/autoencoder_rae
         title: AutoencoderRAE
       - local: api/models/consistency_decoder_vae
@@ -558,6 +562,8 @@
         title: Kandinsky 5.0 Image
       - local: api/pipelines/kolors
         title: Kolors
+      - local: api/pipelines/joyai_image
+        title: JoyAI-Image
       - local: api/pipelines/latent_consistency_models
         title: Latent Consistency Models
       - local: api/pipelines/latent_diffusion

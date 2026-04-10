@@ -173,7 +173,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
-            JoyAIImageVAE,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
@@ -181,6 +180,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             AutoencoderVidTok,
             ConsistencyDecoderVAE,
+            JoyAIImageVAE,
             VQModel,
         )
         from .cache_utils import CacheMixin
@@ -228,10 +228,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HiDreamImageTransformer2DModel,
             HunyuanDiT2DModel,
             HunyuanImageTransformer2DModel,
-            JoyAIImageTransformer3DModel,
             HunyuanVideo15Transformer3DModel,
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
+            JoyAIImageTransformer3DModel,
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
             LongCatImageTransformer2DModel,
