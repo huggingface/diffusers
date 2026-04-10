@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from ...utils import logging
-from ..modular_pipeline import SequentialPipelineBlocks
+from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
     HunyuanVideo15Image2VideoPrepareLatentsStep,
@@ -23,7 +23,11 @@ from .before_denoise import (
 )
 from .decoders import HunyuanVideo15VaeDecoderStep
 from .denoise import HunyuanVideo15DenoiseStep, HunyuanVideo15Image2VideoDenoiseStep
-from .encoders import HunyuanVideo15TextEncoderStep
+from .encoders import (
+    HunyuanVideo15ImageEncoderStep,
+    HunyuanVideo15TextEncoderStep,
+    HunyuanVideo15VaeEncoderStep,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -244,10 +248,11 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         HunyuanVideo15TextInputStep,
         HunyuanVideo15SetTimestepsStep,
+        HunyuanVideo15PrepareLatentsStep,
         HunyuanVideo15Image2VideoPrepareLatentsStep,
         HunyuanVideo15Image2VideoDenoiseStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "denoise"]
+    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_i2v_latents", "denoise"]
 
     @property
     def description(self):
@@ -256,6 +261,109 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [OutputParam.template("latents")]
+
+
+# auto_docstring
+class HunyuanVideo15AutoVaeEncoderStep(AutoPipelineBlocks):
+    """
+    VAE encoder step that encodes the image input into its latent representation.
+      This is an auto pipeline block that works for image-to-video tasks.
+       - `HunyuanVideo15VaeEncoderStep` is used when `image` is provided.
+       - If `image` is not provided, step will be skipped.
+    """
+
+    model_name = "hunyuan-video-1.5"
+    block_classes = [HunyuanVideo15VaeEncoderStep]
+    block_names = ["vae_encoder"]
+    block_trigger_inputs = ["image"]
+
+    @property
+    def description(self):
+        return (
+            "VAE encoder step that encodes the image input into its latent representation.\n"
+            "This is an auto pipeline block that works for image-to-video tasks.\n"
+            " - `HunyuanVideo15VaeEncoderStep` is used when `image` is provided.\n"
+            " - If `image` is not provided, step will be skipped."
+        )
+
+
+# auto_docstring
+class HunyuanVideo15AutoImageEncoderStep(AutoPipelineBlocks):
+    """
+    Siglip image encoder step that produces image_embeds.
+      This is an auto pipeline block that works for image-to-video tasks.
+       - `HunyuanVideo15ImageEncoderStep` is used when `image` is provided.
+       - If `image` is not provided, step will be skipped.
+    """
+
+    model_name = "hunyuan-video-1.5"
+    block_classes = [HunyuanVideo15ImageEncoderStep]
+    block_names = ["image_encoder"]
+    block_trigger_inputs = ["image"]
+
+    @property
+    def description(self):
+        return (
+            "Siglip image encoder step that produces image_embeds.\n"
+            "This is an auto pipeline block that works for image-to-video tasks.\n"
+            " - `HunyuanVideo15ImageEncoderStep` is used when `image` is provided.\n"
+            " - If `image` is not provided, step will be skipped."
+        )
+
+
+# auto_docstring
+class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
+    """
+    Auto denoise block that selects the appropriate denoise pipeline based on inputs.
+      - `HunyuanVideo15Image2VideoCoreDenoiseStep` is used when `image_latents` is provided.
+      - `HunyuanVideo15CoreDenoiseStep` is used otherwise (text-to-video).
+    """
+
+    model_name = "hunyuan-video-1.5"
+    block_classes = [HunyuanVideo15Image2VideoCoreDenoiseStep, HunyuanVideo15CoreDenoiseStep]
+    block_names = ["image2video", "text2video"]
+    block_trigger_inputs = ["image_latents", None]
+
+    @property
+    def description(self):
+        return (
+            "Auto denoise block that selects the appropriate denoise pipeline based on inputs.\n"
+            " - `HunyuanVideo15Image2VideoCoreDenoiseStep` is used when `image_latents` is provided.\n"
+            " - `HunyuanVideo15CoreDenoiseStep` is used otherwise (text-to-video)."
+        )
+
+
+# auto_docstring
+class HunyuanVideo15AutoBlocks(SequentialPipelineBlocks):
+    """
+    Auto blocks for HunyuanVideo 1.5 that support both text-to-video and image-to-video workflows.
+
+    Supported workflows:
+      - `text2video`: requires `prompt`
+      - `image2video`: requires `image`, `prompt`
+    """
+
+    model_name = "hunyuan-video-1.5"
+    block_classes = [
+        HunyuanVideo15TextEncoderStep,
+        HunyuanVideo15AutoVaeEncoderStep,
+        HunyuanVideo15AutoImageEncoderStep,
+        HunyuanVideo15AutoCoreDenoiseStep,
+        HunyuanVideo15VaeDecoderStep,
+    ]
+    block_names = ["text_encoder", "vae_encoder", "image_encoder", "denoise", "decode"]
+
+    @property
+    def description(self):
+        return (
+            "Auto blocks for HunyuanVideo 1.5 that support both text-to-video and image-to-video workflows.\n"
+            " - text2video: requires `prompt`\n"
+            " - image2video: requires `image`, `prompt`"
+        )
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("videos")]
 
 
 # auto_docstring
@@ -327,10 +435,12 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
     model_name = "hunyuan-video-1.5"
     block_classes = [
         HunyuanVideo15TextEncoderStep,
+        HunyuanVideo15AutoVaeEncoderStep,
+        HunyuanVideo15AutoImageEncoderStep,
         HunyuanVideo15Image2VideoCoreDenoiseStep,
         HunyuanVideo15VaeDecoderStep,
     ]
-    block_names = ["text_encoder", "denoise", "decode"]
+    block_names = ["text_encoder", "vae_encoder", "image_encoder", "denoise", "decode"]
 
     @property
     def description(self):

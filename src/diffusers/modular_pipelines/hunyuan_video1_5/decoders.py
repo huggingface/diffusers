@@ -58,19 +58,13 @@ class HunyuanVideo15VaeDecoderStep(ModularPipelineBlocks):
             OutputParam.template("videos"),
         ]
 
-    # Copied from pipeline_hunyuan_video1_5.py lines 823-829
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        if block_state.output_type == "latent":
-            block_state.videos = block_state.latents
-        else:
-            latents = block_state.latents.to(components.vae.dtype) / components.vae.config.scaling_factor
-            video = components.vae.decode(latents, return_dict=False)[0]
-            block_state.videos = components.video_processor.postprocess_video(
-                video, output_type=block_state.output_type
-            )
+        latents = block_state.latents.to(components.vae.dtype) / components.vae.config.scaling_factor
+        video = components.vae.decode(latents, return_dict=False)[0]
+        block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
 
         self.set_block_state(state, block_state)
         return components, state

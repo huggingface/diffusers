@@ -30,9 +30,8 @@ class HunyuanVideo15ModularPipeline(
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
-    default_blocks_name = "HunyuanVideo15Blocks"
+    default_blocks_name = "HunyuanVideo15AutoBlocks"
 
-    # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline properties
     @property
     def vae_scale_factor_spatial(self):
         return self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 16
@@ -61,7 +60,6 @@ class HunyuanVideo15ModularPipeline(
     def vision_states_dim(self):
         return self.transformer.config.image_embed_dim if getattr(self, "transformer", None) else 1152
 
-    # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline.__init__
     @property
     def tokenizer_max_length(self):
         return 1000

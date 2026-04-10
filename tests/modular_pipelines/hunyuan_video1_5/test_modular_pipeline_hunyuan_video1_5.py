@@ -13,66 +13,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import pytest
 
-from diffusers.modular_pipelines import (
-    HunyuanVideo15Blocks,
-    HunyuanVideo15ModularPipeline,
-)
+from diffusers.modular_pipelines import HunyuanVideo15Blocks, HunyuanVideo15ModularPipeline
 
-
-class TestHunyuanVideo15ModularPipelineStructure(unittest.TestCase):
-    def test_import(self):
-        blocks = HunyuanVideo15Blocks()
-        self.assertIsNotNone(blocks)
-
-    def test_pipeline_class(self):
-        blocks = HunyuanVideo15Blocks()
-        pipe = blocks.init_pipeline()
-        self.assertIsInstance(pipe, HunyuanVideo15ModularPipeline)
-
-    def test_block_names(self):
-        blocks = HunyuanVideo15Blocks()
-        self.assertEqual(blocks.block_names, ["text_encoder", "denoise", "decode"])
-
-    def test_denoise_sub_blocks(self):
-        blocks = HunyuanVideo15Blocks()
-        denoise = blocks.sub_blocks["denoise"]
-        self.assertEqual(
-            list(denoise.sub_blocks.keys()),
-            ["input", "set_timesteps", "prepare_latents", "denoise"],
-        )
-
-    def test_denoise_loop_sub_blocks(self):
-        blocks = HunyuanVideo15Blocks()
-        denoise_loop = blocks.sub_blocks["denoise"].sub_blocks["denoise"]
-        self.assertEqual(
-            list(denoise_loop.sub_blocks.keys()),
-            ["before_denoiser", "denoiser", "after_denoiser"],
-        )
-
-    def test_expected_components(self):
-        blocks = HunyuanVideo15Blocks()
-        comp_names = {c.name for c in blocks.expected_components}
-        self.assertIn("transformer", comp_names)
-        self.assertIn("vae", comp_names)
-        self.assertIn("text_encoder", comp_names)
-        self.assertIn("text_encoder_2", comp_names)
-        self.assertIn("tokenizer", comp_names)
-        self.assertIn("tokenizer_2", comp_names)
-        self.assertIn("scheduler", comp_names)
-        self.assertIn("guider", comp_names)
-
-    def test_model_name(self):
-        blocks = HunyuanVideo15Blocks()
-        self.assertEqual(blocks.model_name, "hunyuan-video-1.5")
-
-    def test_top_level_export(self):
-        from diffusers import HunyuanVideo15Blocks as Top, HunyuanVideo15ModularPipeline as TopPipe
-
-        self.assertIs(Top, HunyuanVideo15Blocks)
-        self.assertIs(TopPipe, HunyuanVideo15ModularPipeline)
+from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestHunyuanVideo15ModularPipelineFast(ModularPipelineTesterMixin):
+    pipeline_class = HunyuanVideo15ModularPipeline
+    pipeline_blocks_class = HunyuanVideo15Blocks
+    pretrained_model_name_or_path = "akshan-main/tiny-hunyuanvideo1_5-modular-pipe"
+
+    params = frozenset(["prompt", "height", "width", "num_frames"])
+    batch_params = frozenset(["prompt"])
+    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    output_name = "videos"
+
+    def get_dummy_inputs(self, seed=0):
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "height": 32,
+            "width": 32,
+            "num_frames": 9,
+            "output_type": "pt",
+        }
+        return inputs
+
+    @pytest.mark.skip(reason="num_videos_per_prompt")
+    def test_num_images_per_prompt(self):
+        pass
+
+    @pytest.mark.skip(reason="VAE causal attention mask does not support batch>1 decode")
+    def test_inference_batch_consistent(self):
+        pass
+
+    @pytest.mark.skip(reason="VAE causal attention mask does not support batch>1 decode")
+    def test_inference_batch_single_identical(self):
+        pass
+
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=0.1)

@@ -15,10 +15,19 @@
 import re
 
 import torch
-from transformers import ByT5Tokenizer, Qwen2_5_VLTextModel, Qwen2TokenizerFast, T5EncoderModel
+from transformers import (
+    ByT5Tokenizer,
+    Qwen2_5_VLTextModel,
+    Qwen2TokenizerFast,
+    SiglipImageProcessor,
+    SiglipVisionModel,
+    T5EncoderModel,
+)
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
+from ...models import AutoencoderKLHunyuanVideo15
+from ...pipelines.hunyuan_video1_5.image_processor import HunyuanVideo15ImageProcessor
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -28,14 +37,12 @@ from .modular_pipeline import HunyuanVideo15ModularPipeline
 logger = logging.get_logger(__name__)
 
 
-# Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.format_text_input
 def format_text_input(prompt, system_message):
     return [
         [{"role": "system", "content": system_message}, {"role": "user", "content": p if p else " "}] for p in prompt
     ]
 
 
-# Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.extract_glyph_texts
 def extract_glyph_texts(prompt):
     pattern = r"\"(.*?)\"|\"(.*?)\""
     matches = re.findall(pattern, prompt)
@@ -48,7 +55,6 @@ def extract_glyph_texts(prompt):
     return formatted_result
 
 
-# Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline._get_mllm_prompt_embeds
 def _get_mllm_prompt_embeds(
     text_encoder,
     tokenizer,
@@ -96,7 +102,6 @@ def _get_mllm_prompt_embeds(
     return prompt_embeds, prompt_attention_mask
 
 
-# Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline._get_byt5_prompt_embeds
 def _get_byt5_prompt_embeds(tokenizer, text_encoder, prompt, device, tokenizer_max_length=256):
     prompt = [prompt] if isinstance(prompt, str) else prompt
     glyph_texts = [extract_glyph_texts(p) for p in prompt]
@@ -184,7 +189,6 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
             OutputParam("negative_prompt_embeds_mask_2", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
         ]
 
-    # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline.encode_prompt with self->components
     @staticmethod
     def encode_prompt(
         components,
@@ -305,6 +309,137 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
             )
 
         state.set("batch_size", batch_size)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
+class HunyuanVideo15VaeEncoderStep(ModularPipelineBlocks):
+    model_name = "hunyuan-video-1.5"
+
+    @property
+    def description(self) -> str:
+        return "VAE Encoder step that encodes an input image into latent space for image-to-video generation"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLHunyuanVideo15),
+            ComponentSpec(
+                "video_processor",
+                HunyuanVideo15ImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("image", required=True),
+            InputParam.template("height"),
+            InputParam.template("width"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                description="Encoded image latents from the VAE encoder",
+            ),
+            OutputParam("height", type_hint=int, description="Target height resolved from image"),
+            OutputParam("width", type_hint=int, description="Target width resolved from image"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        image = block_state.image
+        height = block_state.height
+        width = block_state.width
+        if height is None or width is None:
+            height, width = components.video_processor.calculate_default_height_width(
+                height=image.size[1], width=image.size[0], target_size=components.target_size
+            )
+        image = components.video_processor.resize(image, height=height, width=width, resize_mode="crop")
+
+        vae_dtype = components.vae.dtype
+        image_tensor = components.video_processor.preprocess(image, height=height, width=width).to(
+            device=device, dtype=vae_dtype
+        )
+        image_tensor = image_tensor.unsqueeze(2)
+        image_latents = retrieve_latents(components.vae.encode(image_tensor), sample_mode="argmax")
+        image_latents = image_latents * components.vae.config.scaling_factor
+
+        block_state.image_latents = image_latents
+        block_state.height = height
+        block_state.width = width
+        state.set("image", image)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class HunyuanVideo15ImageEncoderStep(ModularPipelineBlocks):
+    model_name = "hunyuan-video-1.5"
+
+    @property
+    def description(self) -> str:
+        return "Siglip image encoder step that produces image_embeds for image-to-video generation"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("image_encoder", SiglipVisionModel),
+            ComponentSpec("feature_extractor", SiglipImageProcessor),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("image", required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "image_embeds",
+                type_hint=torch.Tensor,
+                description="Image embeddings from the Siglip vision encoder",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        device = components._execution_device
+
+        image_encoder_dtype = next(components.image_encoder.parameters()).dtype
+        image_inputs = components.feature_extractor.preprocess(
+            images=block_state.image, do_resize=True, return_tensors="pt", do_convert_rgb=True
+        )
+        image_inputs = image_inputs.to(device=device, dtype=image_encoder_dtype)
+        image_embeds = components.image_encoder(**image_inputs).last_hidden_state
+
+        block_state.image_embeds = image_embeds
 
         self.set_block_state(state, block_state)
         return components, state

@@ -17,7 +17,6 @@ import inspect
 import numpy as np
 import torch
 
-from ...configuration_utils import FrozenDict
 from ...models import HunyuanVideo15Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
@@ -33,15 +32,44 @@ logger = logging.get_logger(__name__)
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps=None,
-    device=None,
-    timesteps=None,
-    sigmas=None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
+    r"""
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`list[int]`, *optional*):
+            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+            `num_inference_steps` and `sigmas` must be `None`.
+        sigmas (`list[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` and `timesteps` must be `None`.
+
+    Returns:
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
     if timesteps is not None and sigmas is not None:
-        raise ValueError("Only one of `timesteps` or `sigmas` can be passed.")
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
     if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
         scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
@@ -49,7 +77,8 @@ def retrieve_timesteps(
         accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
         if not accept_sigmas:
             raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom sigmas."
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" sigmas schedules. Please check whether you are using the correct scheduler."
             )
         scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
         timesteps = scheduler.timesteps
@@ -65,13 +94,7 @@ class HunyuanVideo15TextInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Input processing step that determines batch_size and dtype"
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("transformer", HunyuanVideo15Transformer3DModel),
-        ]
+        return "Input processing step that determines batch_size"
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -85,14 +108,12 @@ class HunyuanVideo15TextInputStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("batch_size", type_hint=int),
-            OutputParam("dtype", type_hint=torch.dtype),
         ]
 
     @torch.no_grad()
     def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.batch_size = getattr(block_state, "batch_size", None) or block_state.prompt_embeds.shape[0]
-        block_state.dtype = components.transformer.dtype
         self.set_block_state(state, block_state)
         return components, state
 
@@ -122,7 +143,6 @@ class HunyuanVideo15SetTimestepsStep(ModularPipelineBlocks):
             OutputParam("num_inference_steps", type_hint=int),
         ]
 
-    # Copied from pipeline_hunyuan_video1_5.py line 702-704
     @torch.no_grad()
     def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -148,6 +168,10 @@ class HunyuanVideo15PrepareLatentsStep(ModularPipelineBlocks):
         return "Prepare latents, conditioning latents, mask, and image_embeds for T2V"
 
     @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", HunyuanVideo15Transformer3DModel)]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("height"),
@@ -157,24 +181,22 @@ class HunyuanVideo15PrepareLatentsStep(ModularPipelineBlocks):
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("generator"),
             InputParam.template("batch_size", required=True, default=None),
-            InputParam.template("dtype", default=None),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam.template("latents"),
+            OutputParam("latents", type_hint=torch.Tensor, description="Pure noise latents"),
             OutputParam("cond_latents_concat", type_hint=torch.Tensor),
             OutputParam("mask_concat", type_hint=torch.Tensor),
             OutputParam("image_embeds", type_hint=torch.Tensor),
         ]
 
-    # Copied from pipeline_hunyuan_video1_5.py lines 652-655, 477-524, 706-725 with self->components
     @torch.no_grad()
     def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = block_state.dtype
+        dtype = components.transformer.dtype
 
         height = block_state.height
         width = block_state.width
@@ -186,7 +208,6 @@ class HunyuanVideo15PrepareLatentsStep(ModularPipelineBlocks):
         batch_size = block_state.batch_size * block_state.num_videos_per_prompt
         num_frames = block_state.num_frames
 
-        # Copied from HunyuanVideo15Pipeline.prepare_latents with self->components
         latents = block_state.latents
         if latents is not None:
             latents = latents.to(device=device, dtype=dtype)
@@ -207,12 +228,10 @@ class HunyuanVideo15PrepareLatentsStep(ModularPipelineBlocks):
 
         block_state.latents = latents
 
-        # Copied from HunyuanVideo15Pipeline.prepare_cond_latents_and_mask with self->components
         b, c, f, h, w = latents.shape
         block_state.cond_latents_concat = torch.zeros(b, c, f, h, w, dtype=dtype, device=device)
         block_state.mask_concat = torch.zeros(b, 1, f, h, w, dtype=dtype, device=device)
 
-        # T2V: zero image_embeds
         block_state.image_embeds = torch.zeros(
             block_state.batch_size,
             components.vision_num_semantic_tokens,
@@ -225,125 +244,62 @@ class HunyuanVideo15PrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(encoder_output, generator=None, sample_mode="sample"):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    raise AttributeError("Could not access latents of provided encoder_output")
-
-
 class HunyuanVideo15Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "hunyuan-video-1.5"
 
     @property
     def description(self) -> str:
-        return "Prepare latents, conditioning latents, mask, and image_embeds for I2V"
+        return (
+            "Prepare I2V conditioning from image_latents and image_embeds. "
+            "Expects pure noise `latents` from HunyuanVideo15PrepareLatentsStep. "
+            "Builds cond_latents_concat and mask_concat for the denoiser."
+        )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        from transformers import SiglipImageProcessor, SiglipVisionModel
-
-        from ...models import AutoencoderKLHunyuanVideo15
-        from ...pipelines.hunyuan_video1_5.image_processor import HunyuanVideo15ImageProcessor
-
-        return [
-            ComponentSpec("vae", AutoencoderKLHunyuanVideo15),
-            ComponentSpec(
-                "video_processor",
-                HunyuanVideo15ImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16}),
-                default_creation_method="from_config",
-            ),
-            ComponentSpec("image_encoder", SiglipVisionModel),
-            ComponentSpec("feature_extractor", SiglipImageProcessor),
-        ]
+        return [ComponentSpec("transformer", HunyuanVideo15Transformer3DModel)]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("image"),
-            InputParam("num_frames", type_hint=int, default=121),
-            InputParam.template("latents"),
+            InputParam("image_latents", type_hint=torch.Tensor, required=True),
+            InputParam("image_embeds", type_hint=torch.Tensor, required=True),
+            InputParam.template("latents", required=True),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam.template("generator"),
             InputParam.template("batch_size", required=True, default=None),
-            InputParam.template("dtype", default=None),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam.template("latents"),
             OutputParam("cond_latents_concat", type_hint=torch.Tensor),
             OutputParam("mask_concat", type_hint=torch.Tensor),
             OutputParam("image_embeds", type_hint=torch.Tensor),
         ]
 
-    # Copied from pipeline_hunyuan_video1_5_image2video.py lines 756-839 with self->components
     @torch.no_grad()
     def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = block_state.dtype
+        dtype = components.transformer.dtype
 
-        image = block_state.image
         batch_size = block_state.batch_size * block_state.num_videos_per_prompt
-        num_frames = block_state.num_frames
 
-        # Resize/crop image to target resolution (line 756-759)
-        height, width = components.video_processor.calculate_default_height_width(
-            height=image.size[1], width=image.size[0], target_size=components.target_size
-        )
-        image = components.video_processor.resize(image, height=height, width=width, resize_mode="crop")
+        b, c, f, h, w = block_state.latents.shape
 
-        # Encode image with Siglip (lines 776-781)
-        image_encoder_dtype = next(components.image_encoder.parameters()).dtype
-        image_inputs = components.feature_extractor.preprocess(
-            images=image, do_resize=True, return_tensors="pt", do_convert_rgb=True
-        )
-        image_inputs = image_inputs.to(device=device, dtype=image_encoder_dtype)
-        image_embeds = components.image_encoder(**image_inputs).last_hidden_state
-        image_embeds = image_embeds.repeat(batch_size, 1, 1)
-        block_state.image_embeds = image_embeds.to(device=device, dtype=dtype)
-
-        # Prepare latents (lines 818-829)
-        latents = block_state.latents
-        if latents is not None:
-            latents = latents.to(device=device, dtype=dtype)
-        else:
-            shape = (
-                batch_size,
-                components.num_channels_latents,
-                (num_frames - 1) // components.vae_scale_factor_temporal + 1,
-                int(height) // components.vae_scale_factor_spatial,
-                int(width) // components.vae_scale_factor_spatial,
-            )
-            latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=dtype)
-        block_state.latents = latents
-
-        # Prepare cond latents and mask (lines 594-632, 831-839)
-        b, c, f, h, w = latents.shape
-
-        # Copied from _get_image_latents (lines 375-388) with self->components
-        vae_dtype = components.vae.dtype
-        image_tensor = components.video_processor.preprocess(
-            image, height=h * components.vae_scale_factor_spatial, width=w * components.vae_scale_factor_spatial
-        ).to(device, dtype=vae_dtype)
-        image_tensor = image_tensor.unsqueeze(2)
-        image_latents = retrieve_latents(components.vae.encode(image_tensor), sample_mode="argmax")
-        image_latents = image_latents * components.vae.config.scaling_factor
-
-        latent_condition = image_latents.repeat(batch_size, 1, f, 1, 1)
+        latent_condition = block_state.image_latents.to(device=device, dtype=dtype)
+        latent_condition = latent_condition.repeat(batch_size, 1, f, 1, 1)
         latent_condition[:, :, 1:, :, :] = 0
-        block_state.cond_latents_concat = latent_condition.to(device=device, dtype=dtype)
+        block_state.cond_latents_concat = latent_condition
 
         latent_mask = torch.zeros(b, 1, f, h, w, dtype=dtype, device=device)
         latent_mask[:, :, 0, :, :] = 1.0
         block_state.mask_concat = latent_mask
+
+        image_embeds = block_state.image_embeds.to(device=device, dtype=dtype)
+        if image_embeds.shape[0] == 1 and batch_size > 1:
+            image_embeds = image_embeds.repeat(batch_size, 1, 1)
+        block_state.image_embeds = image_embeds
 
         self.set_block_state(state, block_state)
         return components, state

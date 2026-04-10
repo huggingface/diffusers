@@ -48,7 +48,6 @@ class HunyuanVideo15LoopBeforeDenoiser(ModularPipelineBlocks):
             InputParam("mask_concat", required=True, type_hint=torch.Tensor),
         ]
 
-    # Copied from pipeline_hunyuan_video1_5.py line 737
     @torch.no_grad()
     def __call__(self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
         block_state.latent_model_input = torch.cat(
@@ -105,7 +104,6 @@ class HunyuanVideo15LoopDenoiser(ModularPipelineBlocks):
                 inputs.append(InputParam(name=value, required=True, type_hint=torch.Tensor))
         return inputs
 
-    # Copied from pipeline_hunyuan_video1_5.py lines 739-803
     @torch.no_grad()
     def __call__(
         self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
@@ -162,7 +160,6 @@ class HunyuanVideo15LoopAfterDenoiser(ModularPipelineBlocks):
     def description(self) -> str:
         return "Step within the denoising loop that updates the latents"
 
-    # Copied from pipeline_hunyuan_video1_5.py lines 805-812
     @torch.no_grad()
     def __call__(self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
         latents_dtype = block_state.latents.dtype
@@ -287,7 +284,6 @@ class HunyuanVideo15Image2VideoLoopDenoiser(ModularPipelineBlocks):
                 inputs.append(InputParam(name=value, required=True, type_hint=torch.Tensor))
         return inputs
 
-    # Copied from pipeline_hunyuan_video1_5_image2video.py lines 853-912 with self->components
     @torch.no_grad()
     def __call__(
         self, components: HunyuanVideo15ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
