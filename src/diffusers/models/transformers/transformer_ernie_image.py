@@ -28,12 +28,13 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ..embeddings import Timesteps
 from ..embeddings import TimestepEmbedding
 from ..modeling_utils import ModelMixin
-from ...utils import BaseOutput
+from ...utils import BaseOutput, logging
 from ..normalization import RMSNorm
 from ..attention_processor import Attention
 from ..attention_dispatch import dispatch_attention_fn
 from ..attention import AttentionMixin, AttentionModuleMixin
 
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class ErnieImageTransformer2DModelOutput(BaseOutput):
@@ -248,7 +249,13 @@ class ErnieImageSharedAdaLNBlock(nn.Module):
         self.adaLN_mlp_ln = RMSNorm(hidden_size, eps=eps)
         self.mlp = ErnieImageFeedForward(hidden_size, ffn_hidden_size)
 
-    def forward(self, x, rotary_pos_emb, shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, attention_mask=None):
+    def forward(
+        self, 
+        x, 
+        rotary_pos_emb, temb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], 
+        attention_mask: torch.Tensor | None = None
+    ):
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = temb
         residual = x
         x = self.adaLN_sa_ln(x)
         x = (x.float() * (1 + scale_msa.float()) +  shift_msa.float()).to(x.dtype)
@@ -360,21 +367,17 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         c = self.time_embedding(sample)
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = [t.unsqueeze(0).expand(S, -1, -1).contiguous() for t in self.adaLN_modulation(c).chunk(6, dim=-1)]
         for layer in self.layers:
+            temb = [shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp]
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 x = self._gradient_checkpointing_func(
                     layer,
                     x,
                     rotary_pos_emb,
-                    shift_msa,
-                    scale_msa,
-                    gate_msa,
-                    shift_mlp,
-                    scale_mlp,
-                    gate_mlp,
+                    temb,
                     attention_mask,
                 )
             else:
-                x = layer(x, rotary_pos_emb, shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, attention_mask)
+                x = layer(x, rotary_pos_emb, temb, attention_mask)
         x = self.final_norm(x, c).type_as(x)
         patches = self.final_linear(x)[:N_img].transpose(0, 1).contiguous()
         output = patches.view(B, Hp, Wp, p, p, self.out_channels).permute(0, 5, 1, 3, 2, 4).contiguous().view(B, self.out_channels, H, W)

@@ -67,7 +67,8 @@ class ErnieImagePipeline(DiffusionPipeline):
             pe=pe,
             pe_tokenizer=pe_tokenizer,
         )
-        self.vae_scale_factor = 16  # VAE downsample factor
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels)) if getattr(self, "vae", None) else 16
+        print(f"vae_scale_factor: {self.vae_scale_factor}")
 
     @property
     def guidance_scale(self):
@@ -278,7 +279,7 @@ class ErnieImagePipeline(DiffusionPipeline):
         # Latent dimensions
         latent_h = height // self.vae_scale_factor
         latent_w = width // self.vae_scale_factor
-        latent_channels = 128  # After patchify
+        latent_channels = self.transformer.config.in_channels  # After patchify
 
         # Initialize latents
         if latents is None:

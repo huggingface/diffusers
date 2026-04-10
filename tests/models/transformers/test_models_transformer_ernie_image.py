@@ -13,20 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import os
-import unittest
 
+import pytest
 import torch
 
 from diffusers import ErnieImageTransformer2DModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import IS_GITHUB_ACTIONS, torch_device
-from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
+from ...testing_utils import torch_device
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    ModelTesterMixin,
+    TorchCompileTesterMixin,
+    TrainingTesterMixin,
+)
 
 
-# Ernie-Image requires torch.use_deterministic_algorithms(False) due to complex64 RoPE operations
-# Cannot use enable_full_determinism() which sets it to True
+# Ernie-Image requires torch.use_deterministic_algorithms(False) due to complex64 RoPE operations.
+# Cannot use enable_full_determinism() which sets it to True.
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 torch.use_deterministic_algorithms(False)
@@ -36,40 +41,34 @@ if hasattr(torch.backends, "cuda"):
     torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class ErnieImageTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = ErnieImageTransformer2DModel
-    main_input_name = "hidden_states"
-    # We override the items here because the transformer under consideration is small.
-    model_split_percents = [0.9, 0.9, 0.9]
-
-    def prepare_dummy_input(self, height=16, width=16):
-        batch_size = 1
-        num_channels = 16
-        embedding_dim = 16
-        sequence_length = 16
-
-        hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
-        encoder_hidden_states = [
-            torch.randn((sequence_length, embedding_dim)).to(torch_device) for _ in range(batch_size)
-        ]
-        timestep = torch.tensor([1.0]).to(torch_device)
-
-        return {"hidden_states": hidden_states, "encoder_hidden_states": encoder_hidden_states, "timestep": timestep}
+class ErnieImageTransformerTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return ErnieImageTransformer2DModel
 
     @property
-    def dummy_input(self):
-        return self.prepare_dummy_input()
+    def main_input_name(self) -> str:
+        return "hidden_states"
 
     @property
-    def input_shape(self):
+    def output_shape(self) -> tuple:
         return (16, 16, 16)
 
     @property
-    def output_shape(self):
+    def input_shape(self) -> tuple:
         return (16, 16, 16)
 
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
+    @property
+    def model_split_percents(self) -> list:
+        # We override the items here because the transformer under consideration is small.
+        return [0.9, 0.9, 0.9]
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
+        return {
             "hidden_size": 16,
             "num_attention_heads": 1,
             "num_layers": 1,
@@ -83,113 +82,51 @@ class ErnieImageTransformerTests(ModelTesterMixin, unittest.TestCase):
             "eps": 1e-6,
             "qk_layernorm": True,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
-    def setUp(self):
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
+    def get_dummy_inputs(self, height: int = 16, width: int = 16, batch_size: int = 1) -> dict:
+        num_channels = 16  # in_channels
+        sequence_length = 16
+        text_in_dim = 16  # text_in_dim
 
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_channels, height, width), generator=self.generator, device=torch_device
+            ),
+            "timestep": torch.tensor([1.0] * batch_size, device=torch_device),
+            "text_bth": randn_tensor(
+                (batch_size, sequence_length, text_in_dim), generator=self.generator, device=torch_device
+            ),
+            "text_lens": torch.tensor([sequence_length] * batch_size, device=torch_device),
+        }
 
+
+class TestErnieImageTransformer(ErnieImageTransformerTesterConfig, ModelTesterMixin):
+    pass
+
+
+class TestErnieImageTransformerTraining(ErnieImageTransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"ErnieImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    @unittest.skip("Test is not supported for handling main inputs that are lists.")
-    def test_training(self):
-        super().test_training()
 
-    @unittest.skip("Test is not supported for handling main inputs that are lists.")
-    def test_ema_training(self):
-        super().test_ema_training()
+class TestErnieImageTransformerCompile(ErnieImageTransformerTesterConfig, TorchCompileTesterMixin):
+    @property
+    def different_shapes_for_compilation(self):
+        return [(4, 4), (4, 8), (8, 8)]
 
-    @unittest.skip("Test is not supported for handling main inputs that are lists.")
-    def test_effective_gradient_checkpointing(self):
-        super().test_effective_gradient_checkpointing()
-
-    @unittest.skip(
-        "Test needs to be revisited. But we need to ensure `x_pad_token` and `cap_pad_token` are cast to the same dtype as the destination tensor before they are assigned to the padding indices."
-    )
-    def test_layerwise_casting_training(self):
-        super().test_layerwise_casting_training()
-
-    @unittest.skip(
-        "TimestepEmbedding uses explicit dtype casting that conflicts with float8 layerwise casting hooks."
-    )
-    def test_layerwise_casting_inference(self):
-        super().test_layerwise_casting_inference()
-
-    @unittest.skip(
-        "TimestepEmbedding uses explicit dtype casting that conflicts with float8 layerwise casting hooks."
-    )
-    def test_layerwise_casting_memory(self):
-        super().test_layerwise_casting_memory()
-
-    @unittest.skip(
-        "TimestepEmbedding uses explicit dtype casting that conflicts with float8 layerwise casting hooks."
-    )
-    def test_group_offloading_with_layerwise_casting(self):
-        super().test_group_offloading_with_layerwise_casting()
-
-    @unittest.skip(
-        "TimestepEmbedding uses explicit dtype casting that conflicts with float8 layerwise casting hooks."
-    )
-    def test_group_offloading_with_layerwise_casting_0(self):
-        pass
-
-    @unittest.skip(
-        "TimestepEmbedding uses explicit dtype casting that conflicts with float8 layerwise casting hooks."
-    )
-    def test_group_offloading_with_layerwise_casting_1(self):
-        pass
-
-    @unittest.skip("Test is not supported for handling main inputs that are lists.")
-    def test_outputs_equivalence(self):
-        super().test_outputs_equivalence()
-
-    @unittest.skip("Test will pass if we change to deterministic values instead of empty in the DiT.")
-    def test_group_offloading(self):
-        super().test_group_offloading()
-
-    @unittest.skip("Test will pass if we change to deterministic values instead of empty in the DiT.")
-    def test_group_offloading_with_disk(self):
-        super().test_group_offloading_with_disk()
-
-
-class ErnieImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = ErnieImageTransformer2DModel
-    different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
-
-    def prepare_init_args_and_inputs_for_common(self):
-        return ErnieImageTransformerTests().prepare_init_args_and_inputs_for_common()
-
-    def prepare_dummy_input(self, height, width):
-        return ErnieImageTransformerTests().prepare_dummy_input(height=height, width=width)
-
-    @unittest.skip(
-        "The repeated block in this model is ZImageTransformerBlock, which is used for noise_refiner, context_refiner, and layers. As a consequence of this, the inputs recorded for the block would vary during compilation and full compilation with fullgraph=True would trigger recompilation at least thrice."
+    @pytest.mark.skip(
+        reason="The repeated block in this model is ErnieImageSharedAdaLNBlock. As a consequence of this, "
+        "the inputs recorded for the block would vary during compilation and full compilation with "
+        "fullgraph=True would trigger recompilation."
     )
     def test_torch_compile_recompilation_and_graph_break(self):
         super().test_torch_compile_recompilation_and_graph_break()
 
-    @unittest.skip("Fullgraph AoT is broken")
-    def test_compile_works_with_aot(self):
-        super().test_compile_works_with_aot()
+    @pytest.mark.skip(reason="Fullgraph AoT is broken.")
+    def test_compile_works_with_aot(self, tmp_path):
+        super().test_compile_works_with_aot(tmp_path)
 
-    @unittest.skip("Fullgraph is broken")
+    @pytest.mark.skip(reason="Fullgraph is broken.")
     def test_compile_on_different_shapes(self):
         super().test_compile_on_different_shapes()
