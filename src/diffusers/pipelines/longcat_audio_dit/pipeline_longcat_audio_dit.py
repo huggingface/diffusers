@@ -28,6 +28,7 @@ from safetensors.torch import load_file
 from transformers import AutoTokenizer, PreTrainedTokenizerBase, UMT5Config, UMT5EncoderModel
 
 from ...models import LongCatAudioDiTTransformer, LongCatAudioDiTVae
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
@@ -77,6 +78,12 @@ def _approx_duration_from_text(text: str | list[str], max_duration: float = 30.0
 def _extract_prefixed_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict[str, torch.Tensor]:
     prefix = f"{prefix}."
     return {key[len(prefix):]: value for key, value in state_dict.items() if key.startswith(prefix)}
+
+
+def _get_uniform_flow_match_scheduler_sigmas(num_inference_steps: int) -> list[float]:
+    num_inference_steps = max(int(num_inference_steps), 2)
+    num_updates = num_inference_steps - 1
+    return torch.linspace(1.0, 1.0 / num_updates, num_updates, dtype=torch.float32).tolist()
 
 
 def _load_longcat_tokenizer(
@@ -162,13 +169,17 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         text_encoder: UMT5EncoderModel,
         tokenizer: PreTrainedTokenizerBase,
         transformer: LongCatAudioDiTTransformer,
+        scheduler: FlowMatchEulerDiscreteScheduler | None = None,
     ):
         super().__init__()
+        if not isinstance(scheduler, FlowMatchEulerDiscreteScheduler):
+            scheduler = FlowMatchEulerDiscreteScheduler(shift=1.0, invert_sigmas=True)
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             transformer=transformer,
+            scheduler=scheduler,
         )
         self.sample_rate = getattr(vae.config, "sample_rate", 24000)
         self.vae_scale_factor = getattr(vae.config, "downsampling_ratio", 2048)
@@ -318,7 +329,11 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         transformer.eval()
         vae.eval()
 
-        pipe = cls(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, transformer=transformer)
+        scheduler_config = {"shift": 1.0, "invert_sigmas": True}
+        scheduler_config.update(config.get("scheduler_config", {}))
+        scheduler = FlowMatchEulerDiscreteScheduler(**scheduler_config)
+
+        pipe = cls(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, transformer=transformer, scheduler=scheduler)
         pipe.sample_rate = config.get("sampling_rate", pipe.sample_rate)
         pipe.vae_scale_factor = config.get("vae_scale_factor", config.get("latent_hop", pipe.vae_scale_factor))
         pipe.max_wav_duration = config.get("max_wav_duration", pipe.max_wav_duration)
@@ -470,17 +485,22 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         if num_inference_steps < 2:
             logger.warning("`num_inference_steps`=%s is not supported; using 2 instead.", num_inference_steps)
             num_inference_steps = 2
-        timesteps = torch.linspace(0, 1, num_inference_steps, device=device, dtype=text_condition.dtype)
+
+        self.scheduler.set_timesteps(
+            sigmas=_get_uniform_flow_match_scheduler_sigmas(num_inference_steps),
+            device=device,
+        )
+        self.scheduler.set_begin_index(0)
+        timesteps = self.scheduler.timesteps
         sample = latents
 
-        for idx in range(len(timesteps) - 1):
-            curr_t = timesteps[idx]
-            dt = timesteps[idx + 1] - timesteps[idx]
+        for t in timesteps:
+            curr_t = (t / self.scheduler.config.num_train_timesteps).expand(batch_size).to(dtype=text_condition.dtype)
             pred = self.transformer(
                 hidden_states=sample,
                 encoder_hidden_states=text_condition,
                 encoder_attention_mask=text_mask,
-                timestep=curr_t.expand(batch_size),
+                timestep=curr_t,
                 attention_mask=mask,
                 latent_cond=latent_cond,
             ).sample
@@ -489,12 +509,12 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                     hidden_states=sample,
                     encoder_hidden_states=neg_text,
                     encoder_attention_mask=neg_text_mask,
-                    timestep=curr_t.expand(batch_size),
+                    timestep=curr_t,
                     attention_mask=mask,
                     latent_cond=latent_cond,
                 ).sample
                 pred = null_pred + (pred - null_pred) * guidance_scale
-            sample = sample + pred * dt
+            sample = self.scheduler.step(pred, t, sample, return_dict=False)[0]
 
         if output_type == "latent":
             if not return_dict:

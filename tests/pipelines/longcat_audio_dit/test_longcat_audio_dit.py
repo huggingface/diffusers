@@ -21,7 +21,10 @@ import torch
 from safetensors.torch import save_file
 from transformers import UMT5Config, UMT5EncoderModel
 
-from diffusers import LongCatAudioDiTPipeline, LongCatAudioDiTTransformer, LongCatAudioDiTVae
+from diffusers import FlowMatchEulerDiscreteScheduler, LongCatAudioDiTPipeline, LongCatAudioDiTTransformer, LongCatAudioDiTVae
+from diffusers.pipelines.longcat_audio_dit.pipeline_longcat_audio_dit import (
+    _get_uniform_flow_match_scheduler_sigmas,
+)
 
 from ...testing_utils import enable_full_determinism, require_torch_accelerator, slow, torch_device
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
@@ -182,6 +185,26 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_encode_prompt_works_in_isolation(self):
         self.skipTest("LongCatAudioDiTPipeline.encode_prompt has a custom signature.")
+
+    def test_uniform_flow_match_scheduler_grid_matches_legacy_manual_updates(self):
+        num_inference_steps = 6
+        scheduler = FlowMatchEulerDiscreteScheduler(shift=1.0, invert_sigmas=True)
+        scheduler.set_timesteps(
+            sigmas=_get_uniform_flow_match_scheduler_sigmas(num_inference_steps), device="cpu"
+        )
+
+        expected_timesteps = torch.linspace(0, 1, num_inference_steps, dtype=torch.float32)[:-1]
+        actual_timesteps = scheduler.timesteps / scheduler.config.num_train_timesteps
+        self.assertTrue(torch.allclose(actual_timesteps, expected_timesteps, atol=1e-6, rtol=0))
+
+        sample = torch.zeros(1, 2, 3)
+        model_output = torch.ones_like(sample)
+        expected = sample.clone()
+        for t0, t1, scheduler_t in zip(expected_timesteps[:-1], expected_timesteps[1:], scheduler.timesteps):
+            expected = expected + model_output * (t1 - t0)
+            sample = scheduler.step(model_output, scheduler_t, sample, return_dict=False)[0]
+
+        self.assertTrue(torch.allclose(sample, expected, atol=1e-6, rtol=0))
 
     def test_from_pretrained_local_dir(self):
         import tempfile
