@@ -679,6 +679,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
         )
+        from .ernie_image import ErnieImagePipeline
         from .flux import (
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
@@ -772,7 +773,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .mochi import MochiPipeline
         from .nucleusmoe_image import NucleusMoEImagePipeline
         from .omnigen import OmniGenPipeline
-        from .ernie_image import ErnieImagePipeline
         from .ovis_image import OvisImagePipeline
         from .pag import (
             AnimateDiffPAGPipeline,

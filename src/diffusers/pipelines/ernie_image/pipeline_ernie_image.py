@@ -17,17 +17,16 @@ Ernie-Image Pipeline for HuggingFace Diffusers.
 """
 
 import json
-import os
-import numpy as np
+from typing import Callable, List, Optional, Union
+
 import torch
 from PIL import Image
-from typing import Callable, List, Optional, Union
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
-from ...pipelines.pipeline_utils import DiffusionPipeline
-from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...models import AutoencoderKLFlux2
 from ...models.transformers import ErnieImageTransformer2DModel
+from ...pipelines.pipeline_utils import DiffusionPipeline
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from .pipeline_output import ErnieImagePipelineOutput
 
 
@@ -117,7 +116,7 @@ class ErnieImagePipeline(DiffusionPipeline):
             eos_token_id=self.pe_tokenizer.eos_token_id,
         )
         # Decode only newly generated tokens
-        generated_ids = output_ids[0][inputs["input_ids"].shape[1]:]
+        generated_ids = output_ids[0][inputs["input_ids"].shape[1] :]
         return self.pe_tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
 
     @torch.no_grad()
@@ -182,13 +181,17 @@ class ErnieImagePipeline(DiffusionPipeline):
     def _pad_text(text_hiddens: List[torch.Tensor], device: torch.device, dtype: torch.dtype, text_in_dim: int):
         B = len(text_hiddens)
         if B == 0:
-            return torch.zeros((0, 0, text_in_dim), device=device, dtype=dtype), torch.zeros((0,), device=device, dtype=torch.long)
-        normalized = [th.squeeze(1).to(device).to(dtype) if th.dim() == 3 else th.to(device).to(dtype) for th in text_hiddens]
+            return torch.zeros((0, 0, text_in_dim), device=device, dtype=dtype), torch.zeros(
+                (0,), device=device, dtype=torch.long
+            )
+        normalized = [
+            th.squeeze(1).to(device).to(dtype) if th.dim() == 3 else th.to(device).to(dtype) for th in text_hiddens
+        ]
         lens = torch.tensor([t.shape[0] for t in normalized], device=device, dtype=torch.long)
         Tmax = int(lens.max().item())
         text_bth = torch.zeros((B, Tmax, text_in_dim), device=device, dtype=dtype)
         for i, t in enumerate(normalized):
-            text_bth[i, :t.shape[0], :] = t
+            text_bth[i, : t.shape[0], :] = t
         return text_bth, lens
 
     @torch.no_grad()
@@ -207,7 +210,7 @@ class ErnieImagePipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        use_pe: bool = True,    # 默认使用PE进行改写
+        use_pe: bool = True,  # 默认使用PE进行改写
     ):
         """
         Generate images from text prompts.
@@ -225,9 +228,9 @@ class ErnieImagePipeline(DiffusionPipeline):
             output_type: "pil" or "latent"
             return_dict: Whether to return a dataclass
             callback_on_step_end: Optional callback invoked at the end of each denoising step.
-                Called as `callback_on_step_end(pipeline, step, timestep, callback_kwargs)` where
-                `callback_kwargs` contains the tensors listed in `callback_on_step_end_tensor_inputs`.
-                The callback may return a dict to override those tensors for subsequent steps.
+                Called as `callback_on_step_end(pipeline, step, timestep, callback_kwargs)` where `callback_kwargs`
+                contains the tensors listed in `callback_on_step_end_tensor_inputs`. The callback may return a dict to
+                override those tensors for subsequent steps.
             callback_on_step_end_tensor_inputs: List of tensor names passed into the callback kwargs.
                 Must be a subset of `_callback_tensor_inputs` (default: `["latents"]`).
             use_pe: Whether to use the PE model to enhance prompts before generation.
@@ -250,10 +253,7 @@ class ErnieImagePipeline(DiffusionPipeline):
         # [Phase 1] PE: enhance prompts
         revised_prompts: Optional[List[str]] = None
         if use_pe and self.pe is not None and self.pe_tokenizer is not None:
-            prompt = [
-                self._enhance_prompt_with_pe(p, device, width=width, height=height)
-                for p in prompt
-            ]
+            prompt = [self._enhance_prompt_with_pe(p, device, width=width, height=height) for p in prompt]
             revised_prompts = list(prompt)
 
         batch_size = len(prompt)
@@ -272,9 +272,7 @@ class ErnieImagePipeline(DiffusionPipeline):
 
         # CFG with negative prompt
         if self.do_classifier_free_guidance:
-            uncond_text_hiddens = self.encode_prompt(
-                negative_prompt, device, num_images_per_prompt
-            )
+            uncond_text_hiddens = self.encode_prompt(negative_prompt, device, num_images_per_prompt)
 
         # Latent dimensions
         latent_h = height // self.vae_scale_factor
@@ -299,8 +297,10 @@ class ErnieImagePipeline(DiffusionPipeline):
             cfg_text_hiddens = list(uncond_text_hiddens) + list(text_hiddens)
         else:
             cfg_text_hiddens = text_hiddens
-        text_bth, text_lens = self._pad_text(text_hiddens=cfg_text_hiddens, device=device, dtype=dtype, text_in_dim=self.transformer.config.text_in_dim)
-        
+        text_bth, text_lens = self._pad_text(
+            text_hiddens=cfg_text_hiddens, device=device, dtype=dtype, text_in_dim=self.transformer.config.text_in_dim
+        )
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(self.scheduler.timesteps):
                 if self.do_classifier_free_guidance:

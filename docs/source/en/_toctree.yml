@@ -350,6 +350,8 @@
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
         title: EasyAnimateTransformer3DModel
+      - local: api/models/ernie_image_transformer2d
+        title: ErnieImageTransformer2DModel
       - local: api/models/flux2_transformer
         title: Flux2Transformer2DModel
       - local: api/models/flux_transformer
@@ -412,8 +414,6 @@
         title: WanTransformer3DModel
       - local: api/models/z_image_transformer2d
         title: ZImageTransformer2DModel
-      - local: api/models/ernie_image_transformer2d
-        title: ErnieImageTransformer2DModel
       title: Transformers
     - sections:
       - local: api/models/stable_cascade_unet
@@ -536,6 +536,8 @@
         title: DiT
       - local: api/pipelines/easyanimate
         title: EasyAnimate
+      - local: api/pipelines/ernie_image
+        title: ERNIE-Image
       - local: api/pipelines/flux
         title: Flux
       - local: api/pipelines/flux2
@@ -636,8 +638,6 @@
         title: VisualCloze
       - local: api/pipelines/z_image
         title: Z-Image
-      - local: api/pipelines/ernie_image
-        title: ERNIE-Image
       title: Image
     - sections:
       - local: api/pipelines/llada2
