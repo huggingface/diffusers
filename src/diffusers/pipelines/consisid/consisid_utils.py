@@ -5,10 +5,13 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image, ImageOps
-from torchvision.transforms import InterpolationMode
-from torchvision.transforms.functional import normalize, resize
 
-from ...utils import get_logger, load_image
+from ...utils import get_logger, is_torchvision_available, load_image
+
+
+if is_torchvision_available():
+    from torchvision.transforms import InterpolationMode
+    from torchvision.transforms.functional import normalize, resize
 
 
 logger = get_logger(__name__)
