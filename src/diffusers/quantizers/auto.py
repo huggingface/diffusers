@@ -18,10 +18,12 @@ https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339d
 
 import warnings
 
+from .autoround import AutoRoundQuantizer
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .gguf import GGUFQuantizer
 from .modelopt import NVIDIAModelOptQuantizer
 from .quantization_config import (
+    AutoRoundConfig,
     BitsAndBytesConfig,
     GGUFQuantizationConfig,
     NVIDIAModelOptConfig,
@@ -41,6 +43,7 @@ AUTO_QUANTIZER_MAPPING = {
     "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
     "modelopt": NVIDIAModelOptQuantizer,
+    "auto-round": AutoRoundQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -50,6 +53,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "quanto": QuantoConfig,
     "torchao": TorchAoConfig,
     "modelopt": NVIDIAModelOptConfig,
+    "auto-round": AutoRoundConfig,
 }
 
 
