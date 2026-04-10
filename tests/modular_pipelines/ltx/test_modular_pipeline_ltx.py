@@ -15,14 +15,14 @@
 
 import pytest
 
-from diffusers.modular_pipelines import LTXBlocks, LTXModularPipeline
+from diffusers.modular_pipelines import LTXAutoBlocks, LTXModularPipeline
 
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
 class TestLTXModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = LTXModularPipeline
-    pipeline_blocks_class = LTXBlocks
+    pipeline_blocks_class = LTXAutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-ltx-modular-pipe"
 
     params = frozenset(["prompt", "height", "width", "num_frames"])
