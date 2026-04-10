@@ -72,8 +72,7 @@ def parse_args():
     parser.add_argument(
         "--revision",
         type=str,
-        default="pre-trained",
-        choices=["pre-trained", "post-trained"],
+        default="diffusers/base/post-trained",
         required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
@@ -541,7 +540,7 @@ def main():
     # Initialize models
     pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(
         args.pretrained_model_name_or_path,
-        revision=f"diffusers/base/{args.revision}",
+        revision=args.revision,
         torch_dtype=torch.bfloat16,
         text_encoder_attn_implementation=args.text_encoder_attn_implementation,
         safety_checker=MockSafetyChecker(),
