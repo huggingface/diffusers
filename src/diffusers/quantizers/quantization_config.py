@@ -775,9 +775,12 @@ class AutoRoundConfig(QuantizationConfigMixin):
             List of module name patterns that should NOT be quantized. Useful for keeping
             certain sensitive layers (e.g. the final output projection) in full precision.
         backend (`str`, *optional*, defaults to `"auto"`):
-            The backend kernel to use for quantized inference. Options may include:
-            "auto" (automatically select), "gptq" (GPTQ-compatible kernels), etc.
-            The backend determines which QuantLinear packing format is used.
+            The backend kernel to use for quantized inference. Available backends:
+            - `"auto"`: Automatically select the best available backend for the current device.
+            - `"auto_round:torch_zp"`: Pure PyTorch kernel — works on CPU and CUDA.
+            - `"auto_round:tritonv2_zp"`: Triton-based kernel — requires CUDA.
+            - `"gptqmodel:marlin_zp"`: Marlin kernel via GPTQModel — requires CUDA and
+              `gptqmodel>=5.8.0`. Offers the best CUDA inference performance.
         kwargs (`dict[str, Any]`, *optional*):
             Additional keyword arguments forwarded to AutoRound (e.g. `iters`, `seqlen`,
             `batch_size`, `lr`, `minmax_lr` for calibration when quantizing from scratch).
