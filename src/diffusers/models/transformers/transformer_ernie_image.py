@@ -318,6 +318,7 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         self.final_linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels)
         nn.init.zeros_(self.final_linear.weight)
         nn.init.zeros_(self.final_linear.bias)
+        self.gradient_checkpointing = False
 
     def forward(
         self, 
@@ -359,7 +360,21 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin):
         c = self.time_embedding(sample)
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = [t.unsqueeze(0).expand(S, -1, -1).contiguous() for t in self.adaLN_modulation(c).chunk(6, dim=-1)]
         for layer in self.layers:
-            x = layer(x, rotary_pos_emb, shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, attention_mask)
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                x = self._gradient_checkpointing_func(
+                    layer,
+                    x,
+                    rotary_pos_emb,
+                    shift_msa,
+                    scale_msa,
+                    gate_msa,
+                    shift_mlp,
+                    scale_mlp,
+                    gate_mlp,
+                    attention_mask,
+                )
+            else:
+                x = layer(x, rotary_pos_emb, shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp, attention_mask)
         x = self.final_norm(x, c).type_as(x)
         patches = self.final_linear(x)[:N_img].transpose(0, 1).contiguous()
         output = patches.view(B, Hp, Wp, p, p, self.out_channels).permute(0, 5, 1, 3, 2, 4).contiguous().view(B, self.out_channels, H, W)

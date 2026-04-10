@@ -36,10 +36,6 @@ if hasattr(torch.backends, "cuda"):
     torch.backends.cuda.matmul.allow_tf32 = False
 
 
-@unittest.skipIf(
-    IS_GITHUB_ACTIONS,
-    reason="Skipping test-suite inside the CI because the model has `torch.empty()` inside of it during init and we don't have a clear way to override it in the modeling tests.",
-)
 class ErnieImageTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = ErnieImageTransformer2DModel
     main_input_name = "hidden_states"
