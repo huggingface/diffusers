@@ -39,9 +39,8 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block that takes encoded conditions and runs the denoising process.
 
       Components:
-          transformer (`HunyuanVideo15Transformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          guider (`ClassifierFreeGuidance`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`) guider
+          (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -49,8 +48,8 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           batch_size (`int`, *optional*):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
-              generated in input step.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
@@ -111,15 +110,10 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
     Modular pipeline blocks for HunyuanVideo 1.5 text-to-video.
 
       Components:
-          text_encoder (`Qwen2_5_VLTextModel`)
-          tokenizer (`Qwen2TokenizerFast`)
-          text_encoder_2 (`T5EncoderModel`)
-          tokenizer_2 (`ByT5Tokenizer`)
-          guider (`ClassifierFreeGuidance`)
-          transformer (`HunyuanVideo15Transformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          vae (`AutoencoderKLHunyuanVideo15`)
-          video_processor (`HunyuanVideo15ImageProcessor`)
+          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2TokenizerFast`) text_encoder_2 (`T5EncoderModel`)
+          tokenizer_2 (`ByT5Tokenizer`) guider (`ClassifierFreeGuidance`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          transformer (`HunyuanVideo15Transformer3DModel`) vae (`AutoencoderKLHunyuanVideo15`) video_processor
+          (`HunyuanVideo15ImageProcessor`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -145,8 +139,8 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           batch_size (`int`, *optional*):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
-              generated in input step.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
@@ -194,13 +188,8 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block for image-to-video that takes encoded conditions and runs the denoising process.
 
       Components:
-          transformer (`HunyuanVideo15Transformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          vae (`AutoencoderKLHunyuanVideo15`)
-          video_processor (`HunyuanVideo15ImageProcessor`)
-          image_encoder (`SiglipVisionModel`)
-          feature_extractor (`SiglipImageProcessor`)
-          guider (`ClassifierFreeGuidance`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`) guider
+          (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -208,20 +197,24 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           batch_size (`int`, *optional*):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
-              generated in input step.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          image (`Image | list`):
-              Reference image(s) for denoising. Can be a single image or list of images.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 121):
               TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
+          image_latents (`Tensor`):
+              TODO: Add description.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           negative_prompt_embeds (`Tensor`, *optional*):
@@ -270,6 +263,25 @@ class HunyuanVideo15AutoVaeEncoderStep(AutoPipelineBlocks):
       This is an auto pipeline block that works for image-to-video tasks.
        - `HunyuanVideo15VaeEncoderStep` is used when `image` is provided.
        - If `image` is not provided, step will be skipped.
+
+      Components:
+          vae (`AutoencoderKLHunyuanVideo15`) video_processor (`HunyuanVideo15ImageProcessor`)
+
+      Inputs:
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+      Outputs:
+          image_latents (`Tensor`):
+              Encoded image latents from the VAE encoder
+          height (`int`):
+              Target height resolved from image
+          width (`int`):
+              Target width resolved from image
     """
 
     model_name = "hunyuan-video-1.5"
@@ -294,6 +306,17 @@ class HunyuanVideo15AutoImageEncoderStep(AutoPipelineBlocks):
       This is an auto pipeline block that works for image-to-video tasks.
        - `HunyuanVideo15ImageEncoderStep` is used when `image` is provided.
        - If `image` is not provided, step will be skipped.
+
+      Components:
+          image_encoder (`SiglipVisionModel`) feature_extractor (`SiglipImageProcessor`)
+
+      Inputs:
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
+
+      Outputs:
+          image_embeds (`Tensor`):
+              Image embeddings from the Siglip vision encoder
     """
 
     model_name = "hunyuan-video-1.5"
@@ -315,8 +338,57 @@ class HunyuanVideo15AutoImageEncoderStep(AutoPipelineBlocks):
 class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
     """
     Auto denoise block that selects the appropriate denoise pipeline based on inputs.
-      - `HunyuanVideo15Image2VideoCoreDenoiseStep` is used when `image_latents` is provided.
-      - `HunyuanVideo15CoreDenoiseStep` is used otherwise (text-to-video).
+       - `HunyuanVideo15Image2VideoCoreDenoiseStep` is used when `image_latents` is provided.
+       - `HunyuanVideo15CoreDenoiseStep` is used otherwise (text-to-video).
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`) guider
+          (`ClassifierFreeGuidance`)
+
+      Inputs:
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          batch_size (`int`):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          num_frames (`int`, *optional*, defaults to 121):
+              TODO: Add description.
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          image_latents (`Tensor`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask (`Tensor`):
+              TODO: Add description.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_2 (`Tensor`):
+              TODO: Add description.
+          negative_prompt_embeds_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask_2 (`Tensor`):
+              TODO: Add description.
+          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
+              TODO: Add description.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
     """
 
     model_name = "hunyuan-video-1.5"
@@ -338,51 +410,16 @@ class HunyuanVideo15AutoBlocks(SequentialPipelineBlocks):
     """
     Auto blocks for HunyuanVideo 1.5 that support both text-to-video and image-to-video workflows.
 
-    Supported workflows:
-      - `text2video`: requires `prompt`
-      - `image2video`: requires `image`, `prompt`
-    """
-
-    model_name = "hunyuan-video-1.5"
-    block_classes = [
-        HunyuanVideo15TextEncoderStep,
-        HunyuanVideo15AutoVaeEncoderStep,
-        HunyuanVideo15AutoImageEncoderStep,
-        HunyuanVideo15AutoCoreDenoiseStep,
-        HunyuanVideo15VaeDecoderStep,
-    ]
-    block_names = ["text_encoder", "vae_encoder", "image_encoder", "denoise", "decode"]
-
-    @property
-    def description(self):
-        return (
-            "Auto blocks for HunyuanVideo 1.5 that support both text-to-video and image-to-video workflows.\n"
-            " - text2video: requires `prompt`\n"
-            " - image2video: requires `image`, `prompt`"
-        )
-
-    @property
-    def outputs(self):
-        return [OutputParam.template("videos")]
-
-
-# auto_docstring
-class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
-    """
-    Modular pipeline blocks for HunyuanVideo 1.5 image-to-video.
+      Supported workflows:
+        - `text2video`: requires `prompt`
+        - `image2video`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`Qwen2_5_VLTextModel`)
-          tokenizer (`Qwen2TokenizerFast`)
-          text_encoder_2 (`T5EncoderModel`)
-          tokenizer_2 (`ByT5Tokenizer`)
-          guider (`ClassifierFreeGuidance`)
-          transformer (`HunyuanVideo15Transformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
-          vae (`AutoencoderKLHunyuanVideo15`)
-          video_processor (`HunyuanVideo15ImageProcessor`)
-          image_encoder (`SiglipVisionModel`)
-          feature_extractor (`SiglipImageProcessor`)
+          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2TokenizerFast`) text_encoder_2 (`T5EncoderModel`)
+          tokenizer_2 (`ByT5Tokenizer`) guider (`ClassifierFreeGuidance`) vae (`AutoencoderKLHunyuanVideo15`)
+          video_processor (`HunyuanVideo15ImageProcessor`) image_encoder (`SiglipVisionModel`) feature_extractor
+          (`SiglipImageProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer
+          (`HunyuanVideo15Transformer3DModel`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -407,21 +444,116 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          batch_size (`int`):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
+          num_frames (`int`, *optional*, defaults to 121):
+              TODO: Add description.
+          latents (`Tensor`):
+              Pre-generated noisy latents for image generation.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
+          image_latents (`Tensor`, *optional*):
+              TODO: Add description.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          output_type (`str`, *optional*, defaults to np):
+              Output format: 'pil', 'np', 'pt'.
+
+      Outputs:
+          videos (`list`):
+              The generated videos.
+    """
+
+    model_name = "hunyuan-video-1.5"
+    block_classes = [
+        HunyuanVideo15TextEncoderStep,
+        HunyuanVideo15AutoVaeEncoderStep,
+        HunyuanVideo15AutoImageEncoderStep,
+        HunyuanVideo15AutoCoreDenoiseStep,
+        HunyuanVideo15VaeDecoderStep,
+    ]
+    block_names = ["text_encoder", "vae_encoder", "image_encoder", "denoise", "decode"]
+    _workflow_map = {
+        "text2video": {"prompt": True},
+        "image2video": {"image": True, "prompt": True},
+    }
+
+    @property
+    def description(self):
+        return "Auto blocks for HunyuanVideo 1.5 that support both text-to-video and image-to-video workflows."
+
+    @property
+    def outputs(self):
+        return [OutputParam.template("videos")]
+
+
+# auto_docstring
+class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
+    """
+    Modular pipeline blocks for HunyuanVideo 1.5 image-to-video.
+
+      Components:
+          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2TokenizerFast`) text_encoder_2 (`T5EncoderModel`)
+          tokenizer_2 (`ByT5Tokenizer`) guider (`ClassifierFreeGuidance`) vae (`AutoencoderKLHunyuanVideo15`)
+          video_processor (`HunyuanVideo15ImageProcessor`) image_encoder (`SiglipVisionModel`) feature_extractor
+          (`SiglipImageProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer
+          (`HunyuanVideo15Transformer3DModel`)
+
+      Inputs:
+          prompt (`str`, *optional*):
+              The prompt or prompts to guide image generation.
+          negative_prompt (`str`, *optional*):
+              The prompt or prompts not to guide the image generation.
+          prompt_embeds (`Tensor`, *optional*):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+          prompt_embeds_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          prompt_embeds_mask_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
+              TODO: Add description.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          image (`Image | list`, *optional*):
+              Reference image(s) for denoising. Can be a single image or list of images.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
           batch_size (`int`, *optional*):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be
-              generated in input step.
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          image (`Image | list`):
-              Reference image(s) for denoising. Can be a single image or list of images.
           num_frames (`int`, *optional*, defaults to 121):
               TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
+          image_latents (`Tensor`):
+              TODO: Add description.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):

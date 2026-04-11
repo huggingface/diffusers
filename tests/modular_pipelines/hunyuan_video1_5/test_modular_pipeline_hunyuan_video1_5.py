@@ -15,19 +15,43 @@
 
 import pytest
 
-from diffusers.modular_pipelines import HunyuanVideo15Blocks, HunyuanVideo15ModularPipeline
+from diffusers.modular_pipelines import HunyuanVideo15AutoBlocks, HunyuanVideo15ModularPipeline
 
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
+HUNYUANVIDEO15_WORKFLOWS = {
+    "text2video": [
+        ("text_encoder", "HunyuanVideo15TextEncoderStep"),
+        ("denoise.input", "HunyuanVideo15TextInputStep"),
+        ("denoise.set_timesteps", "HunyuanVideo15SetTimestepsStep"),
+        ("denoise.prepare_latents", "HunyuanVideo15PrepareLatentsStep"),
+        ("denoise.denoise", "HunyuanVideo15DenoiseStep"),
+        ("decode", "HunyuanVideo15VaeDecoderStep"),
+    ],
+    "image2video": [
+        ("text_encoder", "HunyuanVideo15TextEncoderStep"),
+        ("vae_encoder", "HunyuanVideo15VaeEncoderStep"),
+        ("image_encoder", "HunyuanVideo15ImageEncoderStep"),
+        ("denoise.input", "HunyuanVideo15TextInputStep"),
+        ("denoise.set_timesteps", "HunyuanVideo15SetTimestepsStep"),
+        ("denoise.prepare_latents", "HunyuanVideo15PrepareLatentsStep"),
+        ("denoise.prepare_i2v_latents", "HunyuanVideo15Image2VideoPrepareLatentsStep"),
+        ("denoise.denoise", "HunyuanVideo15Image2VideoDenoiseStep"),
+        ("decode", "HunyuanVideo15VaeDecoderStep"),
+    ],
+}
+
+
 class TestHunyuanVideo15ModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = HunyuanVideo15ModularPipeline
-    pipeline_blocks_class = HunyuanVideo15Blocks
+    pipeline_blocks_class = HunyuanVideo15AutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-hunyuanvideo1_5-modular-pipe"
 
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    expected_workflow_blocks = HUNYUANVIDEO15_WORKFLOWS
     output_name = "videos"
 
     def get_dummy_inputs(self, seed=0):

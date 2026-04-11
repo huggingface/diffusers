@@ -90,8 +90,6 @@ else:
     ]
     _import_structure["hunyuan_video1_5"] = [
         "HunyuanVideo15AutoBlocks",
-        "HunyuanVideo15Blocks",
-        "HunyuanVideo15Image2VideoBlocks",
         "HunyuanVideo15ModularPipeline",
     ]
     _import_structure["ltx"] = [
@@ -131,8 +129,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .hunyuan_video1_5 import (
             HunyuanVideo15AutoBlocks,
-            HunyuanVideo15Blocks,
-            HunyuanVideo15Image2VideoBlocks,
             HunyuanVideo15ModularPipeline,
         )
         from .ltx import LTXAutoBlocks, LTXModularPipeline
