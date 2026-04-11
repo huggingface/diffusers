@@ -315,12 +315,6 @@ class ErnieImagePipeline(DiffusionPipeline):
                 device=device, 
                 dtype=dtype
             )
-            # latents = torch.randn(
-            #     (total_batch_size, latent_channels, latent_h, latent_w),
-            #     device=device,
-            #     dtype=dtype,
-            #     generator=generator,
-            # )
 
         # Setup scheduler
         sigmas = torch.linspace(1.0, 0.0, num_inference_steps + 1)
