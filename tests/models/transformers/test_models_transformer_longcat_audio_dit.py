@@ -87,20 +87,14 @@ class TestLongCatAudioDiTTransformer(LongCatAudioDiTTransformerTesterConfig, Mod
 
 class TestLongCatAudioDiTTransformerMemory(LongCatAudioDiTTransformerTesterConfig, MemoryTesterMixin):
     def test_layerwise_casting_memory(self):
-        pytest.skip("LongCatAudioDiTTransformer does not support standard layerwise casting memory tests yet.")
-
-    def test_layerwise_casting_training(self):
-        pytest.skip("LongCatAudioDiTTransformer does not support standard layerwise casting training tests yet.")
-
-    def test_group_offloading_with_layerwise_casting(self, *args, **kwargs):
         pytest.skip(
-            "LongCatAudioDiTTransformer does not support combined group offloading and layerwise casting tests yet."
+            "LongCatAudioDiTTransformer tiny test config does not provide stable layerwise casting peak memory "
+            "coverage."
         )
 
 
 class TestLongCatAudioDiTTransformerCompile(LongCatAudioDiTTransformerTesterConfig, TorchCompileTesterMixin):
-    def test_torch_compile_repeated_blocks(self):
-        pytest.skip("LongCatAudioDiTTransformer does not define repeated blocks for regional compilation.")
+    pass
 
 
 class TestLongCatAudioDiTTransformerAttention(LongCatAudioDiTTransformerTesterConfig, AttentionTesterMixin):

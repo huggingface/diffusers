@@ -19,7 +19,7 @@ from pathlib import Path
 
 import torch
 from safetensors.torch import save_file
-from transformers import UMT5Config, UMT5EncoderModel
+from transformers import AutoTokenizer, UMT5Config, UMT5EncoderModel
 
 from diffusers import (
     FlowMatchEulerDiscreteScheduler,
@@ -27,33 +27,12 @@ from diffusers import (
     LongCatAudioDiTTransformer,
     LongCatAudioDiTVae,
 )
-from diffusers.pipelines.longcat_audio_dit.pipeline_longcat_audio_dit import (
-    _get_uniform_flow_match_scheduler_sigmas,
-)
-
 from ...testing_utils import enable_full_determinism, require_torch_accelerator, slow, torch_device
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
-
-
-class DummyTokenizer:
-    model_max_length = 16
-
-    def __call__(self, texts, padding="longest", truncation=True, max_length=None, return_tensors="pt"):
-        if isinstance(texts, str):
-            texts = [texts]
-        batch = len(texts)
-        return type(
-            "TokenBatch",
-            (),
-            {
-                "input_ids": torch.ones(batch, 4, dtype=torch.long),
-                "attention_mask": torch.ones(batch, 4, dtype=torch.long),
-            },
-        )
 
 
 class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -70,7 +49,10 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        text_encoder = UMT5EncoderModel(UMT5Config(d_model=32, num_layers=1, num_heads=4, d_ff=64, vocab_size=128))
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = UMT5EncoderModel(
+            UMT5Config(d_model=32, num_layers=1, num_heads=4, d_ff=64, vocab_size=tokenizer.vocab_size)
+        )
         transformer = LongCatAudioDiTTransformer(
             dit_dim=64,
             dit_depth=2,
@@ -93,7 +75,7 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return {
             "vae": vae,
             "text_encoder": text_encoder,
-            "tokenizer": DummyTokenizer(),
+            "tokenizer": tokenizer,
             "transformer": transformer,
         }
 
@@ -134,15 +116,12 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             pipe.save_pretrained(tmp_dir)
-            reloaded = self.pipeline_class.from_pretrained(tmp_dir, tokenizer=DummyTokenizer(), local_files_only=True)
+            reloaded = self.pipeline_class.from_pretrained(tmp_dir, local_files_only=True)
             output = reloaded(**self.get_dummy_inputs(device, seed=0)).audios
 
         self.assertIsInstance(reloaded, LongCatAudioDiTPipeline)
         self.assertEqual(output.ndim, 3)
         self.assertGreater(output.shape[-1], 0)
-
-    def test_save_load_optional_components(self):
-        self.skipTest("LongCatAudioDiTPipeline does not define optional components.")
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
@@ -159,12 +138,14 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_sequential_cpu_offload_forward_pass(self):
         self.skipTest(
-            "LongCatAudioDiTPipeline offload coverage is not ready for the standard PipelineTesterMixin test."
+            "LongCatAudioDiTPipeline uses `torch.nn.utils.weight_norm`, which is not compatible with "
+            "sequential offloading."
         )
 
     def test_sequential_offload_forward_pass_twice(self):
         self.skipTest(
-            "LongCatAudioDiTPipeline offload coverage is not ready for the standard PipelineTesterMixin test."
+            "LongCatAudioDiTPipeline uses `torch.nn.utils.weight_norm`, which is not compatible with "
+            "sequential offloading."
         )
 
     def test_pipeline_level_group_offloading_inference(self):
@@ -172,53 +153,26 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "LongCatAudioDiTPipeline group offloading coverage is not ready for the standard PipelineTesterMixin test."
         )
 
-    def test_pipeline_with_accelerator_device_map(self):
-        self.skipTest(
-            "LongCatAudioDiTPipeline fast tests use a dummy tokenizer, so device-map roundtrip coverage is skipped here."
-        )
-
-    def test_save_load_float16(self):
-        self.skipTest(
-            "LongCatAudioDiTPipeline fast tests use a dummy tokenizer, so float16 reload coverage is skipped here."
-        )
-
     def test_num_images_per_prompt(self):
         self.skipTest("LongCatAudioDiTPipeline does not support num_images_per_prompt.")
-
-    def test_cfg(self):
-        self.skipTest("LongCatAudioDiTPipeline does not support generic CFG callback tests.")
-
-    def test_callback_inputs(self):
-        self.skipTest("LongCatAudioDiTPipeline does not expose callback inputs.")
-
-    def test_callback_cfg(self):
-        self.skipTest("LongCatAudioDiTPipeline does not expose callback CFG inputs.")
-
-    def test_serialization_with_variants(self):
-        self.skipTest("LongCatAudioDiTPipeline fast tests use a dummy tokenizer that is not variant-serializable.")
-
-    def test_loading_with_variants(self):
-        self.skipTest("LongCatAudioDiTPipeline fast tests use a dummy tokenizer that is not variant-serializable.")
-
-    def test_loading_with_incorrect_variants_raises_error(self):
-        self.skipTest("LongCatAudioDiTPipeline fast tests use a dummy tokenizer that is not variant-serializable.")
 
     def test_encode_prompt_works_in_isolation(self):
         self.skipTest("LongCatAudioDiTPipeline.encode_prompt has a custom signature.")
 
-    def test_uniform_flow_match_scheduler_grid_matches_legacy_manual_updates(self):
+    def test_uniform_flow_match_scheduler_grid_matches_manual_updates(self):
         num_inference_steps = 6
         scheduler = FlowMatchEulerDiscreteScheduler(shift=1.0, invert_sigmas=True)
-        scheduler.set_timesteps(sigmas=_get_uniform_flow_match_scheduler_sigmas(num_inference_steps), device="cpu")
+        sigmas = torch.linspace(1.0, 1.0 / num_inference_steps, num_inference_steps, dtype=torch.float32).tolist()
+        scheduler.set_timesteps(sigmas=sigmas, device="cpu")
 
-        expected_timesteps = torch.linspace(0, 1, num_inference_steps, dtype=torch.float32)[:-1]
+        expected_grid = torch.linspace(0, 1, num_inference_steps + 1, dtype=torch.float32)
         actual_timesteps = scheduler.timesteps / scheduler.config.num_train_timesteps
-        self.assertTrue(torch.allclose(actual_timesteps, expected_timesteps, atol=1e-6, rtol=0))
+        self.assertTrue(torch.allclose(actual_timesteps, expected_grid[:-1], atol=1e-6, rtol=0))
 
         sample = torch.zeros(1, 2, 3)
         model_output = torch.ones_like(sample)
         expected = sample.clone()
-        for t0, t1, scheduler_t in zip(expected_timesteps[:-1], expected_timesteps[1:], scheduler.timesteps):
+        for t0, t1, scheduler_t in zip(expected_grid[:-1], expected_grid[1:], scheduler.timesteps):
             expected = expected + model_output * (t1 - t0)
             sample = scheduler.step(model_output, scheduler_t, sample, return_dict=False)[0]
 
@@ -226,8 +180,6 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_from_pretrained_local_dir(self):
         import tempfile
-        from unittest.mock import patch
-
         device = "cpu"
         components = self.get_dummy_components()
         text_encoder = components["text_encoder"]
@@ -237,6 +189,7 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             model_dir = Path(tmp_dir) / "longcat-audio-dit"
             model_dir.mkdir()
+            components["tokenizer"].save_pretrained(model_dir / "tokenizer")
 
             config = {
                 "dit_dim": 64,
@@ -275,11 +228,7 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             state_dict.update({f"vae.{k}": v for k, v in vae.state_dict().items()})
             save_file(state_dict, model_dir / "model.safetensors")
 
-            with patch(
-                "diffusers.pipelines.longcat_audio_dit.pipeline_longcat_audio_dit.AutoTokenizer.from_pretrained",
-                return_value=DummyTokenizer(),
-            ):
-                pipe = LongCatAudioDiTPipeline.from_pretrained(model_dir, local_files_only=True)
+            pipe = LongCatAudioDiTPipeline.from_pretrained(model_dir, local_files_only=True)
 
             output = pipe(**self.get_dummy_inputs(device, seed=0)).audios
 

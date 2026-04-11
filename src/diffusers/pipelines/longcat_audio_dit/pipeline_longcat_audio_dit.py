@@ -18,7 +18,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import torch
 import torch.nn.functional as F
@@ -52,38 +52,35 @@ def _normalize_text(text: str) -> str:
 
 
 def _approx_duration_from_text(text: str | list[str], max_duration: float = 30.0) -> float:
-    if isinstance(text, list):
-        if not text:
-            return 0.0
-        return max(_approx_duration_from_text(prompt, max_duration=max_duration) for prompt in text)
+    if not text:
+        return 0.0
+    if isinstance(text, str):
+        text = [text]
 
     en_dur_per_char = 0.082
     zh_dur_per_char = 0.21
-    text = re.sub(r"\s+", "", text)
-    num_zh = num_en = num_other = 0
-    for char in text:
-        if "一" <= char <= "鿿":
-            num_zh += 1
-        elif char.isalpha():
-            num_en += 1
+    durations = []
+    for prompt in text:
+        prompt = re.sub(r"\s+", "", prompt)
+        num_zh = num_en = num_other = 0
+        for char in prompt:
+            if "一" <= char <= "鿿":
+                num_zh += 1
+            elif char.isalpha():
+                num_en += 1
+            else:
+                num_other += 1
+        if num_zh > num_en:
+            num_zh += num_other
         else:
-            num_other += 1
-    if num_zh > num_en:
-        num_zh += num_other
-    else:
-        num_en += num_other
-    return min(max_duration, num_zh * zh_dur_per_char + num_en * en_dur_per_char)
+            num_en += num_other
+        durations.append(num_zh * zh_dur_per_char + num_en * en_dur_per_char)
+    return min(max_duration, max(durations)) if durations else 0.0
 
 
 def _extract_prefixed_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict[str, torch.Tensor]:
     prefix = f"{prefix}."
     return {key[len(prefix) :]: value for key, value in state_dict.items() if key.startswith(prefix)}
-
-
-def _get_uniform_flow_match_scheduler_sigmas(num_inference_steps: int) -> list[float]:
-    num_inference_steps = max(int(num_inference_steps), 2)
-    num_updates = num_inference_steps - 1
-    return torch.linspace(1.0, 1.0 / num_updates, num_updates, dtype=torch.float32).tolist()
 
 
 def _load_longcat_tokenizer(
@@ -162,6 +159,7 @@ def _resolve_longcat_file(
 
 class LongCatAudioDiTPipeline(DiffusionPipeline):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
         self,
@@ -187,6 +185,14 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         self.max_wav_duration = 30.0
         self.text_norm_feat = True
         self.text_add_embed = True
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
 
     @classmethod
     @validate_hf_hub_args
@@ -371,7 +377,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 first_hidden = F.layer_norm(first_hidden, (first_hidden.shape[-1],), eps=1e-6)
             prompt_embeds = prompt_embeds + first_hidden
         lengths = attention_mask.sum(dim=1).to(device)
-        return prompt_embeds.float(), lengths
+        return prompt_embeds, lengths
 
     def prepare_latents(
         self,
@@ -405,12 +411,21 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         prompt: list[str],
         negative_prompt: str | list[str] | None,
         output_type: str,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
     ) -> None:
         if len(prompt) == 0:
             raise ValueError("`prompt` must contain at least one prompt.")
 
         if output_type not in {"np", "pt", "latent"}:
             raise ValueError(f"Unsupported output_type: {output_type}")
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
 
         if negative_prompt is not None and not isinstance(negative_prompt, str):
             negative_prompt = list(negative_prompt)
@@ -431,6 +446,8 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str = "np",
         return_dict: bool = True,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -442,11 +459,16 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 Target audio duration in seconds. Ignored when `latents` is provided.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents of shape `(batch_size, duration, latent_dim)`.
-            num_inference_steps (`int`, defaults to 16): Number of denoising steps. Values below 2 are promoted to 2.
+            num_inference_steps (`int`, defaults to 16): Number of denoising steps.
             guidance_scale (`float`, defaults to 4.0): Guidance scale for classifier-free guidance.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*): Random generator(s).
             output_type (`str`, defaults to `"np"`): Output format: `"np"`, `"pt"`, or `"latent"`.
             return_dict (`bool`, defaults to `True`): Whether to return `AudioPipelineOutput`.
+            callback_on_step_end (`Callable`, *optional*):
+                A function called at the end of each denoising step with the pipeline, step index, timestep, and tensor
+                inputs specified by `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`list`, defaults to `["latents"]`):
+                Tensor inputs passed to `callback_on_step_end`.
         """
         if prompt is None:
             prompt = []
@@ -454,8 +476,9 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
             prompt = [prompt]
         else:
             prompt = list(prompt)
-        self.check_inputs(prompt, negative_prompt, output_type)
+        self.check_inputs(prompt, negative_prompt, output_type, callback_on_step_end_tensor_inputs)
         batch_size = len(prompt)
+        self._guidance_scale = guidance_scale
 
         device = self._execution_device
         normalized_prompts = [_normalize_text(text) for text in prompt]
@@ -469,69 +492,77 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         if latents is None:
             duration = max(1, min(duration, max_duration))
 
-        text_condition, text_condition_len = self.encode_prompt(normalized_prompts, device)
+        prompt_embeds, prompt_embeds_len = self.encode_prompt(normalized_prompts, device)
         duration_tensor = torch.full((batch_size,), duration, device=device, dtype=torch.long)
         mask = _lens_to_mask(duration_tensor)
-        text_mask = _lens_to_mask(text_condition_len, length=text_condition.shape[1])
+        text_mask = _lens_to_mask(prompt_embeds_len, length=prompt_embeds.shape[1])
 
         if negative_prompt is None:
-            neg_text = torch.zeros_like(text_condition)
-            neg_text_len = text_condition_len
-            neg_text_mask = text_mask
+            negative_prompt_embeds = torch.zeros_like(prompt_embeds)
+            negative_prompt_embeds_len = prompt_embeds_len
+            negative_prompt_embeds_mask = text_mask
         else:
             if isinstance(negative_prompt, str):
                 negative_prompt = [negative_prompt] * batch_size
             else:
                 negative_prompt = list(negative_prompt)
-            neg_text, neg_text_len = self.encode_prompt(negative_prompt, device)
-            neg_text_mask = _lens_to_mask(neg_text_len, length=neg_text.shape[1])
+            negative_prompt_embeds, negative_prompt_embeds_len = self.encode_prompt(negative_prompt, device)
+            negative_prompt_embeds_mask = _lens_to_mask(
+                negative_prompt_embeds_len, length=negative_prompt_embeds.shape[1]
+            )
 
-        latent_cond = torch.zeros(batch_size, duration, self.latent_dim, device=device, dtype=text_condition.dtype)
+        latent_cond = torch.zeros(batch_size, duration, self.latent_dim, device=device, dtype=prompt_embeds.dtype)
         latents = self.prepare_latents(
-            batch_size, duration, device, text_condition.dtype, generator=generator, latents=latents
+            batch_size, duration, device, prompt_embeds.dtype, generator=generator, latents=latents
         )
-        if num_inference_steps < 2:
-            logger.warning("`num_inference_steps`=%s is not supported; using 2 instead.", num_inference_steps)
-            num_inference_steps = 2
+        if num_inference_steps < 1:
+            raise ValueError("num_inference_steps must be a positive integer.")
 
-        self.scheduler.set_timesteps(
-            sigmas=_get_uniform_flow_match_scheduler_sigmas(num_inference_steps),
-            device=device,
-        )
+        sigmas = torch.linspace(1.0, 1.0 / num_inference_steps, num_inference_steps, dtype=torch.float32).tolist()
+        self.scheduler.set_timesteps(sigmas=sigmas, device=device)
         self.scheduler.set_begin_index(0)
         timesteps = self.scheduler.timesteps
-        sample = latents
+        self._num_timesteps = len(timesteps)
 
-        for t in timesteps:
-            curr_t = (t / self.scheduler.config.num_train_timesteps).expand(batch_size).to(dtype=text_condition.dtype)
+        for i, t in enumerate(timesteps):
+            curr_t = (t / self.scheduler.config.num_train_timesteps).expand(batch_size).to(dtype=prompt_embeds.dtype)
             pred = self.transformer(
-                hidden_states=sample,
-                encoder_hidden_states=text_condition,
+                hidden_states=latents,
+                encoder_hidden_states=prompt_embeds,
                 encoder_attention_mask=text_mask,
                 timestep=curr_t,
                 attention_mask=mask,
                 latent_cond=latent_cond,
             ).sample
-            if guidance_scale > 1.0:
+            if self.guidance_scale > 1.0:
                 null_pred = self.transformer(
-                    hidden_states=sample,
-                    encoder_hidden_states=neg_text,
-                    encoder_attention_mask=neg_text_mask,
+                    hidden_states=latents,
+                    encoder_hidden_states=negative_prompt_embeds,
+                    encoder_attention_mask=negative_prompt_embeds_mask,
                     timestep=curr_t,
                     attention_mask=mask,
                     latent_cond=latent_cond,
                 ).sample
-                pred = null_pred + (pred - null_pred) * guidance_scale
-            sample = self.scheduler.step(pred, t, sample, return_dict=False)[0]
+                pred = null_pred + (pred - null_pred) * self.guidance_scale
+            latents = self.scheduler.step(pred, t, latents, return_dict=False)[0]
+
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                latents = callback_outputs.pop("latents", latents)
+                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
 
         if output_type == "latent":
-            if not return_dict:
-                return (sample,)
-            return AudioPipelineOutput(audios=sample)
+            waveform = latents
+        else:
+            waveform = self.vae.decode(latents.permute(0, 2, 1)).sample
+            if output_type == "np":
+                waveform = waveform.cpu().float().numpy()
 
-        waveform = self.vae.decode(sample.permute(0, 2, 1)).sample
-        if output_type == "np":
-            waveform = waveform.cpu().float().numpy()
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (waveform,)

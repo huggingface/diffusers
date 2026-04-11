@@ -25,6 +25,7 @@ from torch.nn.utils import weight_norm
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput
+from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.torch_utils import randn_tensor
 from ..modeling_utils import ModelMixin
 from .vae import AutoencoderMixin
@@ -293,6 +294,8 @@ class LongCatAudioDiTVaeDecoderOutput(BaseOutput):
 
 
 class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
+    _supports_group_offloading = False
+
     @register_to_config
     def __init__(
         self,
@@ -342,6 +345,7 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
             upsample_shortcut=upsample_shortcut,
         )
 
+    @apply_forward_hook
     def encode(
         self,
         sample: torch.Tensor,
@@ -367,6 +371,7 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
             return (latents,)
         return LongCatAudioDiTVaeEncoderOutput(latents=latents)
 
+    @apply_forward_hook
     def decode(
         self, latents: torch.Tensor, return_dict: bool = True
     ) -> LongCatAudioDiTVaeDecoderOutput | tuple[torch.Tensor]:

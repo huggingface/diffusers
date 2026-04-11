@@ -454,6 +454,7 @@ class AudioDiTBlock(nn.Module):
 
 class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = False
+    _repeated_blocks = ["AudioDiTBlock"]
 
     @register_to_config
     def __init__(
@@ -543,8 +544,7 @@ class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
         latent_cond: torch.Tensor | None = None,
         return_dict: bool = True,
     ) -> LongCatAudioDiTTransformerOutput | tuple[torch.Tensor]:
-        dtype = next(self.parameters()).dtype
-        hidden_states = hidden_states.to(dtype)
+        dtype = hidden_states.dtype
         encoder_hidden_states = encoder_hidden_states.to(dtype)
         timestep = timestep.to(dtype)
         batch_size = hidden_states.shape[0]
@@ -558,7 +558,7 @@ class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
             encoder_hidden_states = encoder_hidden_states.masked_fill(text_mask.logical_not().unsqueeze(-1), 0.0)
         hidden_states = self.input_embed(hidden_states, attention_mask)
         if self.use_latent_condition and latent_cond is not None:
-            latent_cond = self.latent_embed(latent_cond.to(dtype), attention_mask)
+            latent_cond = self.latent_embed(latent_cond.to(hidden_states.dtype), attention_mask)
             hidden_states = self.latent_cond_embedder(torch.cat([hidden_states, latent_cond], dim=-1))
         residual = hidden_states.clone() if self.config.long_skip else None
         rope = self.rotary_embed(hidden_states, hidden_states.shape[1])
