@@ -23,6 +23,7 @@ import torch
 from PIL import Image
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
+from ...utils.torch_utils import randn_tensor
 from ...models import AutoencoderKLFlux2
 from ...models.transformers import ErnieImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -67,7 +68,6 @@ class ErnieImagePipeline(DiffusionPipeline):
             pe_tokenizer=pe_tokenizer,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels)) if getattr(self, "vae", None) else 16
-        print(f"vae_scale_factor: {self.vae_scale_factor}")
 
     @property
     def guidance_scale(self):
@@ -197,7 +197,7 @@ class ErnieImagePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = "",
         height: int = 1024,
         width: int = 1024,
@@ -206,6 +206,8 @@ class ErnieImagePipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.Tensor] = None,
+        prompt_embeds: list[torch.FloatTensor] | None = None, 
+        negative_prompt_embeds: list[torch.FloatTensor] | None = None, 
         output_type: str = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, dict], None]] = None,
@@ -225,6 +227,10 @@ class ErnieImagePipeline(DiffusionPipeline):
             num_images_per_prompt: Number of images per prompt
             generator: Random generator for reproducibility
             latents: Pre-generated latents (optional)
+            prompt_embeds: Pre-computed text embeddings for positive prompts (optional).
+                If provided, `encode_prompt` is skipped for positive prompts.
+            negative_prompt_embeds: Pre-computed text embeddings for negative prompts (optional).
+                If provided, `encode_prompt` is skipped for negative prompts.
             output_type: "pil" or "latent"
             return_dict: Whether to return a dataclass
             callback_on_step_end: Optional callback invoked at the end of each denoising step.
@@ -242,21 +248,35 @@ class ErnieImagePipeline(DiffusionPipeline):
         dtype = self.transformer.dtype
 
         self._guidance_scale = guidance_scale
+
+        # Validate prompt / prompt_embeds
+        if prompt is None and prompt_embeds is None:
+            raise ValueError("Must provide either `prompt` or `prompt_embeds`.")
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError("Cannot provide both `prompt` and `prompt_embeds` at the same time.")
+
         # Validate dimensions
         if height % self.vae_scale_factor != 0 or width % self.vae_scale_factor != 0:
             raise ValueError(f"Height and width must be divisible by {self.vae_scale_factor}")
 
         # Handle prompts
-        if isinstance(prompt, str):
-            prompt = [prompt]
+        if prompt is not None:
+            if isinstance(prompt, str):
+                prompt = [prompt]
 
         # [Phase 1] PE: enhance prompts
         revised_prompts: Optional[List[str]] = None
-        if use_pe and self.pe is not None and self.pe_tokenizer is not None:
-            prompt = [self._enhance_prompt_with_pe(p, device, width=width, height=height) for p in prompt]
+        if prompt is not None and use_pe and self.pe is not None and self.pe_tokenizer is not None:
+            prompt = [
+                self._enhance_prompt_with_pe(p, device, width=width, height=height)
+                for p in prompt
+            ]
             revised_prompts = list(prompt)
 
-        batch_size = len(prompt)
+        if prompt is not None:
+            batch_size = len(prompt)
+        else:
+            batch_size = len(prompt_embeds)
         total_batch_size = batch_size * num_images_per_prompt
 
         # Handle negative prompt
@@ -268,11 +288,19 @@ class ErnieImagePipeline(DiffusionPipeline):
             raise ValueError(f"negative_prompt must have same length as prompt ({batch_size})")
 
         # [Phase 2] Text encoding
-        text_hiddens = self.encode_prompt(prompt, device, num_images_per_prompt)
+        if prompt_embeds is not None:
+            text_hiddens = prompt_embeds
+        else:
+            text_hiddens = self.encode_prompt(prompt, device, num_images_per_prompt)
 
         # CFG with negative prompt
         if self.do_classifier_free_guidance:
-            uncond_text_hiddens = self.encode_prompt(negative_prompt, device, num_images_per_prompt)
+            if negative_prompt_embeds is not None:
+                uncond_text_hiddens = negative_prompt_embeds
+            else:
+                uncond_text_hiddens = self.encode_prompt(
+                    negative_prompt, device, num_images_per_prompt
+                )
 
         # Latent dimensions
         latent_h = height // self.vae_scale_factor
@@ -281,12 +309,18 @@ class ErnieImagePipeline(DiffusionPipeline):
 
         # Initialize latents
         if latents is None:
-            latents = torch.randn(
-                (total_batch_size, latent_channels, latent_h, latent_w),
-                device=device,
-                dtype=dtype,
-                generator=generator,
+            latents = randn_tensor(
+                (total_batch_size, latent_channels, latent_h, latent_w), 
+                generator=generator, 
+                device=device, 
+                dtype=dtype
             )
+            # latents = torch.randn(
+            #     (total_batch_size, latent_channels, latent_h, latent_w),
+            #     device=device,
+            #     dtype=dtype,
+            #     generator=generator,
+            # )
 
         # Setup scheduler
         sigmas = torch.linspace(1.0, 0.0, num_inference_steps + 1)
