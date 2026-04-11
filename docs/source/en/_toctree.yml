@@ -350,6 +350,8 @@
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
         title: EasyAnimateTransformer3DModel
+      - local: api/models/ernie_image_transformer2d
+        title: ErnieImageTransformer2DModel
       - local: api/models/flux2_transformer
         title: Flux2Transformer2DModel
       - local: api/models/flux_transformer
@@ -534,6 +536,8 @@
         title: DiT
       - local: api/pipelines/easyanimate
         title: EasyAnimate
+      - local: api/pipelines/ernie_image
+        title: ERNIE-Image
       - local: api/pipelines/flux
         title: Flux
       - local: api/pipelines/flux2
