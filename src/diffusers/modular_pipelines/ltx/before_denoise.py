@@ -17,12 +17,13 @@ import inspect
 import numpy as np
 import torch
 
+from ...configuration_utils import FrozenDict
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import LTXModularPipeline
+from .modular_pipeline import LTXModularPipeline, LTXVideoPachifier
 
 
 logger = logging.get_logger(__name__)
@@ -99,38 +100,6 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
-
-
-def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1) -> torch.Tensor:
-    # Unpacked latents of shape are [B, C, F, H, W] are patched into tokens of shape [B, C, F // p_t, p_t, H // p, p, W // p, p].
-    # The patch dimensions are then permuted and collapsed into the channel dimension of shape:
-    # [B, F // p_t * H // p * W // p, C * p_t * p * p] (an ndim=3 tensor).
-    # dim=0 is the batch size, dim=1 is the effective video sequence length, dim=2 is the effective number of input features
-    batch_size, num_channels, num_frames, height, width = latents.shape
-    post_patch_num_frames = num_frames // patch_size_t
-    post_patch_height = height // patch_size
-    post_patch_width = width // patch_size
-    latents = latents.reshape(
-        batch_size,
-        -1,
-        post_patch_num_frames,
-        patch_size_t,
-        post_patch_height,
-        patch_size,
-        post_patch_width,
-        patch_size,
-    )
-    latents = latents.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
-    return latents
-
-
-def _unpack_latents(
-    latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
-) -> torch.Tensor:
-    batch_size = latents.size(0)
-    latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
-    latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
-    return latents
 
 
 class LTXTextInputStep(ModularPipelineBlocks):
@@ -290,6 +259,17 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
         return "Prepare latents step that prepares the latents for the text-to-video generation process"
 
     @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "pachifier",
+                LTXVideoPachifier,
+                config=FrozenDict({"patch_size": 1, "patch_size_t": 1}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("height", default=512),
@@ -326,11 +306,7 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
             block_state.latents = randn_tensor(
                 shape, generator=block_state.generator, device=device, dtype=torch.float32
             )
-            block_state.latents = _pack_latents(
-                block_state.latents,
-                components.transformer_spatial_patch_size,
-                components.transformer_temporal_patch_size,
-            )
+            block_state.latents = components.pachifier.pack_latents(block_state.latents)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -345,6 +321,17 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
             "Prepare image-to-video latents: adds noise to pre-encoded image latents and creates a conditioning mask. "
             "Expects pure noise `latents` from LTXPrepareLatentsStep."
         )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "pachifier",
+                LTXVideoPachifier,
+                config=FrozenDict({"patch_size": 1, "patch_size_t": 1}),
+                default_creation_method="from_config",
+            ),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -392,27 +379,11 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
         )
         conditioning_mask[:, :, 0] = 1.0
 
-        # Unpack the pure noise latents from LTXPrepareLatentsStep to mix with image latents
-        noise = _unpack_latents(
-            block_state.latents,
-            num_frames,
-            height,
-            width,
-            components.transformer_spatial_patch_size,
-            components.transformer_temporal_patch_size,
-        )
+        noise = components.pachifier.unpack_latents(block_state.latents, num_frames, height, width)
         latents = init_latents * conditioning_mask + noise * (1 - conditioning_mask)
 
-        conditioning_mask = _pack_latents(
-            conditioning_mask,
-            components.transformer_spatial_patch_size,
-            components.transformer_temporal_patch_size,
-        ).squeeze(-1)
-        latents = _pack_latents(
-            latents,
-            components.transformer_spatial_patch_size,
-            components.transformer_temporal_patch_size,
-        )
+        conditioning_mask = components.pachifier.pack_latents(conditioning_mask).squeeze(-1)
+        latents = components.pachifier.pack_latents(latents)
 
         block_state.latents = latents
         block_state.conditioning_mask = conditioning_mask

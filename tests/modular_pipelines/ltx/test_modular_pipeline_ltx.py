@@ -20,6 +20,28 @@ from diffusers.modular_pipelines import LTXAutoBlocks, LTXModularPipeline
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
+LTX_WORKFLOWS = {
+    "text2video": [
+        ("text_encoder", "LTXTextEncoderStep"),
+        ("denoise.input", "LTXTextInputStep"),
+        ("denoise.set_timesteps", "LTXSetTimestepsStep"),
+        ("denoise.prepare_latents", "LTXPrepareLatentsStep"),
+        ("denoise.denoise", "LTXDenoiseStep"),
+        ("decode", "LTXVaeDecoderStep"),
+    ],
+    "image2video": [
+        ("text_encoder", "LTXTextEncoderStep"),
+        ("vae_encoder", "LTXVaeEncoderStep"),
+        ("denoise.input", "LTXTextInputStep"),
+        ("denoise.set_timesteps", "LTXSetTimestepsStep"),
+        ("denoise.prepare_latents", "LTXPrepareLatentsStep"),
+        ("denoise.prepare_i2v_latents", "LTXImage2VideoPrepareLatentsStep"),
+        ("denoise.denoise", "LTXImage2VideoDenoiseStep"),
+        ("decode", "LTXVaeDecoderStep"),
+    ],
+}
+
+
 class TestLTXModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = LTXModularPipeline
     pipeline_blocks_class = LTXAutoBlocks
@@ -28,6 +50,7 @@ class TestLTXModularPipelineFast(ModularPipelineTesterMixin):
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    expected_workflow_blocks = LTX_WORKFLOWS
     output_name = "videos"
 
     def get_dummy_inputs(self, seed=0):

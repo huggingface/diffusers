@@ -23,22 +23,10 @@ from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import LTXVideoPachifier
 
 
 logger = logging.get_logger(__name__)
-
-
-def _unpack_latents(
-    latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
-) -> torch.Tensor:
-    # Packed latents of shape [B, S, D] (S is the effective video sequence length,
-    # D is the effective feature dimensions) are unpacked and reshaped into a video tensor
-    # of shape [B, C, F, H, W]. This is the inverse operation of what happens in the
-    # `_pack_latents` method.
-    batch_size = latents.size(0)
-    latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
-    latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
-    return latents
 
 
 def _denormalize_latents(
@@ -62,6 +50,12 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
                 "video_processor",
                 VideoProcessor,
                 config=FrozenDict({"vae_scale_factor": 32}),
+                default_creation_method="from_config",
+            ),
+            ComponentSpec(
+                "pachifier",
+                LTXVideoPachifier,
+                config=FrozenDict({"patch_size": 1, "patch_size_t": 1}),
                 default_creation_method="from_config",
             ),
         ]
@@ -104,14 +98,7 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
         latent_height = height // components.vae_spatial_compression_ratio
         latent_width = width // components.vae_spatial_compression_ratio
 
-        latents = _unpack_latents(
-            latents,
-            latent_num_frames,
-            latent_height,
-            latent_width,
-            components.transformer_spatial_patch_size,
-            components.transformer_temporal_patch_size,
-        )
+        latents = components.pachifier.unpack_latents(latents, latent_num_frames, latent_height, latent_width)
         latents = _denormalize_latents(latents, vae.latents_mean, vae.latents_std, vae.config.scaling_factor)
         latents = latents.to(block_state.dtype)
 

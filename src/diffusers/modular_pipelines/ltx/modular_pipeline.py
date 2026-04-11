@@ -13,12 +13,55 @@
 # limitations under the License.
 
 
+import torch
+
+from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import LTXVideoLoraLoaderMixin
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
 
 
 logger = logging.get_logger(__name__)
+
+
+class LTXVideoPachifier(ConfigMixin):
+    """
+    A class to pack and unpack latents for LTX Video.
+    """
+
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(self, patch_size: int = 1, patch_size_t: int = 1):
+        super().__init__()
+
+    def pack_latents(self, latents: torch.Tensor) -> torch.Tensor:
+        batch_size, _, num_frames, height, width = latents.shape
+        patch_size = self.config.patch_size
+        patch_size_t = self.config.patch_size_t
+        post_patch_num_frames = num_frames // patch_size_t
+        post_patch_height = height // patch_size
+        post_patch_width = width // patch_size
+        latents = latents.reshape(
+            batch_size,
+            -1,
+            post_patch_num_frames,
+            patch_size_t,
+            post_patch_height,
+            patch_size,
+            post_patch_width,
+            patch_size,
+        )
+        latents = latents.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
+        return latents
+
+    def unpack_latents(self, latents: torch.Tensor, num_frames: int, height: int, width: int) -> torch.Tensor:
+        batch_size = latents.size(0)
+        patch_size = self.config.patch_size
+        patch_size_t = self.config.patch_size_t
+        latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
+        latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        return latents
 
 
 class LTXModularPipeline(
@@ -44,18 +87,6 @@ class LTXModularPipeline(
         if getattr(self, "vae", None) is not None:
             return self.vae.temporal_compression_ratio
         return 8
-
-    @property
-    def transformer_spatial_patch_size(self):
-        if getattr(self, "transformer", None) is not None:
-            return self.transformer.config.patch_size
-        return 1
-
-    @property
-    def transformer_temporal_patch_size(self):
-        if getattr(self, "transformer", None) is not None:
-            return self.transformer.config.patch_size_t
-        return 1
 
     @property
     def requires_unconditional_embeds(self):
