@@ -23,11 +23,11 @@ import torch
 from PIL import Image
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
-from ...utils.torch_utils import randn_tensor
 from ...models import AutoencoderKLFlux2
 from ...models.transformers import ErnieImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...utils.torch_utils import randn_tensor
 from .pipeline_output import ErnieImagePipelineOutput
 
 
@@ -206,8 +206,8 @@ class ErnieImagePipeline(DiffusionPipeline):
         num_images_per_prompt: int = 1,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.Tensor] = None,
-        prompt_embeds: list[torch.FloatTensor] | None = None, 
-        negative_prompt_embeds: list[torch.FloatTensor] | None = None, 
+        prompt_embeds: list[torch.FloatTensor] | None = None,
+        negative_prompt_embeds: list[torch.FloatTensor] | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, dict], None]] = None,
@@ -267,10 +267,7 @@ class ErnieImagePipeline(DiffusionPipeline):
         # [Phase 1] PE: enhance prompts
         revised_prompts: Optional[List[str]] = None
         if prompt is not None and use_pe and self.pe is not None and self.pe_tokenizer is not None:
-            prompt = [
-                self._enhance_prompt_with_pe(p, device, width=width, height=height)
-                for p in prompt
-            ]
+            prompt = [self._enhance_prompt_with_pe(p, device, width=width, height=height) for p in prompt]
             revised_prompts = list(prompt)
 
         if prompt is not None:
@@ -298,9 +295,7 @@ class ErnieImagePipeline(DiffusionPipeline):
             if negative_prompt_embeds is not None:
                 uncond_text_hiddens = negative_prompt_embeds
             else:
-                uncond_text_hiddens = self.encode_prompt(
-                    negative_prompt, device, num_images_per_prompt
-                )
+                uncond_text_hiddens = self.encode_prompt(negative_prompt, device, num_images_per_prompt)
 
         # Latent dimensions
         latent_h = height // self.vae_scale_factor
@@ -310,10 +305,10 @@ class ErnieImagePipeline(DiffusionPipeline):
         # Initialize latents
         if latents is None:
             latents = randn_tensor(
-                (total_batch_size, latent_channels, latent_h, latent_w), 
-                generator=generator, 
-                device=device, 
-                dtype=dtype
+                (total_batch_size, latent_channels, latent_h, latent_w),
+                generator=generator,
+                device=device,
+                dtype=dtype,
             )
 
         # Setup scheduler
