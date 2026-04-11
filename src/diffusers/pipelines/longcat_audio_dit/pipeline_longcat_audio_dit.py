@@ -77,7 +77,7 @@ def _approx_duration_from_text(text: str | list[str], max_duration: float = 30.0
 
 def _extract_prefixed_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict[str, torch.Tensor]:
     prefix = f"{prefix}."
-    return {key[len(prefix):]: value for key, value in state_dict.items() if key.startswith(prefix)}
+    return {key[len(prefix) :]: value for key, value in state_dict.items() if key.startswith(prefix)}
 
 
 def _get_uniform_flow_match_scheduler_sigmas(num_inference_steps: int) -> list[float]:
@@ -306,7 +306,9 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         allowed_missing = {"shared.weight"}
         unexpected_missing = set(text_missing) - allowed_missing
         if unexpected_missing:
-            raise RuntimeError(f"Unexpected missing LongCatAudioDiT text encoder weights: {sorted(unexpected_missing)}")
+            raise RuntimeError(
+                f"Unexpected missing LongCatAudioDiT text encoder weights: {sorted(unexpected_missing)}"
+            )
         if text_unexpected:
             raise RuntimeError(f"Unexpected LongCatAudioDiT text encoder weights: {sorted(text_unexpected)}")
         if "shared.weight" in text_missing:
@@ -333,7 +335,9 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         scheduler_config.update(config.get("scheduler_config", {}))
         scheduler = FlowMatchEulerDiscreteScheduler(**scheduler_config)
 
-        pipe = cls(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, transformer=transformer, scheduler=scheduler)
+        pipe = cls(
+            vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, transformer=transformer, scheduler=scheduler
+        )
         pipe.sample_rate = config.get("sampling_rate", pipe.sample_rate)
         pipe.vae_scale_factor = config.get("vae_scale_factor", config.get("latent_hop", pipe.vae_scale_factor))
         pipe.max_wav_duration = config.get("max_wav_duration", pipe.max_wav_duration)
@@ -380,7 +384,9 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
     ) -> torch.Tensor:
         if latents is not None:
             if latents.ndim != 3:
-                raise ValueError(f"`latents` must have shape (batch_size, duration, latent_dim), but got {tuple(latents.shape)}.")
+                raise ValueError(
+                    f"`latents` must have shape (batch_size, duration, latent_dim), but got {tuple(latents.shape)}."
+                )
             if latents.shape[0] != batch_size:
                 raise ValueError(f"`latents` must have batch size {batch_size}, but got {latents.shape[0]}.")
             if latents.shape[2] != self.latent_dim:
@@ -388,11 +394,11 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
             return latents.to(device=device, dtype=dtype)
 
         if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(f"Expected {batch_size} generators for batch size {batch_size}, but got {len(generator)}.")
+            raise ValueError(
+                f"Expected {batch_size} generators for batch size {batch_size}, but got {len(generator)}."
+            )
 
-        return randn_tensor(
-            (batch_size, duration, self.latent_dim), generator=generator, device=device, dtype=dtype
-        )
+        return randn_tensor((batch_size, duration, self.latent_dim), generator=generator, device=device, dtype=dtype)
 
     def check_inputs(
         self,
@@ -432,8 +438,10 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `list[str]`): Prompt or prompts that guide audio generation.
             negative_prompt (`str` or `list[str]`, *optional*): Negative prompt(s) for classifier-free guidance.
-            audio_duration_s (`float`, *optional*): Target audio duration in seconds. Ignored when `latents` is provided.
-            latents (`torch.Tensor`, *optional*): Pre-generated noisy latents of shape `(batch_size, duration, latent_dim)`.
+            audio_duration_s (`float`, *optional*):
+                Target audio duration in seconds. Ignored when `latents` is provided.
+            latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents of shape `(batch_size, duration, latent_dim)`.
             num_inference_steps (`int`, defaults to 16): Number of denoising steps. Values below 2 are promoted to 2.
             guidance_scale (`float`, defaults to 4.0): Guidance scale for classifier-free guidance.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*): Random generator(s).

@@ -93,7 +93,9 @@ class TestLongCatAudioDiTTransformerMemory(LongCatAudioDiTTransformerTesterConfi
         pytest.skip("LongCatAudioDiTTransformer does not support standard layerwise casting training tests yet.")
 
     def test_group_offloading_with_layerwise_casting(self, *args, **kwargs):
-        pytest.skip("LongCatAudioDiTTransformer does not support combined group offloading and layerwise casting tests yet.")
+        pytest.skip(
+            "LongCatAudioDiTTransformer does not support combined group offloading and layerwise casting tests yet."
+        )
 
 
 class TestLongCatAudioDiTTransformerCompile(LongCatAudioDiTTransformerTesterConfig, TorchCompileTesterMixin):

@@ -35,6 +35,7 @@ from ..normalization import RMSNorm
 class LongCatAudioDiTTransformerOutput(BaseOutput):
     sample: torch.Tensor
 
+
 class AudioDiTSinusPositionEmbedding(nn.Module):
     def __init__(self, dim: int):
         super().__init__()
@@ -420,7 +421,9 @@ class AudioDiTBlock(nn.Module):
             adaln_out = adaln_global_out + self.adaln_scale_shift.unsqueeze(0)
             gate_sa, scale_sa, shift_sa, gate_ffn, scale_ffn, shift_ffn = torch.chunk(adaln_out, 6, dim=-1)
 
-        norm_hidden_states = F.layer_norm(hidden_states.float(), (hidden_states.shape[-1],), eps=1e-6).type_as(hidden_states)
+        norm_hidden_states = F.layer_norm(hidden_states.float(), (hidden_states.shape[-1],), eps=1e-6).type_as(
+            hidden_states
+        )
         norm_hidden_states = norm_hidden_states * (1 + scale_sa[:, None]) + shift_sa[:, None]
         attn_output = self.self_attn(
             norm_hidden_states,
@@ -440,7 +443,9 @@ class AudioDiTBlock(nn.Module):
             )
             hidden_states = hidden_states + cross_output
 
-        norm_hidden_states = F.layer_norm(hidden_states.float(), (hidden_states.shape[-1],), eps=1e-6).type_as(hidden_states)
+        norm_hidden_states = F.layer_norm(hidden_states.float(), (hidden_states.shape[-1],), eps=1e-6).type_as(
+            hidden_states
+        )
         norm_hidden_states = norm_hidden_states * (1 + scale_ffn[:, None]) + shift_ffn[:, None]
         ff_output = self.ffn(norm_hidden_states)
         hidden_states = hidden_states + gate_ffn.unsqueeze(1) * ff_output

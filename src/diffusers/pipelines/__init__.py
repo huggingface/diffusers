@@ -751,8 +751,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .llada2 import LLaDA2Pipeline, LLaDA2PipelineOutput
-        from .longcat_image import LongCatImageEditPipeline, LongCatImagePipeline
         from .longcat_audio_dit import LongCatAudioDiTPipeline
+        from .longcat_image import LongCatImageEditPipeline, LongCatImagePipeline
         from .ltx import (
             LTXConditionPipeline,
             LTXI2VLongMultiPromptPipeline,

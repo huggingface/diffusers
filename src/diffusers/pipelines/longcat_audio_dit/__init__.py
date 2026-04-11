@@ -21,7 +21,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure['pipeline_longcat_audio_dit'] = ['LongCatAudioDiTPipeline']
+    _import_structure["pipeline_longcat_audio_dit"] = ["LongCatAudioDiTPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -34,7 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 else:
     import sys
 
-    sys.modules[__name__] = _LazyModule(__name__, globals()['__file__'], _import_structure, module_spec=__spec__)
+    sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)
 
     for name, value in _dummy_objects.items():
         setattr(sys.modules[__name__], name, value)

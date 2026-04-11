@@ -178,13 +178,12 @@ else:
         ]
     )
     _import_structure["image_processor"] = [
-        "IPAdapterMaskProcessor",
         "InpaintProcessor",
+        "IPAdapterMaskProcessor",
         "PixArtImageProcessor",
         "VaeImageProcessor",
         "VaeImageProcessorLDM3D",
     ]
-    _import_structure["video_processor"] = ["VideoProcessor"]
     _import_structure["models"].extend(
         [
             "AllegroTransformer3DModel",
@@ -212,7 +211,6 @@ else:
             "AutoencoderKLTemporalDecoder",
             "AutoencoderKLWan",
             "AutoencoderOobleck",
-            "LongCatAudioDiTVae",
             "AutoencoderRAE",
             "AutoencoderTiny",
             "AutoencoderVidTok",
@@ -253,8 +251,9 @@ else:
             "Kandinsky3UNet",
             "Kandinsky5Transformer3DModel",
             "LatteTransformer3DModel",
-            "LongCatImageTransformer2DModel",
             "LongCatAudioDiTTransformer",
+            "LongCatAudioDiTVae",
+            "LongCatImageTransformer2DModel",
             "LTX2VideoTransformer3DModel",
             "LTXVideoTransformer3DModel",
             "Lumina2Transformer2DModel",
@@ -398,6 +397,7 @@ else:
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
+    _import_structure["video_processor"] = ["VideoProcessor"]
 
 try:
     if not (is_torch_available() and is_scipy_available()):
@@ -594,9 +594,9 @@ else:
             "LEditsPPPipelineStableDiffusionXL",
             "LLaDA2Pipeline",
             "LLaDA2PipelineOutput",
+            "LongCatAudioDiTPipeline",
             "LongCatImageEditPipeline",
             "LongCatImagePipeline",
-            "LongCatAudioDiTPipeline",
             "LTX2ConditionPipeline",
             "LTX2ImageToVideoPipeline",
             "LTX2LatentUpsamplePipeline",
@@ -1010,7 +1010,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
-            LongCatAudioDiTVae,
             AutoencoderRAE,
             AutoencoderTiny,
             AutoencoderVidTok,
@@ -1051,8 +1050,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3UNet,
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
-            LongCatImageTransformer2DModel,
             LongCatAudioDiTTransformer,
+            LongCatAudioDiTVae,
+            LongCatImageTransformer2DModel,
             LTX2VideoTransformer3DModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
@@ -1368,9 +1368,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
             LLaDA2Pipeline,
             LLaDA2PipelineOutput,
+            LongCatAudioDiTPipeline,
             LongCatImageEditPipeline,
             LongCatImagePipeline,
-            LongCatAudioDiTPipeline,
             LTX2ConditionPipeline,
             LTX2ImageToVideoPipeline,
             LTX2LatentUpsamplePipeline,
