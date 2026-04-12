@@ -888,6 +888,8 @@ class HunyuanVideoTransformer3DModel(
     _no_split_modules = [
         "HunyuanVideoTransformerBlock",
         "HunyuanVideoSingleTransformerBlock",
+        "HunyuanVideoTokenReplaceTransformerBlock",
+        "HunyuanVideoTokenReplaceSingleTransformerBlock",
         "HunyuanVideoPatchEmbed",
         "HunyuanVideoTokenRefiner",
     ]

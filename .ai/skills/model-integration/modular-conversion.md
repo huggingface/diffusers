@@ -148,5 +148,6 @@ ComponentSpec(
 - [ ] Create pipeline class with `default_blocks_name`
 - [ ] Assemble blocks in `modular_blocks_<model>.py`
 - [ ] Wire up `__init__.py` with lazy imports
+- [ ] Add `# auto_docstring` above all assembled blocks (SequentialPipelineBlocks, AutoPipelineBlocks, etc.), run `python utils/modular_auto_docstring.py --fix_and_overwrite`, and verify the generated docstrings — all parameters should have proper descriptions with no "TODO" placeholders indicating missing definitions
 - [ ] Run `make style` and `make quality`
 - [ ] Test all workflows for parity with reference

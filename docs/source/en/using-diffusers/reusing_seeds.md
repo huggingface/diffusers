@@ -60,7 +60,7 @@ print(np.abs(image).sum())
 </hfoption>
 </hfoptions>
 
-The `Generator` object should be passed to the pipeline instead of an integer seed. `Generator` maintains a *random state* that is consumed and modified when used. Once consumed, the same `Generator` object produces different results in subsequent calls, even across different pipelines, because it's *state* has changed.
+The `Generator` object should be passed to the pipeline instead of an integer seed. `Generator` maintains a *random state* that is consumed and modified when used. Once consumed, the same `Generator` object produces different results in subsequent calls, even across different pipelines, because its *state* has changed.
 
 ```py
 generator = torch.manual_seed(0)
