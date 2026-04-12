@@ -1011,8 +1011,15 @@ class DownloadTests(unittest.TestCase):
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):
+        with self.assertRaises(ValueError):
+            pipeline = DiffusionPipeline.from_pretrained(
+                "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
+            )
+
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
+            "google/ddpm-cifar10-32",
+            custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline",
+            trust_remote_code=True,
         )
         pipeline = pipeline.to(torch_device)
         # NOTE that `"CustomPipeline"` is not a class that is defined in this library, but solely on the Hub
@@ -1021,7 +1028,10 @@ class CustomPipelineTests(unittest.TestCase):
 
     def test_load_custom_github(self):
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="main"
+            "google/ddpm-cifar10-32",
+            custom_pipeline="one_step_unet",
+            custom_revision="main",
+            trust_remote_code=True,
         )
 
         # make sure that on "main" pipeline gives only ones because of: https://github.com/huggingface/diffusers/pull/1690
@@ -1035,7 +1045,10 @@ class CustomPipelineTests(unittest.TestCase):
         del sys.modules["diffusers_modules.git.one_step_unet"]
 
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline="one_step_unet", custom_revision="0.10.2"
+            "google/ddpm-cifar10-32",
+            custom_pipeline="one_step_unet",
+            custom_revision="0.10.2",
+            trust_remote_code=True,
         )
         with torch.no_grad():
             output = pipeline()
@@ -1045,8 +1058,15 @@ class CustomPipelineTests(unittest.TestCase):
         assert pipeline.__class__.__name__ == "UnetSchedulerOneForwardPipeline"
 
     def test_run_custom_pipeline(self):
+        with self.assertRaises(ValueError):
+            pipeline = DiffusionPipeline.from_pretrained(
+                "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
+            )
+
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
+            "google/ddpm-cifar10-32",
+            custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline",
+            trust_remote_code=True,
         )
         pipeline = pipeline.to(torch_device)
         images, output_str = pipeline(num_inference_steps=2, output_type="np")
@@ -1126,7 +1146,7 @@ class CustomPipelineTests(unittest.TestCase):
     def test_local_custom_pipeline_repo(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
+            "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path, trust_remote_code=True
         )
         pipeline = pipeline.to(torch_device)
         images, output_str = pipeline(num_inference_steps=2, output_type="np")
@@ -1140,7 +1160,9 @@ class CustomPipelineTests(unittest.TestCase):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
         local_custom_pipeline_path = os.path.join(local_custom_pipeline_path, "what_ever.py")
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
+            "google/ddpm-cifar10-32",
+            custom_pipeline=local_custom_pipeline_path,
+            trust_remote_code=True,
         )
         pipeline = pipeline.to(torch_device)
         images, output_str = pipeline(num_inference_steps=2, output_type="np")

@@ -254,6 +254,7 @@ def get_cached_module_file(
     revision: str | None = None,
     local_files_only: bool = False,
     local_dir: str | None = None,
+    trust_remote_code: bool = False,
 ):
     """
     Prepares Downloads a module from a local folder or a distant repo and returns its path inside the cached
@@ -289,6 +290,10 @@ def get_cached_module_file(
             identifier allowed by git.
         local_files_only (`bool`, *optional*, defaults to `False`):
             If `True`, will only try to load the tokenizer configuration from local files.
+        trust_remote_code (`bool`, *optional*, defaults to `False`):
+            Whether or not to allow for custom pipelines and components defined on the Hub in their own files. This
+            option should only be set to `True` for repositories you trust and in which you have read the code, as
+            it will execute code present on the Hub on your local machine.
 
     > [!TIP] > You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or
     [gated > models](https://huggingface.co/docs/hub/models-gated#gated-models).
@@ -307,6 +312,12 @@ def get_cached_module_file(
     if os.path.isfile(module_file_or_url):
         resolved_module_file = module_file_or_url
         submodule = "local"
+        if not trust_remote_code:
+            raise ValueError(
+                f"The directory {pretrained_model_name_or_path} contains custom code in {module_file} which must be executed to correctly "
+                f"load the model. You can inspect the file content at {module_file_or_url}.\n"
+                f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
+            )
     elif pretrained_model_name_or_path.count("/") == 0:
         available_versions = get_diffusers_versions()
         # cut ".dev0"
@@ -324,6 +335,13 @@ def get_cached_module_file(
             raise ValueError(
                 f"`custom_revision`: {revision} does not exist. Please make sure to choose one of"
                 f" {', '.join(available_versions + ['main'])}."
+            )
+
+        if not trust_remote_code:
+            raise ValueError(
+                f"The community pipeline for {pretrained_model_name_or_path} contains custom code which must be executed to correctly "
+                f"load the model. You can inspect the repository content at https://hf.co/datasets/{COMMUNITY_PIPELINES_MIRROR_ID}/blob/main/{revision}/{pretrained_model_name_or_path}.py.\n"
+                f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
             )
 
         try:
@@ -349,6 +367,12 @@ def get_cached_module_file(
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
     else:
+        if not trust_remote_code:
+            raise ValueError(
+                f"The repository for {pretrained_model_name_or_path} contains custom code in {module_file} which must be executed to correctly "
+                f"load the model. You can inspect the repository content at https://hf.co/{pretrained_model_name_or_path}/blob/main/{module_file}.\n"
+                f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
+            )
         try:
             # Load from URL or cache if already cached
             resolved_module_file = hf_hub_download(
@@ -426,6 +450,7 @@ def get_cached_module_file(
                     revision=revision,
                     local_files_only=local_files_only,
                     local_dir=local_dir,
+                    trust_remote_code=trust_remote_code,
                 )
     return os.path.join(full_submodule, module_file)
 
@@ -443,6 +468,7 @@ def get_class_from_dynamic_module(
     revision: str | None = None,
     local_files_only: bool = False,
     local_dir: str | None = None,
+    trust_remote_code: bool = False,
 ):
     """
     Extracts a class from a module file, present in the local folder or repository of a model.
@@ -482,6 +508,10 @@ def get_class_from_dynamic_module(
             identifier allowed by git.
         local_files_only (`bool`, *optional*, defaults to `False`):
             If `True`, will only try to load the tokenizer configuration from local files.
+        trust_remote_code (`bool`, *optional*, defaults to `False`):
+            Whether or not to allow for custom pipelines and components defined on the Hub in their own files. This
+            option should only be set to `True` for repositories you trust and in which you have read the code, as
+            it will execute code present on the Hub on your local machine.
 
     > [!TIP] > You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or
     [gated > models](https://huggingface.co/docs/hub/models-gated#gated-models).
@@ -508,5 +538,6 @@ def get_class_from_dynamic_module(
         revision=revision,
         local_files_only=local_files_only,
         local_dir=local_dir,
+        trust_remote_code=trust_remote_code,
     )
     return get_class_in_module(class_name, final_module)

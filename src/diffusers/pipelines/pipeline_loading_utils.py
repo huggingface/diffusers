@@ -408,7 +408,14 @@ def simple_get_class_obj(library_name, class_name):
 
 
 def get_class_obj_and_candidates(
-    library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None
+    library_name,
+    class_name,
+    importable_classes,
+    pipelines,
+    is_pipeline_module,
+    component_name=None,
+    cache_dir=None,
+    trust_remote_code: bool = False,
 ):
     """Simple helper method to retrieve class object of module as well as potential parent class objects"""
     component_folder = os.path.join(cache_dir, component_name) if component_name and cache_dir else None
@@ -421,7 +428,10 @@ def get_class_obj_and_candidates(
     elif component_folder and os.path.isfile(os.path.join(component_folder, library_name + ".py")):
         # load custom component
         class_obj = get_class_from_dynamic_module(
-            component_folder, module_file=library_name + ".py", class_name=class_name
+            component_folder,
+            module_file=library_name + ".py",
+            class_name=class_name,
+            trust_remote_code=trust_remote_code,
         )
         class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
     else:
@@ -445,6 +455,7 @@ def _get_custom_pipeline_class(
     class_name=None,
     cache_dir=None,
     revision=None,
+    trust_remote_code: bool = False,
 ):
     if custom_pipeline.endswith(".py"):
         path = Path(custom_pipeline)
@@ -468,6 +479,7 @@ def _get_custom_pipeline_class(
         class_name=class_name,
         cache_dir=cache_dir,
         revision=revision,
+        trust_remote_code=trust_remote_code,
     )
 
 
@@ -481,6 +493,7 @@ def _get_pipeline_class(
     class_name=None,
     cache_dir=None,
     revision=None,
+    trust_remote_code: bool = False,
 ):
     if custom_pipeline is not None:
         return _get_custom_pipeline_class(
@@ -490,6 +503,7 @@ def _get_pipeline_class(
             class_name=class_name,
             cache_dir=cache_dir,
             revision=revision,
+            trust_remote_code=trust_remote_code,
         )
 
     if class_obj.__name__ != "DiffusionPipeline" and class_obj.__name__ != "ModularPipeline":
@@ -760,6 +774,7 @@ def load_sub_model(
     provider_options: Any,
     disable_mmap: bool,
     quantization_config: Any | None = None,
+    trust_remote_code: bool = False,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     from ..quantizers import PipelineQuantizationConfig
@@ -774,6 +789,7 @@ def load_sub_model(
         is_pipeline_module,
         component_name=name,
         cache_dir=cached_folder,
+        trust_remote_code=trust_remote_code,
     )
 
     load_method_name = None
