@@ -706,7 +706,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             image = image.unsqueeze(2)
 
         has_neg_prompt = negative_prompt is not None or (
-            negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
+            negative_prompt_embeds is not None
         )
 
         if true_cfg_scale > 1 and not has_neg_prompt:
