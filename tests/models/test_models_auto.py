@@ -1,9 +1,15 @@
+import json
+import os
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+import torch
 from transformers import CLIPTextModel, LongformerModel
 
+from diffusers import ConfigMixin
 from diffusers.models import AutoModel, UNet2DConditionModel
+from diffusers.models.modeling_utils import ModelMixin
 
 
 class TestAutoModel(unittest.TestCase):
@@ -34,6 +40,45 @@ class TestAutoModel(unittest.TestCase):
             "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="text_encoder", use_safetensors=False
         )
         assert isinstance(model, CLIPTextModel)
+
+    def test_load_dynamic_module_from_local_path_with_subfolder(self):
+        CUSTOM_MODEL_CODE = (
+            "import torch\n"
+            "from diffusers import ModelMixin, ConfigMixin\n"
+            "from diffusers.configuration_utils import register_to_config\n"
+            "\n"
+            "class CustomModel(ModelMixin, ConfigMixin):\n"
+            "    @register_to_config\n"
+            "    def __init__(self, hidden_size=8):\n"
+            "        super().__init__()\n"
+            "        self.linear = torch.nn.Linear(hidden_size, hidden_size)\n"
+            "\n"
+            "    def forward(self, x):\n"
+            "        return self.linear(x)\n"
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            subfolder = "custom_model"
+            model_dir = os.path.join(tmpdir, subfolder)
+            os.makedirs(model_dir)
+
+            with open(os.path.join(model_dir, "modeling.py"), "w") as f:
+                f.write(CUSTOM_MODEL_CODE)
+
+            config = {
+                "_class_name": "CustomModel",
+                "_diffusers_version": "0.0.0",
+                "auto_map": {"AutoModel": "modeling.CustomModel"},
+                "hidden_size": 8,
+            }
+            with open(os.path.join(model_dir, "config.json"), "w") as f:
+                json.dump(config, f)
+
+            torch.save({}, os.path.join(model_dir, "diffusion_pytorch_model.bin"))
+
+            model = AutoModel.from_pretrained(tmpdir, subfolder=subfolder, trust_remote_code=True)
+            assert model.__class__.__name__ == "CustomModel"
+            assert model.config["hidden_size"] == 8
 
 
 class TestAutoModelFromConfig(unittest.TestCase):
@@ -100,3 +145,51 @@ class TestAutoModelFromConfig(unittest.TestCase):
     def test_from_config_raises_on_none(self):
         with self.assertRaises(ValueError, msg="Please provide a `pretrained_model_name_or_path_or_dict`"):
             AutoModel.from_config(None)
+
+
+class TestRegisterForAutoClass(unittest.TestCase):
+    def test_register_for_auto_class_sets_attribute(self):
+        class DummyModel(ModelMixin, ConfigMixin):
+            config_name = "config.json"
+
+        DummyModel.register_for_auto_class("AutoModel")
+        self.assertEqual(DummyModel._auto_class, "AutoModel")
+
+    def test_register_for_auto_class_rejects_unsupported(self):
+        class DummyModel(ModelMixin, ConfigMixin):
+            config_name = "config.json"
+
+        with self.assertRaises(ValueError, msg="Only 'AutoModel' is supported"):
+            DummyModel.register_for_auto_class("AutoPipeline")
+
+    def test_auto_map_in_saved_config(self):
+        class DummyModel(ModelMixin, ConfigMixin):
+            config_name = "config.json"
+
+        DummyModel.register_for_auto_class("AutoModel")
+        model = DummyModel()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_config(tmpdir)
+            config_path = os.path.join(tmpdir, "config.json")
+            with open(config_path, "r") as f:
+                config = json.load(f)
+
+        self.assertIn("auto_map", config)
+        self.assertIn("AutoModel", config["auto_map"])
+        module_name = DummyModel.__module__.split(".")[-1]
+        self.assertEqual(config["auto_map"]["AutoModel"], f"{module_name}.DummyModel")
+
+    def test_no_auto_map_without_register(self):
+        class DummyModel(ModelMixin, ConfigMixin):
+            config_name = "config.json"
+
+        model = DummyModel()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_config(tmpdir)
+            config_path = os.path.join(tmpdir, "config.json")
+            with open(config_path, "r") as f:
+                config = json.load(f)
+
+        self.assertNotIn("auto_map", config)
