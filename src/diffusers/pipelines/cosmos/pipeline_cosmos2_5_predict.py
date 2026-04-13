@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 import os
 from typing import Callable
 
@@ -772,7 +771,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             num_frames_in = frames_to_extract
 
         else:
-            video = torch.zeros(batch_size, num_frames, 3, height, width, dtype=torch.uint8)
+            video = torch.zeros(batch_size, 3, num_frames, height, width, dtype=torch.uint8)
             num_frames_in = 0
 
         video = video.to(device=device, dtype=vae_dtype)
@@ -868,18 +867,18 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
             latents_std = self.latents_std.to(latents.device, latents.dtype)
             latents = latents / latents_std + latents_mean
             video = self.vae.decode(latents.to(self.vae.dtype), return_dict=False)[0]
-            # video = self._match_num_frames(video, num_frames)
+            video = self._match_num_frames(video, num_frames)
 
-            # assert self.safety_checker is not None
-            # self.safety_checker.to(device)
-            # video = self.video_processor.postprocess_video(video, output_type="np")
-            # video = (video * 255).astype(np.uint8)
-            # video_batch = []
-            # for vid in video:
-            #     vid = self.safety_checker.check_video_safety(vid)
-            #     video_batch.append(vid)
-            # video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
-            # video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
+            if isinstance(self.safety_checker, CosmosSafetyChecker):
+                self.safety_checker.to(device)
+                video = self.video_processor.postprocess_video(video, output_type="np")
+                video = (video * 255).astype(np.uint8)
+                video_batch = []
+                for vid in video:
+                    vid = self.safety_checker.check_video_safety(vid)
+                    video_batch.append(vid)
+                video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
+                video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
