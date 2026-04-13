@@ -1109,6 +1109,37 @@ class CustomPipelineTests(unittest.TestCase):
 
         assert images.shape == (1, 64, 64, 3)
 
+    def test_custom_components_from_local_dir(self):
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            path = snapshot_download("hf-internal-testing/tiny-sdxl-custom-components", cache_dir=tmpdirname)
+            # make sure that trust remote code has to be passed
+            with self.assertRaises(ValueError):
+                pipeline = DiffusionPipeline.from_pretrained(path)
+
+            # Check that only loading custom components "my_unet", "my_scheduler" works
+            pipeline = DiffusionPipeline.from_pretrained(path, trust_remote_code=True)
+
+            assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
+            assert pipeline.config.scheduler == ("diffusers_modules.local.my_scheduler", "MyScheduler")
+            assert pipeline.__class__.__name__ == "StableDiffusionXLPipeline"
+
+            pipeline = pipeline.to(torch_device)
+            images = pipeline("test", num_inference_steps=2, output_type="np")[0]
+
+            assert images.shape == (1, 64, 64, 3)
+
+            # Check that only loading custom components "my_unet", "my_scheduler" and explicit custom pipeline works
+            pipeline = DiffusionPipeline.from_pretrained(path, custom_pipeline="my_pipeline", trust_remote_code=True)
+
+            assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
+            assert pipeline.config.scheduler == ("diffusers_modules.local.my_scheduler", "MyScheduler")
+            assert pipeline.__class__.__name__ == "MyPipeline"
+
+            pipeline = pipeline.to(torch_device)
+            images = pipeline("test", num_inference_steps=2, output_type="np")[0]
+
+            assert images.shape == (1, 64, 64, 3)
+
     def test_remote_auto_custom_pipe(self):
         # make sure that trust remote code has to be passed
         with self.assertRaises(ValueError):
