@@ -666,18 +666,11 @@ class StableDiffusionXLImg2ImgPipeline(
                 )
             )
 
-            num_inference_steps = (self.scheduler.timesteps < discrete_timestep_cutoff).sum().item()
-            if self.scheduler.order == 2 and num_inference_steps % 2 == 0:
-                # if the scheduler is a 2nd order scheduler we might have to do +1
-                # because `num_inference_steps` might be even given that every timestep
-                # (except the highest one) is duplicated. If `num_inference_steps` is even it would
-                # mean that we cut the timesteps in the middle of the denoising step
-                # (between 1st and 2nd derivative) which leads to incorrect results. By adding 1
-                # we ensure that the denoising process always ends after the 2nd derivate step of the scheduler
-                num_inference_steps = num_inference_steps + 1
+            real_timesteps = self.scheduler.timesteps[:: self.scheduler.order]
+            num_inference_steps = (real_timesteps < discrete_timestep_cutoff).sum().item()
 
             # because t_n+1 >= t_n, we slice the timesteps starting from the end
-            t_start = len(self.scheduler.timesteps) - num_inference_steps
+            t_start = (len(real_timesteps) - num_inference_steps) * self.scheduler.order
             timesteps = self.scheduler.timesteps[t_start:]
             if hasattr(self.scheduler, "set_begin_index"):
                 self.scheduler.set_begin_index(t_start)
