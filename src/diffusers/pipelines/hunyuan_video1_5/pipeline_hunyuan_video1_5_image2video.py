@@ -611,7 +611,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
             tuple: (cond_latents_concat, mask_concat) - both are zero tensors for t2v
         """
 
-        batch, channels, frames, height, width = latents.shape
+        batch, channels, frames, latent_height, latent_width = latents.shape
 
         image_latents = self._get_image_latents(
             vae=self.vae,
@@ -626,7 +626,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         latent_condition[:, :, 1:, :, :] = 0
         latent_condition = latent_condition.to(device=device, dtype=dtype)
 
-        latent_mask = torch.zeros(batch, 1, frames, height, width, dtype=dtype, device=device)
+        latent_mask = torch.zeros(batch, 1, frames, latent_height, latent_width, dtype=dtype, device=device)
         latent_mask[:, :, 0, :, :] = 1.0
 
         return latent_condition, latent_mask
