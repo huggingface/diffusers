@@ -368,6 +368,12 @@ class DownloadTests(unittest.TestCase):
             assert any((f.endswith(".onnx")) for f in files)
             assert any((f.endswith(".pb")) for f in files)
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">", "4.56.2"),
+        reason="CLIPTextModel architecture was flattened in transformers>4.56.2 without backward-compat key mapping. "
+        "See https://github.com/huggingface/transformers/issues/45390",
+        strict=False,
+    )
     def test_download_no_safety_checker(self):
         prompt = "hello"
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -423,6 +429,12 @@ class DownloadTests(unittest.TestCase):
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">", "4.56.2"),
+        reason="CLIPTextModel architecture was flattened in transformers>4.56.2 without backward-compat key mapping. "
+        "See https://github.com/huggingface/transformers/issues/45390",
+        strict=False,
+    )
     def test_cached_files_are_used_when_no_internet(self):
         # A mock response for an HTTP head request to emulate server down
         response_mock = mock.Mock()
@@ -450,6 +462,12 @@ class DownloadTests(unittest.TestCase):
                 if p1.data.ne(p2.data).sum() > 0:
                     assert False, "Parameters not the same!"
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">", "4.56.2"),
+        reason="CLIPTextModel architecture was flattened in transformers>4.56.2 without backward-compat key mapping. "
+        "See https://github.com/huggingface/transformers/issues/45390",
+        strict=False,
+    )
     def test_local_files_only_are_used_when_no_internet(self):
         # A mock response for an HTTP head request to emulate server down
         response_mock = mock.Mock()
