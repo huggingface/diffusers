@@ -1055,6 +1055,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 self._joint_attention_kwargs.update(ip_adapter_image_embeds=ip_adapter_image_embeds)
 
         # 7. Denoising loop
+        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
