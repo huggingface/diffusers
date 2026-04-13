@@ -11,7 +11,21 @@ import torch_xla.distributed.xla_multiprocessing as xmp
 import torch_xla.runtime as xr
 from torch_xla.experimental.custom_kernel import FlashAttention
 
+import diffusers.pipelines.flux.pipeline_flux as flux_pipeline_module
 from diffusers import FluxPipeline
+
+
+# Disable the XLA_AVAILABLE flag in the Flux pipeline module so that timesteps
+# are created on the XLA device instead of CPU.  Without this, the pipeline
+# creates timesteps on CPU (an optimisation to avoid D2H sync) but then passes
+# them into the transformer whose weights live on XLA, causing an addmm error.
+# We compensate for the lost xm.mark_step() call via a step-end callback.
+flux_pipeline_module.XLA_AVAILABLE = False
+
+
+def _mark_step_callback(pipeline, step, timestep, callback_kwargs):
+    xm.mark_step()
+    return callback_kwargs
 
 
 logger = structlog.get_logger()
@@ -73,6 +87,7 @@ def _main(index, args, text_pipe, ckpt_id):
         guidance_scale=guidance,
         height=height,
         width=width,
+        callback_on_step_end=_mark_step_callback,
     ).images[0]
     logger.info(f"compilation took {perf_counter() - ts} sec.")
     image.save("/tmp/compile_out.png")
@@ -101,6 +116,7 @@ def _main(index, args, text_pipe, ckpt_id):
             guidance_scale=guidance,
             height=height,
             width=width,
+            callback_on_step_end=_mark_step_callback,
         ).images[0]
         inference_time = perf_counter() - ts
         if index == 0:
