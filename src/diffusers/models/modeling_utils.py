@@ -967,7 +967,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             use_flashpack (`bool`, *optional*, defaults to `False`):
                 If set to `True`, the model is loaded from `flashpack` weights.
             flashpack_kwargs(`dict[str, Any]`, *optional*, defaults to `{}`):
-                Kwargs passed to [`flashpack.deserialization.assign_from_file`](https://github.com/fal-ai/flashpack/blob/f1aa91c5cd9532a3dbf5bcc707ab9b01c274b76c/src/flashpack/deserialization.py#L408-L422)
+                Kwargs passed to
+                [`flashpack.deserialization.assign_from_file`](https://github.com/fal-ai/flashpack/blob/f1aa91c5cd9532a3dbf5bcc707ab9b01c274b76c/src/flashpack/deserialization.py#L408-L422)
 
 
         > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in

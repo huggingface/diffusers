@@ -1583,8 +1583,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 option should only be set to `True` for repositories you trust and in which you have read the code, as
                 it will execute code present on the Hub on your local machine.
             use_flashpack (`bool`, *optional*, defaults to `False`):
-                If set to `True`, FlashPack weights will always be downloaded if present. If set to `False`, FlashPack weights
-                will never be downloaded.
+                If set to `True`, FlashPack weights will always be downloaded if present. If set to `False`, FlashPack
+                weights will never be downloaded.
 
         Returns:
             `os.PathLike`:

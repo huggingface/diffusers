@@ -17,10 +17,11 @@ import pathlib
 import tempfile
 import unittest
 
-from diffusers.models.auto_model import AutoModel
 from diffusers import AutoPipelineForText2Image
+from diffusers.models.auto_model import AutoModel
 
-from ..testing_utils import require_flashpack, require_torch_gpu, is_torch_available
+from ..testing_utils import is_torch_available, require_flashpack, require_torch_gpu
+
 
 if is_torch_available():
     import torch
