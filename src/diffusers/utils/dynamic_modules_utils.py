@@ -292,8 +292,8 @@ def get_cached_module_file(
             If `True`, will only try to load the tokenizer configuration from local files.
         trust_remote_code (`bool`, *optional*, defaults to `False`):
             Whether or not to allow for custom pipelines and components defined on the Hub in their own files. This
-            option should only be set to `True` for repositories you trust and in which you have read the code, as
-            it will execute code present on the Hub on your local machine.
+            option should only be set to `True` for repositories you trust and in which you have read the code, as it
+            will execute code present on the Hub on your local machine.
 
     > [!TIP] > You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or
     [gated > models](https://huggingface.co/docs/hub/models-gated#gated-models).
@@ -510,8 +510,8 @@ def get_class_from_dynamic_module(
             If `True`, will only try to load the tokenizer configuration from local files.
         trust_remote_code (`bool`, *optional*, defaults to `False`):
             Whether or not to allow for custom pipelines and components defined on the Hub in their own files. This
-            option should only be set to `True` for repositories you trust and in which you have read the code, as
-            it will execute code present on the Hub on your local machine.
+            option should only be set to `True` for repositories you trust and in which you have read the code, as it
+            will execute code present on the Hub on your local machine.
 
     > [!TIP] > You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or
     [gated > models](https://huggingface.co/docs/hub/models-gated#gated-models).
