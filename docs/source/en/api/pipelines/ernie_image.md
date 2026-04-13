@@ -46,7 +46,7 @@ from diffusers.utils import load_image
 
 pipe = ErnieImagePipeline.from_pretrained("baidu/ERNIE-Image", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
-# 如果显存不足，可以开启offload
+# If you are running low on GPU VRAM, you can enable offloading
 pipe.enable_model_cpu_offload()
 
 prompt = "一只黑白相间的中华田园犬"
@@ -55,8 +55,8 @@ images = pipe(
     height=1024,
     width=1024,
     num_inference_steps=50,
-    guidance_scale=5.0,
-    generator=generator,
+    guidance_scale=4.0,
+    generator=torch.Generator("cuda").manual_seed(42),
     use_pe=True,
 ).images
 images[0].save("ernie-image-output.png")
@@ -69,7 +69,7 @@ from diffusers.utils import load_image
 
 pipe = ErnieImagePipeline.from_pretrained("baidu/ERNIE-Image-Turbo", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
-# 如果显存不足，可以开启offload
+# If you are running low on GPU VRAM, you can enable offloading
 pipe.enable_model_cpu_offload()
 
 prompt = "一只黑白相间的中华田园犬"
@@ -78,8 +78,8 @@ images = pipe(
     height=1024,
     width=1024,
     num_inference_steps=8,
-    guidance_scale=5.0,
-    generator=generator,
+    guidance_scale=1.0,
+    generator=torch.Generator("cuda").manual_seed(42),
     use_pe=True,
 ).images
 images[0].save("ernie-image-turbo-output.png")
