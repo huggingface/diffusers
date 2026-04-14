@@ -86,8 +86,14 @@ class MyModelDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
 Autoregressive video models (e.g. Helios) also use it for an outer chunk loop:
 ```python
-class HeliosChunkDenoiseStep(LoopSequentialPipelineBlocks):
-    block_classes = [ChunkHistorySlice, ChunkNoiseGen, ChunkDenoiseInner, ChunkUpdate]
+class HeliosChunkDenoiseStep(HeliosChunkLoopWrapper):
+    block_classes = [
+        HeliosChunkHistorySliceStep,
+        HeliosChunkNoiseGenStep,
+        HeliosChunkSchedulerResetStep,
+        HeliosChunkDenoiseInner,
+        HeliosChunkUpdateStep,
+    ]
 ```
 
 Note: sub-blocks inside `LoopSequentialPipelineBlocks` receive `(components, block_state, i, t)` for denoise loops or `(components, block_state, k)` for chunk loops.
