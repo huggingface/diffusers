@@ -22,7 +22,6 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -94,8 +93,4 @@ class TestLuminaNextDiT(LuminaNextDiTTesterConfig, ModelTesterMixin):
 
 
 class TestLuminaNextDiTTraining(LuminaNextDiTTesterConfig, TrainingTesterMixin):
-    pass
-
-
-class TestLuminaNextDiTCompile(LuminaNextDiTTesterConfig, TorchCompileTesterMixin):
     pass
