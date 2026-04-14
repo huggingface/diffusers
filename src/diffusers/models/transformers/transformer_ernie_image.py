@@ -127,7 +127,7 @@ class ErnieImageSingleStreamAttnProcessor:
         query, key = query.to(dtype), key.to(dtype)
 
         # From [batch, seq_len] to [batch, 1, 1, seq_len] -> broadcast to [batch, heads, seq_len, seq_len]
-        if attention_mask is not None
+        if attention_mask is not None:
             if attention_mask.ndim == 2:
                 attention_mask = attention_mask[:, None, None, :]
             
