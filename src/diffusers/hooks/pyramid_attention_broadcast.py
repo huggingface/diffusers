@@ -159,24 +159,27 @@ class PyramidAttentionBroadcastHook(ModelHook):
         )
         should_compute_attention = (
             self.state.cache is None
-            or self.state.iteration == 0
             or not is_within_timestep_range
             or self.state.iteration % self.block_skip_range == 0
         )
 
         if should_compute_attention:
             output = self.fn_ref.original_forward(*args, **kwargs)
+            # When outside the active timestep window, release the cached tensor
+            # immediately so GPU memory is not held until the next reset_state().
+            if not is_within_timestep_range:
+                self.state.cache = None
+            else:
+                self.state.cache = output
         else:
             output = self.state.cache
 
-        self.state.cache = output
         self.state.iteration += 1
         return output
 
     def reset_state(self, module: torch.nn.Module) -> None:
         self.state.reset()
         return module
-
 
 def apply_pyramid_attention_broadcast(module: torch.nn.Module, config: PyramidAttentionBroadcastConfig):
     r"""
