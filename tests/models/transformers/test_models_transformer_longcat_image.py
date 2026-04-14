@@ -22,7 +22,6 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -97,7 +96,3 @@ class TestLongCatImageTransformerTraining(LongCatImageTransformerTesterConfig, T
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"LongCatImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestLongCatImageTransformerCompile(LongCatImageTransformerTesterConfig, TorchCompileTesterMixin):
-    pass

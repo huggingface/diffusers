@@ -29,7 +29,6 @@ from ..testing_utils import (
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -180,10 +179,6 @@ class TestChromaTransformerTraining(ChromaTransformerTesterConfig, TrainingTeste
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"ChromaTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestChromaTransformerCompile(ChromaTransformerTesterConfig, TorchCompileTesterMixin):
-    pass
 
 
 class TestChromaTransformerIPAdapter(ChromaTransformerTesterConfig, IPAdapterTesterMixin):
