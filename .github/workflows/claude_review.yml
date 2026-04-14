@@ -39,6 +39,7 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           rm -rf .claude/
+          git fetch --depth=1 origin "$DEFAULT_BRANCH"
           git checkout "origin/$DEFAULT_BRANCH" -- .ai/
       - name: Get PR diff
         env:
