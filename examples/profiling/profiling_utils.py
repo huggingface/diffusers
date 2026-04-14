@@ -45,7 +45,18 @@ def annotate_pipeline(pipe):
         method = getattr(component, method_name, None)
         if method is None:
             continue
-        setattr(component, method_name, annotate(method, label))
+
+        # Extract underlying function (avoid bound-method issue)
+        func = getattr(method, "__func__", method)
+
+        # Wrap function
+        wrapped = annotate(func, label)
+
+        # Rebind to THIS instance only (preserve descriptor behavior)
+        bound_method = wrapped.__get__(component, type(component))
+
+        # Set back
+        setattr(component, method_name, bound_method)
 
     # Annotate pipeline-level methods
     if hasattr(pipe, "encode_prompt"):
