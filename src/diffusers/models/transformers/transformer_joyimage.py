@@ -11,6 +11,7 @@ from ..attention import FeedForward
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from .transformer_wan import WanTimeTextImageEmbedding
 
 def _to_tuple(x, dim=2):
     if isinstance(x, int):
@@ -167,33 +168,7 @@ def get_nd_rotary_pos_embed(
 
     return vis_emb, txt_emb
 
-
-def load_modulation(modulate_type: str, hidden_size: int, factor: int, act_layer=nn.SiLU, dtype=None, device=None):
-    factory_kwargs = {"dtype": dtype, "device": device}
-    if modulate_type == "wanx":
-        return ModulateWan(hidden_size, factor, **factory_kwargs)
-    if modulate_type == "adaLN":
-        return ModulateDiT(hidden_size, factor, act_layer, **factory_kwargs)
-    if modulate_type == "jdx":
-        return ModulateX(hidden_size, factor, **factory_kwargs)
-    raise ValueError(f"Unknown modulation type: {modulate_type}.")
-
-
-class ModulateDiT(nn.Module):
-    def __init__(self, hidden_size: int, factor: int, act_layer=nn.SiLU, dtype=None, device=None):
-        factory_kwargs = {"dtype": dtype, "device": device}
-        super().__init__()
-        self.factor = factor
-        self.act = act_layer()
-        self.linear = nn.Linear(hidden_size, factor * hidden_size, bias=True, **factory_kwargs)
-        nn.init.zeros_(self.linear.weight)
-        nn.init.zeros_(self.linear.bias)
-
-    def forward(self, x: torch.Tensor):
-        return self.linear(self.act(x)).chunk(self.factor, dim=-1)
-
-
-class ModulateWan(nn.Module):
+class JoyImageModulate(nn.Module):
     def __init__(self, hidden_size: int, factor: int, dtype=None, device=None):
         super().__init__()
         self.factor = factor
@@ -205,17 +180,6 @@ class ModulateWan(nn.Module):
         if len(x.shape) != 3:
             x = x.unsqueeze(1)
         return [o.squeeze(1) for o in (self.modulate_table + x).chunk(self.factor, dim=1)]
-
-
-class ModulateX(nn.Module):
-    def __init__(self, hidden_size: int, factor: int, dtype=None, device=None):
-        super().__init__()
-        self.factor = factor
-
-    def forward(self, x: torch.Tensor):
-        if len(x.shape) != 3:
-            x = x.unsqueeze(1)
-        return [o.squeeze(1) for o in x.chunk(self.factor, dim=1)]
 
 
 def modulate(x, shift=None, scale=None):
@@ -267,18 +231,16 @@ class MMDoubleStreamBlock(nn.Module):
         mlp_width_ratio: float,
         dtype=None,
         device=None,
-        dit_modulation_type: str = "wanx",
         attn_backend: str = "torch_spda",
     ):
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         self.attn_backend = attn_backend
-        self.dit_modulation_type = dit_modulation_type
         self.heads_num = heads_num
         head_dim = hidden_size // heads_num
         mlp_hidden_dim = int(hidden_size * mlp_width_ratio)
 
-        self.img_mod = load_modulation(self.dit_modulation_type, hidden_size, 6, **factory_kwargs)
+        self.img_mod = JoyImageModulate(hidden_size, 6, **factory_kwargs)
         self.img_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
         self.img_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=True, **factory_kwargs)
         self.img_attn_q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs)
@@ -287,7 +249,7 @@ class MMDoubleStreamBlock(nn.Module):
         self.img_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
         self.img_mlp = FeedForward(hidden_size, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
 
-        self.txt_mod = load_modulation(self.dit_modulation_type, hidden_size, 6, **factory_kwargs)
+        self.txt_mod = JoyImageModulate(hidden_size, 6, **factory_kwargs)
         self.txt_norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
         self.txt_attn_qkv = nn.Linear(hidden_size, hidden_size * 3, bias=True, **factory_kwargs)
         self.txt_attn_q_norm = RMSNorm(head_dim, elementwise_affine=True, eps=1e-6, **factory_kwargs)
@@ -352,28 +314,6 @@ class MMDoubleStreamBlock(nn.Module):
         )
 
         return img, txt
-
-
-class WanTimeTextImageEmbedding(nn.Module):
-    def __init__(self, dim: int, time_freq_dim: int, time_proj_dim: int, text_embed_dim: int):
-        super().__init__()
-        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
-        self.act_fn = nn.SiLU()
-        self.time_proj = nn.Linear(dim, time_proj_dim)
-        self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
-
-    def forward(self, timestep: torch.Tensor, encoder_hidden_states: torch.Tensor):
-        timestep = self.timesteps_proj(timestep)
-        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
-        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
-            timestep = timestep.to(time_embedder_dtype)
-        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
-        timestep_proj = self.time_proj(self.act_fn(temb))
-        encoder_hidden_states = self.text_embedder(encoder_hidden_states)
-        return temb, timestep_proj, encoder_hidden_states
-
-
 class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
 
@@ -390,20 +330,15 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
         mm_double_blocks_depth: int = 40,
         rope_dim_list: tuple[int, int, int] = (16, 56, 56),
         rope_type: str = "rope",
-        dit_modulation_type: str = "wanx",
         attn_backend: str = "torch_spda",
         unpatchify_new: bool = True,
         rope_theta: int = 256,
         enable_activation_checkpointing: bool = False,
-        is_repa: bool = False,
-        repa_layer: int = 13,
     ):
         super().__init__()
 
         self.args = SimpleNamespace(
             enable_activation_checkpointing=enable_activation_checkpointing,
-            is_repa=is_repa,
-            repa_layer=repa_layer,
         )
 
         self.out_channels = out_channels or in_channels
@@ -411,7 +346,6 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
         self.hidden_size = hidden_size
         self.heads_num = heads_num
         self.rope_dim_list = tuple(rope_dim_list)
-        self.dit_modulation_type = dit_modulation_type
         self.mm_double_blocks_depth = mm_double_blocks_depth
         self.attn_backend = attn_backend
         self.rope_type = rope_type
@@ -426,7 +360,7 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
         self.condition_embedder = WanTimeTextImageEmbedding(
             dim=hidden_size,
             time_freq_dim=256,
-            time_proj_dim=hidden_size * 6 if dit_modulation_type != "adaLN" else hidden_size,
+            time_proj_dim=hidden_size * 6,
             text_embed_dim=text_states_dim,
         )
 
@@ -436,7 +370,6 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
                     hidden_size=self.hidden_size,
                     heads_num=self.heads_num,
                     mlp_width_ratio=mlp_width_ratio,
-                    dit_modulation_type=self.dit_modulation_type,
                     attn_backend=attn_backend,
                 )
                 for _ in range(mm_double_blocks_depth)
@@ -445,11 +378,6 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.norm_out = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.proj_out = nn.Linear(hidden_size, out_channels * math.prod(self.patch_size))
-
-        if self.args.is_repa:
-            self.repa_proj = nn.Linear(hidden_size, text_states_dim)
-            if self.args.repa_layer > mm_double_blocks_depth:
-                raise ValueError("repa_layer should be smaller than total depth")
 
         self.gradient_checkpointing = enable_activation_checkpointing
 
@@ -514,7 +442,7 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
             )
 
         img = self.img_in(hidden_states).flatten(2).transpose(1, 2)
-        _, vec, txt = self.condition_embedder(timestep, encoder_hidden_states)
+        _, vec, txt, _ = self.condition_embedder(timestep, encoder_hidden_states)
         if vec.shape[-1] > self.hidden_size:
             vec = vec.unflatten(1, (6, -1))
 
@@ -539,11 +467,6 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
         img = self.proj_out(self.norm_out(img))
         img = self.unpatchify(img, tt, th, tw)
 
-        repa_hidden_state = None
-        if self.args.is_repa:
-            repa_hidden_state = self.repa_proj(img_hidden_states[self.args.repa_layer])
-            repa_hidden_state = repa_hidden_state.view(img.shape[0], tt, th, tw, -1)
-
         if is_multi_item:
             # b c (n t) h w -> b n c t h w
             b, c, nt, h, w = img.shape
@@ -551,14 +474,9 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
             img = img.reshape(b, c, num_items, t, h, w).permute(0, 2, 1, 3, 4, 5)
             if num_items > 1:
                 img = torch.cat([img[:, 1:], img[:, :1]], dim=1)
-            if repa_hidden_state is not None:
-                # b (n t) h w c -> b n t h w c
-                b2, nt2, h2, w2, c2 = repa_hidden_state.shape
-                t2 = nt2 // num_items
-                repa_hidden_state = repa_hidden_state.reshape(b2, num_items, t2, h2, w2, c2)
 
         if not return_dict:
-            return (img, txt, repa_hidden_state)
+            return (img, txt)
 
         return Transformer2DModelOutput(sample=img)
 
