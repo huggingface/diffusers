@@ -13,57 +13,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import torch
 
 from diffusers import Lumina2Transformer2DModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    ModelTesterMixin,
+    TorchCompileTesterMixin,
+    TrainingTesterMixin,
 )
-from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class Lumina2Transformer2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = Lumina2Transformer2DModel
-    main_input_name = "hidden_states"
-    uses_custom_attn_processor = True
+class Lumina2TransformerTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return Lumina2Transformer2DModel
 
     @property
-    def dummy_input(self):
-        batch_size = 2  # N
-        num_channels = 4  # C
-        height = width = 16  # H, W
-        embedding_dim = 32  # D
-        sequence_length = 16  # L
+    def main_input_name(self) -> str:
+        return "hidden_states"
 
-        hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
-        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
-        timestep = torch.rand(size=(batch_size,)).to(torch_device)
-        attention_mask = torch.ones(size=(batch_size, sequence_length), dtype=torch.bool).to(torch_device)
+    @property
+    def output_shape(self) -> tuple:
+        return (4, 16, 16)
 
+    @property
+    def input_shape(self) -> tuple:
+        return (4, 16, 16)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
         return {
-            "hidden_states": hidden_states,
-            "encoder_hidden_states": encoder_hidden_states,
-            "timestep": timestep,
-            "encoder_attention_mask": attention_mask,
-        }
-
-    @property
-    def input_shape(self):
-        return (4, 16, 16)
-
-    @property
-    def output_shape(self):
-        return (4, 16, 16)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
             "sample_size": 16,
             "patch_size": 2,
             "in_channels": 4,
@@ -81,9 +70,33 @@ class Lumina2Transformer2DModelTransformerTests(ModelTesterMixin, unittest.TestC
             "cap_feat_dim": 32,
         }
 
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+    def get_dummy_inputs(self, batch_size: int = 2) -> dict[str, torch.Tensor]:
+        num_channels = 4
+        height = width = 16
+        embedding_dim = 32
+        sequence_length = 16
 
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_channels, height, width), generator=self.generator, device=torch_device
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+            ),
+            "timestep": torch.rand(size=(batch_size,), generator=self.generator).to(torch_device),
+            "encoder_attention_mask": torch.ones((batch_size, sequence_length), dtype=torch.bool, device=torch_device),
+        }
+
+
+class TestLumina2Transformer(Lumina2TransformerTesterConfig, ModelTesterMixin):
+    pass
+
+
+class TestLumina2TransformerTraining(Lumina2TransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Lumina2Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestLumina2TransformerCompile(Lumina2TransformerTesterConfig, TorchCompileTesterMixin):
+    pass
