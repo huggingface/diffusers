@@ -212,9 +212,17 @@ class TestBriaTransformerLoRAHotSwap(BriaTransformerTesterConfig, LoraHotSwappin
         embedding_dim = 32
 
         return {
-            "hidden_states": randn_tensor((batch_size, height * width, num_latent_channels), device=torch_device),
-            "encoder_hidden_states": randn_tensor((batch_size, sequence_length, embedding_dim), device=torch_device),
-            "img_ids": randn_tensor((height * width, num_image_channels), device=torch_device),
-            "txt_ids": randn_tensor((sequence_length, num_image_channels), device=torch_device),
+            "hidden_states": randn_tensor(
+                (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+            ),
+            "img_ids": randn_tensor(
+                (height * width, num_image_channels), generator=self.generator, device=torch_device
+            ),
+            "txt_ids": randn_tensor(
+                (sequence_length, num_image_channels), generator=self.generator, device=torch_device
+            ),
             "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
         }
