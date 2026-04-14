@@ -54,16 +54,16 @@ class HybridTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         t_eps (`float`, defaults to `1e-4`):
             Small epsilon to avoid numerical issues at `t=0` and `t=1`.
         p_uniform (`float`, defaults to `0.0`):
-            Baseline uniform mixing probability. Controls the probability that tokens transition to a random
-            token (uniformly) instead of the mask token. The default `0.0` is clamped to `exp(-clip_noise)` which
-            makes the schedule essentially identical to standard absorbing (masked) diffusion. Set to a larger
-            value (e.g. `0.1`) for a noticeably hybrid absorbing/uniform schedule.
+            Baseline uniform mixing probability. Controls the probability that tokens transition to a random token
+            (uniformly) instead of the mask token. The default `0.0` is clamped to `exp(-clip_noise)` which makes the
+            schedule essentially identical to standard absorbing (masked) diffusion. Set to a larger value (e.g. `0.1`)
+            for a noticeably hybrid absorbing/uniform schedule.
         clip_noise (`float`, defaults to `20.0`):
-            Clipping threshold for log-space noise parameters. Values of `log_B` are clipped to
-            `[-clip_noise, clip_noise]` for numerical stability.
+            Clipping threshold for log-space noise parameters. Values of `log_B` are clipped to `[-clip_noise,
+            clip_noise]` for numerical stability.
         gamma (`float`, defaults to `1.0`):
-            Exponent controlling the shape of the beta schedule. Higher values concentrate more noise at
-            earlier timesteps.
+            Exponent controlling the shape of the beta schedule. Higher values concentrate more noise at earlier
+            timesteps.
     """
 
     order = 1

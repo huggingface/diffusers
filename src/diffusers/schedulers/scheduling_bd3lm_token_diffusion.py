@@ -453,9 +453,9 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         """
         Compute the next timestep using the first-hitting time sampler.
 
-        Instead of uniform timestep spacing, this faster (but equivalent) sampler from Zheng et al. (2025) draws
-        ``u ~ Uniform(0, 1)`` and sets ``t_next = t * u^(1 / num_masked)``. This concentrates denoising effort on
-        steps where fewer masked tokens remain.
+        Instead of uniform timestep spacing, this faster (but equivalent) sampler from Zheng et al. (2025) draws ``u ~
+        Uniform(0, 1)`` and sets ``t_next = t * u^(1 / num_masked)``. This concentrates denoising effort on steps where
+        fewer masked tokens remain.
 
         Args:
             t (`float`):
@@ -489,10 +489,10 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
         Implements the stopping criteria from BD3LM:
 
-        1. **Entropy**: If the token entropy over the last ``window_size`` tokens falls below
-           ``entropy_threshold``, stop and truncate to remove the low-entropy tail.
-        2. **EOS**: If an EOS token appears in the generated portion (after the first one, which may be BOS),
-           stop and truncate at the second EOS occurrence.
+        1. **Entropy**: If the token entropy over the last ``window_size`` tokens falls below ``entropy_threshold``,
+           stop and truncate to remove the low-entropy tail.
+        2. **EOS**: If an EOS token appears in the generated portion (after the first one, which may be BOS), stop and
+           truncate at the second EOS occurrence.
 
         Args:
             sequences (`torch.LongTensor` of shape `(batch_size, seq_len)`):

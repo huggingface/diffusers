@@ -209,10 +209,9 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         """
         Compute alpha(t) for the configured schedule.
 
-        The returned tensor is expected to be in (0, 1] and monotone decreasing in `t`. The ``eps`` parameter
-        clamps alpha away from 0 and 1 for numerical stability; the underlying schedule shapes (without eps)
-        match Table 4 of `MD4 <https://arxiv.org/abs/2406.04329>`_ and Appendix E.1 of
-        `MDLM <https://arxiv.org/abs/2406.07524>`_.
+        The returned tensor is expected to be in (0, 1] and monotone decreasing in `t`. The ``eps`` parameter clamps
+        alpha away from 0 and 1 for numerical stability; the underlying schedule shapes (without eps) match Table 4 of
+        `MD4 <https://arxiv.org/abs/2406.04329>`_ and Appendix E.1 of `MDLM <https://arxiv.org/abs/2406.07524>`_.
         """
         if self.config.alpha_schedule == "log_linear":
             # alpha(t) = 1 - (1 - eps) * t  [MDLM default; MD4 Table 4 "linear"]

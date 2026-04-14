@@ -194,11 +194,11 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             eos_early_stop (`bool`, defaults to `True`):
                 Whether to stop generation when EOS is produced.
             first_hitting (`bool`, defaults to `False`):
-                Use the first-hitting time sampler (Zheng et al., 2025) for faster denoising. Instead of
-                uniform timestep spacing, concentrates steps where fewer masked tokens remain.
+                Use the first-hitting time sampler (Zheng et al., 2025) for faster denoising. Instead of uniform
+                timestep spacing, concentrates steps where fewer masked tokens remain.
             variable_length (`bool`, defaults to `False`):
-                Enable variable-length generation. Stops early when token entropy drops below
-                ``entropy_threshold`` or when a second EOS token appears.
+                Enable variable-length generation. Stops early when token entropy drops below ``entropy_threshold`` or
+                when a second EOS token appears.
             entropy_threshold (`float`, defaults to `4.0`):
                 Entropy threshold for variable-length stopping. Only used when ``variable_length=True``.
             context_size (`int`, defaults to `1024`):
