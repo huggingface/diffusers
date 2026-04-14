@@ -40,6 +40,8 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_hunyuanimage"] = ["AutoencoderKLHunyuanImage"]
     _import_structure["autoencoders.autoencoder_kl_hunyuanimage_refiner"] = ["AutoencoderKLHunyuanImageRefiner"]
     _import_structure["autoencoders.autoencoder_kl_hunyuanvideo15"] = ["AutoencoderKLHunyuanVideo15"]
+    _import_structure["autoencoders.autoencoder_kl_kvae"] = ["AutoencoderKLKVAE"]
+    _import_structure["autoencoders.autoencoder_kl_kvae_video"] = ["AutoencoderKLKVAEVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx2"] = ["AutoencoderKLLTX2Video"]
     _import_structure["autoencoders.autoencoder_kl_ltx2_audio"] = ["AutoencoderKLLTX2Audio"]
@@ -99,6 +101,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_cogview4"] = ["CogView4Transformer2DModel"]
     _import_structure["transformers.transformer_cosmos"] = ["CosmosTransformer3DModel"]
     _import_structure["transformers.transformer_easyanimate"] = ["EasyAnimateTransformer3DModel"]
+    _import_structure["transformers.transformer_ernie_image"] = ["ErnieImageTransformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_flux2"] = ["Flux2Transformer2DModel"]
     _import_structure["transformers.transformer_glm_image"] = ["GlmImageTransformer2DModel"]
@@ -114,6 +117,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
+    _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
     _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
     _import_structure["transformers.transformer_ovis_image"] = ["OvisImageTransformer2DModel"]
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
@@ -161,6 +165,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanImageRefiner,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
+            AutoencoderKLKVAE,
+            AutoencoderKLKVAEVideo,
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
             AutoencoderKLLTXVideo,
@@ -214,6 +220,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DiTTransformer2DModel,
             DualTransformer2DModel,
             EasyAnimateTransformer3DModel,
+            ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
             FluxTransformer2DModel,
             GlmImageTransformer2DModel,
@@ -232,6 +239,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
+            NucleusMoEImageTransformer2DModel,
             OmniGenTransformer2DModel,
             OvisImageTransformer2DModel,
             PixArtTransformer2DModel,
