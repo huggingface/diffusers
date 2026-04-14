@@ -856,35 +856,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         return self._interrupt
 
     # ------------------------------------------------------------------
-    # Utility
-    # ------------------------------------------------------------------
-
-    def pad_sequence(self, x: torch.Tensor, target_length: int) -> torch.Tensor:
-        """
-        Truncate or zero-pad a sequence tensor along dimension 1.
-
-        If the sequence is longer than ``target_length`` the last
-        ``target_length`` elements are kept.  If it is shorter, zero-padding
-        is appended on the right.
-
-        Args:
-            x: Input tensor of shape (B, T, ...) or (B, T).
-            target_length: Desired sequence length.
-
-        Returns:
-            Tensor of shape (B, target_length, ...) or (B, target_length).
-        """
-        current_length = x.shape[1]
-        if current_length >= target_length:
-            return x[:, -target_length:]
-        padding_length = target_length - current_length
-        if x.ndim >= 3:
-            padding = torch.zeros((x.shape[0], padding_length, *x.shape[2:]), dtype=x.dtype, device=x.device)
-        else:
-            padding = torch.zeros((x.shape[0], padding_length), dtype=x.dtype, device=x.device)
-        return torch.cat([x, padding], dim=1)
-
-    # ------------------------------------------------------------------
     # Forward pass
     # ------------------------------------------------------------------
 
@@ -1062,23 +1033,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
                 template_type="image",
             )
 
-            # Pad both embeddings to the same sequence length and concatenate
-            # in (unconditional, conditional) order for a single forward pass.
-            max_seq_len = max(prompt_embeds.shape[1], negative_prompt_embeds.shape[1])
-            prompt_embeds = torch.cat(
-                [
-                    self.pad_sequence(negative_prompt_embeds, max_seq_len),
-                    self.pad_sequence(prompt_embeds, max_seq_len),
-                ]
-            )
-            if prompt_embeds_mask is not None:
-                prompt_embeds_mask = torch.cat(
-                    [
-                        self.pad_sequence(negative_prompt_embeds_mask, max_seq_len),
-                        self.pad_sequence(prompt_embeds_mask, max_seq_len),
-                    ]
-                )
-
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
@@ -1124,7 +1078,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
                 if num_items > 1:
                     latents[:, :(num_items - 1)] = ref_latents.clone()
 
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = latents
                 t_expand = t.repeat(latent_model_input.shape[0])
 
                 with torch.autocast(device_type="cuda", dtype=target_dtype, enabled=autocast_enabled):
@@ -1137,12 +1091,20 @@ class JoyImageEditPipeline(DiffusionPipeline):
                     )[0]
 
                 if self.do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    with torch.autocast(device_type="cuda", dtype=target_dtype, enabled=autocast_enabled):
+                        noise_pred_uncond = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=t_expand,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_hidden_states_mask=negative_prompt_embeds_mask,
+                            return_dict=False,
+                        )[0]
+
+                    comb_pred = noise_pred_uncond + self.guidance_scale * (noise_pred - noise_pred_uncond)
                     # Rescale to match the conditional prediction norm (guidance rescaling).
-                    cond_norm = torch.norm(noise_pred_text, dim=2, keepdim=True)
-                    noise_norm = torch.norm(noise_pred, dim=2, keepdim=True)
-                    noise_pred = noise_pred * (cond_norm / noise_norm.clamp_min(1e-6))
+                    cond_norm = torch.norm(noise_pred, dim=2, keepdim=True)
+                    noise_norm = torch.norm(comb_pred, dim=2, keepdim=True)
+                    noise_pred = comb_pred * (cond_norm / noise_norm.clamp_min(1e-6))
 
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 

@@ -12,13 +12,6 @@ from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 
-ATTN_BACKEND = 'sdpa'
-try:
-    from flash_attn.flash_attn_interface import flash_attn_varlen_func
-    ATTN_BACKEND = 'flash_attn'
-except:
-    pass
-
 def _to_tuple(x, dim=2):
     if isinstance(x, int):
         return (x,) * dim
@@ -174,31 +167,6 @@ def get_nd_rotary_pos_embed(
 
     return vis_emb, txt_emb
 
-def get_cu_seqlens(text_mask, img_len):
-    """Calculate cu_seqlens_q, cu_seqlens_kv using text_mask and img_len
-
-    Args:
-        text_mask (torch.Tensor): the mask of text
-        img_len (int): the length of image
-
-    Returns:
-        torch.Tensor: the calculated cu_seqlens for flash attention
-    """
-    batch_size = text_mask.shape[0]
-    text_len = text_mask.sum(dim=1)
-    max_len = text_mask.shape[1] + img_len
-
-    cu_seqlens = torch.zeros([2 * batch_size + 1],
-                             dtype=torch.int32, device="cuda")
-
-    for i in range(batch_size):
-        s = text_len[i] + img_len
-        s1 = i * max_len + s
-        s2 = (i + 1) * max_len
-        cu_seqlens[2 * i + 1] = s1
-        cu_seqlens[2 * i + 2] = s2
-
-    return cu_seqlens
 
 def load_modulation(modulate_type: str, hidden_size: int, factor: int, act_layer=nn.SiLU, dtype=None, device=None):
     factory_kwargs = {"dtype": dtype, "device": device}
@@ -265,33 +233,12 @@ def apply_gate(x, gate=None, tanh=False):
         return x
     return x * (gate.unsqueeze(1).tanh() if tanh else gate.unsqueeze(1))
 
-def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_kwargs=None):
-    batch_size = q.shape[0]
-    if ATTN_BACKEND == 'sdpa':
-        q = q.transpose(1, 2)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
-        output = torch.nn.functional.scaled_dot_product_attention(
-            q, k, v, attn_mask=attn_kwargs['attn_mask'])
-        output = output.transpose(1, 2)
-    elif ATTN_BACKEND == 'flash_attn':
-        cu_seqlens_q = attn_kwargs['cu_seqlens_q']
-        cu_seqlens_kv = attn_kwargs['cu_seqlens_kv']
-        max_seqlen_q = attn_kwargs['max_seqlen_q']
-        max_seqlen_kv = attn_kwargs['max_seqlen_kv']
-        x = flash_attn_varlen_func(
-            q.view(q.shape[0] * q.shape[1], *q.shape[2:]),
-            k.view(k.shape[0] * k.shape[1], *k.shape[2:]),
-            v.view(v.shape[0] * v.shape[1], *v.shape[2:]),
-            cu_seqlens_q,
-            cu_seqlens_kv,
-            max_seqlen_q,
-            max_seqlen_kv,
-        )
-        # x with shape [(bxs), a, d]
-        output = x.view(
-            batch_size, max_seqlen_q, x.shape[-2], x.shape[-1]
-        )  # reshape
+def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
+    q = q.transpose(1, 2)
+    k = k.transpose(1, 2)
+    v = v.transpose(1, 2)
+    output = torch.nn.functional.scaled_dot_product_attention(q, k, v)
+    output = output.transpose(1, 2)
     return output
 
 class RMSNorm(nn.Module):
@@ -349,7 +296,7 @@ class MMDoubleStreamBlock(nn.Module):
         self.txt_norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6, **factory_kwargs)
         self.txt_mlp = FeedForward(hidden_size, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
 
-    def forward(self, img: torch.Tensor, txt: torch.Tensor, vec: torch.Tensor, vis_freqs_cis=None, txt_freqs_cis=None, attn_kwargs=None):
+    def forward(self, img: torch.Tensor, txt: torch.Tensor, vec: torch.Tensor, vis_freqs_cis=None, txt_freqs_cis=None):
         (
             img_mod1_shift,
             img_mod1_scale,
@@ -389,7 +336,7 @@ class MMDoubleStreamBlock(nn.Module):
         k = torch.cat((img_k, txt_k), dim=1)
         v = torch.cat((img_v, txt_v), dim=1)
 
-        attn = attention(q, k, v, attn_kwargs=attn_kwargs).flatten(2, 3)
+        attn = attention(q, k, v).flatten(2, 3)
         img_attn, txt_attn = attn[:, : img.shape[1]], attn[:, img.shape[1] :]
 
         img = img + apply_gate(self.img_attn_proj(img_attn), gate=img_mod1_gate)
@@ -579,37 +526,10 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
 
         txt_seq_len = txt.shape[1]
         img_seq_len = img.shape[1]
-        
-        cu_seqlens_q = get_cu_seqlens(
-                encoder_hidden_states_mask, img_seq_len)
-        cu_seqlens_kv = cu_seqlens_q
-        max_seqlen_q = img_seq_len + txt_seq_len
-        max_seqlen_kv = max_seqlen_q
 
-
-        attn_kwargs = {"encoder_hidden_states_mask": encoder_hidden_states_mask}
-        attn_kwargs.update({
-                'cu_seqlens_q': cu_seqlens_q,
-                'cu_seqlens_kv': cu_seqlens_kv,
-                'max_seqlen_q': max_seqlen_q,
-                'max_seqlen_kv': max_seqlen_kv,
-            })
-    
-        max_seqlen_q = img_seq_len + txt_seq_len
-        seq_lens = encoder_hidden_states_mask.sum(dim=1) + img_seq_len
-        max_len = encoder_hidden_states_mask.shape[1] + img_seq_len
-        assert max_seqlen_q == max_len
-        positions = torch.arange(max_seqlen_q, device=img.device).unsqueeze(0)
-        seq_lens_expanded = seq_lens.unsqueeze(1)
-        mask = positions < seq_lens_expanded
-        mask = mask.unsqueeze(1).unsqueeze(2)
-        attn_mask = mask & mask.transpose(-1, -2)
-
-        attn_kwargs.update({'attn_mask': attn_mask, 'max_seqlen_q': max_seqlen_q})
-    
         img_hidden_states = []
         for block in self.double_blocks:
-            img, txt = block(img, txt, vec, vis_freqs_cis, txt_freqs_cis, attn_kwargs)
+            img, txt = block(img, txt, vec, vis_freqs_cis, txt_freqs_cis)
             img_hidden_states.append(img)
 
         img_len = img.shape[1]
