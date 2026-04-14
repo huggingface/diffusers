@@ -889,7 +889,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
             ]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        enable_tiling: bool = False,
         max_sequence_length: int = 4096,
         drop_vit_feature: bool = False,
         enable_denormalization: bool = True,
@@ -1057,11 +1056,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
             enable_denormalization=enable_denormalization,
         )
 
-        target_dtype = PRECISION_TO_TYPE[self.args.dit_precision]
-        autocast_enabled = target_dtype != torch.float32
-        vae_dtype = PRECISION_TO_TYPE[self.args.vae_precision]
-        vae_autocast_enabled = vae_dtype != torch.float32
-
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
@@ -1081,24 +1075,22 @@ class JoyImageEditPipeline(DiffusionPipeline):
                 latent_model_input = latents
                 t_expand = t.repeat(latent_model_input.shape[0])
 
-                with torch.autocast(device_type="cuda", dtype=target_dtype, enabled=autocast_enabled):
-                    noise_pred = self.transformer(
-                        hidden_states=latent_model_input,
-                        timestep=t_expand,
-                        encoder_hidden_states=prompt_embeds,
-                        encoder_hidden_states_mask=prompt_embeds_mask,
-                        return_dict=False,
-                    )[0]
+                noise_pred = self.transformer(
+                    hidden_states=latent_model_input,
+                    timestep=t_expand,
+                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states_mask=prompt_embeds_mask,
+                    return_dict=False,
+                )[0]
 
                 if self.do_classifier_free_guidance:
-                    with torch.autocast(device_type="cuda", dtype=target_dtype, enabled=autocast_enabled):
-                        noise_pred_uncond = self.transformer(
-                            hidden_states=latent_model_input,
-                            timestep=t_expand,
-                            encoder_hidden_states=negative_prompt_embeds,
-                            encoder_hidden_states_mask=negative_prompt_embeds_mask,
-                            return_dict=False,
-                        )[0]
+                    noise_pred_uncond = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=t_expand,
+                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_hidden_states_mask=negative_prompt_embeds_mask,
+                        return_dict=False,
+                    )[0]
 
                     comb_pred = noise_pred_uncond + self.guidance_scale * (noise_pred - noise_pred_uncond)
                     # Rescale to match the conditional prediction norm (guidance rescaling).
@@ -1128,11 +1120,8 @@ class JoyImageEditPipeline(DiffusionPipeline):
             if enable_denormalization:
                 latents = self.denormalize_latents(latents)
 
-            with torch.autocast(device_type="cuda", dtype=vae_dtype, enabled=vae_autocast_enabled):
-                if enable_tiling:
-                    self.vae.enable_tiling()
-                image = self.vae.decode(latents, return_dict=False)[0]
-                image = image.unflatten(0, (batch_size, -1))
+            image = self.vae.decode(latents, return_dict=False)[0]
+            image = image.unflatten(0, (batch_size, -1))
         else:
             image = latents
 
