@@ -158,6 +158,10 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         mask_token_id: int | None = None,
         eos_token_id: int | None = None,
         eos_early_stop: bool = True,
+        first_hitting: bool = False,
+        variable_length: bool = False,
+        entropy_threshold: float = 4.0,
+        context_size: int = 1024,
         generator: torch.Generator | None = None,
         output_type: str = "text",
         return_dict: bool = True,
@@ -189,6 +193,16 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                 EOS token ID for early stopping.
             eos_early_stop (`bool`, defaults to `True`):
                 Whether to stop generation when EOS is produced.
+            first_hitting (`bool`, defaults to `False`):
+                Use the first-hitting time sampler (Zheng et al., 2025) for faster denoising. Instead of
+                uniform timestep spacing, concentrates steps where fewer masked tokens remain.
+            variable_length (`bool`, defaults to `False`):
+                Enable variable-length generation. Stops early when token entropy drops below
+                ``entropy_threshold`` or when a second EOS token appears.
+            entropy_threshold (`float`, defaults to `4.0`):
+                Entropy threshold for variable-length stopping. Only used when ``variable_length=True``.
+            context_size (`int`, defaults to `1024`):
+                Maximum number of tokens to pass as context to the model (sliding window).
             generator (`torch.Generator`, *optional*):
                 RNG for reproducibility.
             output_type (`str`, defaults to `"text"`):
@@ -288,8 +302,13 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             masked_block = torch.full((batch_size, block_length), mask_token_id, device=device, dtype=torch.long)
             x_accum = torch.cat([x_accum, masked_block], dim=1)
 
+            # Compute the forward window indices (sliding window context)
+            end_idx = x_accum.shape[1]
+            start_idx = max(end_idx - context_size, 0)
+
             # DDPM denoising steps within this block
             p_x0_cache = None
+            t = 1.0  # continuous timestep, starts at 1
 
             self.set_progress_bar_config(position=1, leave=False, desc=f"Block {stride_num} Denoising")
             progress_bar = self.progress_bar(total=num_inference_steps)
@@ -300,12 +319,19 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
                     progress_bar.update(num_inference_steps - step_idx)
                     break
 
-                t = self.scheduler.timesteps[step_idx]
+                # Compute timestep: first-hitting sampler or uniform schedule
+                if first_hitting:
+                    num_masked = (x_accum[:, -block_length:] == mask_token_id).sum(-1).item()
+                    t = self.scheduler.compute_first_hitting_timestep(t, num_masked, generator=generator)
+                else:
+                    t = self.scheduler.timesteps[step_idx].item()
 
                 # Get model predictions only when p_x0 cache is invalidated
                 if p_x0_cache is None:
                     sigma_t = self.scheduler.compute_sigma(t, batch_size)
-                    model_input = x_accum[:, -block_length:]
+
+                    # Pass context window to model (sliding window), only use last block's logits
+                    model_input = x_accum[:, start_idx:end_idx][:, -block_length:]
                     model_output = self.model(
                         input_ids=model_input,
                         timesteps=sigma_t.to(model_input.device),
@@ -358,6 +384,16 @@ class BD3LMPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             if eos_early_stop and eos_token_id is not None:
                 finished = self.scheduler.check_eos_finished(x_accum, prompt_length, eos_token_id, finished)
                 if finished.all():
+                    break
+
+            # Variable-length stopping (entropy + EOS criteria, checked on generated portion only)
+            generated_length = x_accum.shape[1] - prompt_length
+            if variable_length and generated_length > 256:
+                should_stop, trimmed = self.scheduler.check_variable_length_stop(
+                    x_accum, eos_token_id=eos_token_id, entropy_threshold=entropy_threshold
+                )
+                x_accum = trimmed
+                if should_stop:
                     break
 
         # 5. Post-process output

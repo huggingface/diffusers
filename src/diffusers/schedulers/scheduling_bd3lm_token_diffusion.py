@@ -440,5 +440,98 @@ class BD3LMTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         """
         return (sequences == mask_token_id).sum().item() == 0
 
+    # ------------------------------------------------------------------
+    # First-hitting sampler (Zheng et al., 2025)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def compute_first_hitting_timestep(
+        t: float,
+        num_masked: int,
+        generator: torch.Generator | None = None,
+    ) -> float:
+        """
+        Compute the next timestep using the first-hitting time sampler.
+
+        Instead of uniform timestep spacing, this faster (but equivalent) sampler from Zheng et al. (2025) draws
+        ``u ~ Uniform(0, 1)`` and sets ``t_next = t * u^(1 / num_masked)``. This concentrates denoising effort on
+        steps where fewer masked tokens remain.
+
+        Args:
+            t (`float`):
+                Current continuous timestep in (0, 1].
+            num_masked (`int`):
+                Number of currently masked tokens in the block.
+            generator (`torch.Generator`, *optional*):
+                RNG for reproducibility.
+
+        Returns:
+            `float`: The next timestep value.
+        """
+        if num_masked <= 0:
+            return 0.0
+        u = torch.rand(1, generator=generator).item()
+        return t * (u ** (1.0 / num_masked))
+
+    # ------------------------------------------------------------------
+    # Variable-length stopping
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def check_variable_length_stop(
+        sequences: torch.LongTensor,
+        eos_token_id: int | None = None,
+        entropy_threshold: float = 4.0,
+        window_size: int = 256,
+    ) -> tuple[bool, torch.LongTensor]:
+        """
+        Check whether variable-length generation should stop and optionally truncate the sequence.
+
+        Implements the stopping criteria from BD3LM:
+
+        1. **Entropy**: If the token entropy over the last ``window_size`` tokens falls below
+           ``entropy_threshold``, stop and truncate to remove the low-entropy tail.
+        2. **EOS**: If an EOS token appears in the generated portion (after the first one, which may be BOS),
+           stop and truncate at the second EOS occurrence.
+
+        Args:
+            sequences (`torch.LongTensor` of shape `(batch_size, seq_len)`):
+                Current accumulated token sequences.
+            eos_token_id (`int`, *optional*):
+                EOS token ID. If ``None``, the EOS criterion is skipped.
+            entropy_threshold (`float`, defaults to `4.0`):
+                Entropy threshold below which generation stops.
+            window_size (`int`, defaults to `256`):
+                Number of trailing tokens to compute entropy over.
+
+        Returns:
+            `tuple[bool, torch.LongTensor]`: ``(should_stop, sequences)`` where ``sequences`` may be truncated.
+        """
+        should_stop = False
+        truncate_idx = None
+        seq_len = sequences.shape[1]
+
+        # Compute entropy of the last window_size tokens
+        if seq_len > window_size:
+            window = sequences[:, -window_size:]
+            _, counts = torch.unique(window, return_counts=True, sorted=False)
+            entropy = torch.special.entr(counts.float() / counts.sum()).sum().item()
+
+            if entropy < entropy_threshold:
+                should_stop = True
+                truncate_idx = seq_len - window_size
+
+        # Check for EOS (second occurrence means generation is done)
+        if eos_token_id is not None:
+            eos_positions = (sequences[0] == eos_token_id).nonzero(as_tuple=True)[0]
+            if len(eos_positions) > 1:
+                should_stop = True
+                truncate_idx = min(int(eos_positions[1].item()) + 1, seq_len)
+
+        if truncate_idx is not None:
+            sequences = sequences[:, :truncate_idx]
+
+        return should_stop, sequences
+
 
 __all__ = ["BD3LMTokenDiffusionScheduler", "BD3LMTokenDiffusionSchedulerOutput"]
