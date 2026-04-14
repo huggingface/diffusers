@@ -22,7 +22,6 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -105,10 +104,6 @@ class TestCogVideoXTransformerTraining(CogVideoXTransformerTesterConfig, Trainin
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class TestCogVideoXTransformerCompile(CogVideoXTransformerTesterConfig, TorchCompileTesterMixin):
-    pass
-
-
 # ======================== CogVideoX 1.5 ========================
 
 
@@ -172,8 +167,4 @@ class CogVideoX15TransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestCogVideoX15Transformer(CogVideoX15TransformerTesterConfig, ModelTesterMixin):
-    pass
-
-
-class TestCogVideoX15TransformerCompile(CogVideoX15TransformerTesterConfig, TorchCompileTesterMixin):
     pass

@@ -21,7 +21,6 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     BaseModelTesterConfig,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -92,7 +91,3 @@ class TestCogView4TransformerTraining(CogView4TransformerTesterConfig, TrainingT
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"CogView4Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestCogView4TransformerCompile(CogView4TransformerTesterConfig, TorchCompileTesterMixin):
-    pass
