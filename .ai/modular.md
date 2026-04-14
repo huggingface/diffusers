@@ -1,11 +1,6 @@
-# Modular Pipeline Conversion Reference
+# Modular pipeline conventions and rules
 
-## When to use
-
-Modular pipelines break a monolithic `__call__` into composable blocks. Convert when:
-- The model supports multiple workflows (T2V, I2V, V2V, etc.)
-- Users need to swap guidance strategies (CFG, CFG-Zero*, PAG)
-- You want to share blocks across pipeline variants
+Shared reference for modular pipeline conventions, patterns, and gotchas.
 
 ## File structure
 
@@ -14,7 +9,7 @@ src/diffusers/modular_pipelines/<model>/
   __init__.py                          # Lazy imports
   modular_pipeline.py                  # Pipeline class (tiny, mostly config)
   encoders.py                          # Text encoder + image/video VAE encoder blocks
-  before_denoise.py                    # Pre-denoise setup blocks
+  before_denoise.py                    # Pre-denoise setup blocks (timesteps, latent prep, noise)
   denoise.py                           # The denoising loop blocks
   decoders.py                          # VAE decode block
   modular_blocks_<model>.py            # Block assembly (AutoBlocks)
@@ -81,15 +76,21 @@ for i, t in enumerate(timesteps):
     latents = components.scheduler.step(noise_pred, t, latents, generator=generator)[0]
 ```
 
-## Key pattern: Chunk loops for video models
+## Key pattern: Denoising loop
 
-Use `LoopSequentialPipelineBlocks` for outer loop:
+All models use `LoopSequentialPipelineBlocks` for the denoising loop (iterating over timesteps):
 ```python
-class ChunkDenoiseStep(LoopSequentialPipelineBlocks):
-    block_classes = [PrepareChunkStep, NoiseGenStep, DenoiseInnerStep, UpdateStep]
+class MyModelDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+    block_classes = [LoopBeforeDenoiser, LoopDenoiser, LoopAfterDenoiser]
 ```
 
-Note: blocks inside `LoopSequentialPipelineBlocks` receive `(components, block_state, k)` where `k` is the loop iteration index.
+Autoregressive video models (e.g. Helios) also use it for an outer chunk loop:
+```python
+class HeliosChunkDenoiseStep(LoopSequentialPipelineBlocks):
+    block_classes = [ChunkHistorySlice, ChunkNoiseGen, ChunkDenoiseInner, ChunkUpdate]
+```
+
+Note: sub-blocks inside `LoopSequentialPipelineBlocks` receive `(components, block_state, i, t)` for denoise loops or `(components, block_state, k)` for chunk loops.
 
 ## Key pattern: Workflow selection
 
@@ -135,6 +136,26 @@ ComponentSpec(
     default_creation_method="from_config"
 )
 ```
+
+## Gotchas
+
+1. **Importing from standard pipelines.** The modular and standard pipeline systems are parallel — modular blocks must not import from `diffusers.pipelines.*`. For shared utility methods (e.g. `_pack_latents`, `retrieve_timesteps`), either redefine as standalone functions or use `# Copied from diffusers.pipelines.<model>...` headers. See `wan/before_denoise.py` and `helios/before_denoise.py` for examples.
+
+2. **Cross-importing between modular pipelines.** Don't import utilities from another model's modular pipeline (e.g. SD3 importing from `qwenimage.inputs`). If a utility is shared, move it to `modular_pipeline_utils.py` or copy it with a `# Copied from` header.
+
+3. **Accepting `guidance_scale` as a pipeline input.** Users configure the guider separately (see [guider docs](https://huggingface.co/docs/diffusers/main/en/api/guiders)). Different guider types have different parameters; forwarding them through the pipeline doesn't scale. Don't manually set `components.guider.guidance_scale = ...` inside blocks. Same applies to computing `do_classifier_free_guidance` — that logic belongs in the guider.
+
+4. **Accepting pre-computed outputs as inputs to skip encoding.** In standard pipelines we accept `prompt_embeds`, `negative_prompt_embeds`, `image_latents`, etc. so users can skip encoding steps. In modular pipelines this is unnecessary — users just pop out the encoder block and run it separately. Encoder blocks should only accept raw inputs (`prompt`, `image`, etc.).
+
+5. **VAE encoding inside prepare-latents.** Image encoding should be its own block in `encoders.py` (e.g. `MyModelVaeEncoderStep`). The prepare-latents block should accept `image_latents`, not raw images. This lets users run encoding standalone. See `WanVaeEncoderStep` for reference.
+
+6. **Instantiating components inline.** If a class like `VideoProcessor` is needed, register it as a `ComponentSpec` and access via `components.video_processor`. Don't create new instances inside block `__call__`.
+
+7. **Deeply nested block structure.** Prefer flat sequences over nesting Auto blocks inside Sequential blocks inside Auto blocks. Put the `Auto` selection at the top level and make each workflow variant a flat `InsertableDict` of leaf blocks. See `flux2/modular_blocks_flux2_klein.py` for the pattern.
+
+8. **Using `InputParam.template()` / `OutputParam.template()` when semantics don't match.** Templates carry predefined descriptions — e.g. the `"latents"` output template means "Denoised latents". Don't use it for initial noisy latents from a prepare-latents step. Use a plain `InputParam(...)` / `OutputParam(...)` with an accurate description instead.
+
+9. **Test model paths pointing to contributor repos.** Tiny test models must live under `hf-internal-testing/`, not personal repos like `username/tiny-model`. Move the model before merge.
 
 ## Conversion checklist
 
