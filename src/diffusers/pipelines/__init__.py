@@ -338,6 +338,7 @@ else:
     )
     _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
+    _import_structure["ernie_image"] = ["ErnieImagePipeline"]
     _import_structure["ovis_image"] = ["OvisImagePipeline"]
     _import_structure["visualcloze"] = ["VisualClozePipeline", "VisualClozeGenerationPipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
@@ -426,6 +427,7 @@ else:
         "SkyReelsV2ImageToVideoPipeline",
         "SkyReelsV2Pipeline",
     ]
+    _import_structure["nucleusmoe_image"] = ["NucleusMoEImagePipeline"]
     _import_structure["qwenimage"] = [
         "QwenImagePipeline",
         "QwenImageImg2ImgPipeline",
@@ -687,6 +689,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
         )
+        from .ernie_image import ErnieImagePipeline
         from .flux import (
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
@@ -778,6 +781,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
         )
         from .mochi import MochiPipeline
+        from .nucleusmoe_image import NucleusMoEImagePipeline
         from .omnigen import OmniGenPipeline
         from .ovis_image import OvisImagePipeline
         from .pag import (
