@@ -1,5 +1,6 @@
 import functools
 import gc
+import inspect
 import logging
 import os
 from dataclasses import dataclass, field
@@ -29,6 +30,13 @@ def annotate_pipeline(pipe):
 
     Monkey-patches bound methods so they appear as named spans in the trace.
     Non-invasive — no source modifications required.
+
+    Sub-component methods are patched at the **class level** (via
+    setattr(type(component), ...)) rather than on the instance. This
+    ensures Python's descriptor protocol re-binds the wrapper to whichever
+    instance accesses it, so shallow-copied components (e.g. the duplicated
+    audio_scheduler inside LTX2) call their own logic rather than the
+    original instance's.
     """
     annotations = [
         ("transformer", "forward", "transformer_forward"),
@@ -45,7 +53,16 @@ def annotate_pipeline(pipe):
         method = getattr(component, method_name, None)
         if method is None:
             continue
-        setattr(component, method_name, annotate(method, label))
+        if inspect.ismethod(method):
+            # Wrap the underlying function and patch at the class level so
+            # that the descriptor protocol correctly rebinds the wrapper to
+            # whichever instance accesses it.  This prevents instance-
+            # isolation bugs when a component is shallow-copied after
+            # annotation (e.g. audio_scheduler = copy.copy(self.scheduler)
+            # in the LTX2 pipeline).
+            setattr(type(component), method_name, annotate(method.__func__, label))
+        else:
+            setattr(component, method_name, annotate(method, label))
 
     # Annotate pipeline-level methods
     if hasattr(pipe, "encode_prompt"):
