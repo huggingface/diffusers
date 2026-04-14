@@ -35,6 +35,10 @@ Strive to write code as simple and explicit as possible.
 - Use `self.progress_bar(timesteps)` for progress tracking
 - Don't subclass an existing pipeline for a variant — DO NOT use an existing pipeline class (e.g., `FluxPipeline`) to override another pipeline (e.g., `FluxImg2ImgPipeline`) which will be a part of the core codebase (`src`)
 
+### Modular Pipelines
+
+- See [modular.md](modular.md) for modular pipeline conventions, patterns, and gotchas.
+
 ## Skills
 
 Task-specific guides live in `.ai/skills/` and are loaded on demand by AI agents. Available skills include:
