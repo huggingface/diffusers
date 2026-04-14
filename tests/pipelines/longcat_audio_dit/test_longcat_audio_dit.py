@@ -27,6 +27,7 @@ from diffusers import (
     LongCatAudioDiTTransformer,
     LongCatAudioDiTVae,
 )
+
 from ...testing_utils import enable_full_determinism, require_torch_accelerator, slow, torch_device
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -180,6 +181,7 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_from_pretrained_local_dir(self):
         import tempfile
+
         device = "cpu"
         components = self.get_dummy_components()
         text_encoder = components["text_encoder"]
