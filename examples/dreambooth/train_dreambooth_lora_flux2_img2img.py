@@ -1206,7 +1206,13 @@ def main(args):
     if args.lora_layers is not None:
         target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
     else:
-        target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
+        # target_modules = ["to_k", "to_q", "to_v", "to_out.0"] # just train transformer_blocks
+
+        # train transformer_blocks and single_transformer_blocks
+        target_modules = ["to_k", "to_q", "to_v", "to_out.0"] + [
+            "to_qkv_mlp_proj",
+            *[f"single_transformer_blocks.{i}.attn.to_out" for i in range(48)],
+        ]
 
     # now we will add new LoRA weights the transformer layers
     transformer_lora_config = LoraConfig(
@@ -1680,11 +1686,10 @@ def main(args):
                     cond_model_input = cond_latents_cache[step].mode()
                 else:
                     with offload_models(vae, device=accelerator.device, offload=args.offload):
-                        pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
-                        cond_pixel_values = batch["cond_pixel_values"].to(dtype=vae.dtype)
-
-                    model_input = vae.encode(pixel_values).latent_dist.mode()
-                    cond_model_input = vae.encode(cond_pixel_values).latent_dist.mode()
+                        pixel_values = batch["pixel_values"].to(device=accelerator.device, dtype=vae.dtype)
+                        cond_pixel_values = batch["cond_pixel_values"].to(device=accelerator.device, dtype=vae.dtype)
+                        model_input = vae.encode(pixel_values).latent_dist.mode()
+                        cond_model_input = vae.encode(cond_pixel_values).latent_dist.mode()
 
                     # model_input = Flux2Pipeline._encode_vae_image(pixel_values)
 

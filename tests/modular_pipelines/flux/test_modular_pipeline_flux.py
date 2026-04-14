@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import random
-import tempfile
 
 import numpy as np
 import PIL
@@ -129,18 +128,16 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
         return inputs
 
-    def test_save_from_pretrained(self):
+    def test_save_from_pretrained(self, tmp_path):
         pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            base_pipe.save_pretrained(tmpdirname)
-
-            pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
-            pipe.load_components(torch_dtype=torch.float32)
-            pipe.to(torch_device)
-            pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
+        base_pipe.save_pretrained(str(tmp_path))
+        pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
+        pipe.load_components(torch_dtype=torch.float32)
+        pipe.to(torch_device)
+        pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
 
         pipes.append(pipe)
 
@@ -212,18 +209,16 @@ class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
 
         return inputs
 
-    def test_save_from_pretrained(self):
+    def test_save_from_pretrained(self, tmp_path):
         pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            base_pipe.save_pretrained(tmpdirname)
-
-            pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
-            pipe.load_components(torch_dtype=torch.float32)
-            pipe.to(torch_device)
-            pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
+        base_pipe.save_pretrained(str(tmp_path))
+        pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
+        pipe.load_components(torch_dtype=torch.float32)
+        pipe.to(torch_device)
+        pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
 
         pipes.append(pipe)
 

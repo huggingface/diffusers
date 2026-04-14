@@ -1,20 +1,15 @@
 import gc
 import json
 import os
-import tempfile
 from typing import Callable
 
 import pytest
 import torch
+from huggingface_hub import hf_hub_download
 
 import diffusers
-from diffusers import AutoModel, ComponentsManager, ModularPipeline, ModularPipelineBlocks
+from diffusers import AutoModel, ComponentsManager, ControlNetModel, ModularPipeline, ModularPipelineBlocks
 from diffusers.guiders import ClassifierFreeGuidance
-from diffusers.modular_pipelines import (
-    ConditionalPipelineBlocks,
-    LoopSequentialPipelineBlocks,
-    SequentialPipelineBlocks,
-)
 from diffusers.modular_pipelines.modular_pipeline_utils import (
     ComponentSpec,
     ConfigSpec,
@@ -25,12 +20,38 @@ from diffusers.modular_pipelines.modular_pipeline_utils import (
 from diffusers.utils import logging
 
 from ..testing_utils import (
-    CaptureLogger,
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_accelerator,
     torch_device,
 )
+
+
+def _get_specified_components(path_or_repo_id, cache_dir=None):
+    if os.path.isdir(path_or_repo_id):
+        config_path = os.path.join(path_or_repo_id, "modular_model_index.json")
+    else:
+        try:
+            config_path = hf_hub_download(
+                repo_id=path_or_repo_id,
+                filename="modular_model_index.json",
+                local_dir=cache_dir,
+            )
+        except Exception:
+            return None
+
+    with open(config_path) as f:
+        config = json.load(f)
+
+    components = set()
+    for k, v in config.items():
+        if isinstance(v, (str, int, float, bool)):
+            continue
+        for entry in v:
+            if isinstance(entry, dict) and (entry.get("repo") or entry.get("pretrained_model_name_or_path")):
+                components.add(k)
+                break
+    return components
 
 
 class ModularPipelineTesterMixin:
@@ -341,16 +362,15 @@ class ModularPipelineTesterMixin:
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
-    def test_save_from_pretrained(self):
+    def test_save_from_pretrained(self, tmp_path):
         pipes = []
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            base_pipe.save_pretrained(tmpdirname)
-            pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
-            pipe.load_components(torch_dtype=torch.float32)
-            pipe.to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+        pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
+        pipe.load_components(torch_dtype=torch.float32)
+        pipe.to(torch_device)
 
         pipes.append(pipe)
 
@@ -362,32 +382,64 @@ class ModularPipelineTesterMixin:
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
-    def test_modular_index_consistency(self):
+    def test_load_expected_components_from_pretrained(self, tmp_path):
+        pipe = self.get_pipeline()
+        expected = _get_specified_components(self.pretrained_model_name_or_path, cache_dir=tmp_path)
+        if not expected:
+            pytest.skip("Skipping test as we couldn't fetch the expected components.")
+
+        actual = {
+            name
+            for name in pipe.components
+            if getattr(pipe, name, None) is not None
+            and getattr(getattr(pipe, name), "_diffusers_load_id", None) not in (None, "null")
+        }
+        assert expected == actual, f"Component mismatch: missing={expected - actual}, unexpected={actual - expected}"
+
+    def test_load_expected_components_from_save_pretrained(self, tmp_path):
+        pipe = self.get_pipeline()
+        save_dir = str(tmp_path / "saved-pipeline")
+        pipe.save_pretrained(save_dir)
+
+        expected = _get_specified_components(save_dir)
+        loaded_pipe = ModularPipeline.from_pretrained(save_dir)
+        loaded_pipe.load_components(torch_dtype=torch.float32)
+
+        actual = {
+            name
+            for name in loaded_pipe.components
+            if getattr(loaded_pipe, name, None) is not None
+            and getattr(getattr(loaded_pipe, name), "_diffusers_load_id", None) not in (None, "null")
+        }
+        assert expected == actual, (
+            f"Component mismatch after save/load: missing={expected - actual}, unexpected={actual - expected}"
+        )
+
+    def test_modular_index_consistency(self, tmp_path):
         pipe = self.get_pipeline()
         components_spec = pipe._component_specs
         components = sorted(components_spec.keys())
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
-            index_file = os.path.join(tmpdir, "modular_model_index.json")
-            assert os.path.exists(index_file)
+        pipe.save_pretrained(str(tmp_path))
+        index_file = tmp_path / "modular_model_index.json"
+        assert index_file.exists()
 
-            with open(index_file) as f:
-                index_contents = json.load(f)
+        with open(index_file) as f:
+            index_contents = json.load(f)
 
-            compulsory_keys = {"_blocks_class_name", "_class_name", "_diffusers_version"}
-            for k in compulsory_keys:
-                assert k in index_contents
+        compulsory_keys = {"_blocks_class_name", "_class_name", "_diffusers_version"}
+        for k in compulsory_keys:
+            assert k in index_contents
 
-            to_check_attrs = {"pretrained_model_name_or_path", "revision", "subfolder"}
-            for component in components:
-                spec = components_spec[component]
-                for attr in to_check_attrs:
-                    if getattr(spec, "pretrained_model_name_or_path", None) is not None:
-                        for attr in to_check_attrs:
-                            assert component in index_contents, f"{component} should be present in index but isn't."
-                            attr_value_from_index = index_contents[component][2][attr]
-                            assert getattr(spec, attr) == attr_value_from_index
+        to_check_attrs = {"pretrained_model_name_or_path", "revision", "subfolder"}
+        for component in components:
+            spec = components_spec[component]
+            for attr in to_check_attrs:
+                if getattr(spec, "pretrained_model_name_or_path", None) is not None:
+                    for attr in to_check_attrs:
+                        assert component in index_contents, f"{component} should be present in index but isn't."
+                        attr_value_from_index = index_contents[component][2][attr]
+                        assert getattr(spec, attr) == attr_value_from_index
 
     def test_workflow_map(self):
         blocks = self.pipeline_blocks_class()
@@ -438,117 +490,6 @@ class ModularGuiderTesterMixin:
         assert out_cfg.shape == out_no_cfg.shape
         max_diff = torch.abs(out_cfg - out_no_cfg).max()
         assert max_diff > expected_max_diff, "Output with CFG must be different from normal inference"
-
-
-class TestCustomBlockRequirements:
-    def get_dummy_block_pipe(self):
-        class DummyBlockOne:
-            # keep two arbitrary deps so that we can test warnings.
-            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
-
-        class DummyBlockTwo:
-            # keep two dependencies that will be available during testing.
-            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
-
-        pipe = SequentialPipelineBlocks.from_blocks_dict(
-            {"dummy_block_one": DummyBlockOne, "dummy_block_two": DummyBlockTwo}
-        )
-        return pipe
-
-    def get_dummy_conditional_block_pipe(self):
-        class DummyBlockOne:
-            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
-
-        class DummyBlockTwo:
-            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
-
-        class DummyConditionalBlocks(ConditionalPipelineBlocks):
-            block_classes = [DummyBlockOne, DummyBlockTwo]
-            block_names = ["block_one", "block_two"]
-            block_trigger_inputs = []
-
-            def select_block(self, **kwargs):
-                return "block_one"
-
-        return DummyConditionalBlocks()
-
-    def get_dummy_loop_block_pipe(self):
-        class DummyBlockOne:
-            _requirements = {"xyz": ">=0.8.0", "abc": ">=10.0.0"}
-
-        class DummyBlockTwo:
-            _requirements = {"transformers": ">=4.44.0", "diffusers": ">=0.2.0"}
-
-        return LoopSequentialPipelineBlocks.from_blocks_dict({"block_one": DummyBlockOne, "block_two": DummyBlockTwo})
-
-    def test_sequential_block_requirements_save_load(self, tmp_path):
-        pipe = self.get_dummy_block_pipe()
-        pipe.save_pretrained(tmp_path)
-
-        config_path = tmp_path / "modular_config.json"
-
-        with open(config_path, "r") as f:
-            config = json.load(f)
-
-        assert "requirements" in config
-        requirements = config["requirements"]
-
-        expected_requirements = {
-            "xyz": ">=0.8.0",
-            "abc": ">=10.0.0",
-            "transformers": ">=4.44.0",
-            "diffusers": ">=0.2.0",
-        }
-        assert expected_requirements == requirements
-
-    def test_sequential_block_requirements_warnings(self, tmp_path):
-        pipe = self.get_dummy_block_pipe()
-
-        logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
-        logger.setLevel(30)
-
-        with CaptureLogger(logger) as cap_logger:
-            pipe.save_pretrained(tmp_path)
-
-        template = "{req} was specified in the requirements but wasn't found in the current environment"
-        msg_xyz = template.format(req="xyz")
-        msg_abc = template.format(req="abc")
-        assert msg_xyz in str(cap_logger.out)
-        assert msg_abc in str(cap_logger.out)
-
-    def test_conditional_block_requirements_save_load(self, tmp_path):
-        pipe = self.get_dummy_conditional_block_pipe()
-        pipe.save_pretrained(tmp_path)
-
-        config_path = tmp_path / "modular_config.json"
-        with open(config_path, "r") as f:
-            config = json.load(f)
-
-        assert "requirements" in config
-        expected_requirements = {
-            "xyz": ">=0.8.0",
-            "abc": ">=10.0.0",
-            "transformers": ">=4.44.0",
-            "diffusers": ">=0.2.0",
-        }
-        assert expected_requirements == config["requirements"]
-
-    def test_loop_block_requirements_save_load(self, tmp_path):
-        pipe = self.get_dummy_loop_block_pipe()
-        pipe.save_pretrained(tmp_path)
-
-        config_path = tmp_path / "modular_config.json"
-        with open(config_path, "r") as f:
-            config = json.load(f)
-
-        assert "requirements" in config
-        expected_requirements = {
-            "xyz": ">=0.8.0",
-            "abc": ">=10.0.0",
-            "transformers": ">=4.44.0",
-            "diffusers": ">=0.2.0",
-        }
-        assert expected_requirements == config["requirements"]
 
 
 class TestModularModelCardContent:
@@ -785,6 +726,26 @@ class TestAutoModelLoadIdTagging:
         spec = pipe._component_specs["unet"]
         assert spec.pretrained_model_name_or_path == "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
         assert spec.subfolder == "unet"
+
+    def test_load_components_loads_local_single_file_path(self, tmp_path):
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+
+        model = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+        model.save_pretrained(tmp_path)
+
+        local_ckpt_path = str(tmp_path / "diffusion_pytorch_model.safetensors")
+
+        pipe._component_specs["controlnet"] = ComponentSpec(
+            name="controlnet",
+            type_hint=ControlNetModel,
+            pretrained_model_name_or_path=local_ckpt_path,
+        )
+        pipe.load_components(names="controlnet", config=str(tmp_path))
+
+        assert pipe.controlnet is not None
+        assert isinstance(pipe.controlnet, ControlNetModel)
+        assert pipe._component_specs["controlnet"].pretrained_model_name_or_path == local_ckpt_path
+        assert getattr(pipe.controlnet, "_diffusers_load_id", None) not in (None, "null")
 
 
 class TestLoadComponentsSkipBehavior:

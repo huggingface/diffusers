@@ -720,6 +720,7 @@ class LDMBertModel(LDMBertPreTrainedModel):
         super().__init__(config)
         self.model = LDMBertEncoder(config)
         self.to_logits = nn.Linear(config.hidden_size, config.vocab_size)
+        self.post_init()
 
     def forward(
         self,
