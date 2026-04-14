@@ -15,21 +15,16 @@
 # Adapted from the LongCat-AudioDiT reference implementation:
 # https://github.com/meituan-longcat/LongCat-AudioDiT
 
-import json
 import re
-from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 import torch
 import torch.nn.functional as F
-from huggingface_hub import hf_hub_download
-from huggingface_hub.utils import validate_hf_hub_args
-from safetensors.torch import load_file
-from transformers import AutoTokenizer, PreTrainedTokenizerBase, UMT5Config, UMT5EncoderModel
+from transformers import AutoTokenizer, PreTrainedTokenizerBase, UMT5EncoderModel
 
 from ...models import LongCatAudioDiTTransformer, LongCatAudioDiTVae
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
+from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
@@ -78,85 +73,6 @@ def _approx_duration_from_text(text: str | list[str], max_duration: float = 30.0
     return min(max_duration, max(durations)) if durations else 0.0
 
 
-def _extract_prefixed_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict[str, torch.Tensor]:
-    prefix = f"{prefix}."
-    return {key[len(prefix) :]: value for key, value in state_dict.items() if key.startswith(prefix)}
-
-
-def _load_longcat_tokenizer(
-    pretrained_model_name_or_path: str | Path,
-    text_encoder_model: str | None,
-    tokenizer: PreTrainedTokenizerBase | str | Path | None,
-    local_files_only: bool | None,
-    subfolder: str | None = None,
-) -> PreTrainedTokenizerBase:
-    if isinstance(tokenizer, PreTrainedTokenizerBase):
-        return tokenizer
-
-    tokenizer_source: str | Path | None = tokenizer
-    if tokenizer_source is None:
-        pretrained_path = Path(pretrained_model_name_or_path)
-        local_tokenizer_dir = pretrained_path / (subfolder or "") / "tokenizer"
-        if pretrained_path.exists() and local_tokenizer_dir.is_dir():
-            tokenizer_source = local_tokenizer_dir
-        else:
-            tokenizer_source = text_encoder_model or pretrained_model_name_or_path
-
-    if tokenizer_source is None:
-        raise ValueError("Could not determine tokenizer source for LongCatAudioDiT.")
-
-    tokenizer_kwargs = {"local_files_only": local_files_only}
-    if not isinstance(tokenizer_source, Path) and tokenizer_source == pretrained_model_name_or_path and subfolder:
-        tokenizer_kwargs["subfolder"] = subfolder
-    return AutoTokenizer.from_pretrained(tokenizer_source, **tokenizer_kwargs)
-
-
-def _resolve_longcat_file(
-    pretrained_model_name_or_path: str | Path,
-    filename: str,
-    cache_dir: str | Path | None = None,
-    force_download: bool = False,
-    proxies: dict[str, str] | None = None,
-    local_files_only: bool | None = None,
-    token: str | bool | None = None,
-    revision: str | None = None,
-    subfolder: str | None = None,
-    local_dir: str | Path | None = None,
-    local_dir_use_symlinks: str | bool = "auto",
-    user_agent: dict[str, str] | None = None,
-) -> str:
-    pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-    if Path(pretrained_model_name_or_path).is_dir():
-        base = Path(pretrained_model_name_or_path)
-        if subfolder is not None:
-            base = base / subfolder
-        file_path = base / filename
-        if not file_path.is_file():
-            raise EnvironmentError(f"Error no file named {filename} found in directory {base}.")
-        return str(file_path)
-
-    try:
-        return hf_hub_download(
-            pretrained_model_name_or_path,
-            filename=filename,
-            cache_dir=cache_dir,
-            force_download=force_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            subfolder=subfolder,
-            revision=revision,
-            local_dir=local_dir,
-            local_dir_use_symlinks=local_dir_use_symlinks,
-            user_agent=user_agent,
-        )
-    except Exception as err:
-        raise EnvironmentError(
-            f"Can't load {filename} for '{pretrained_model_name_or_path}'. If you were trying to load it from "
-            f"'{HUGGINGFACE_CO_RESOLVE_ENDPOINT}', make sure the repo exists or that your local path is correct."
-        ) from err
-
-
 class LongCatAudioDiTPipeline(DiffusionPipeline):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
@@ -193,163 +109,6 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
     @property
     def num_timesteps(self):
         return self._num_timesteps
-
-    @classmethod
-    @validate_hf_hub_args
-    def from_pretrained(
-        cls,
-        pretrained_model_name_or_path: str | Path,
-        tokenizer: PreTrainedTokenizerBase | str | Path | None = None,
-        torch_dtype: torch.dtype | None = None,
-        local_files_only: bool | None = None,
-        **kwargs: Any,
-    ) -> "LongCatAudioDiTPipeline":
-        cache_dir = kwargs.pop("cache_dir", None)
-        local_dir = kwargs.pop("local_dir", None)
-        local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
-        force_download = kwargs.pop("force_download", False)
-        proxies = kwargs.pop("proxies", None)
-        token = kwargs.pop("token", None)
-        revision = kwargs.pop("revision", None)
-        subfolder = kwargs.pop("subfolder", None)
-        try:
-            cls.load_config(
-                pretrained_model_name_or_path,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-                subfolder=subfolder,
-                local_dir=local_dir,
-                local_dir_use_symlinks=local_dir_use_symlinks,
-            )
-        except (EnvironmentError, OSError, ValueError):
-            pass
-        else:
-            return super().from_pretrained(
-                pretrained_model_name_or_path,
-                tokenizer=tokenizer,
-                torch_dtype=torch_dtype,
-                local_files_only=local_files_only,
-                cache_dir=cache_dir,
-                local_dir=local_dir,
-                local_dir_use_symlinks=local_dir_use_symlinks,
-                force_download=force_download,
-                proxies=proxies,
-                token=token,
-                revision=revision,
-                subfolder=subfolder,
-                **kwargs,
-            )
-
-        if kwargs:
-            logger.warning("Ignoring unsupported LongCatAudioDiTPipeline.from_pretrained kwargs: %s", sorted(kwargs))
-
-        config_path = _resolve_longcat_file(
-            pretrained_model_name_or_path,
-            "config.json",
-            cache_dir=cache_dir,
-            force_download=force_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-            subfolder=subfolder,
-            local_dir=local_dir,
-            local_dir_use_symlinks=local_dir_use_symlinks,
-            user_agent={"file_type": "config"},
-        )
-        weights_path = _resolve_longcat_file(
-            pretrained_model_name_or_path,
-            "model.safetensors",
-            cache_dir=cache_dir,
-            force_download=force_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-            subfolder=subfolder,
-            local_dir=local_dir,
-            local_dir_use_symlinks=local_dir_use_symlinks,
-            user_agent={"file_type": "weights"},
-        )
-
-        with open(config_path) as handle:
-            config = json.load(handle)
-
-        text_encoder_config = UMT5Config.from_dict(config["text_encoder_config"])
-        text_encoder = UMT5EncoderModel(text_encoder_config)
-        transformer = LongCatAudioDiTTransformer(
-            dit_dim=config["dit_dim"],
-            dit_depth=config["dit_depth"],
-            dit_heads=config["dit_heads"],
-            dit_text_dim=config["dit_text_dim"],
-            latent_dim=config["latent_dim"],
-            dropout=config.get("dit_dropout", 0.0),
-            bias=config.get("dit_bias", True),
-            cross_attn=config.get("dit_cross_attn", True),
-            adaln_type=config.get("dit_adaln_type", "global"),
-            adaln_use_text_cond=config.get("dit_adaln_use_text_cond", True),
-            long_skip=config.get("dit_long_skip", True),
-            text_conv=config.get("dit_text_conv", True),
-            qk_norm=config.get("dit_qk_norm", True),
-            cross_attn_norm=config.get("dit_cross_attn_norm", False),
-            eps=config.get("dit_eps", 1e-6),
-            use_latent_condition=config.get("dit_use_latent_condition", True),
-        )
-        vae_config = dict(config["vae_config"])
-        vae_config.pop("model_type", None)
-        vae = LongCatAudioDiTVae(**vae_config)
-
-        state_dict = load_file(weights_path)
-        transformer.load_state_dict(_extract_prefixed_state_dict(state_dict, "transformer"), strict=True)
-        vae.load_state_dict(_extract_prefixed_state_dict(state_dict, "vae"), strict=True)
-        text_missing, text_unexpected = text_encoder.load_state_dict(
-            _extract_prefixed_state_dict(state_dict, "text_encoder"), strict=False
-        )
-        allowed_missing = {"shared.weight"}
-        unexpected_missing = set(text_missing) - allowed_missing
-        if unexpected_missing:
-            raise RuntimeError(
-                f"Unexpected missing LongCatAudioDiT text encoder weights: {sorted(unexpected_missing)}"
-            )
-        if text_unexpected:
-            raise RuntimeError(f"Unexpected LongCatAudioDiT text encoder weights: {sorted(text_unexpected)}")
-        if "shared.weight" in text_missing:
-            text_encoder.shared.weight.data.copy_(text_encoder.encoder.embed_tokens.weight.data)
-
-        tokenizer = _load_longcat_tokenizer(
-            pretrained_model_name_or_path,
-            config.get("text_encoder_model"),
-            tokenizer,
-            local_files_only=local_files_only,
-            subfolder=subfolder,
-        )
-
-        if torch_dtype is not None:
-            text_encoder = text_encoder.to(dtype=torch_dtype)
-            transformer = transformer.to(dtype=torch_dtype)
-            vae = vae.to(dtype=torch_dtype)
-
-        text_encoder.eval()
-        transformer.eval()
-        vae.eval()
-
-        scheduler_config = {"shift": 1.0, "invert_sigmas": True}
-        scheduler_config.update(config.get("scheduler_config", {}))
-        scheduler = FlowMatchEulerDiscreteScheduler(**scheduler_config)
-
-        pipe = cls(
-            vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, transformer=transformer, scheduler=scheduler
-        )
-        pipe.sample_rate = config.get("sampling_rate", pipe.sample_rate)
-        pipe.vae_scale_factor = config.get("vae_scale_factor", config.get("latent_hop", pipe.vae_scale_factor))
-        pipe.max_wav_duration = config.get("max_wav_duration", pipe.max_wav_duration)
-        pipe.text_norm_feat = config.get("text_norm_feat", pipe.text_norm_feat)
-        pipe.text_add_embed = config.get("text_add_embed", pipe.text_add_embed)
-        return pipe
 
     def encode_prompt(self, prompt: str | list[str], device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         if isinstance(prompt, str):
@@ -524,36 +283,40 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
         self._num_timesteps = len(timesteps)
 
-        for i, t in enumerate(timesteps):
-            curr_t = (t / self.scheduler.config.num_train_timesteps).expand(batch_size).to(dtype=prompt_embeds.dtype)
-            pred = self.transformer(
-                hidden_states=latents,
-                encoder_hidden_states=prompt_embeds,
-                encoder_attention_mask=text_mask,
-                timestep=curr_t,
-                attention_mask=mask,
-                latent_cond=latent_cond,
-            ).sample
-            if self.guidance_scale > 1.0:
-                null_pred = self.transformer(
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                curr_t = (
+                    (t / self.scheduler.config.num_train_timesteps).expand(batch_size).to(dtype=prompt_embeds.dtype)
+                )
+                pred = self.transformer(
                     hidden_states=latents,
-                    encoder_hidden_states=negative_prompt_embeds,
-                    encoder_attention_mask=negative_prompt_embeds_mask,
+                    encoder_hidden_states=prompt_embeds,
+                    encoder_attention_mask=text_mask,
                     timestep=curr_t,
                     attention_mask=mask,
                     latent_cond=latent_cond,
                 ).sample
-                pred = null_pred + (pred - null_pred) * self.guidance_scale
-            latents = self.scheduler.step(pred, t, latents, return_dict=False)[0]
+                if self.guidance_scale > 1.0:
+                    null_pred = self.transformer(
+                        hidden_states=latents,
+                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_attention_mask=negative_prompt_embeds_mask,
+                        timestep=curr_t,
+                        attention_mask=mask,
+                        latent_cond=latent_cond,
+                    ).sample
+                    pred = null_pred + (pred - null_pred) * self.guidance_scale
+                latents = self.scheduler.step(pred, t, latents, return_dict=False)[0]
+                progress_bar.update()
 
-            if callback_on_step_end is not None:
-                callback_kwargs = {}
-                for k in callback_on_step_end_tensor_inputs:
-                    callback_kwargs[k] = locals()[k]
-                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
-                latents = callback_outputs.pop("latents", latents)
-                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
 
         if output_type == "latent":
             waveform = latents
