@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
-from einops import rearrange
+
 from PIL import Image
 from transformers import AutoProcessor, Qwen2Tokenizer, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
@@ -817,11 +817,11 @@ class JoyImageEditPipeline(DiffusionPipeline):
                 ref_img = [torch.from_numpy(np.array(x.convert("RGB"))) for x in reference_images]
                 ref_img = torch.stack(ref_img).to(device=device, dtype=dtype)
                 ref_img = ref_img / 127.5 - 1.0
-                ref_img = rearrange(ref_img, "x h w c -> x c 1 h w")
+                ref_img = ref_img.permute(0, 3, 1, 2).unsqueeze(2)
                 ref_vae = self.vae.encode(ref_img).latent_dist.sample()
                 if enable_denormalization:
                     ref_vae = self.normalize_latents(ref_vae)
-                ref_vae = rearrange(ref_vae, "(b n) c 1 h w -> b n c 1 h w", n=(num_items - 1))
+                ref_vae = ref_vae.view(shape[0], num_items - 1, *ref_vae.shape[1:])
                 noise = randn_tensor((shape[0], 1, *shape[2:]), generator=generator, device=device, dtype=dtype)
                 latents = torch.cat([ref_vae, noise], dim=1)
             else:
@@ -1162,7 +1162,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
                         progress_bar.update()
 
         if output_type != "latent":
-            latents = rearrange(latents, "b n c f h w -> (b n) c f h w")
+            latents = latents.flatten(0, 1)
             if enable_denormalization:
                 latents = self.denormalize_latents(latents)
 
@@ -1170,7 +1170,7 @@ class JoyImageEditPipeline(DiffusionPipeline):
                 if enable_tiling:
                     self.vae.enable_tiling()
                 image = self.vae.decode(latents, return_dict=False)[0]
-                image = rearrange(image, "(b n) c f h w -> b n c f h w", b=batch_size)
+                image = image.unflatten(0, (batch_size, -1))
         else:
             image = latents
 

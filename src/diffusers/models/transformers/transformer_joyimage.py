@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
+
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..attention import FeedForward
@@ -268,12 +268,12 @@ def apply_gate(x, gate=None, tanh=False):
 def attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, attn_kwargs=None):
     batch_size = q.shape[0]
     if ATTN_BACKEND == 'sdpa':
-        q = rearrange(q, "b l h c -> b h l c")
-        k = rearrange(k, "b l h c -> b h l c")
-        v = rearrange(v, "b l h c -> b h l c")
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
         output = torch.nn.functional.scaled_dot_product_attention(
             q, k, v, attn_mask=attn_kwargs['attn_mask'])
-        output = rearrange(output, "b h l c -> b l h c")
+        output = output.transpose(1, 2)
     elif ATTN_BACKEND == 'flash_attn':
         cu_seqlens_q = attn_kwargs['cu_seqlens_q']
         cu_seqlens_kv = attn_kwargs['cu_seqlens_kv']
@@ -369,7 +369,8 @@ class MMDoubleStreamBlock(nn.Module):
 
         img_modulated = modulate(self.img_norm1(img), shift=img_mod1_shift, scale=img_mod1_scale)
         img_qkv = self.img_attn_qkv(img_modulated)
-        img_q, img_k, img_v = rearrange(img_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
+        B, L, _ = img_qkv.shape
+        img_q, img_k, img_v = img_qkv.reshape(B, L, 3, self.heads_num, -1).permute(2, 0, 1, 3, 4).unbind(0)
         img_q = self.img_attn_q_norm(img_q).to(img_v)
         img_k = self.img_attn_k_norm(img_k).to(img_v)
         if vis_freqs_cis is not None:
@@ -377,7 +378,8 @@ class MMDoubleStreamBlock(nn.Module):
 
         txt_modulated = modulate(self.txt_norm1(txt), shift=txt_mod1_shift, scale=txt_mod1_scale)
         txt_qkv = self.txt_attn_qkv(txt_modulated)
-        txt_q, txt_k, txt_v = rearrange(txt_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num)
+        B2, L2, _ = txt_qkv.shape
+        txt_q, txt_k, txt_v = txt_qkv.reshape(B2, L2, 3, self.heads_num, -1).permute(2, 0, 1, 3, 4).unbind(0)
         txt_q = self.txt_attn_q_norm(txt_q).to(txt_v)
         txt_k = self.txt_attn_k_norm(txt_k).to(txt_v)
         if txt_freqs_cis is not None:
@@ -548,7 +550,7 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
                 if self.patch_size[0] != 1:
                     raise ValueError("For multi-item input, patch_size[0] must be 1")
                 hidden_states = torch.cat([hidden_states[:, -1:], hidden_states[:, :-1]], dim=1)
-            hidden_states = rearrange(hidden_states, "b n c t h w -> b c (n t) h w")
+            hidden_states = hidden_states.permute(0, 2, 1, 3, 4, 5).flatten(2, 3)
 
         _, _, ot, oh, ow = hidden_states.shape
         tt, th, tw = (
@@ -623,11 +625,17 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
             repa_hidden_state = repa_hidden_state.view(img.shape[0], tt, th, tw, -1)
 
         if is_multi_item:
-            img = rearrange(img, "b c (n t) h w -> b n c t h w", n=num_items)
+            # b c (n t) h w -> b n c t h w
+            b, c, nt, h, w = img.shape
+            t = nt // num_items
+            img = img.reshape(b, c, num_items, t, h, w).permute(0, 2, 1, 3, 4, 5)
             if num_items > 1:
                 img = torch.cat([img[:, 1:], img[:, :1]], dim=1)
             if repa_hidden_state is not None:
-                repa_hidden_state = rearrange(repa_hidden_state, "b (n t) h w c -> b n t h w c", n=num_items)
+                # b (n t) h w c -> b n t h w c
+                b2, nt2, h2, w2, c2 = repa_hidden_state.shape
+                t2 = nt2 // num_items
+                repa_hidden_state = repa_hidden_state.reshape(b2, num_items, t2, h2, w2, c2)
 
         if not return_dict:
             return (img, txt, repa_hidden_state)
