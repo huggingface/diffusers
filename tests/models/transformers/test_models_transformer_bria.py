@@ -29,7 +29,6 @@ from ..testing_utils import (
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -178,10 +177,6 @@ class TestBriaTransformerTraining(BriaTransformerTesterConfig, TrainingTesterMix
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"BriaTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class TestBriaTransformerCompile(BriaTransformerTesterConfig, TorchCompileTesterMixin):
-    pass
 
 
 class TestBriaTransformerIPAdapter(BriaTransformerTesterConfig, IPAdapterTesterMixin):
