@@ -78,7 +78,12 @@ _CAN_USE_XFORMERS_ATTN = is_xformers_available() and is_xformers_version(">=", _
 if _CAN_USE_FLASH_ATTN:
     try:
         from flash_attn import flash_attn_func, flash_attn_varlen_func
-        from flash_attn.flash_attn_interface import _wrapped_flash_attn_backward, _wrapped_flash_attn_forward
+        from flash_attn.flash_attn_interface import (
+            _wrapped_flash_attn_backward,
+            _wrapped_flash_attn_forward,
+            _wrapped_flash_attn_varlen_backward,
+            _wrapped_flash_attn_varlen_forward,
+        )
     except (ImportError, OSError, RuntimeError) as e:
         # Handle ABI mismatch or other import failures gracefully.
         # This can happen when flash_attn was compiled against a different PyTorch version.
@@ -88,11 +93,15 @@ if _CAN_USE_FLASH_ATTN:
         flash_attn_varlen_func = None
         _wrapped_flash_attn_backward = None
         _wrapped_flash_attn_forward = None
+        _wrapped_flash_attn_varlen_backward = None
+        _wrapped_flash_attn_varlen_forward = None
 else:
     flash_attn_func = None
     flash_attn_varlen_func = None
     _wrapped_flash_attn_backward = None
     _wrapped_flash_attn_forward = None
+    _wrapped_flash_attn_varlen_backward = None
+    _wrapped_flash_attn_varlen_forward = None
 
 
 if _CAN_USE_FLASH_ATTN_3:
@@ -636,6 +645,74 @@ def _prepare_for_flash_attn_or_sage_varlen(
     return _prepare_for_flash_attn_or_sage_varlen_with_mask(batch_size, seq_len_q, attn_mask, device)
 
 
+def _padded_to_unpad(tensor: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
+    """gather valid tokens from a padded `(batch, seq, ...)` tensor into a packed `(nnz, ...)` tensor."""
+    return tensor.reshape(-1, *tensor.shape[2:])[indices]
+
+
+def _unpad_to_padded(packed: torch.Tensor, indices: torch.Tensor, batch_size: int, seq_len: int) -> torch.Tensor:
+    """scatter a packed `(nnz, ...)` tensor back to padded `(batch_size, seq_len, ...)`."""
+    output = torch.zeros(batch_size * seq_len, *packed.shape[1:], dtype=packed.dtype, device=packed.device)
+    output[indices] = packed
+    return output.view(batch_size, seq_len, *packed.shape[1:])
+
+
+@dataclass
+class _VarlenPackedInputs:
+    """Inputs for varlen attention kernels: packed (unpadded) K/V, full-length Q, and KV index metadata."""
+
+    # tensors: query is full-length (flattened), key/value are packed (unpadded)
+    query: torch.Tensor
+    key: torch.Tensor
+    value: torch.Tensor
+
+    # cumulative sequence lengths for K (derived from attn_mask)
+    cu_seqlens_q: torch.Tensor  # (batch_size + 1,) — uniform stride of seq_len_q
+    cu_seqlens_k: torch.Tensor  # (batch_size + 1,)
+    max_seqlen_k: int
+
+    # shape metadata for unpacking outputs
+    batch_size: int
+    seq_len_q: int
+    seq_len_kv: int
+
+    # flat indices of valid KV tokens in the (batch * seq_kv) dimension.
+    indices_k: torch.Tensor
+
+    def unpack(self, packed_out: torch.Tensor) -> torch.Tensor:
+        return packed_out.view(self.batch_size, self.seq_len_q, *packed_out.shape[1:])
+
+
+def _pack_qkv(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor,
+) -> _VarlenPackedInputs:
+    """Pack Q/K/V tensors by removing padding tokens identified by *attn_mask*."""
+    batch_size = query.shape[0]
+    seq_len_q = query.shape[1]
+    seq_len_kv = key.shape[1]
+
+    _, (cu_seqlens_q, cu_seqlens_k), (_, max_seqlen_k) = _prepare_for_flash_attn_or_sage_varlen_with_mask(
+        batch_size, seq_len_q, attn_mask, query.device
+    )
+    indices_k = torch.nonzero(attn_mask.flatten(), as_tuple=False).flatten()
+
+    return _VarlenPackedInputs(
+        query=query.flatten(0, 1),
+        key=_padded_to_unpad(key, indices_k),
+        value=_padded_to_unpad(value, indices_k),
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        max_seqlen_k=max_seqlen_k,
+        batch_size=batch_size,
+        seq_len_q=seq_len_q,
+        seq_len_kv=seq_len_kv,
+        indices_k=indices_k,
+    )
+
+
 def _normalize_attn_mask(attn_mask: torch.Tensor, batch_size: int, seq_len_k: int) -> torch.Tensor:
     """
     Normalize an attention mask to shape [batch_size, seq_len_k] (bool) suitable for inferring seqlens_[q|k] in
@@ -1092,8 +1169,6 @@ def _flash_attention_forward_op(
     _save_ctx: bool = True,
     _parallel_config: "ParallelConfig" | None = None,
 ):
-    if attn_mask is not None:
-        raise ValueError("`attn_mask` is not yet supported for flash-attn 2.")
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for flash-attn 2.")
 
@@ -1110,6 +1185,63 @@ def _flash_attention_forward_op(
     # flash-attn only returns LSE if dropout_p > 0. So, we need to workaround.
     if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
         dropout_p = dropout_p if dropout_p > 0 else 1e-30
+
+    if attn_mask is not None:
+        if return_lse:
+            raise NotImplementedError("`return_lse=True` with `attn_mask` is not yet supported for flash-attn 2.")
+
+        batch_size, seq_len_q, _, _ = query.shape
+        _, seq_len_kv, _, _ = key.shape
+        attn_mask_2d = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+        packed = _pack_qkv(query, key, value, attn_mask_2d)
+
+        with torch.set_grad_enabled(grad_enabled):
+            out_packed, lse, _, rng_state = _wrapped_flash_attn_varlen_forward(
+                packed.query,
+                packed.key,
+                packed.value,
+                packed.cu_seqlens_q,
+                packed.cu_seqlens_k,
+                packed.seq_len_q,
+                packed.max_seqlen_k,
+                dropout_p,
+                scale,
+                is_causal,
+                window_size[0],
+                window_size[1],
+                softcap,
+                alibi_slopes,
+                return_lse,
+            )
+
+        out = packed.unpack(out_packed)
+
+        if _save_ctx:
+            ctx.save_for_backward(
+                packed.query,
+                packed.key,
+                packed.value,
+                out_packed,
+                lse,
+                rng_state,
+                packed.cu_seqlens_q,
+                packed.cu_seqlens_k,
+                packed.indices_k,
+            )
+            ctx.is_varlen_masked = True
+            ctx.max_seqlen_k = packed.max_seqlen_k
+            ctx.batch_size = batch_size
+            ctx.seq_len_q = seq_len_q
+            ctx.seq_len_kv = seq_len_kv
+            ctx.dropout_p = dropout_p
+            ctx.scale = scale
+            ctx.is_causal = is_causal
+            ctx.window_size = window_size
+            ctx.softcap = softcap
+            ctx.alibi_slopes = alibi_slopes
+            ctx.deterministic = deterministic
+
+        return out
 
     with torch.set_grad_enabled(grad_enabled):
         out, lse, S_dmask, rng_state = _wrapped_flash_attn_forward(
@@ -1146,6 +1278,60 @@ def _flash_attention_backward_op(
     *args,
     **kwargs,
 ):
+    if getattr(ctx, "is_varlen_masked", False):
+        (
+            query_packed,
+            key_packed,
+            value_packed,
+            out_packed,
+            lse,
+            rng_state,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            indices_k,
+        ) = ctx.saved_tensors
+
+        grad_out_packed = grad_out.flatten(0, 1)
+
+        dq = torch.empty_like(query_packed)
+        dk = torch.empty_like(key_packed)
+        dv = torch.empty_like(value_packed)
+
+        _wrapped_flash_attn_varlen_backward(  # noqa: F841
+            grad_out_packed,
+            query_packed,
+            key_packed,
+            value_packed,
+            out_packed,
+            lse,
+            dq,
+            dk,
+            dv,
+            cu_seqlens_q,
+            cu_seqlens_k,
+            ctx.seq_len_q,
+            ctx.max_seqlen_k,
+            ctx.dropout_p,
+            ctx.scale,
+            ctx.is_causal,
+            ctx.window_size[0],
+            ctx.window_size[1],
+            ctx.softcap,
+            ctx.alibi_slopes,
+            ctx.deterministic,
+            rng_state,
+        )
+
+        grad_query = dq.view(ctx.batch_size, ctx.seq_len_q, *dq.shape[1:])
+        grad_key = _unpad_to_padded(dk, indices_k, ctx.batch_size, ctx.seq_len_kv)
+        grad_value = _unpad_to_padded(dv, indices_k, ctx.batch_size, ctx.seq_len_kv)
+
+        grad_query = grad_query[..., : grad_out.shape[-1]]
+        grad_key = grad_key[..., : grad_out.shape[-1]]
+        grad_value = grad_value[..., : grad_out.shape[-1]]
+
+        return grad_query, grad_key, grad_value
+
     query, key, value, out, lse, rng_state = ctx.saved_tensors
     grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
 
@@ -2325,27 +2511,55 @@ def _flash_attention(
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
     lse = None
-    if attn_mask is not None:
-        raise ValueError("`attn_mask` is not supported for flash-attn 2.")
-
     if _parallel_config is None:
-        out = flash_attn_func(
-            q=query,
-            k=key,
-            v=value,
-            dropout_p=dropout_p,
-            softmax_scale=scale,
-            causal=is_causal,
-            return_attn_probs=return_lse,
-        )
-        if return_lse:
-            out, lse, *_ = out
+        if attn_mask is None:
+            out = flash_attn_func(
+                q=query,
+                k=key,
+                v=value,
+                dropout_p=dropout_p,
+                softmax_scale=scale,
+                causal=is_causal,
+                return_attn_probs=return_lse,
+            )
+            if return_lse:
+                out, lse, *_ = out
+        else:
+            if return_lse:
+                raise NotImplementedError(
+                    "`return_lse=True` with `attn_mask` is not yet supported for the FLASH backend."
+                )
+            batch_size, _, _, _ = query.shape
+            _, seq_len_kv, _, _ = key.shape
+            attn_mask_2d = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+            packed = _pack_qkv(query, key, value, attn_mask_2d)
+
+            out_packed = flash_attn_varlen_func(
+                q=packed.query,
+                k=packed.key,
+                v=packed.value,
+                cu_seqlens_q=packed.cu_seqlens_q,
+                cu_seqlens_k=packed.cu_seqlens_k,
+                max_seqlen_q=packed.seq_len_q,
+                max_seqlen_k=packed.max_seqlen_k,
+                dropout_p=dropout_p,
+                softmax_scale=scale,
+                causal=is_causal,
+                return_attn_probs=return_lse,
+            )
+            if return_lse:
+                out_packed, lse, *_ = out_packed
+
+            out = packed.unpack(out_packed)
     else:
+        if attn_mask is not None and _parallel_config.context_parallel_config.ring_degree > 1:
+            raise NotImplementedError("`attn_mask` is not yet supported for flash-attn 2 with ring attention.")
+
         out = _templated_context_parallel_attention(
             query,
             key,
             value,
-            None,
+            attn_mask,
             dropout_p,
             is_causal,
             scale,
