@@ -22,7 +22,7 @@ from torch_xla.experimental.custom_kernel import FlashAttention
 from diffusers import AutoencoderKL, FluxPipeline
 
 
-cache_path = Path("/tmp/data/compiler_cache_tRiLlium_eXp")
+cache_path = Path("/tmp/data/compiler_cache_eXp")
 cache_path.mkdir(parents=True, exist_ok=True)
 xr.initialize_cache(str(cache_path), readonly=False)
 xr.use_spmd()
@@ -51,7 +51,7 @@ def main(args):
     logger.info(f"SPMD mesh: {mesh.mesh_shape}, axes: {mesh.axis_names}, devices: {num_devices}")
 
     # --- Profiler ---
-    profile_path = Path("/tmp/data/profiler_out_tRiLlium_eXp")
+    profile_path = Path("/tmp/data/profiler_out_eXp")
     profile_path.mkdir(parents=True, exist_ok=True)
     profiler_port = 9012
     profile_duration = args.profile_duration
