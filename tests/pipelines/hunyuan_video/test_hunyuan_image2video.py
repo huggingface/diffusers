@@ -207,7 +207,6 @@ class HunyuanVideoImageToVideoPipelineFastTests(
                 "image_emb_len": 49,
                 "image_emb_start": 5,
                 "image_emb_end": 54,
-                "double_return_token_id": 0,
             },
             "generator": generator,
             "num_inference_steps": 2,
