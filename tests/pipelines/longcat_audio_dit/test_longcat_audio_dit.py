@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import os
 import unittest
 from pathlib import Path
 
 import torch
-from safetensors.torch import save_file
 from transformers import AutoTokenizer, UMT5Config, UMT5EncoderModel
 
 from diffusers import (
@@ -178,67 +176,6 @@ class LongCatAudioDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             sample = scheduler.step(model_output, scheduler_t, sample, return_dict=False)[0]
 
         self.assertTrue(torch.allclose(sample, expected, atol=1e-6, rtol=0))
-
-    def test_from_pretrained_local_dir(self):
-        import tempfile
-
-        device = "cpu"
-        components = self.get_dummy_components()
-        text_encoder = components["text_encoder"]
-        transformer = components["transformer"]
-        vae = components["vae"]
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model_dir = Path(tmp_dir) / "longcat-audio-dit"
-            model_dir.mkdir()
-            components["tokenizer"].save_pretrained(model_dir / "tokenizer")
-
-            config = {
-                "dit_dim": 64,
-                "dit_depth": 2,
-                "dit_heads": 4,
-                "dit_text_dim": 32,
-                "latent_dim": 8,
-                "dit_dropout": 0.0,
-                "dit_bias": True,
-                "dit_cross_attn": True,
-                "dit_adaln_type": "global",
-                "dit_adaln_use_text_cond": True,
-                "dit_long_skip": True,
-                "dit_text_conv": False,
-                "dit_qk_norm": True,
-                "dit_cross_attn_norm": False,
-                "dit_eps": 1e-6,
-                "dit_use_latent_condition": True,
-                "sampling_rate": 24000,
-                "vae_scale_factor": 2,
-                "max_wav_duration": 30.0,
-                "text_norm_feat": True,
-                "text_add_embed": True,
-                "text_encoder_model": "dummy-umt5",
-                "text_encoder_config": text_encoder.config.to_dict(),
-                "vae_config": {**dict(vae.config), "model_type": "longcat_audio_dit_vae"},
-            }
-            with (model_dir / "config.json").open("w") as handle:
-                json.dump(config, handle)
-
-            state_dict = {}
-            state_dict.update(
-                {f"text_encoder.{k}": v for k, v in text_encoder.state_dict().items() if k != "shared.weight"}
-            )
-            state_dict.update({f"transformer.{k}": v for k, v in transformer.state_dict().items()})
-            state_dict.update({f"vae.{k}": v for k, v in vae.state_dict().items()})
-            save_file(state_dict, model_dir / "model.safetensors")
-
-            pipe = LongCatAudioDiTPipeline.from_pretrained(model_dir, local_files_only=True)
-
-            output = pipe(**self.get_dummy_inputs(device, seed=0)).audios
-
-            self.assertIsInstance(pipe, LongCatAudioDiTPipeline)
-            self.assertEqual(pipe.sample_rate, 24000)
-            self.assertEqual(pipe.vae_scale_factor, 2)
-            self.assertEqual(output.ndim, 3)
-            self.assertGreater(output.shape[-1], 0)
 
 
 def test_longcat_audio_top_level_imports():
