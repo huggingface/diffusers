@@ -46,17 +46,15 @@ def annotate_pipeline(pipe):
         if method is None:
             continue
 
-        # Extract underlying function (avoid bound-method issue)
-        func = getattr(method, "__func__", method)
-
-        # Wrap function
-        wrapped = annotate(func, label)
-
-        # Rebind to THIS instance only (preserve descriptor behavior)
-        bound_method = wrapped.__get__(component, type(component))
-
-        # Set back
-        setattr(component, method_name, bound_method)
+        # Apply fix ONLY for LTX2 pipelines
+        if "LTX2" in pipe.__class__.__name__:
+            func = getattr(method, "__func__", method)
+            wrapped = annotate(func, label)
+            bound_method = wrapped.__get__(component, type(component))
+            setattr(component, method_name, bound_method)
+        else:
+            # keep original behavior for other pipelines
+            setattr(component, method_name, annotate(method, label))
 
     # Annotate pipeline-level methods
     if hasattr(pipe, "encode_prompt"):
