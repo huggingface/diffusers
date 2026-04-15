@@ -1680,7 +1680,10 @@ def main(args):
                     prompt_embeds = prompt_embeds_cache[step]
                     text_ids = text_ids_cache[step]
                 else:
-                    num_repeat_elements = len(prompts)
+                    # With prior preservation, prompt_embeds already contains [instance, class] embeddings
+                    # from the cat above, but collate_fn also doubles the prompts list. Use half the
+                    # prompts count to avoid a 2x over-repeat that produces more embeddings than latents.
+                    num_repeat_elements = len(prompts) // 2 if args.with_prior_preservation else len(prompts)
                     prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
                     text_ids = text_ids.repeat(num_repeat_elements, 1, 1)
 
