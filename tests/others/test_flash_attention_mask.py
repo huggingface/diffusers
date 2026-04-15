@@ -17,7 +17,12 @@ import unittest
 import torch
 import torch.nn.functional as F
 
-from diffusers.models.attention_dispatch import AttentionBackendName, _pack_qkv, dispatch_attention_fn
+from diffusers.models.attention_dispatch import (
+    _CAN_USE_FLASH_ATTN,
+    AttentionBackendName,
+    _pack_qkv,
+    dispatch_attention_fn,
+)
 
 
 # A mask with non-contiguous valid tokens (gaps in the middle of each row).
@@ -98,8 +103,9 @@ class TestPackQkv(unittest.TestCase):
         self.assertEqual(packed.seq_len_q, seq_len_q)
 
 
-class TestDispatchAttentionWithMask(unittest.TestCase):
-    """dispatch_attention_fn must honour attn_mask for all supported mask shapes."""
+@unittest.skipUnless(_CAN_USE_FLASH_ATTN, "flash-attn is required for these tests")
+class TestFlashAttentionWithMask(unittest.TestCase):
+    """Flash attention backend must produce results consistent with the SDPA reference when attn_mask is given."""
 
     def _sdpa_ref(self, q, k, v, bool_mask_2d):
         """SDPA reference: converts a 2D bool mask to an additive float mask and runs SDPA."""
@@ -112,37 +118,46 @@ class TestDispatchAttentionWithMask(unittest.TestCase):
         return out.permute(0, 2, 1, 3)
 
     def test_non_prefix_mask_matches_sdpa_reference(self):
-        """Non-prefix mask: NATIVE backend output must match SDPA reference."""
+        """Non-prefix mask: FLASH backend output must match SDPA reference."""
         batch_size, seq_len, num_heads, head_dim = 2, 10, 2, 32
-        q, k, v = _make_qkv(batch_size, seq_len, num_heads, head_dim)
+        device = torch.device("cuda")
+        q, k, v = (
+            t.to(device=device, dtype=torch.float16) for t in _make_qkv(batch_size, seq_len, num_heads, head_dim)
+        )
+        mask = _NON_PREFIX_MASK.to(device)
 
-        ref = self._sdpa_ref(q, k, v, _NON_PREFIX_MASK)
-        out = dispatch_attention_fn(q, k, v, attn_mask=_NON_PREFIX_MASK, backend=AttentionBackendName.NATIVE)
+        ref = self._sdpa_ref(q, k, v, mask)
+        out = dispatch_attention_fn(q, k, v, attn_mask=mask, backend=AttentionBackendName.FLASH)
 
-        self.assertTrue(torch.allclose(ref, out, atol=1e-5), f"Max diff: {(ref - out).abs().max():.2e}")
+        self.assertTrue(torch.allclose(ref, out, atol=1e-2), f"Max diff: {(ref - out).abs().max():.2e}")
 
     def test_all_valid_mask_equals_no_mask(self):
         """All-True mask must produce the same output as passing no mask at all."""
         batch_size, seq_len, num_heads, head_dim = 2, 8, 2, 32
-        q, k, v = _make_qkv(batch_size, seq_len, num_heads, head_dim)
-        all_valid_mask = torch.ones(batch_size, seq_len, dtype=torch.bool)
+        device = torch.device("cuda")
+        q, k, v = (
+            t.to(device=device, dtype=torch.float16) for t in _make_qkv(batch_size, seq_len, num_heads, head_dim)
+        )
+        all_valid_mask = torch.ones(batch_size, seq_len, dtype=torch.bool, device=device)
 
-        out_masked = dispatch_attention_fn(q, k, v, attn_mask=all_valid_mask, backend=AttentionBackendName.NATIVE)
-        out_no_mask = dispatch_attention_fn(q, k, v, attn_mask=None, backend=AttentionBackendName.NATIVE)
+        out_masked = dispatch_attention_fn(q, k, v, attn_mask=all_valid_mask, backend=AttentionBackendName.FLASH)
+        out_no_mask = dispatch_attention_fn(q, k, v, attn_mask=None, backend=AttentionBackendName.FLASH)
 
-        self.assertTrue(torch.allclose(out_masked, out_no_mask, atol=1e-6))
+        self.assertTrue(torch.allclose(out_masked, out_no_mask, atol=1e-3))
 
     def test_4d_bool_mask_equivalent_to_2d(self):
         """4D bool mask (batch_size, 1, 1, seq_len) must normalize to the same result as the 2D mask."""
-        batch_size, seq_len, num_heads, head_dim = 2, 10, 2, 16
-        q, k, v = _make_qkv(batch_size, seq_len, num_heads, head_dim)
-
-        out_2d = dispatch_attention_fn(q, k, v, attn_mask=_NON_PREFIX_MASK, backend=AttentionBackendName.NATIVE)
-        out_4d = dispatch_attention_fn(
-            q, k, v, attn_mask=_NON_PREFIX_MASK[:, None, None, :], backend=AttentionBackendName.NATIVE
+        batch_size, seq_len, num_heads, head_dim = 2, 10, 2, 32
+        device = torch.device("cuda")
+        q, k, v = (
+            t.to(device=device, dtype=torch.float16) for t in _make_qkv(batch_size, seq_len, num_heads, head_dim)
         )
+        mask = _NON_PREFIX_MASK.to(device)
 
-        self.assertTrue(torch.allclose(out_2d, out_4d, atol=1e-6))
+        out_2d = dispatch_attention_fn(q, k, v, attn_mask=mask, backend=AttentionBackendName.FLASH)
+        out_4d = dispatch_attention_fn(q, k, v, attn_mask=mask[:, None, None, :], backend=AttentionBackendName.FLASH)
+
+        self.assertTrue(torch.allclose(out_2d, out_4d, atol=1e-3))
 
 
 if __name__ == "__main__":
