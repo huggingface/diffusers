@@ -14,14 +14,9 @@ specific language governing permissions and limitations under the License.
 
 LongCat-AudioDiT is a text-to-audio diffusion model from Meituan LongCat. The diffusers integration exposes a standard [`DiffusionPipeline`] interface for text-conditioned audio generation.
 
-This pipeline supports loading the original flat LongCat checkpoint layout from either a local directory or a Hugging Face Hub repository containing:
-
-- `config.json`
-- `model.safetensors`
-
-The loader builds the text encoder, transformer, and VAE from `config.json`, restores component weights from `model.safetensors`, and ties the shared UMT5 embedding when needed.
-
 This pipeline was adapted from the LongCat-AudioDiT reference implementation: https://github.com/meituan-longcat/LongCat-AudioDiT
+
+This pipeline supports loading from a local directory or Hugging Face Hub repository in diffusers format (containing `text_encoder/`, `transformer/`, `vae/`, `tokenizer/`, and `scheduler/` subfolders).
 
 ## Usage
 
@@ -31,27 +26,28 @@ import torch
 from diffusers import LongCatAudioDiTPipeline
 
 pipeline = LongCatAudioDiTPipeline.from_pretrained(
-    "meituan-longcat/LongCat-AudioDiT-1B",
+    "ruixiangma/LongCat-AudioDiT-1B-Diffusers",
     torch_dtype=torch.float16,
 )
 pipeline = pipeline.to("cuda")
 
+prompt = "A calm ocean wave ambience with soft wind in the background."
 audio = pipeline(
-    prompt="A calm ocean wave ambience with soft wind in the background.",
-    audio_end_in_s=5.0,
+    prompt,
+    audio_duration_s=5.0,
     num_inference_steps=16,
     guidance_scale=4.0,
-    output_type="pt",
-).audios
+    seed=42,
+).audios[0, 0]
 
-output = audio[0, 0].float().cpu().numpy()
-sf.write("longcat.wav", output, pipeline.sample_rate)
+sf.write("longcat.wav", audio, pipeline.sample_rate)
 ```
 
 ## Tips
 
-- `audio_end_in_s` is the most direct way to control output duration.
-- `output_type="pt"` returns a PyTorch tensor shaped `(batch, channels, samples)`.
+- `audio_duration_s` is the most direct way to control output duration.
+- `seed` makes generation reproducible (optional, defaults to None).
+- Output shape is `(batch, channels, samples)` - use `.audios[0, 0]` to get a single audio sample.
 
 ## LongCatAudioDiTPipeline
 

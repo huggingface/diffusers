@@ -25,11 +25,28 @@ from transformers import PreTrainedTokenizerBase, UMT5EncoderModel
 from ...models import LongCatAudioDiTTransformer, LongCatAudioDiTVae
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
+from ...utils.doc_utils import replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import soundfile as sf
+        >>> import torch
+        >>> from diffusers import LongCatAudioDiTPipeline
+
+        >>> pipe = LongCatAudioDiTPipeline.from_pretrained("ruixiangma/LongCat-AudioDiT-1B-Diffusers")
+        >>> pipe.to("cuda")
+
+        >>> prompt = "A calm ocean wave ambience with soft wind in the background."
+        >>> audio = pipe(prompt, audio_duration_s=5.0, num_inference_steps=20, guidance_scale=4.0, seed=42).audios[0, 0]
+        >>> sf.write("output.wav", audio, pipe.sample_rate)
+        ```
+"""
 
 
 def _lens_to_mask(lengths: torch.Tensor, length: int | None = None) -> torch.BoolTensor:
@@ -194,6 +211,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 )
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: str | list[str],
@@ -202,6 +220,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         latents: torch.Tensor | None = None,
         num_inference_steps: int = 16,
         guidance_scale: float = 4.0,
+        seed: int | None = None,
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str = "np",
         return_dict: bool = True,
@@ -220,6 +239,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 Pre-generated noisy latents of shape `(batch_size, duration, latent_dim)`.
             num_inference_steps (`int`, defaults to 16): Number of denoising steps.
             guidance_scale (`float`, defaults to 4.0): Guidance scale for classifier-free guidance.
+            seed (`int`, *optional*): A seed used to make generation deterministic.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*): Random generator(s).
             output_type (`str`, defaults to `"np"`): Output format: `"np"`, `"pt"`, or `"latent"`.
             return_dict (`bool`, defaults to `True`): Whether to return `AudioPipelineOutput`.
@@ -228,7 +248,13 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 inputs specified by `callback_on_step_end_tensor_inputs`.
             callback_on_step_end_tensor_inputs (`list`, defaults to `["latents"]`):
                 Tensor inputs passed to `callback_on_step_end`.
+
+        Examples:
         """
+        # Create generator from seed if provided
+        if generator is None and seed is not None:
+            generator = torch.Generator(device=self.device).manual_seed(seed)
+
         if prompt is None:
             prompt = []
         elif isinstance(prompt, str):
