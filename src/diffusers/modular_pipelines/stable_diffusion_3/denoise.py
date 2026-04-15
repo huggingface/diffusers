@@ -30,6 +30,7 @@ from ..modular_pipeline import (
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import StableDiffusion3ModularPipeline
 
+
 logger = logging.get_logger(__name__)
 
 
@@ -137,37 +138,24 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
         if hasattr(components.guider, "guidance_scale"):
             components.guider.guidance_scale = block_state.guidance_scale
         if hasattr(components.guider, "skip_layer_guidance_scale"):
-            components.guider.skip_layer_guidance_scale = (
-                block_state.skip_layer_guidance_scale
-            )
+            components.guider.skip_layer_guidance_scale = block_state.skip_layer_guidance_scale
         if hasattr(components.guider, "skip_layer_guidance_start"):
-            components.guider.skip_layer_guidance_start = (
-                block_state.skip_layer_guidance_start
-            )
+            components.guider.skip_layer_guidance_start = block_state.skip_layer_guidance_start
         if hasattr(components.guider, "skip_layer_guidance_stop"):
-            components.guider.skip_layer_guidance_stop = (
-                block_state.skip_layer_guidance_stop
-            )
+            components.guider.skip_layer_guidance_stop = block_state.skip_layer_guidance_stop
 
-        components.guider.set_state(
-            step=i, num_inference_steps=block_state.num_inference_steps, timestep=t
-        )
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         guider_state = components.guider.prepare_inputs(guider_inputs)
 
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
-            cond_kwargs = {
-                input_name: getattr(guider_state_batch, input_name)
-                for input_name in guider_inputs.keys()
-            }
+            cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
             timestep = t.expand(block_state.latents.shape[0])
             guider_state_batch.noise_pred = components.transformer(
                 hidden_states=block_state.latents,
                 timestep=timestep,
-                joint_attention_kwargs=getattr(
-                    block_state, "joint_attention_kwargs", None
-                ),
+                joint_attention_kwargs=getattr(block_state, "joint_attention_kwargs", None),
                 return_dict=False,
                 **cond_kwargs,
             )[0]
@@ -237,24 +225,18 @@ class StableDiffusion3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(
-        self, components: StableDiffusion3ModularPipeline, state: PipelineState
-    ) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.num_warmup_steps = max(
-            len(block_state.timesteps)
-            - block_state.num_inference_steps * components.scheduler.order,
+            len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order,
             0,
         )
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(
-                    components, block_state, i=i, t=t
-                )
+                components, block_state = self.loop_step(components, block_state, i=i, t=t)
                 if i == len(block_state.timesteps) - 1 or (
-                    (i + 1) > block_state.num_warmup_steps
-                    and (i + 1) % components.scheduler.order == 0
+                    (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
                 ):
                     progress_bar.update()
 

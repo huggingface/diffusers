@@ -16,12 +16,11 @@ from ...loaders import FromSingleFileMixin, SD3IPAdapterMixin, SD3LoraLoaderMixi
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
 
+
 logger = logging.get_logger(__name__)
 
 
-class StableDiffusion3ModularPipeline(
-    ModularPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, SD3IPAdapterMixin
-):
+class StableDiffusion3ModularPipeline(ModularPipeline, SD3LoraLoaderMixin, FromSingleFileMixin, SD3IPAdapterMixin):
     """
     A ModularPipeline for Stable Diffusion 3.
 
