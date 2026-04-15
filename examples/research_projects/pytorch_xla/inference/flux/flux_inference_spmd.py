@@ -46,7 +46,10 @@ def _vae_decode(latents, vae, height, width, device):
 def main(args):
     # --- SPMD mesh: 4-way model parallel to fit transformer + VAE on v5e chips ---
     num_devices = xr.global_runtime_device_count()
-    mesh = xs.Mesh(np.arange(num_devices), (num_devices // 4, 4), ("data", "model"))
+    if num_devices >= 4:
+        mesh = xs.Mesh(np.arange(num_devices), (num_devices // 4, 4), ("data", "model"))
+    else:
+        NotImplementedError
     xs.set_global_mesh(mesh)
     logger.info(f"SPMD mesh: {mesh.mesh_shape}, axes: {mesh.axis_names}, devices: {num_devices}")
 
