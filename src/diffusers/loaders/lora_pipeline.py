@@ -5703,6 +5703,13 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
+        transformer = getattr(self, self.transformer_name, None)
+        if transformer is None:
+            raise ValueError(
+                "Flux2 LoRA weights can only be loaded into a pipeline that defines a `transformer` component. "
+                "This modular sub-pipeline only exposes a subset of components."
+            )
+
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
@@ -5726,7 +5733,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
 
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,

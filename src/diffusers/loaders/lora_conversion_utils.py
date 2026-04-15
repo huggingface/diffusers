@@ -2421,6 +2421,8 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
         "txt_in": "context_embedder",
         "time_in.in_layer": "time_guidance_embed.timestep_embedder.linear_1",
         "time_in.out_layer": "time_guidance_embed.timestep_embedder.linear_2",
+        "guidance_in.in_layer": "time_guidance_embed.guidance_embedder.linear_1",
+        "guidance_in.out_layer": "time_guidance_embed.guidance_embedder.linear_2",
         "final_layer.linear": "proj_out",
         "final_layer.adaLN_modulation.1": "norm_out.linear",
         "single_stream_modulation.lin": "single_stream_modulation.linear",
