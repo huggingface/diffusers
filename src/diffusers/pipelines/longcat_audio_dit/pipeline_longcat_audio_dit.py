@@ -20,7 +20,7 @@ from typing import Callable
 
 import torch
 import torch.nn.functional as F
-from transformers import AutoTokenizer, PreTrainedTokenizerBase, UMT5EncoderModel
+from transformers import PreTrainedTokenizerBase, UMT5EncoderModel
 
 from ...models import LongCatAudioDiTTransformer, LongCatAudioDiTVae
 from ...schedulers import FlowMatchEulerDiscreteScheduler
