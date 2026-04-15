@@ -53,4 +53,5 @@ deps = {
     "phonemizer": "phonemizer",
     "opencv-python": "opencv-python",
     "timm": "timm",
+    "flashpack": "flashpack",
 }

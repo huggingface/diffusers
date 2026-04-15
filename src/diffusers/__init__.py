@@ -169,22 +169,23 @@ else:
             "PyramidAttentionBroadcastConfig",
             "SmoothedEnergyGuidanceConfig",
             "TaylorSeerCacheConfig",
+            "TextKVCacheConfig",
             "apply_faster_cache",
             "apply_first_block_cache",
             "apply_layer_skip",
             "apply_mag_cache",
             "apply_pyramid_attention_broadcast",
             "apply_taylorseer_cache",
+            "apply_text_kv_cache",
         ]
     )
     _import_structure["image_processor"] = [
-        "IPAdapterMaskProcessor",
         "InpaintProcessor",
+        "IPAdapterMaskProcessor",
         "PixArtImageProcessor",
         "VaeImageProcessor",
         "VaeImageProcessorLDM3D",
     ]
-    _import_structure["video_processor"] = ["VideoProcessor"]
     _import_structure["models"].extend(
         [
             "AllegroTransformer3DModel",
@@ -234,6 +235,7 @@ else:
             "CosmosTransformer3DModel",
             "DiTTransformer2DModel",
             "EasyAnimateTransformer3DModel",
+            "ErnieImageTransformer2DModel",
             "Flux2Transformer2DModel",
             "FluxControlNetModel",
             "FluxMultiControlNetModel",
@@ -262,6 +264,7 @@ else:
             "MotionAdapter",
             "MultiAdapter",
             "MultiControlNetModel",
+            "NucleusMoEImageTransformer2DModel",
             "OmniGenTransformer2DModel",
             "OvisImageTransformer2DModel",
             "ParallelConfig",
@@ -396,6 +399,7 @@ else:
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
+    _import_structure["video_processor"] = ["VideoProcessor"]
 
 try:
     if not (is_torch_available() and is_scipy_available()):
@@ -452,6 +456,8 @@ else:
             "HeliosPyramidDistilledAutoBlocks",
             "HeliosPyramidDistilledModularPipeline",
             "HeliosPyramidModularPipeline",
+            "LTXAutoBlocks",
+            "LTXModularPipeline",
             "QwenImageAutoBlocks",
             "QwenImageEditAutoBlocks",
             "QwenImageEditModularPipeline",
@@ -522,6 +528,7 @@ else:
             "EasyAnimateControlPipeline",
             "EasyAnimateInpaintPipeline",
             "EasyAnimatePipeline",
+            "ErnieImagePipeline",
             "Flux2KleinKVPipeline",
             "Flux2KleinPipeline",
             "Flux2Pipeline",
@@ -613,6 +620,7 @@ else:
             "MarigoldNormalsPipeline",
             "MochiPipeline",
             "MusicLDMPipeline",
+            "NucleusMoEImagePipeline",
             "OmniGenPipeline",
             "OvisImagePipeline",
             "PaintByExamplePipeline",
@@ -967,12 +975,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PyramidAttentionBroadcastConfig,
             SmoothedEnergyGuidanceConfig,
             TaylorSeerCacheConfig,
+            TextKVCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_layer_skip,
             apply_mag_cache,
             apply_pyramid_attention_broadcast,
             apply_taylorseer_cache,
+            apply_text_kv_cache,
         )
         from .image_processor import (
             InpaintProcessor,
@@ -1029,6 +1039,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CosmosTransformer3DModel,
             DiTTransformer2DModel,
             EasyAnimateTransformer3DModel,
+            ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
             FluxControlNetModel,
             FluxMultiControlNetModel,
@@ -1057,6 +1068,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MotionAdapter,
             MultiAdapter,
             MultiControlNetModel,
+            NucleusMoEImageTransformer2DModel,
             OmniGenTransformer2DModel,
             OvisImageTransformer2DModel,
             ParallelConfig,
@@ -1227,6 +1239,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HeliosPyramidDistilledAutoBlocks,
             HeliosPyramidDistilledModularPipeline,
             HeliosPyramidModularPipeline,
+            LTXAutoBlocks,
+            LTXModularPipeline,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
             QwenImageEditModularPipeline,
@@ -1293,6 +1307,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
+            ErnieImagePipeline,
             Flux2KleinKVPipeline,
             Flux2KleinPipeline,
             Flux2Pipeline,
@@ -1384,6 +1399,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MarigoldNormalsPipeline,
             MochiPipeline,
             MusicLDMPipeline,
+            NucleusMoEImagePipeline,
             OmniGenPipeline,
             OvisImagePipeline,
             PaintByExamplePipeline,

@@ -25,6 +25,7 @@ if is_torch_available():
     from .transformer_cogview4 import CogView4Transformer2DModel
     from .transformer_cosmos import CosmosTransformer3DModel
     from .transformer_easyanimate import EasyAnimateTransformer3DModel
+    from .transformer_ernie_image import ErnieImageTransformer2DModel
     from .transformer_flux import FluxTransformer2DModel
     from .transformer_flux2 import Flux2Transformer2DModel
     from .transformer_glm_image import GlmImageTransformer2DModel
@@ -40,6 +41,7 @@ if is_torch_available():
     from .transformer_ltx2 import LTX2VideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
     from .transformer_mochi import MochiTransformer3DModel
+    from .transformer_nucleusmoe_image import NucleusMoEImageTransformer2DModel
     from .transformer_omnigen import OmniGenTransformer2DModel
     from .transformer_ovis_image import OvisImageTransformer2DModel
     from .transformer_prx import PRXTransformer2DModel
