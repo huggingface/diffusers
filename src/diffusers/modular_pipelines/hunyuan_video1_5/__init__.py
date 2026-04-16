@@ -23,8 +23,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_blocks_hunyuan_video1_5"] = [
         "HunyuanVideo15AutoBlocks",
-        "HunyuanVideo15Blocks",
-        "HunyuanVideo15Image2VideoBlocks",
     ]
     _import_structure["modular_pipeline"] = ["HunyuanVideo15ModularPipeline"]
 
@@ -35,11 +33,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modular_blocks_hunyuan_video1_5 import (
-            HunyuanVideo15AutoBlocks,
-            HunyuanVideo15Blocks,
-            HunyuanVideo15Image2VideoBlocks,
-        )
+        from .modular_blocks_hunyuan_video1_5 import HunyuanVideo15AutoBlocks
         from .modular_pipeline import HunyuanVideo15ModularPipeline
 else:
     import sys

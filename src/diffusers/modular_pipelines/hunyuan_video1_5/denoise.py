@@ -93,15 +93,39 @@ class HunyuanVideo15LoopDenoiser(ModularPipelineBlocks):
         inputs = [
             InputParam.template("attention_kwargs"),
             InputParam.template("num_inference_steps", required=True, default=None),
-            InputParam("image_embeds", type_hint=torch.Tensor),
+            InputParam(
+                "image_embeds",
+                type_hint=torch.Tensor,
+                description="Siglip image embeddings used as extra conditioning for I2V. Zero-filled for T2V.",
+            ),
         ]
         for value in self._guider_input_fields.values():
             if isinstance(value, tuple):
-                inputs.append(InputParam(name=value[0], required=True, type_hint=torch.Tensor))
+                inputs.append(
+                    InputParam(
+                        name=value[0],
+                        required=True,
+                        type_hint=torch.Tensor,
+                        description=f"Positive branch of the {value[0]!r} field fed into the guider.",
+                    )
+                )
                 for neg_name in value[1:]:
-                    inputs.append(InputParam(name=neg_name, type_hint=torch.Tensor))
+                    inputs.append(
+                        InputParam(
+                            name=neg_name,
+                            type_hint=torch.Tensor,
+                            description=f"Negative branch of the {neg_name!r} field fed into the guider.",
+                        )
+                    )
             else:
-                inputs.append(InputParam(name=value, required=True, type_hint=torch.Tensor))
+                inputs.append(
+                    InputParam(
+                        name=value,
+                        required=True,
+                        type_hint=torch.Tensor,
+                        description=f"{value!r} field fed into the guider.",
+                    )
+                )
         return inputs
 
     @torch.no_grad()
@@ -272,16 +296,40 @@ class HunyuanVideo15Image2VideoLoopDenoiser(ModularPipelineBlocks):
         inputs = [
             InputParam.template("attention_kwargs"),
             InputParam.template("num_inference_steps", required=True, default=None),
-            InputParam("image_embeds", type_hint=torch.Tensor),
+            InputParam(
+                "image_embeds",
+                type_hint=torch.Tensor,
+                description="Siglip image embeddings used as extra conditioning for I2V. Zero-filled for T2V.",
+            ),
             InputParam.template("timesteps", required=True),
         ]
         for value in self._guider_input_fields.values():
             if isinstance(value, tuple):
-                inputs.append(InputParam(name=value[0], required=True, type_hint=torch.Tensor))
+                inputs.append(
+                    InputParam(
+                        name=value[0],
+                        required=True,
+                        type_hint=torch.Tensor,
+                        description=f"Positive branch of the {value[0]!r} field fed into the guider.",
+                    )
+                )
                 for neg_name in value[1:]:
-                    inputs.append(InputParam(name=neg_name, type_hint=torch.Tensor))
+                    inputs.append(
+                        InputParam(
+                            name=neg_name,
+                            type_hint=torch.Tensor,
+                            description=f"Negative branch of the {neg_name!r} field fed into the guider.",
+                        )
+                    )
             else:
-                inputs.append(InputParam(name=value, required=True, type_hint=torch.Tensor))
+                inputs.append(
+                    InputParam(
+                        name=value,
+                        required=True,
+                        type_hint=torch.Tensor,
+                        description=f"{value!r} field fed into the guider.",
+                    )
+                )
         return inputs
 
     @torch.no_grad()

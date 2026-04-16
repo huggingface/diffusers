@@ -39,8 +39,8 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block that takes encoded conditions and runs the denoising process.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`) guider
-          (`ClassifierFreeGuidance`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`)
+          video_processor (`HunyuanVideo15ImageProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt_embeds (`Tensor`):
@@ -57,7 +57,7 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
           width (`int`, *optional*):
               The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 121):
-              TODO: Add description.
+              Number of video frames to generate.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -67,19 +67,19 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           negative_prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds' field fed into the guider.
           prompt_embeds_mask (`Tensor`):
-              TODO: Add description.
+              Positive branch of the 'prompt_embeds_mask' field fed into the guider.
           negative_prompt_embeds_mask (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds_mask' field fed into the guider.
           prompt_embeds_2 (`Tensor`):
-              TODO: Add description.
+              Positive branch of the 'prompt_embeds_2' field fed into the guider.
           negative_prompt_embeds_2 (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds_2' field fed into the guider.
           prompt_embeds_mask_2 (`Tensor`):
-              TODO: Add description.
+              Positive branch of the 'prompt_embeds_mask_2' field fed into the guider.
           negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds_mask_2' field fed into the guider.
 
       Outputs:
           latents (`Tensor`):
@@ -112,8 +112,8 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
       Components:
           text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2Tokenizer`) text_encoder_2 (`T5EncoderModel`)
           tokenizer_2 (`ByT5Tokenizer`) guider (`ClassifierFreeGuidance`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          transformer (`HunyuanVideo15Transformer3DModel`) vae (`AutoencoderKLHunyuanVideo15`) video_processor
-          (`HunyuanVideo15ImageProcessor`)
+          transformer (`HunyuanVideo15Transformer3DModel`) video_processor (`HunyuanVideo15ImageProcessor`) vae
+          (`AutoencoderKLHunyuanVideo15`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -134,7 +134,7 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
           width (`int`, *optional*):
               The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 121):
-              TODO: Add description.
+              Number of video frames to generate.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
@@ -172,8 +172,8 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block for image-to-video that takes encoded conditions and runs the denoising process.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`) guider
-          (`ClassifierFreeGuidance`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`)
+          video_processor (`HunyuanVideo15ImageProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt_embeds (`Tensor`):
@@ -190,7 +190,7 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
           width (`int`, *optional*):
               The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 121):
-              TODO: Add description.
+              Number of video frames to generate.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -198,23 +198,23 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           image_latents (`Tensor`):
-              TODO: Add description.
+              Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           negative_prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds' field fed into the guider.
           prompt_embeds_mask (`Tensor`):
-              TODO: Add description.
+              Positive branch of the 'prompt_embeds_mask' field fed into the guider.
           negative_prompt_embeds_mask (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds_mask' field fed into the guider.
           prompt_embeds_2 (`Tensor`):
-              TODO: Add description.
+              Positive branch of the 'prompt_embeds_2' field fed into the guider.
           negative_prompt_embeds_2 (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds_2' field fed into the guider.
           prompt_embeds_mask_2 (`Tensor`):
-              TODO: Add description.
+              Positive branch of the 'prompt_embeds_mask_2' field fed into the guider.
           negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds_mask_2' field fed into the guider.
 
       Outputs:
           latents (`Tensor`):
@@ -326,8 +326,8 @@ class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
        - `HunyuanVideo15CoreDenoiseStep` is used otherwise (text-to-video).
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`) guider
-          (`ClassifierFreeGuidance`)
+          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`)
+          video_processor (`HunyuanVideo15ImageProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt_embeds (`Tensor`):
@@ -344,7 +344,7 @@ class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
           width (`int`, *optional*):
               The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 121):
-              TODO: Add description.
+              Number of video frames to generate.
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -352,23 +352,23 @@ class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           image_latents (`Tensor`, *optional*):
-              TODO: Add description.
+              Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           negative_prompt_embeds (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds' field fed into the guider.
           prompt_embeds_mask (`Tensor`):
-              TODO: Add description.
+              Positive branch of the 'prompt_embeds_mask' field fed into the guider.
           negative_prompt_embeds_mask (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds_mask' field fed into the guider.
           prompt_embeds_2 (`Tensor`):
-              TODO: Add description.
+              Positive branch of the 'prompt_embeds_2' field fed into the guider.
           negative_prompt_embeds_2 (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds_2' field fed into the guider.
           prompt_embeds_mask_2 (`Tensor`):
-              TODO: Add description.
+              Positive branch of the 'prompt_embeds_mask_2' field fed into the guider.
           negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
-              TODO: Add description.
+              Negative branch of the 'negative_prompt_embeds_mask_2' field fed into the guider.
 
       Outputs:
           latents (`Tensor`):
@@ -426,13 +426,13 @@ class HunyuanVideo15AutoBlocks(SequentialPipelineBlocks):
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           num_frames (`int`, *optional*, defaults to 121):
-              TODO: Add description.
+              Number of video frames to generate.
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           image_latents (`Tensor`, *optional*):
-              TODO: Add description.
+              Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):
@@ -499,13 +499,13 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           num_frames (`int`, *optional*, defaults to 121):
-              TODO: Add description.
+              Number of video frames to generate.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           image_latents (`Tensor`):
-              TODO: Add description.
+              Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):

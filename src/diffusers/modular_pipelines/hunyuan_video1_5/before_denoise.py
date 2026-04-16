@@ -17,7 +17,9 @@ import inspect
 import numpy as np
 import torch
 
+from ...configuration_utils import FrozenDict
 from ...models import HunyuanVideo15Transformer3DModel
+from ...pipelines.hunyuan_video1_5.image_processor import HunyuanVideo15ImageProcessor
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
@@ -168,14 +170,22 @@ class HunyuanVideo15PrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("transformer", HunyuanVideo15Transformer3DModel)]
+        return [
+            ComponentSpec("transformer", HunyuanVideo15Transformer3DModel),
+            ComponentSpec(
+                "video_processor",
+                HunyuanVideo15ImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("height"),
             InputParam.template("width"),
-            InputParam("num_frames", type_hint=int, default=121),
+            InputParam("num_frames", type_hint=int, default=121, description="Number of video frames to generate."),
             InputParam.template("latents"),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("generator"),
@@ -261,8 +271,18 @@ class HunyuanVideo15Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("image_latents", type_hint=torch.Tensor, required=True),
-            InputParam("image_embeds", type_hint=torch.Tensor, required=True),
+            InputParam(
+                "image_latents",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.",
+            ),
+            InputParam(
+                "image_embeds",
+                type_hint=torch.Tensor,
+                required=True,
+                description="Siglip image embeddings from the image encoder step, used as extra conditioning for I2V.",
+            ),
             InputParam.template("latents", required=True),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("batch_size", required=True, default=None),

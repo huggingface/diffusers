@@ -175,10 +175,30 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
             OutputParam.template("prompt_embeds_mask"),
             OutputParam.template("negative_prompt_embeds"),
             OutputParam.template("negative_prompt_embeds_mask"),
-            OutputParam("prompt_embeds_2", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
-            OutputParam("prompt_embeds_mask_2", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
-            OutputParam("negative_prompt_embeds_2", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
-            OutputParam("negative_prompt_embeds_mask_2", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields"),
+            OutputParam(
+                "prompt_embeds_2",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="ByT5 glyph-text embeddings used as a second conditioning stream for the transformer.",
+            ),
+            OutputParam(
+                "prompt_embeds_mask_2",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Attention mask for the ByT5 glyph-text embeddings.",
+            ),
+            OutputParam(
+                "negative_prompt_embeds_2",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="ByT5 glyph-text negative embeddings for classifier-free guidance.",
+            ),
+            OutputParam(
+                "negative_prompt_embeds_mask_2",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Attention mask for the ByT5 glyph-text negative embeddings.",
+            ),
         ]
 
     @staticmethod
