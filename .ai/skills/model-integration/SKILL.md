@@ -65,94 +65,24 @@ docs/source/en/api/
 - [ ] Run `make style` and `make quality`
 - [ ] Test parity with reference implementation (see `parity-testing` skill)
 
-### Attention pattern
+### Model conventions, attention pattern, and implementation rules
 
-Attention must follow the diffusers pattern: both the `Attention` class and its processor are defined in the model file. The processor's `__call__` handles the actual compute and must use `dispatch_attention_fn` rather than calling `F.scaled_dot_product_attention` directly. The attention class inherits `AttentionModuleMixin` and declares `_default_processor_cls` and `_available_processors`.
+See [../../models.md](../../models.md) for the attention pattern, implementation rules, common conventions, dependencies, and gotchas. These apply to all model work.
 
-```python
-# transformer_mymodel.py
+### Model integration specific rules
 
-class MyModelAttnProcessor:
-    _attention_backend = None
-    _parallel_config = None
-
-    def __call__(self, attn, hidden_states, attention_mask=None, ...):
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
-        # reshape, apply rope, etc.
-        hidden_states = dispatch_attention_fn(
-            query, key, value,
-            attn_mask=attention_mask,
-            backend=self._attention_backend,
-            parallel_config=self._parallel_config,
-        )
-        hidden_states = hidden_states.flatten(2, 3)
-        return attn.to_out[0](hidden_states)
-
-
-class MyModelAttention(nn.Module, AttentionModuleMixin):
-    _default_processor_cls = MyModelAttnProcessor
-    _available_processors = [MyModelAttnProcessor]
-
-    def __init__(self, query_dim, heads=8, dim_head=64, ...):
-        super().__init__()
-        self.to_q = nn.Linear(query_dim, heads * dim_head, bias=False)
-        self.to_k = nn.Linear(query_dim, heads * dim_head, bias=False)
-        self.to_v = nn.Linear(query_dim, heads * dim_head, bias=False)
-        self.to_out = nn.ModuleList([nn.Linear(heads * dim_head, query_dim), nn.Dropout(0.0)])
-        self.set_processor(MyModelAttnProcessor())
-
-    def forward(self, hidden_states, attention_mask=None, **kwargs):
-        return self.processor(self, hidden_states, attention_mask, **kwargs)
-```
-
-Consult the implementations in `src/diffusers/models/transformers/` if you need further references.
-
-### Implementation rules
-
-1. **Don't combine structural changes with behavioral changes.** Restructuring code to fit diffusers APIs (ModelMixin, ConfigMixin, etc.) is unavoidable. But don't also "improve" the algorithm, refactor computation order, or rename internal variables for aesthetics. Keep numerical logic as close to the reference as possible, even if it looks unclean. For standard → modular, this is stricter: copy loop logic verbatim and only restructure into blocks. Clean up in a separate commit after parity is confirmed.
-2. **Pipelines must inherit from `DiffusionPipeline`.** Consult implementations in `src/diffusers/pipelines` in case you need references.
-3. **Don't subclass an existing pipeline for a variant.** DO NOT use an existing pipeline class (e.g., `FluxPipeline`) to override another pipeline (e.g., `FluxImg2ImgPipeline`) which will be a part of the core codebase (`src`).
+**Don't combine structural changes with behavioral changes.** Restructuring code to fit diffusers APIs (ModelMixin, ConfigMixin, etc.) is unavoidable. But don't also "improve" the algorithm, refactor computation order, or rename internal variables for aesthetics. Keep numerical logic as close to the reference as possible, even if it looks unclean. For standard → modular, this is stricter: copy loop logic verbatim and only restructure into blocks. Clean up in a separate commit after parity is confirmed.
 
 ### Test setup
 
 - Slow tests gated with `@slow` and `RUN_SLOW=1`
 - All model-level tests must use the `BaseModelTesterConfig`, `ModelTesterMixin`, `MemoryTesterMixin`, `AttentionTesterMixin`, `LoraTesterMixin`, and `TrainingTesterMixin` classes initially to write the tests. Any additional tests should be added after discussions with the maintainers. Use `tests/models/transformers/test_models_transformer_flux.py` as a reference.
 
-### Common diffusers conventions
-
-- Pipelines inherit from `DiffusionPipeline`
-- Models use `ModelMixin` with `register_to_config` for config serialization
-- Schedulers use `SchedulerMixin` with `ConfigMixin`
-- Use `@torch.no_grad()` on pipeline `__call__`
-- Support `output_type="latent"` for skipping VAE decode
-- Support `generator` parameter for reproducibility
-- Use `self.progress_bar(timesteps)` for progress tracking
-
-## Gotchas
-
-1. **Forgetting `__init__.py` lazy imports.** Every new class must be registered in the appropriate `__init__.py` with lazy imports. Missing this causes `ImportError` that only shows up when users try `from diffusers import YourNewClass`.
-
-2. **Using `einops` or other non-PyTorch deps.** Reference implementations often use `einops.rearrange`. Always rewrite with native PyTorch (`reshape`, `permute`, `unflatten`). Don't add the dependency. If a dependency is truly unavoidable, guard its import: `if is_my_dependency_available(): import my_dependency`.
-
-3. **Missing `make fix-copies` after `# Copied from`.** If you add `# Copied from` annotations, you must run `make fix-copies` to propagate them. CI will fail otherwise.
-
-4. **Wrong `_supports_cache_class` / `_no_split_modules`.** These class attributes control KV cache and device placement. Copy from a similar model and verify -- wrong values cause silent correctness bugs or OOM errors.
-
-5. **Missing `@torch.no_grad()` on pipeline `__call__`.** Forgetting this causes GPU OOM from gradient accumulation during inference.
-
-6. **Config serialization gaps.** Every `__init__` parameter in a `ModelMixin` subclass must be captured by `register_to_config`. If you add a new param but forget to register it, `from_pretrained` will silently use the default instead of the saved value.
-
-7. **Forgetting to update `_import_structure` and `_lazy_modules`.** The top-level `src/diffusers/__init__.py` has both -- missing either one causes partial import failures.
-
-8. **Hardcoded dtype in model forward.** Don't hardcode `torch.float32` or `torch.bfloat16` in the model's forward pass. Use the dtype of the input tensors or `self.dtype` so the model works with any precision.
-
 ---
 
 ## Modular Pipeline Conversion
 
-See [modular-conversion.md](modular-conversion.md) for the full guide on converting standard pipelines to modular format, including block types, build order, guider abstraction, and conversion checklist.
+See [modular.md](../../modular.md) for the full guide on modular pipeline conventions, block types, build order, guider abstraction, gotchas, and conversion checklist.
 
 ---
 

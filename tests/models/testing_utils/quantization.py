@@ -25,7 +25,6 @@ from diffusers.utils.import_utils import (
     is_nvidia_modelopt_available,
     is_optimum_quanto_available,
     is_torchao_available,
-    is_torchao_version,
 )
 
 from ...testing_utils import (
@@ -63,8 +62,7 @@ if is_gguf_available():
     pass
 
 if is_torchao_available():
-    if is_torchao_version(">=", "0.9.0"):
-        pass
+    import torchao.quantization as _torchao_quantization
 
 
 class LoRALayer(torch.nn.Module):
@@ -811,9 +809,9 @@ class TorchAoConfigMixin:
     """
 
     TORCHAO_QUANT_TYPES = {
-        "int4wo": {"quant_type": "int4_weight_only"},
-        "int8wo": {"quant_type": "int8_weight_only"},
-        "int8dq": {"quant_type": "int8_dynamic_activation_int8_weight"},
+        "int4wo": "Int4WeightOnlyConfig",
+        "int8wo": "Int8WeightOnlyConfig",
+        "int8dq": "Int8DynamicActivationInt8WeightConfig",
     }
 
     TORCHAO_EXPECTED_MEMORY_REDUCTIONS = {
@@ -822,8 +820,13 @@ class TorchAoConfigMixin:
         "int8dq": 1.5,
     }
 
-    def _create_quantized_model(self, config_kwargs, **extra_kwargs):
-        config = TorchAoConfig(**config_kwargs)
+    @staticmethod
+    def _get_quant_config(config_name):
+        config_cls = getattr(_torchao_quantization, config_name)
+        return TorchAoConfig(config_cls())
+
+    def _create_quantized_model(self, config_name, **extra_kwargs):
+        config = self._get_quant_config(config_name)
         kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
         kwargs["quantization_config"] = config
         kwargs["device_map"] = str(torch_device)

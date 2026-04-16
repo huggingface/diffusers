@@ -903,8 +903,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             rks.append(rk)
             D1s.append((mi - m0) / rk)
 
-        rks.append(1.0)
-        rks = torch.tensor(rks, device=device)
+        rks.append(torch.ones((), device=device))
+        rks = torch.stack(rks)
 
         R = []
         b = []
@@ -929,13 +929,13 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             h_phi_k = h_phi_k / hh - 1 / factorial_i
 
         R = torch.stack(R)
-        b = torch.tensor(b, device=device)
+        b = torch.stack(b) if len(b) > 0 else torch.tensor(b, device=device)
 
         if len(D1s) > 0:
             D1s = torch.stack(D1s, dim=1)  # (B, K)
             # for order 2, we use a simplified version
             if order == 2:
-                rhos_p = torch.tensor([0.5], dtype=x.dtype, device=device)
+                rhos_p = torch.ones(1, dtype=x.dtype, device=device) * 0.5
             else:
                 rhos_p = torch.linalg.solve(R[:-1, :-1], b[:-1]).to(device).to(x.dtype)
         else:
@@ -1038,8 +1038,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             rks.append(rk)
             D1s.append((mi - m0) / rk)
 
-        rks.append(1.0)
-        rks = torch.tensor(rks, device=device)
+        rks.append(torch.ones((), device=device))
+        rks = torch.stack(rks)
 
         R = []
         b = []
@@ -1064,7 +1064,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             h_phi_k = h_phi_k / hh - 1 / factorial_i
 
         R = torch.stack(R)
-        b = torch.tensor(b, device=device)
+        b = torch.stack(b) if len(b) > 0 else torch.tensor(b, device=device)
 
         if len(D1s) > 0:
             D1s = torch.stack(D1s, dim=1)
@@ -1073,7 +1073,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # for order 1, we use a simplified version
         if order == 1:
-            rhos_c = torch.tensor([0.5], dtype=x.dtype, device=device)
+            rhos_c = torch.ones(1, dtype=x.dtype, device=device) * 0.5
         else:
             rhos_c = torch.linalg.solve(R, b).to(device).to(x.dtype)
 

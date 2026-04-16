@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "src/diffusers/**.py"
+      - "tests/**.py"
   push:
     branches:
       - main
