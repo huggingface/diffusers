@@ -41,11 +41,14 @@ from .lora_base import (  # noqa
 )
 from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
+    _convert_diffusers_flux2_lokr_to_peft,
     _convert_fal_kontext_lora_to_diffusers,
     _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux2_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
+    _convert_lycoris_flux2_lokr_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
+    _convert_non_diffusers_flux2_lokr_to_diffusers,
     _convert_non_diffusers_flux2_lora_to_diffusers,
     _convert_non_diffusers_hidream_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
@@ -5645,6 +5648,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+        fuse_qkv = kwargs.pop("fuse_qkv", False)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -5685,14 +5689,29 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         if is_peft_format:
             state_dict = {k.replace("base_model.model.", "diffusion_model."): v for k, v in state_dict.items()}
 
-        is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
-        if is_ai_toolkit:
-            state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
+        is_lokr = any("lokr_" in k for k in state_dict)
+        if is_lokr:
+            is_bfl_format = any(k.startswith("diffusion_model.") for k in state_dict)
+            if is_bfl_format:
+                state_dict = _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict, fuse_qkv=fuse_qkv)
+            elif any(k.startswith("lycoris_") for k in state_dict):
+                state_dict = _convert_lycoris_flux2_lokr_to_diffusers(state_dict)
+            else:
+                state_dict = _convert_diffusers_flux2_lokr_to_peft(state_dict)
+            if metadata is None:
+                metadata = {}
+            metadata["is_lokr"] = "true"
+            # Only fuse model QKV for BFL format (which has fused QKV keys to map 1:1)
+            if fuse_qkv and is_bfl_format:
+                metadata["fuse_qkv"] = "true"
+        else:
+            is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
+            if is_ai_toolkit:
+                state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -5720,13 +5739,19 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         kwargs["return_lora_metadata"] = True
         state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
-        is_correct_format = all("lora" in key for key in state_dict.keys())
+        is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+            raise ValueError("Invalid LoRA/LoKR checkpoint. Make sure all param names contain `'lora'` or `'lokr'`.")
+
+        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+
+        # Fuse model QKV projections before injection if requested (lossless path for BFL LoKR)
+        if metadata and metadata.get("fuse_qkv") == "true":
+            transformer.fuse_qkv_projections()
 
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,

@@ -344,6 +344,118 @@ def check_peft_version(min_version: str) -> None:
         )
 
 
+def _create_lokr_config(state_dict):
+    """Create a peft LoKrConfig from a converted LoKR state dict.
+
+    Infers rank, decompose_both, decompose_factor, and target_modules from the state dict key names and tensor shapes.
+    Alpha scaling is assumed to be already baked into the weights, so config alpha = r (scaling = 1.0).
+
+    Peft determines w2 decomposition via ``r < max(out_k, in_n) / 2``. We must set per-module rank values that
+    reproduce the same decomposition pattern as the checkpoint. For modules with full (non-decomposed) lokr_w2, we set
+    rank = max(lokr_w2.shape) so that peft also creates a full w2.
+    """
+    from peft import LoKrConfig
+
+    # Infer decompose_both from presence of lokr_w1_a keys
+    decompose_both = any("lokr_w1_a" in k for k in state_dict)
+
+    # Infer decompose_factor from lokr_w1 shapes.
+    # With a fixed factor (e.g., 4), all w1 shapes are (factor, factor).
+    # With factor=-1 (near-sqrt), w1 shapes vary per module based on dimension.
+    w1_shapes = set()
+    for key, val in state_dict.items():
+        if "lokr_w1" in key and "lokr_w1_a" not in key and "lokr_w1_b" not in key and val.ndim == 2:
+            w1_shapes.add(val.shape[0])
+    if len(w1_shapes) == 1:
+        # All w1 have the same first dimension - this is the decompose_factor
+        decompose_factor = w1_shapes.pop()
+    else:
+        # Shapes vary - near-sqrt factorization was used
+        decompose_factor = -1
+
+    # Extract target modules and their decomposition state
+    lokr_suffixes = {"lokr_w1", "lokr_w1_a", "lokr_w1_b", "lokr_w2", "lokr_w2_a", "lokr_w2_b", "lokr_t2"}
+    target_modules = set()
+    for key in state_dict:
+        for suffix in lokr_suffixes:
+            if f".{suffix}" in key:
+                target_modules.add(key.split(f".{suffix}")[0])
+                break
+
+    # Build per-module rank dict that ensures peft creates matching decomposition
+    rank_dict = {}
+    for key, val in state_dict.items():
+        if "lokr_w2_a" in key and val.ndim > 1:
+            # Decomposed w2: rank = inner dimension of w2_a
+            module_name = key.split(".lokr_w2_a")[0]
+            rank_dict[module_name] = val.shape[1]
+        elif "lokr_w2" in key and "lokr_w2_a" not in key and "lokr_w2_b" not in key and val.ndim > 1:
+            # Full w2 matrix: set rank high enough so peft also creates full w2.
+            # Peft uses full w2 when r >= max(out_k, in_n) / 2, where (out_k, in_n) = lokr_w2.shape.
+            module_name = key.split(".lokr_w2")[0]
+            if module_name not in rank_dict:
+                rank_dict[module_name] = max(val.shape)
+
+    # Also extract rank from w1_a if w2 info is missing
+    for key, val in state_dict.items():
+        if "lokr_w1_a" in key and val.ndim > 1:
+            module_name = key.split(".lokr_w1_a")[0]
+            if module_name not in rank_dict:
+                rank_dict[module_name] = val.shape[1]
+
+    # Determine default rank (most common) and per-module rank pattern
+    if rank_dict:
+        r = collections.Counter(rank_dict.values()).most_common()[0][0]
+        rank_pattern = {k: v for k, v in rank_dict.items() if v != r}
+    else:
+        r = 1
+        rank_pattern = {}
+
+    lokr_config_kwargs = {
+        "r": r,
+        "alpha": r,  # alpha baked into weights, so runtime scaling = alpha/r = 1.0
+        "target_modules": list(target_modules),
+        "rank_pattern": rank_pattern,
+        "alpha_pattern": dict(rank_pattern),  # keep alpha=r per module
+        "decompose_both": decompose_both,
+        "decompose_factor": decompose_factor,
+    }
+
+    try:
+        return LoKrConfig(**lokr_config_kwargs)
+    except TypeError as e:
+        raise TypeError("`LoKrConfig` class could not be instantiated.") from e
+
+
+def _convert_adapter_to_lora(model, rank, adapter_name="default"):
+    """Convert a loaded non-LoRA peft adapter (e.g., LoKR) to LoRA via truncated SVD.
+
+    Wraps ``peft.convert_to_lora`` which materializes each adapter layer's delta weight and decomposes it as ``U @
+    diag(S) @ V ≈ lora_B @ lora_A``. The conversion is lossy: higher ``rank`` preserves more fidelity at the cost of
+    larger LoRA matrices.
+
+    Args:
+        model: ``nn.Module`` with a peft adapter already injected.
+        rank: ``int`` for a fixed LoRA rank, or ``float`` in (0, 1] as an energy threshold
+            (picks the smallest rank capturing that fraction of singular value energy).
+        adapter_name: Name of the adapter to convert.
+
+    Returns:
+        Tuple of ``(LoraConfig, state_dict)`` for the converted LoRA adapter.
+
+    Raises:
+        ImportError: If peft does not provide ``convert_to_lora`` (requires peft >= 0.19.0).
+    """
+    try:
+        from peft import convert_to_lora
+    except ImportError:
+        raise ImportError(
+            "`peft.convert_to_lora` is required for lossy LoKR-to-LoRA conversion. "
+            "Install peft >= 0.19.0 or from source: pip install git+https://github.com/huggingface/peft.git"
+        )
+    return convert_to_lora(model, rank, adapter_name=adapter_name)
+
+
 def _create_lora_config(
     state_dict, network_alphas, metadata, rank_pattern_dict, is_unet=True, model_state_dict=None, adapter_name=None
 ):

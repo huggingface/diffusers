@@ -2331,6 +2331,18 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
             temp_state_dict[new_key] = v
         original_state_dict = temp_state_dict
 
+        # Bake alpha/rank scaling into lora_A weights so .alpha keys are consumed.
+        # Matches the pattern used by _convert_kohya_flux_lora_to_diffusers for Flux1.
+        alpha_keys = [k for k in original_state_dict if k.endswith(".alpha")]
+        for alpha_key in alpha_keys:
+            alpha = original_state_dict.pop(alpha_key).item()
+            module_path = alpha_key[: -len(".alpha")]
+            lora_a_key = f"{module_path}.lora_A.weight"
+            if lora_a_key in original_state_dict:
+                rank = original_state_dict[lora_a_key].shape[0]
+                scale = alpha / rank
+                original_state_dict[lora_a_key] = original_state_dict[lora_a_key] * scale
+
     num_double_layers = 0
     num_single_layers = 0
     for key in original_state_dict.keys():
@@ -2628,6 +2640,319 @@ def _convert_kohya_flux2_lora_to_diffusers(state_dict):
     return ait_sd
 
 
+def _nearest_kronecker_product(matrix, m1, n1, m2, n2):
+    """Find the nearest rank-1 Kronecker product approximation (Van Loan & Pitsianis).
+
+    Given matrix M of shape (m1*m2, n1*n2), finds w1 (m1, n1) and w2 (m2, n2) minimizing ||M - kron(w1, w2)||_F via
+    rank-1 SVD of a rearranged matrix.
+    """
+    # Rearrange M into R of shape (m1*n1, m2*n2)
+    # R[i*n1+j, k*n2+l] = M[i*m2+k, j*n2+l]
+    R = matrix.reshape(m1, m2, n1, n2).permute(0, 2, 1, 3).reshape(m1 * n1, m2 * n2)
+    # Rank-1 SVD
+    U, S, Vh = torch.linalg.svd(R, full_matrices=False)
+    sigma = S[0]
+    sqrt_s = torch.sqrt(sigma)
+    w1 = sqrt_s * U[:, 0].reshape(m1, n1)
+    w2 = sqrt_s * Vh[0].reshape(m2, n2)
+    return w1, w2
+
+
+def _split_lokr_qkv(w1, w2, target_keys, factor):
+    """Split fused LoKR QKV factors into separate per-projection Kronecker factors.
+
+    Materializes kron(w1, w2), chunks along dim=0, and re-factorizes each chunk as a rank-1 Kronecker product using the
+    Van Loan algorithm.
+
+    Args:
+        w1: First Kronecker factor, shape (f, f) where f = decompose_factor.
+        w2: Second Kronecker factor, shape (out_total/f, in_total/f).
+        target_keys: List of target projection names (e.g., ["to_q", "to_k", "to_v"]).
+        factor: Kronecker decompose factor for the split chunks.
+
+    Returns:
+        Dict mapping "{target_key}.lokr_w1" and "{target_key}.lokr_w2" to tensors.
+    """
+    full_delta = torch.kron(w1.float(), w2.float())
+    chunks = torch.chunk(full_delta, len(target_keys), dim=0)
+
+    result = {}
+    for target_key, chunk in zip(target_keys, chunks):
+        rows, cols = chunk.shape
+        m1 = n1 = factor
+        m2 = rows // m1
+        n2 = cols // n1
+        new_w1, new_w2 = _nearest_kronecker_product(chunk, m1, n1, m2, n2)
+        result[f"{target_key}.lokr_w1"] = new_w1.to(w1.dtype)
+        result[f"{target_key}.lokr_w2"] = new_w2.to(w2.dtype)
+    return result
+
+
+def _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict, fuse_qkv=False):
+    """Convert BFL-format Flux2 LoKR state dict to peft-compatible diffusers format.
+
+    Args:
+        state_dict: BFL-format LoKR state dict with ``diffusion_model.`` prefix.
+        fuse_qkv: If True, map fused QKV directly to ``to_qkv``/``to_added_qkv`` targets
+            (lossless, but requires the model's QKV to be fused before injection). If False (default), split fused QKV
+            into separate Q/K/V via Kronecker re-factorization (slightly lossy, no model fusion needed).
+    """
+    converted_state_dict = {}
+
+    prefix = "diffusion_model."
+    original_state_dict = {k[len(prefix) :] if k.startswith(prefix) else k: v for k, v in state_dict.items()}
+
+    num_double_layers = 0
+    num_single_layers = 0
+    for key in original_state_dict:
+        if key.startswith("single_blocks."):
+            num_single_layers = max(num_single_layers, int(key.split(".")[1]) + 1)
+        elif key.startswith("double_blocks."):
+            num_double_layers = max(num_double_layers, int(key.split(".")[1]) + 1)
+
+    lokr_suffixes = ("lokr_w1", "lokr_w1_a", "lokr_w1_b", "lokr_w2", "lokr_w2_a", "lokr_w2_b", "lokr_t2")
+
+    def _pop_alpha_and_bake(bfl_path, w1_weight):
+        """Pop alpha for a module and bake scaling into w1. Returns scaled w1."""
+        alpha_key = f"{bfl_path}.alpha"
+        if alpha_key not in original_state_dict:
+            return w1_weight
+        alpha = original_state_dict.pop(alpha_key).item()
+        w2a_key = f"{bfl_path}.lokr_w2_a"
+        w1a_key = f"{bfl_path}.lokr_w1_a"
+        if w2a_key in original_state_dict:
+            r_eff = original_state_dict[w2a_key].shape[1]
+        elif w1a_key in original_state_dict:
+            r_eff = original_state_dict[w1a_key].shape[1]
+        else:
+            r_eff = alpha
+        return w1_weight * (alpha / r_eff)
+
+    def _remap_lokr_module(bfl_path, diff_path):
+        """Pop all LoKR keys for a BFL module, bake alpha, and store under diffusers path."""
+        # Pop alpha separately (consumed by first w1 tensor)
+        alpha_key = f"{bfl_path}.alpha"
+        alpha = original_state_dict.pop(alpha_key).item() if alpha_key in original_state_dict else None
+
+        for suffix in lokr_suffixes:
+            src_key = f"{bfl_path}.{suffix}"
+            if src_key not in original_state_dict:
+                continue
+
+            weight = original_state_dict.pop(src_key)
+
+            # Bake alpha/rank scaling into the first w1 tensor for this module.
+            if alpha is not None and suffix in ("lokr_w1", "lokr_w1_a"):
+                w2a_key = f"{bfl_path}.lokr_w2_a"
+                w1a_key = f"{bfl_path}.lokr_w1_a"
+                if w2a_key in original_state_dict:
+                    r_eff = original_state_dict[w2a_key].shape[1]
+                elif w1a_key in original_state_dict:
+                    r_eff = original_state_dict[w1a_key].shape[1]
+                else:
+                    r_eff = alpha
+                weight = weight * (alpha / r_eff)
+                alpha = None
+
+            converted_state_dict[f"{diff_path}.{suffix}"] = weight
+
+    def _remap_lokr_qkv(bfl_path, target_keys):
+        """Pop fused QKV LoKR factors, split into separate projections via Kronecker re-factorization."""
+        w1_key = f"{bfl_path}.lokr_w1"
+        w2_key = f"{bfl_path}.lokr_w2"
+        if w1_key not in original_state_dict or w2_key not in original_state_dict:
+            # Fall back to direct remap if decomposed factors (w1_a/w1_b) are used
+            _remap_lokr_module(bfl_path, target_keys[0].rsplit(".", 1)[0])
+            return
+
+        w1 = original_state_dict.pop(w1_key)
+        w2 = original_state_dict.pop(w2_key)
+
+        # Bake alpha before splitting
+        alpha_key = f"{bfl_path}.alpha"
+        if alpha_key in original_state_dict:
+            alpha = original_state_dict.pop(alpha_key).item()
+            w2a_key = f"{bfl_path}.lokr_w2_a"
+            w1a_key = f"{bfl_path}.lokr_w1_a"
+            if w2a_key in original_state_dict:
+                r_eff = original_state_dict[w2a_key].shape[1]
+            elif w1a_key in original_state_dict:
+                r_eff = original_state_dict[w1a_key].shape[1]
+            else:
+                r_eff = alpha
+            w1 = w1 * (alpha / r_eff)
+
+        factor = w1.shape[0]
+        split_result = _split_lokr_qkv(w1, w2, target_keys, factor)
+        converted_state_dict.update(split_result)
+
+    # --- Single blocks ---
+    for sl in range(num_single_layers):
+        _remap_lokr_module(f"single_blocks.{sl}.linear1", f"single_transformer_blocks.{sl}.attn.to_qkv_mlp_proj")
+        _remap_lokr_module(f"single_blocks.{sl}.linear2", f"single_transformer_blocks.{sl}.attn.to_out")
+
+    # --- Double blocks ---
+    for dl in range(num_double_layers):
+        tb = f"transformer_blocks.{dl}"
+        db = f"double_blocks.{dl}"
+
+        if fuse_qkv:
+            # Lossless: map directly to fused targets (caller must fuse model QKV first)
+            _remap_lokr_module(f"{db}.img_attn.qkv", f"{tb}.attn.to_qkv")
+            _remap_lokr_module(f"{db}.txt_attn.qkv", f"{tb}.attn.to_added_qkv")
+        else:
+            # Split fused QKV into separate Q/K/V via Kronecker re-factorization
+            _remap_lokr_qkv(f"{db}.img_attn.qkv", [f"{tb}.attn.to_q", f"{tb}.attn.to_k", f"{tb}.attn.to_v"])
+            _remap_lokr_qkv(
+                f"{db}.txt_attn.qkv",
+                [f"{tb}.attn.add_q_proj", f"{tb}.attn.add_k_proj", f"{tb}.attn.add_v_proj"],
+            )
+
+        # Projections
+        _remap_lokr_module(f"{db}.img_attn.proj", f"{tb}.attn.to_out.0")
+        _remap_lokr_module(f"{db}.txt_attn.proj", f"{tb}.attn.to_add_out")
+
+        # MLPs
+        _remap_lokr_module(f"{db}.img_mlp.0", f"{tb}.ff.linear_in")
+        _remap_lokr_module(f"{db}.img_mlp.2", f"{tb}.ff.linear_out")
+        _remap_lokr_module(f"{db}.txt_mlp.0", f"{tb}.ff_context.linear_in")
+        _remap_lokr_module(f"{db}.txt_mlp.2", f"{tb}.ff_context.linear_out")
+
+    # --- Extra mappings (embedders, modulation, final layer) ---
+    extra_mappings = {
+        "img_in": "x_embedder",
+        "txt_in": "context_embedder",
+        "time_in.in_layer": "time_guidance_embed.timestep_embedder.linear_1",
+        "time_in.out_layer": "time_guidance_embed.timestep_embedder.linear_2",
+        "final_layer.linear": "proj_out",
+        "final_layer.adaLN_modulation.1": "norm_out.linear",
+        "single_stream_modulation.lin": "single_stream_modulation.linear",
+        "double_stream_modulation_img.lin": "double_stream_modulation_img.linear",
+        "double_stream_modulation_txt.lin": "double_stream_modulation_txt.linear",
+    }
+    for bfl_key, diff_key in extra_mappings.items():
+        _remap_lokr_module(bfl_key, diff_key)
+
+    if len(original_state_dict) > 0:
+        raise ValueError(f"`original_state_dict` should be empty at this point but has {original_state_dict.keys()=}.")
+
+    for key in list(converted_state_dict.keys()):
+        converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
+
+    return converted_state_dict
+
+
+# Mapping from LyCORIS underscore-encoded sub-paths to dotted diffusers module paths
+_LYCORIS_SUBPATH_MAP = {
+    "attn_to_q": "attn.to_q",
+    "attn_to_k": "attn.to_k",
+    "attn_to_v": "attn.to_v",
+    "attn_to_out_0": "attn.to_out.0",
+    "attn_to_add_out": "attn.to_add_out",
+    "attn_add_q_proj": "attn.add_q_proj",
+    "attn_add_k_proj": "attn.add_k_proj",
+    "attn_add_v_proj": "attn.add_v_proj",
+    "attn_to_qkv_mlp_proj": "attn.to_qkv_mlp_proj",
+    "attn_to_out": "attn.to_out",
+    "ff_context_linear_in": "ff_context.linear_in",
+    "ff_context_linear_out": "ff_context.linear_out",
+    "ff_linear_in": "ff.linear_in",
+    "ff_linear_out": "ff.linear_out",
+}
+
+
+def _bake_lokr_alpha(state_dict):
+    """Consume .alpha keys by baking alpha/rank scaling into lokr_w1 weights in-place."""
+    lokr_w1_suffixes = (".lokr_w1", ".lokr_w1_a")
+    alpha_keys = [k for k in state_dict if k.endswith(".alpha")]
+
+    for alpha_key in alpha_keys:
+        alpha = state_dict.pop(alpha_key).item()
+        module_path = alpha_key[: -len(".alpha")]
+
+        # Find the w1 tensor to bake into
+        for w1_suffix in lokr_w1_suffixes:
+            w1_key = f"{module_path}{w1_suffix}"
+            if w1_key in state_dict:
+                # Determine effective rank
+                w2a_key = f"{module_path}.lokr_w2_a"
+                w1a_key = f"{module_path}.lokr_w1_a"
+                if w2a_key in state_dict:
+                    r_eff = state_dict[w2a_key].shape[1]
+                elif w1a_key in state_dict:
+                    r_eff = state_dict[w1a_key].shape[1]
+                else:
+                    r_eff = alpha
+                state_dict[w1_key] = state_dict[w1_key] * (alpha / r_eff)
+                break
+
+
+def _convert_lycoris_flux2_lokr_to_diffusers(state_dict):
+    """Convert LyCORIS underscore-format Flux2 LoKR state dict to peft-compatible diffusers format.
+
+    LyCORIS keys use underscore-encoded paths (e.g., lycoris_transformer_blocks_0_attn_to_q.lokr_w1). Decodes these to
+    dotted diffusers paths using a known sub-path lookup table.
+    """
+    import re
+
+    converted_state_dict = {}
+    original_state_dict = dict(state_dict)
+
+    _bake_lokr_alpha(original_state_dict)
+
+    lycoris_pattern = re.compile(r"^lycoris_((?:single_)?transformer_blocks)_(\d+)_(.+)$")
+
+    for key in list(original_state_dict.keys()):
+        # Split key into module_path and lokr suffix
+        parts = key.rsplit(".", 1)
+        if len(parts) != 2:
+            continue
+        module_encoded, suffix = parts
+
+        match = lycoris_pattern.match(module_encoded)
+        if not match:
+            continue
+
+        container, block_idx, sub_path = match.groups()
+
+        # Decode sub-path using lookup table (try longest match first)
+        diff_sub_path = None
+        for lycoris_sub, diff_sub in sorted(_LYCORIS_SUBPATH_MAP.items(), key=lambda x: -len(x[0])):
+            if sub_path == lycoris_sub:
+                diff_sub_path = diff_sub
+                break
+
+        if diff_sub_path is None:
+            continue
+
+        diff_key = f"transformer.{container}.{block_idx}.{diff_sub_path}.{suffix}"
+        converted_state_dict[diff_key] = original_state_dict.pop(key)
+
+    if len(original_state_dict) > 0:
+        logger.warning(f"Unconverted LyCORIS LoKR keys: {list(original_state_dict.keys())}")
+
+    return converted_state_dict
+
+
+def _convert_diffusers_flux2_lokr_to_peft(state_dict):
+    """Convert diffusers-native Flux2 LoKR state dict by adding transformer. prefix and baking alpha.
+
+    Diffusers-native keys already use dotted module paths matching the model structure. Only alpha baking and the
+    transformer. prefix are needed.
+    """
+    original_state_dict = dict(state_dict)
+    _bake_lokr_alpha(original_state_dict)
+
+    converted_state_dict = {}
+    for key, val in original_state_dict.items():
+        if key.startswith("transformer."):
+            converted_state_dict[key] = val
+        else:
+            converted_state_dict[f"transformer.{key}"] = val
+
+    return converted_state_dict
+
+
 def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
     """
     Convert non-diffusers ZImage LoRA state dict to diffusers format.
@@ -2785,14 +3110,14 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
 
             base = k[: -len(lora_dot_down_key)]
 
-            # Skip combined "qkv" projection — individual to.q/k/v keys are also present.
+            # Skip combined "qkv" projection - individual to.q/k/v keys are also present.
             if base.endswith(".qkv"):
                 state_dict.pop(k)
                 state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
                 state_dict.pop(base + ".alpha", None)
                 continue
 
-            # Skip bare "out.lora.*" — "to_out.0.lora.*" covers the same projection.
+            # Skip bare "out.lora.*" - "to_out.0.lora.*" covers the same projection.
             if re.search(r"\.out$", base) and ".to_out" not in base:
                 state_dict.pop(k)
                 state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)

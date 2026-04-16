@@ -38,7 +38,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from ..utils.peft_utils import _create_lora_config, _maybe_warn_for_unhandled_keys
+from ..utils.peft_utils import _create_lokr_config, _create_lora_config, _maybe_warn_for_unhandled_keys
 from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading
 from .unet_loader_utils import _maybe_expand_lora_scales
 
@@ -46,7 +46,7 @@ from .unet_loader_utils import _maybe_expand_lora_scales
 logger = logging.get_logger(__name__)
 
 _SET_ADAPTER_SCALE_FN_MAPPING = defaultdict(
-    lambda: (lambda model_cls, weights: weights),
+    lambda: lambda model_cls, weights: weights,
     {
         "UNet2DConditionModel": _maybe_expand_lora_scales,
         "UNetMotionModel": _maybe_expand_lora_scales,
@@ -213,56 +213,65 @@ class PeftAdapterMixin:
                     "Please choose an existing adapter name or set `hotswap=False` to prevent hotswapping."
                 )
 
-            # check with first key if is not in peft format
-            first_key = next(iter(state_dict.keys()))
-            if "lora_A" not in first_key:
-                state_dict = convert_unet_state_dict_to_peft(state_dict)
+            # Detect whether this is a LoKR adapter (Kronecker product, not low-rank)
+            is_lokr = any("lokr_" in k for k in state_dict)
 
-            # Control LoRA from SAI is different from BFL Control LoRA
-            # https://huggingface.co/stabilityai/control-lora
-            # https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors
-            is_sai_sd_control_lora = "lora_controlnet" in state_dict
-            if is_sai_sd_control_lora:
-                state_dict = convert_sai_sd_control_lora_state_dict_to_peft(state_dict)
+            if is_lokr:
+                if adapter_name is None:
+                    adapter_name = get_adapter_name(self)
+                adapter_config = _create_lokr_config(state_dict)
+                is_sai_sd_control_lora = False
+            else:
+                # check with first key if is not in peft format
+                first_key = next(iter(state_dict.keys()))
+                if "lora_A" not in first_key:
+                    state_dict = convert_unet_state_dict_to_peft(state_dict)
 
-            rank = {}
-            for key, val in state_dict.items():
-                # Cannot figure out rank from lora layers that don't have at least 2 dimensions.
-                # Bias layers in LoRA only have a single dimension
-                if "lora_B" in key and val.ndim > 1:
-                    # Check out https://github.com/huggingface/peft/pull/2419 for the `^` symbol.
-                    # We may run into some ambiguous configuration values when a model has module
-                    # names, sharing a common prefix (`proj_out.weight` and `blocks.transformer.proj_out.weight`,
-                    # for example) and they have different LoRA ranks.
-                    rank[f"^{key}"] = val.shape[1]
+                # Control LoRA from SAI is different from BFL Control LoRA
+                # https://huggingface.co/stabilityai/control-lora
+                # https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors
+                is_sai_sd_control_lora = "lora_controlnet" in state_dict
+                if is_sai_sd_control_lora:
+                    state_dict = convert_sai_sd_control_lora_state_dict_to_peft(state_dict)
 
-            if network_alphas is not None and len(network_alphas) >= 1:
-                alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
-                network_alphas = {
-                    k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys
-                }
+                rank = {}
+                for key, val in state_dict.items():
+                    # Cannot figure out rank from lora layers that don't have at least 2 dimensions.
+                    # Bias layers in LoRA only have a single dimension
+                    if "lora_B" in key and val.ndim > 1:
+                        # Check out https://github.com/huggingface/peft/pull/2419 for the `^` symbol.
+                        # We may run into some ambiguous configuration values when a model has module
+                        # names, sharing a common prefix (`proj_out.weight` and `blocks.transformer.proj_out.weight`,
+                        # for example) and they have different LoRA ranks.
+                        rank[f"^{key}"] = val.shape[1]
 
-            # adapter_name
-            if adapter_name is None:
-                adapter_name = get_adapter_name(self)
+                if network_alphas is not None and len(network_alphas) >= 1:
+                    alpha_keys = [k for k in network_alphas.keys() if k.startswith(f"{prefix}.")]
+                    network_alphas = {
+                        k.removeprefix(f"{prefix}."): v for k, v in network_alphas.items() if k in alpha_keys
+                    }
 
-            # create LoraConfig
-            lora_config = _create_lora_config(
-                state_dict,
-                network_alphas,
-                metadata,
-                rank,
-                model_state_dict=self.state_dict(),
-                adapter_name=adapter_name,
-            )
+                # adapter_name
+                if adapter_name is None:
+                    adapter_name = get_adapter_name(self)
 
-            # Adjust LoRA config for Control LoRA
-            if is_sai_sd_control_lora:
-                lora_config.lora_alpha = lora_config.r
-                lora_config.alpha_pattern = lora_config.rank_pattern
-                lora_config.bias = "all"
-                lora_config.modules_to_save = lora_config.exclude_modules
-                lora_config.exclude_modules = None
+                # create LoraConfig
+                adapter_config = _create_lora_config(
+                    state_dict,
+                    network_alphas,
+                    metadata,
+                    rank,
+                    model_state_dict=self.state_dict(),
+                    adapter_name=adapter_name,
+                )
+
+                # Adjust LoRA config for Control LoRA
+                if is_sai_sd_control_lora:
+                    adapter_config.lora_alpha = adapter_config.r
+                    adapter_config.alpha_pattern = adapter_config.rank_pattern
+                    adapter_config.bias = "all"
+                    adapter_config.modules_to_save = adapter_config.exclude_modules
+                    adapter_config.exclude_modules = None
 
             # <Unsafe code
             # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
@@ -309,13 +318,13 @@ class PeftAdapterMixin:
             try:
                 if hotswap:
                     state_dict = map_state_dict_for_hotswap(state_dict)
-                    check_hotswap_configs_compatible(self.peft_config[adapter_name], lora_config)
+                    check_hotswap_configs_compatible(self.peft_config[adapter_name], adapter_config)
                     try:
                         hotswap_adapter_from_state_dict(
                             model=self,
                             state_dict=state_dict,
                             adapter_name=adapter_name,
-                            config=lora_config,
+                            config=adapter_config,
                         )
                     except Exception as e:
                         logger.error(f"Hotswapping {adapter_name} was unsuccessful with the following error: \n{e}")
@@ -325,7 +334,7 @@ class PeftAdapterMixin:
                     incompatible_keys = None
                 else:
                     inject_adapter_in_model(
-                        lora_config, self, adapter_name=adapter_name, state_dict=state_dict, **peft_kwargs
+                        adapter_config, self, adapter_name=adapter_name, state_dict=state_dict, **peft_kwargs
                     )
                     incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
 
@@ -336,7 +345,7 @@ class PeftAdapterMixin:
                         # - before the model is compiled and the 2nd adapter is being hotswapped in
                         # Therefore, it needs to be called here
                         prepare_model_for_compiled_hotswap(
-                            self, config=lora_config, **self._prepare_lora_hotswap_kwargs
+                            self, config=adapter_config, **self._prepare_lora_hotswap_kwargs
                         )
                         # We only want to call prepare_model_for_compiled_hotswap once
                         self._prepare_lora_hotswap_kwargs = None
