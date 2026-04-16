@@ -57,6 +57,45 @@ class Flux2LoraConversionTests(unittest.TestCase):
 
         self.assertEqual(set(converted_state_dict.keys()), expected_keys)
 
+    def test_convert_non_diffusers_flux2_lora_accepts_expanded_block_names(self):
+        state_dict = {
+            "diffusion_model.guidance_in.in_layer.lora_A.weight": torch.randn(2, 2),
+            "diffusion_model.guidance_in.in_layer.lora_B.weight": torch.randn(2, 2),
+            "diffusion_model.guidance_in.out_layer.lora_A.weight": torch.randn(2, 2),
+            "diffusion_model.guidance_in.out_layer.lora_B.weight": torch.randn(2, 2),
+            "diffusion_model.sformer_blocks.0.attn.to_q.lora_A.weight": torch.randn(2, 2),
+            "diffusion_model.sformer_blocks.0.attn.to_q.lora_B.weight": torch.randn(2, 2),
+            "diffusion_model.sformer_blocks.0.attn.add_q_proj.lora_A.weight": torch.randn(2, 2),
+            "diffusion_model.sformer_blocks.0.attn.add_q_proj.lora_B.weight": torch.randn(2, 2),
+            "diffusion_model.transformer_blocks.1.attn.to_out.0.lora_A.weight": torch.randn(2, 2),
+            "diffusion_model.transformer_blocks.1.attn.to_out.0.lora_B.weight": torch.randn(2, 2),
+            "diffusion_model.single_transformer_blocks.2.attn.to_qkv_mlp_proj.lora_A.weight": torch.randn(2, 2),
+            "diffusion_model.single_transformer_blocks.2.attn.to_qkv_mlp_proj.lora_B.weight": torch.randn(2, 2),
+            "diffusion_model.single_transformer_blocks.2.attn.to_out.lora_A.weight": torch.randn(2, 2),
+            "diffusion_model.single_transformer_blocks.2.attn.to_out.lora_B.weight": torch.randn(2, 2),
+        }
+
+        converted_state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
+
+        expected_keys = {
+            "transformer.time_guidance_embed.guidance_embedder.linear_1.lora_A.weight",
+            "transformer.time_guidance_embed.guidance_embedder.linear_1.lora_B.weight",
+            "transformer.time_guidance_embed.guidance_embedder.linear_2.lora_A.weight",
+            "transformer.time_guidance_embed.guidance_embedder.linear_2.lora_B.weight",
+            "transformer.transformer_blocks.0.attn.to_q.lora_A.weight",
+            "transformer.transformer_blocks.0.attn.to_q.lora_B.weight",
+            "transformer.transformer_blocks.0.attn.add_q_proj.lora_A.weight",
+            "transformer.transformer_blocks.0.attn.add_q_proj.lora_B.weight",
+            "transformer.transformer_blocks.1.attn.to_out.0.lora_A.weight",
+            "transformer.transformer_blocks.1.attn.to_out.0.lora_B.weight",
+            "transformer.single_transformer_blocks.2.attn.to_qkv_mlp_proj.lora_A.weight",
+            "transformer.single_transformer_blocks.2.attn.to_qkv_mlp_proj.lora_B.weight",
+            "transformer.single_transformer_blocks.2.attn.to_out.lora_A.weight",
+            "transformer.single_transformer_blocks.2.attn.to_out.lora_B.weight",
+        }
+
+        self.assertEqual(set(converted_state_dict.keys()), expected_keys)
+
     def test_flux2_text_subpipeline_rejects_transformer_lora_loading(self):
         text_pipe = Flux2KleinTextEncoderStep().init_pipeline()
 

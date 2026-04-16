@@ -2331,6 +2331,20 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
             temp_state_dict[new_key] = v
         original_state_dict = temp_state_dict
 
+    # Some Flux2 checkpoints skip the ai-toolkit `single_blocks` / `double_blocks`
+    # layout and already store expanded diffusers block names. Accept those
+    # directly, and normalize the legacy `sformer_blocks` alias used by some exports.
+    expanded_block_prefixes = {
+        "single_transformer_blocks.": "single_transformer_blocks.",
+        "transformer_blocks.": "transformer_blocks.",
+        "sformer_blocks.": "transformer_blocks.",
+    }
+    for key in list(original_state_dict.keys()):
+        for source_prefix, target_prefix in expanded_block_prefixes.items():
+            if key.startswith(source_prefix):
+                converted_state_dict[target_prefix + key[len(source_prefix) :]] = original_state_dict.pop(key)
+                break
+
     num_double_layers = 0
     num_single_layers = 0
     for key in original_state_dict.keys():
