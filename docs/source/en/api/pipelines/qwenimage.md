@@ -95,6 +95,8 @@ image.save("qwen_fewsteps.png")
 
 With [`QwenImageEditPlusPipeline`], one can provide multiple images as input reference.
 
+### Single prompt with multiple reference images
+
 ```py
 import torch
 from PIL import Image
@@ -112,6 +114,36 @@ image = pipe(
     prompt='''put the penguin and the cat at a game show called "Qwen Edit Plus Games"''',
     num_inference_steps=50
 ).images[0]
+```
+
+### Batch processing with multiple prompts
+
+The pipeline also supports batch processing where you can edit multiple images with different prompts simultaneously. Use a nested list format `[[img1], [img2]]` to provide input images for each prompt:
+
+```py
+import torch
+from diffusers import QwenImageEditPlusPipeline
+from diffusers.utils import load_image
+
+pipe = QwenImageEditPlusPipeline.from_pretrained(
+    "Qwen/Qwen-Image-Edit-2509", torch_dtype=torch.bfloat16
+).to("cuda")
+
+# Load input images
+mountain_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/mountain.jpg")
+
+# Process two different edits in a single batch
+images = pipe(
+    image=[[mountain_image], [mountain_image]],  # Nested list for batch_size=2
+    prompt=[
+        "Transform into a sunset scene with warm orange and pink sky",
+        "Add snow and make it a winter scene"
+    ],
+    num_inference_steps=50
+).images
+
+# images[0] contains the sunset version
+# images[1] contains the winter version
 ```
 
 ## Performance
