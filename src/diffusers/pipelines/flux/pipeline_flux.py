@@ -877,10 +877,7 @@ class FluxPipeline(
             self.scheduler.config.get("max_shift", 1.15),
         )
 
-        if XLA_AVAILABLE:
-            timestep_device = "cpu"
-        else:
-            timestep_device = device
+        timestep_device = device
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,

@@ -146,6 +146,7 @@ _deps = [
     "phonemizer",
     "opencv-python",
     "timm",
+    "flashpack",
 ]
 
 # this is a lookup table with items like:
@@ -250,6 +251,7 @@ extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
+extras["flashpack"] = deps_list("flashpack")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
