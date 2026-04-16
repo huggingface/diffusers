@@ -119,7 +119,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          claude_args: '--model claude-opus-4-6'
+          claude_args: '--model claude-opus-4-6 --append-system-prompt "${{ env.CLAUDE_SYSTEM_PROMPT }}"'
           settings: |
             {
               "permissions": {
