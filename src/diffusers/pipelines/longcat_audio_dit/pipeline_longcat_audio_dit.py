@@ -25,11 +25,34 @@ from transformers import PreTrainedTokenizerBase, UMT5EncoderModel
 from ...models import LongCatAudioDiTTransformer, LongCatAudioDiTVae
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
+from ...utils.doc_utils import replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
 logger = logging.get_logger(__name__)
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import soundfile as sf
+        >>> import torch
+        >>> from diffusers import LongCatAudioDiTPipeline
+
+        >>> pipe = LongCatAudioDiTPipeline.from_pretrained("ruixiangma/LongCat-AudioDiT-1B-Diffusers")
+        >>> pipe.to("cuda")
+
+        >>> prompt = "A calm ocean wave ambience with soft wind in the background."
+        >>> audio = pipe(
+        ...     prompt,
+        ...     audio_duration_s=5.0,
+        ...     num_inference_steps=20,
+        ...     guidance_scale=4.0,
+        ...     generator=torch.Generator("cuda").manual_seed(42),
+        ... ).audios[0, 0]
+        >>> sf.write("output.wav", audio, pipe.sample_rate)
+        ```
+"""
 
 
 def _lens_to_mask(lengths: torch.Tensor, length: int | None = None) -> torch.BoolTensor:
@@ -194,6 +217,7 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 )
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: str | list[str],
@@ -228,6 +252,8 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 inputs specified by `callback_on_step_end_tensor_inputs`.
             callback_on_step_end_tensor_inputs (`list`, defaults to `["latents"]`):
                 Tensor inputs passed to `callback_on_step_end`.
+
+        Examples:
         """
         if prompt is None:
             prompt = []
