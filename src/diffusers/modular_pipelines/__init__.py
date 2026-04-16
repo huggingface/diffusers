@@ -89,6 +89,10 @@ else:
         "QwenImageLayeredModularPipeline",
         "QwenImageLayeredAutoBlocks",
     ]
+    _import_structure["ltx"] = [
+        "LTXAutoBlocks",
+        "LTXModularPipeline",
+    ]
     _import_structure["z_image"] = [
         "ZImageAutoBlocks",
         "ZImageModularPipeline",
@@ -120,6 +124,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HeliosPyramidDistilledModularPipeline,
             HeliosPyramidModularPipeline,
         )
+        from .ltx import LTXAutoBlocks, LTXModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
