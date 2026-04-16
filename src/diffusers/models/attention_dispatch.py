@@ -689,7 +689,7 @@ def _pack_qkv(
     value: torch.Tensor,
     attn_mask: torch.Tensor,
 ) -> _VarlenPackedInputs:
-    """Pack Q/K/V tensors by removing padding tokens identified by *attn_mask*."""
+    """Pack K/V tensors by removing padding tokens identified by *attn_mask*."""
     batch_size = query.shape[0]
     seq_len_q = query.shape[1]
     seq_len_kv = key.shape[1]
