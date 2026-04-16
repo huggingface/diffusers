@@ -1139,6 +1139,8 @@ def _flash_attention_forward_op(
     _save_ctx: bool = True,
     _parallel_config: "ParallelConfig" | None = None,
 ):
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not yet supported for flash-attn 2.")
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for flash-attn 2.")
 
