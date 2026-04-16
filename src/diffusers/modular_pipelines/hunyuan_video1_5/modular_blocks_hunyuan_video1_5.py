@@ -43,8 +43,6 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
           (`ClassifierFreeGuidance`)
 
       Inputs:
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           batch_size (`int`, *optional*):
@@ -62,6 +60,8 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           attention_kwargs (`dict`, *optional*):
@@ -110,7 +110,7 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
     Modular pipeline blocks for HunyuanVideo 1.5 text-to-video.
 
       Components:
-          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2TokenizerFast`) text_encoder_2 (`T5EncoderModel`)
+          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2Tokenizer`) text_encoder_2 (`T5EncoderModel`)
           tokenizer_2 (`ByT5Tokenizer`) guider (`ClassifierFreeGuidance`) scheduler (`FlowMatchEulerDiscreteScheduler`)
           transformer (`HunyuanVideo15Transformer3DModel`) vae (`AutoencoderKLHunyuanVideo15`) video_processor
           (`HunyuanVideo15ImageProcessor`)
@@ -120,22 +120,6 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
-          prompt_embeds (`Tensor`, *optional*):
-              text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          prompt_embeds_mask (`Tensor`, *optional*):
-              mask for the text embeddings. Can be generated from text_encoder step.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          negative_prompt_embeds_mask (`Tensor`, *optional*):
-              mask for the negative text embeddings. Can be generated from text_encoder step.
-          prompt_embeds_2 (`Tensor`, *optional*):
-              TODO: Add description.
-          prompt_embeds_mask_2 (`Tensor`, *optional*):
-              TODO: Add description.
-          negative_prompt_embeds_2 (`Tensor`, *optional*):
-              TODO: Add description.
-          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
-              TODO: Add description.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           batch_size (`int`, *optional*):
@@ -192,8 +176,6 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
           (`ClassifierFreeGuidance`)
 
       Inputs:
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           batch_size (`int`, *optional*):
@@ -211,6 +193,8 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           image_latents (`Tensor`):
@@ -346,8 +330,6 @@ class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
           (`ClassifierFreeGuidance`)
 
       Inputs:
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           batch_size (`int`):
@@ -365,6 +347,8 @@ class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
               TODO: Add description.
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           image_latents (`Tensor`, *optional*):
@@ -415,7 +399,7 @@ class HunyuanVideo15AutoBlocks(SequentialPipelineBlocks):
         - `image2video`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2TokenizerFast`) text_encoder_2 (`T5EncoderModel`)
+          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2Tokenizer`) text_encoder_2 (`T5EncoderModel`)
           tokenizer_2 (`ByT5Tokenizer`) guider (`ClassifierFreeGuidance`) vae (`AutoencoderKLHunyuanVideo15`)
           video_processor (`HunyuanVideo15ImageProcessor`) image_encoder (`SiglipVisionModel`) feature_extractor
           (`SiglipImageProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer
@@ -426,22 +410,6 @@ class HunyuanVideo15AutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
-          prompt_embeds (`Tensor`, *optional*):
-              text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          prompt_embeds_mask (`Tensor`, *optional*):
-              mask for the text embeddings. Can be generated from text_encoder step.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          negative_prompt_embeds_mask (`Tensor`, *optional*):
-              mask for the negative text embeddings. Can be generated from text_encoder step.
-          prompt_embeds_2 (`Tensor`, *optional*):
-              TODO: Add description.
-          prompt_embeds_mask_2 (`Tensor`, *optional*):
-              TODO: Add description.
-          negative_prompt_embeds_2 (`Tensor`, *optional*):
-              TODO: Add description.
-          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
-              TODO: Add description.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           image (`Image | list`, *optional*):
@@ -504,7 +472,7 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for HunyuanVideo 1.5 image-to-video.
 
       Components:
-          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2TokenizerFast`) text_encoder_2 (`T5EncoderModel`)
+          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2Tokenizer`) text_encoder_2 (`T5EncoderModel`)
           tokenizer_2 (`ByT5Tokenizer`) guider (`ClassifierFreeGuidance`) vae (`AutoencoderKLHunyuanVideo15`)
           video_processor (`HunyuanVideo15ImageProcessor`) image_encoder (`SiglipVisionModel`) feature_extractor
           (`SiglipImageProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer
@@ -515,22 +483,6 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
-          prompt_embeds (`Tensor`, *optional*):
-              text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          prompt_embeds_mask (`Tensor`, *optional*):
-              mask for the text embeddings. Can be generated from text_encoder step.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          negative_prompt_embeds_mask (`Tensor`, *optional*):
-              mask for the negative text embeddings. Can be generated from text_encoder step.
-          prompt_embeds_2 (`Tensor`, *optional*):
-              TODO: Add description.
-          prompt_embeds_mask_2 (`Tensor`, *optional*):
-              TODO: Add description.
-          negative_prompt_embeds_2 (`Tensor`, *optional*):
-              TODO: Add description.
-          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
-              TODO: Add description.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           image (`Image | list`, *optional*):

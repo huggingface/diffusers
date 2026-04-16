@@ -99,7 +99,6 @@ class HunyuanVideo15TextInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("prompt_embeds"),
             InputParam.template("batch_size", default=None),
         ]
