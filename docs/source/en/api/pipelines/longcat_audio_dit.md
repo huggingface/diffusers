@@ -46,8 +46,9 @@ sf.write("longcat.wav", audio, pipeline.sample_rate)
 ## Tips
 
 - `audio_duration_s` is the most direct way to control output duration.
-- `seed` makes generation reproducible (optional, defaults to None).
+- Use `generator=torch.Generator("cuda").manual_seed(42)` to make generation reproducible.
 - Output shape is `(batch, channels, samples)` - use `.audios[0, 0]` to get a single audio sample.
+- The pipeline outputs mono audio (1 channel). If you need stereo, you can duplicate the channel: `audio.unsqueeze(0).repeat(1, 2, 1)`.
 
 ## LongCatAudioDiTPipeline
 

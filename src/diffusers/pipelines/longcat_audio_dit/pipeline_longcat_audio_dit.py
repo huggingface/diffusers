@@ -43,9 +43,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> prompt = "A calm ocean wave ambience with soft wind in the background."
-        >>> audio = pipe(prompt, audio_duration_s=5.0, num_inference_steps=20, guidance_scale=4.0, seed=42).audios[
-        ...     0, 0
-        ... ]
+        >>> audio = pipe(prompt, audio_duration_s=5.0, num_inference_steps=20, guidance_scale=4.0, generator=torch.Generator("cuda").manual_seed(42)).audios[0, 0]
         >>> sf.write("output.wav", audio, pipe.sample_rate)
         ```
 """
@@ -240,7 +238,6 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
                 Pre-generated noisy latents of shape `(batch_size, duration, latent_dim)`.
             num_inference_steps (`int`, defaults to 16): Number of denoising steps.
             guidance_scale (`float`, defaults to 4.0): Guidance scale for classifier-free guidance.
-            seed (`int`, *optional*): A seed used to make generation deterministic.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*): Random generator(s).
             output_type (`str`, defaults to `"np"`): Output format: `"np"`, `"pt"`, or `"latent"`.
             return_dict (`bool`, defaults to `True`): Whether to return `AudioPipelineOutput`.
@@ -252,10 +249,6 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
 
         Examples:
         """
-        # Create generator from seed if provided
-        if generator is None and seed is not None:
-            generator = torch.Generator(device=self.device).manual_seed(seed)
-
         if prompt is None:
             prompt = []
         elif isinstance(prompt, str):
