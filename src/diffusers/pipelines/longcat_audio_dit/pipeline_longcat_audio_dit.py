@@ -222,7 +222,6 @@ class LongCatAudioDiTPipeline(DiffusionPipeline):
         latents: torch.Tensor | None = None,
         num_inference_steps: int = 16,
         guidance_scale: float = 4.0,
-        seed: int | None = None,
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str = "np",
         return_dict: bool = True,

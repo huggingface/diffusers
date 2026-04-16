@@ -37,7 +37,7 @@ audio = pipeline(
     audio_duration_s=5.0,
     num_inference_steps=16,
     guidance_scale=4.0,
-    seed=42,
+    generator=torch.Generator("cuda").manual_seed(42),
 ).audios[0, 0]
 
 sf.write("longcat.wav", audio, pipeline.sample_rate)
