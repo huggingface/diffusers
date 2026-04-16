@@ -43,7 +43,13 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> prompt = "A calm ocean wave ambience with soft wind in the background."
-        >>> audio = pipe(prompt, audio_duration_s=5.0, num_inference_steps=20, guidance_scale=4.0, generator=torch.Generator("cuda").manual_seed(42)).audios[0, 0]
+        >>> audio = pipe(
+        ...     prompt,
+        ...     audio_duration_s=5.0,
+        ...     num_inference_steps=20,
+        ...     guidance_scale=4.0,
+        ...     generator=torch.Generator("cuda").manual_seed(42),
+        ... ).audios[0, 0]
         >>> sf.write("output.wav", audio, pipe.sample_rate)
         ```
 """
