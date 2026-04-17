@@ -117,15 +117,15 @@ def get_qwen_prompt_embeds_edit(
     ).to(device)
 
     outputs = text_encoder(
-        input_ids=model_inputs.input_ids,
-        attention_mask=model_inputs.attention_mask,
-        pixel_values=model_inputs.pixel_values,
-        image_grid_thw=model_inputs.image_grid_thw,
+        input_ids=model_inputs["input_ids"],
+        attention_mask=model_inputs["attention_mask"],
+        pixel_values=model_inputs.get("pixel_values"),
+        image_grid_thw=model_inputs.get("image_grid_thw"),
         output_hidden_states=True,
     )
 
     hidden_states = outputs.hidden_states[-1]
-    split_hidden_states = _extract_masked_hidden(hidden_states, model_inputs.attention_mask)
+    split_hidden_states = _extract_masked_hidden(hidden_states, model_inputs["attention_mask"])
     split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
     attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
     max_seq_len = max([e.size(0) for e in split_hidden_states])
@@ -173,15 +173,15 @@ def get_qwen_prompt_embeds_edit_plus(
         return_tensors="pt",
     ).to(device)
     outputs = text_encoder(
-        input_ids=model_inputs.input_ids,
-        attention_mask=model_inputs.attention_mask,
-        pixel_values=model_inputs.pixel_values,
-        image_grid_thw=model_inputs.image_grid_thw,
+        input_ids=model_inputs["input_ids"],
+        attention_mask=model_inputs["attention_mask"],
+        pixel_values=model_inputs.get("pixel_values"),
+        image_grid_thw=model_inputs.get("image_grid_thw"),
         output_hidden_states=True,
     )
 
     hidden_states = outputs.hidden_states[-1]
-    split_hidden_states = _extract_masked_hidden(hidden_states, model_inputs.attention_mask)
+    split_hidden_states = _extract_masked_hidden(hidden_states, model_inputs["attention_mask"])
     split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
     attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
     max_seq_len = max([e.size(0) for e in split_hidden_states])
