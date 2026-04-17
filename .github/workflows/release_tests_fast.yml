@@ -4,6 +4,7 @@
 name: (Release) Fast GPU Tests on main
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - "v*.*.*-release"
@@ -33,6 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install -e ".[quality]"
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
       - name: Environment
         run: |
           python utils/print_env.py
@@ -74,6 +76,7 @@ jobs:
         run: |
           uv pip install -e ".[quality]"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
       - name: Environment
         run: |
           python utils/print_env.py
@@ -125,6 +128,7 @@ jobs:
         uv pip install -e ".[quality]"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
 
     - name: Environment
       run: |
@@ -175,6 +179,7 @@ jobs:
           uv pip install -e ".[quality]"
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
 
       - name: Environment
         run: |
@@ -232,6 +237,7 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality,training]"
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
     - name: Environment
       run: |
         python utils/print_env.py
@@ -274,6 +280,7 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality,training]"
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
     - name: Environment
       run: |
         python utils/print_env.py
@@ -316,6 +323,7 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality,training]"
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
 
     - name: Environment
       run: |

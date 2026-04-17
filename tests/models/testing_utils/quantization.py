@@ -36,6 +36,7 @@ from ...testing_utils import (
     is_quanto,
     is_torch_compile,
     is_torchao,
+    is_torchao_available,
     require_accelerate,
     require_accelerator,
     require_bitsandbytes_version_greater,
@@ -55,6 +56,9 @@ if is_bitsandbytes_available():
 
 if is_optimum_quanto_available():
     from optimum.quanto import QLinear
+
+if is_torchao_available():
+    import torchao.quantization as _torchao_quantization
 
 
 class LoRALayer(torch.nn.Module):
@@ -798,9 +802,9 @@ class TorchAoConfigMixin:
     """
 
     TORCHAO_QUANT_TYPES = {
-        "int4wo": {"quant_type": "int4_weight_only"},
-        "int8wo": {"quant_type": "int8_weight_only"},
-        "int8dq": {"quant_type": "int8_dynamic_activation_int8_weight"},
+        "int4wo": "Int4WeightOnlyConfig",
+        "int8wo": "Int8WeightOnlyConfig",
+        "int8dq": "Int8DynamicActivationInt8WeightConfig",
     }
 
     TORCHAO_EXPECTED_MEMORY_REDUCTIONS = {
@@ -809,8 +813,13 @@ class TorchAoConfigMixin:
         "int8dq": 1.5,
     }
 
-    def _create_quantized_model(self, config_kwargs, **extra_kwargs):
-        config = TorchAoConfig(**config_kwargs)
+    @staticmethod
+    def _get_quant_config(config_name):
+        config_cls = getattr(_torchao_quantization, config_name)
+        return TorchAoConfig(config_cls())
+
+    def _create_quantized_model(self, config_name, **extra_kwargs):
+        config = self._get_quant_config(config_name)
         kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
         kwargs["quantization_config"] = config
         kwargs["device_map"] = str(torch_device)

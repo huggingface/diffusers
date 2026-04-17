@@ -2156,6 +2156,9 @@ def _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict, non_diffusers_pref
             "scale_shift_table_a2v_ca_audio": "audio_a2v_cross_attn_scale_shift_table",
             "q_norm": "norm_q",
             "k_norm": "norm_k",
+            # LTX-2.3
+            "audio_prompt_adaln_single": "audio_prompt_adaln",
+            "prompt_adaln_single": "prompt_adaln",
         }
     else:
         rename_dict = {"aggregate_embed": "text_proj_in"}
@@ -2440,6 +2443,191 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
     return converted_state_dict
 
 
+def _convert_kohya_flux2_lora_to_diffusers(state_dict):
+    def _convert_to_ai_toolkit(sds_sd, ait_sd, sds_key, ait_key):
+        if sds_key + ".lora_down.weight" not in sds_sd:
+            return
+        down_weight = sds_sd.pop(sds_key + ".lora_down.weight")
+
+        # scale weight by alpha and dim
+        rank = down_weight.shape[0]
+        default_alpha = torch.tensor(rank, dtype=down_weight.dtype, device=down_weight.device, requires_grad=False)
+        alpha = sds_sd.pop(sds_key + ".alpha", default_alpha).item()
+        scale = alpha / rank
+
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+
+        ait_sd[ait_key + ".lora_A.weight"] = down_weight * scale_down
+        ait_sd[ait_key + ".lora_B.weight"] = sds_sd.pop(sds_key + ".lora_up.weight") * scale_up
+
+    def _convert_to_ai_toolkit_cat(sds_sd, ait_sd, sds_key, ait_keys, dims=None):
+        if sds_key + ".lora_down.weight" not in sds_sd:
+            return
+        down_weight = sds_sd.pop(sds_key + ".lora_down.weight")
+        up_weight = sds_sd.pop(sds_key + ".lora_up.weight")
+        sd_lora_rank = down_weight.shape[0]
+
+        default_alpha = torch.tensor(
+            sd_lora_rank, dtype=down_weight.dtype, device=down_weight.device, requires_grad=False
+        )
+        alpha = sds_sd.pop(sds_key + ".alpha", default_alpha)
+        scale = alpha / sd_lora_rank
+
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+
+        down_weight = down_weight * scale_down
+        up_weight = up_weight * scale_up
+
+        num_splits = len(ait_keys)
+        if dims is None:
+            dims = [up_weight.shape[0] // num_splits] * num_splits
+        else:
+            assert sum(dims) == up_weight.shape[0]
+
+        # check if upweight is sparse
+        is_sparse = False
+        if sd_lora_rank % num_splits == 0:
+            ait_rank = sd_lora_rank // num_splits
+            is_sparse = True
+            i = 0
+            for j in range(len(dims)):
+                for k in range(len(dims)):
+                    if j == k:
+                        continue
+                    is_sparse = is_sparse and torch.all(
+                        up_weight[i : i + dims[j], k * ait_rank : (k + 1) * ait_rank] == 0
+                    )
+                i += dims[j]
+            if is_sparse:
+                logger.info(f"weight is sparse: {sds_key}")
+
+        ait_down_keys = [k + ".lora_A.weight" for k in ait_keys]
+        ait_up_keys = [k + ".lora_B.weight" for k in ait_keys]
+        if not is_sparse:
+            ait_sd.update(dict.fromkeys(ait_down_keys, down_weight))
+            ait_sd.update({k: v for k, v in zip(ait_up_keys, torch.split(up_weight, dims, dim=0))})  # noqa: C416
+        else:
+            ait_sd.update({k: v for k, v in zip(ait_down_keys, torch.chunk(down_weight, num_splits, dim=0))})  # noqa: C416
+            i = 0
+            for j in range(len(dims)):
+                ait_sd[ait_up_keys[j]] = up_weight[i : i + dims[j], j * ait_rank : (j + 1) * ait_rank].contiguous()
+                i += dims[j]
+
+    # Detect number of blocks from keys
+    num_double_layers = 0
+    num_single_layers = 0
+    for key in state_dict.keys():
+        if key.startswith("lora_unet_double_blocks_"):
+            block_idx = int(key.split("_")[4])
+            num_double_layers = max(num_double_layers, block_idx + 1)
+        elif key.startswith("lora_unet_single_blocks_"):
+            block_idx = int(key.split("_")[4])
+            num_single_layers = max(num_single_layers, block_idx + 1)
+
+    ait_sd = {}
+
+    for i in range(num_double_layers):
+        # Attention projections
+        _convert_to_ai_toolkit(
+            state_dict,
+            ait_sd,
+            f"lora_unet_double_blocks_{i}_img_attn_proj",
+            f"transformer.transformer_blocks.{i}.attn.to_out.0",
+        )
+        _convert_to_ai_toolkit_cat(
+            state_dict,
+            ait_sd,
+            f"lora_unet_double_blocks_{i}_img_attn_qkv",
+            [
+                f"transformer.transformer_blocks.{i}.attn.to_q",
+                f"transformer.transformer_blocks.{i}.attn.to_k",
+                f"transformer.transformer_blocks.{i}.attn.to_v",
+            ],
+        )
+        _convert_to_ai_toolkit(
+            state_dict,
+            ait_sd,
+            f"lora_unet_double_blocks_{i}_txt_attn_proj",
+            f"transformer.transformer_blocks.{i}.attn.to_add_out",
+        )
+        _convert_to_ai_toolkit_cat(
+            state_dict,
+            ait_sd,
+            f"lora_unet_double_blocks_{i}_txt_attn_qkv",
+            [
+                f"transformer.transformer_blocks.{i}.attn.add_q_proj",
+                f"transformer.transformer_blocks.{i}.attn.add_k_proj",
+                f"transformer.transformer_blocks.{i}.attn.add_v_proj",
+            ],
+        )
+        # MLP layers (Flux2 uses ff.linear_in/linear_out)
+        _convert_to_ai_toolkit(
+            state_dict,
+            ait_sd,
+            f"lora_unet_double_blocks_{i}_img_mlp_0",
+            f"transformer.transformer_blocks.{i}.ff.linear_in",
+        )
+        _convert_to_ai_toolkit(
+            state_dict,
+            ait_sd,
+            f"lora_unet_double_blocks_{i}_img_mlp_2",
+            f"transformer.transformer_blocks.{i}.ff.linear_out",
+        )
+        _convert_to_ai_toolkit(
+            state_dict,
+            ait_sd,
+            f"lora_unet_double_blocks_{i}_txt_mlp_0",
+            f"transformer.transformer_blocks.{i}.ff_context.linear_in",
+        )
+        _convert_to_ai_toolkit(
+            state_dict,
+            ait_sd,
+            f"lora_unet_double_blocks_{i}_txt_mlp_2",
+            f"transformer.transformer_blocks.{i}.ff_context.linear_out",
+        )
+
+    for i in range(num_single_layers):
+        # Single blocks: linear1 -> attn.to_qkv_mlp_proj (fused, no split needed)
+        _convert_to_ai_toolkit(
+            state_dict,
+            ait_sd,
+            f"lora_unet_single_blocks_{i}_linear1",
+            f"transformer.single_transformer_blocks.{i}.attn.to_qkv_mlp_proj",
+        )
+        # Single blocks: linear2 -> attn.to_out
+        _convert_to_ai_toolkit(
+            state_dict,
+            ait_sd,
+            f"lora_unet_single_blocks_{i}_linear2",
+            f"transformer.single_transformer_blocks.{i}.attn.to_out",
+        )
+
+    # Handle optional extra keys
+    extra_mappings = {
+        "lora_unet_img_in": "transformer.x_embedder",
+        "lora_unet_txt_in": "transformer.context_embedder",
+        "lora_unet_time_in_in_layer": "transformer.time_guidance_embed.timestep_embedder.linear_1",
+        "lora_unet_time_in_out_layer": "transformer.time_guidance_embed.timestep_embedder.linear_2",
+        "lora_unet_final_layer_linear": "transformer.proj_out",
+    }
+    for sds_key, ait_key in extra_mappings.items():
+        _convert_to_ai_toolkit(state_dict, ait_sd, sds_key, ait_key)
+
+    remaining_keys = list(state_dict.keys())
+    if remaining_keys:
+        logger.warning(f"Unsupported keys for Kohya Flux2 LoRA conversion: {remaining_keys}")
+
+    return ait_sd
+
+
 def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
     """
     Convert non-diffusers ZImage LoRA state dict to diffusers format.
@@ -2519,6 +2707,13 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
     if has_default:
         state_dict = {k.replace("default.", ""): v for k, v in state_dict.items()}
 
+    # Normalize ZImage-specific dot-separated module names to underscore form so they
+    # match the diffusers model parameter names (context_refiner, noise_refiner).
+    state_dict = {
+        k.replace("context.refiner.", "context_refiner.").replace("noise.refiner.", "noise_refiner."): v
+        for k, v in state_dict.items()
+    }
+
     converted_state_dict = {}
     all_keys = list(state_dict.keys())
     down_key = ".lora_down.weight"
@@ -2529,19 +2724,22 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
     has_non_diffusers_lora_id = any(down_key in k or up_key in k for k in all_keys)
     has_diffusers_lora_id = any(a_key in k or b_key in k for k in all_keys)
 
+    def get_alpha_scales(down_weight, alpha_key):
+        rank = down_weight.shape[0]
+        alpha_tensor = state_dict.pop(alpha_key, None)
+        if alpha_tensor is None:
+            return 1.0, 1.0
+        scale = (
+            alpha_tensor.item() / rank
+        )  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+        return scale_down, scale_up
+
     if has_non_diffusers_lora_id:
-
-        def get_alpha_scales(down_weight, alpha_key):
-            rank = down_weight.shape[0]
-            alpha = state_dict.pop(alpha_key).item()
-            scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
-            scale_down = scale
-            scale_up = 1.0
-            while scale_down * 2 < scale_up:
-                scale_down *= 2
-                scale_up /= 2
-            return scale_down, scale_up
-
         for k in all_keys:
             if k.endswith(down_key):
                 diffusers_down_key = k.replace(down_key, ".lora_A.weight")
@@ -2554,13 +2752,69 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
                 converted_state_dict[diffusers_down_key] = down_weight * scale_down
                 converted_state_dict[diffusers_up_key] = up_weight * scale_up
 
-    # Already in diffusers format (lora_A/lora_B), just pop
+    # Already in diffusers format (lora_A/lora_B), apply alpha scaling and pop.
     elif has_diffusers_lora_id:
         for k in all_keys:
-            if a_key in k or b_key in k:
-                converted_state_dict[k] = state_dict.pop(k)
-            elif ".alpha" in k:
+            if k.endswith(a_key):
+                diffusers_up_key = k.replace(a_key, b_key)
+                alpha_key = k.replace(a_key, ".alpha")
+
+                down_weight = state_dict.pop(k)
+                up_weight = state_dict.pop(diffusers_up_key)
+                scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+                converted_state_dict[k] = down_weight * scale_down
+                converted_state_dict[diffusers_up_key] = up_weight * scale_up
+
+    # Handle dot-format LoRA keys: ".lora.down.weight" / ".lora.up.weight".
+    # Some external ZImage trainers (e.g. Anime-Z) use dots instead of underscores in
+    # lora weight names and also include redundant keys:
+    #   - "qkv.lora.*"    duplicates individual "to.q/k/v.lora.*" keys → skip qkv
+    #   - "out.lora.*"    duplicates "to_out.0.lora.*" keys → skip bare out
+    #   - "to.q/k/v.lora.*" → normalise to "to_q/k/v.lora_A/B.weight"
+    lora_dot_down_key = ".lora.down.weight"
+    lora_dot_up_key = ".lora.up.weight"
+    has_lora_dot_format = any(lora_dot_down_key in k for k in state_dict)
+
+    if has_lora_dot_format:
+        dot_keys = list(state_dict.keys())
+        for k in dot_keys:
+            if lora_dot_down_key not in k:
+                continue
+            if k not in state_dict:
+                continue  # already popped by a prior iteration
+
+            base = k[: -len(lora_dot_down_key)]
+
+            # Skip combined "qkv" projection — individual to.q/k/v keys are also present.
+            if base.endswith(".qkv"):
                 state_dict.pop(k)
+                state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
+                state_dict.pop(base + ".alpha", None)
+                continue
+
+            # Skip bare "out.lora.*" — "to_out.0.lora.*" covers the same projection.
+            if re.search(r"\.out$", base) and ".to_out" not in base:
+                state_dict.pop(k)
+                state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key), None)
+                continue
+
+            # Normalise "to.q/k/v" → "to_q/k/v" for the diffusers output key.
+            norm_k = re.sub(
+                r"\.to\.([qkv])" + re.escape(lora_dot_down_key) + r"$",
+                r".to_\1" + lora_dot_down_key,
+                k,
+            )
+            norm_base = norm_k[: -len(lora_dot_down_key)]
+            alpha_key = norm_base + ".alpha"
+
+            diffusers_down = norm_k.replace(lora_dot_down_key, ".lora_A.weight")
+            diffusers_up = norm_k.replace(lora_dot_down_key, ".lora_B.weight")
+
+            down_weight = state_dict.pop(k)
+            up_weight = state_dict.pop(k.replace(lora_dot_down_key, lora_dot_up_key))
+            scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+            converted_state_dict[diffusers_down] = down_weight * scale_down
+            converted_state_dict[diffusers_up] = up_weight * scale_up
 
     if len(state_dict) > 0:
         raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
