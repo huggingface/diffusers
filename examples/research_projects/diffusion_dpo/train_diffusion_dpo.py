@@ -28,6 +28,7 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
+import wandb
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
@@ -42,7 +43,6 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
-import wandb
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
