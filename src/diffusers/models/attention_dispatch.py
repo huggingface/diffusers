@@ -2589,6 +2589,10 @@ def _flash_attention_hub(
             value_packed = _padded_to_unpad(value, indices_k)
 
             varlen_func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB].varlen_kernel_fn
+            if varlen_func is None:
+                raise RuntimeError(
+                    "Flash attention hub kernels must expose `flash_attn_varlen_func` for masked attention."
+                )
             out_packed = varlen_func(
                 q=query_packed,
                 k=key_packed,
@@ -2602,8 +2606,6 @@ def _flash_attention_hub(
                 causal=is_causal,
                 return_attn_probs=return_lse,
             )
-            if return_lse:
-                out_packed, lse, *_ = out_packed
 
             out = out_packed.view(batch_size, query.shape[1], *out_packed.shape[1:])
     else:
