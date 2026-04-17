@@ -320,6 +320,7 @@ class AutoModel(ConfigMixin):
                 subfolder=subfolder,
                 module_file=module_file,
                 class_name=class_name,
+                trust_remote_code=trust_remote_code,
                 **hub_kwargs,
             )
         else:
