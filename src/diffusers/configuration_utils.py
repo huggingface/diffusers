@@ -107,6 +107,38 @@ class ConfigMixin:
     has_compatibles = False
 
     _deprecated_kwargs = []
+    _auto_class = None
+
+    @classmethod
+    def register_for_auto_class(cls, auto_class="AutoModel"):
+        """
+        Register this class with the given auto class so that it can be loaded with `AutoModel.from_pretrained(...,
+        trust_remote_code=True)`.
+
+        When the config is saved, the resulting `config.json` will include an `auto_map` entry mapping the auto class
+        to this class's module and class name.
+
+        Args:
+            auto_class (`str` or type, *optional*, defaults to `"AutoModel"`):
+                The auto class to register this class with. Can be a string (e.g. `"AutoModel"`) or the class itself.
+                Currently only `"AutoModel"` is supported.
+
+        Example:
+
+        ```python
+        from diffusers import ModelMixin, ConfigMixin
+
+
+        class MyCustomModel(ModelMixin, ConfigMixin): ...
+
+
+        MyCustomModel.register_for_auto_class("AutoModel")
+        ```
+        """
+        if auto_class != "AutoModel":
+            raise ValueError(f"Only 'AutoModel' is supported, got '{auto_class}'.")
+
+        cls._auto_class = auto_class
 
     def register_to_config(self, **kwargs):
         if self.config_name is None:
@@ -620,6 +652,12 @@ class ConfigMixin:
         config_dict.pop("_use_default_values", None)
         # pop the `_pre_quantization_dtype` as torch.dtypes are not serializable.
         _ = config_dict.pop("_pre_quantization_dtype", None)
+
+        if getattr(self, "_auto_class", None) is not None:
+            module = self.__class__.__module__.split(".")[-1]
+            auto_map = config_dict.get("auto_map", {})
+            auto_map[self._auto_class] = f"{module}.{self.__class__.__name__}"
+            config_dict["auto_map"] = auto_map
 
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 

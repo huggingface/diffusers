@@ -481,6 +481,8 @@ class LoraHotSwappingForModelTesterMixin:
         # ensure that enable_lora_hotswap is called before loading the first adapter
         import logging
 
+        from diffusers.utils import logging as diffusers_logging
+
         lora_config = self._get_lora_config(8, 8, target_modules=["to_q"])
         init_dict = self.get_init_dict()
         model = self.model_class(**init_dict).to(torch_device)
@@ -488,21 +490,31 @@ class LoraHotSwappingForModelTesterMixin:
         msg = (
             "It is recommended to call `enable_lora_hotswap` before loading the first adapter to avoid recompilation."
         )
-        with caplog.at_level(logging.WARNING):
-            model.enable_lora_hotswap(target_rank=32, check_compiled="warn")
-            assert any(msg in record.message for record in caplog.records)
+        diffusers_logging.enable_propagation()
+        try:
+            with caplog.at_level(logging.WARNING):
+                model.enable_lora_hotswap(target_rank=32, check_compiled="warn")
+                assert any(msg in record.message for record in caplog.records)
+        finally:
+            diffusers_logging.disable_propagation()
 
     def test_enable_lora_hotswap_called_after_adapter_added_ignore(self, caplog):
         # check possibility to ignore the error/warning
         import logging
 
+        from diffusers.utils import logging as diffusers_logging
+
         lora_config = self._get_lora_config(8, 8, target_modules=["to_q"])
         init_dict = self.get_init_dict()
         model = self.model_class(**init_dict).to(torch_device)
         model.add_adapter(lora_config)
-        with caplog.at_level(logging.WARNING):
-            model.enable_lora_hotswap(target_rank=32, check_compiled="ignore")
-            assert len(caplog.records) == 0
+        diffusers_logging.enable_propagation()
+        try:
+            with caplog.at_level(logging.WARNING):
+                model.enable_lora_hotswap(target_rank=32, check_compiled="ignore")
+                assert len(caplog.records) == 0
+        finally:
+            diffusers_logging.disable_propagation()
 
     def test_enable_lora_hotswap_wrong_check_compiled_argument_raises(self):
         # check that wrong argument value raises an error
@@ -518,20 +530,26 @@ class LoraHotSwappingForModelTesterMixin:
         # check the error and log
         import logging
 
+        from diffusers.utils import logging as diffusers_logging
+
         # at the moment, PEFT requires the 2nd adapter to target the same or a subset of layers
         target_modules0 = ["to_q"]
         target_modules1 = ["to_q", "to_k"]
-        with pytest.raises(RuntimeError):  # peft raises RuntimeError
-            with caplog.at_level(logging.ERROR):
-                self._check_model_hotswap(
-                    tmp_path,
-                    do_compile=True,
-                    rank0=8,
-                    rank1=8,
-                    target_modules0=target_modules0,
-                    target_modules1=target_modules1,
-                )
-                assert any("Hotswapping adapter0 was unsuccessful" in record.message for record in caplog.records)
+        diffusers_logging.enable_propagation()
+        try:
+            with pytest.raises(RuntimeError):  # peft raises RuntimeError
+                with caplog.at_level(logging.ERROR):
+                    self._check_model_hotswap(
+                        tmp_path,
+                        do_compile=True,
+                        rank0=8,
+                        rank1=8,
+                        target_modules0=target_modules0,
+                        target_modules1=target_modules1,
+                    )
+                    assert any("Hotswapping adapter0 was unsuccessful" in record.message for record in caplog.records)
+        finally:
+            diffusers_logging.disable_propagation()
 
     @pytest.mark.parametrize("rank0,rank1", [(11, 11), (7, 13), (13, 7)])
     @require_torch_version_greater("2.7.1")

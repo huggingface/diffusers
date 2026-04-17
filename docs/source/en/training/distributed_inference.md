@@ -111,7 +111,7 @@ if __name__ == "__main__":
 Call `torchrun` to run the inference script and use the `--nproc_per_node` argument to set the number of GPUs to use.
 
 ```bash
-torchrun run_distributed.py --nproc_per_node=2
+torchrun --nproc_per_node=2 run_distributed.py
 ```
 
 ## device_map

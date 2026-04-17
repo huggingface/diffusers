@@ -19,9 +19,14 @@ from __future__ import annotations
 
 import functools
 import os
+from typing import Callable, ParamSpec, TypeVar
 
 from . import logging
 from .import_utils import is_torch_available, is_torch_mlu_available, is_torch_npu_available, is_torch_version
+
+
+T = TypeVar("T")
+P = ParamSpec("P")
 
 
 if is_torch_available():
@@ -331,6 +336,34 @@ def disable_full_determinism():
     os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ""
     torch.use_deterministic_algorithms(False)
+
+
+@functools.wraps(functools.lru_cache)
+def lru_cache_unless_export(maxsize=128, typed=False):
+    def outer_wrapper(fn: Callable[P, T]):
+        cached = functools.lru_cache(maxsize=maxsize, typed=typed)(fn)
+        if is_torch_version("<", "2.7.0"):
+            return cached
+
+        @functools.wraps(fn)
+        def inner_wrapper(*args: P.args, **kwargs: P.kwargs):
+            compiler = getattr(torch, "compiler", None)
+            is_exporting = bool(compiler and hasattr(compiler, "is_exporting") and compiler.is_exporting())
+            is_compiling = bool(compiler and hasattr(compiler, "is_compiling") and compiler.is_compiling())
+
+            # Fallback for older builds where compiler.is_compiling is unavailable.
+            if not is_compiling:
+                dynamo = getattr(torch, "_dynamo", None)
+                if dynamo is not None and hasattr(dynamo, "is_compiling"):
+                    is_compiling = dynamo.is_compiling()
+
+            if is_exporting or is_compiling:
+                return fn(*args, **kwargs)
+            return cached(*args, **kwargs)
+
+        return inner_wrapper
+
+    return outer_wrapper
 
 
 if is_torch_available():

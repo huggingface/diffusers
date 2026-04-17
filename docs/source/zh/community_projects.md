@@ -27,6 +27,14 @@ http://www.apache.org/licenses/LICENSE-2.0
         <th>描述</th>
     </tr>
   <tr style="border-top: 2px solid black">
+    <td><a href="https://github.com/PKU-YuanGroup/Helios"> helios </a></td>
+    <td>Helios：比1.3B更低开销、更快且更强的14B的实时长视频生成模型</td>
+  </tr>
+  <tr style="border-top: 2px solid black">
+    <td><a href="https://github.com/PKU-YuanGroup/ConsisID"> consisid </a></td>
+    <td>ConsisID：零样本身份保持的文本到视频生成模型</td>
+  </tr>
+  <tr style="border-top: 2px solid black">
     <td><a href="https://github.com/carson-katri/dream-textures"> dream-textures </a></td>
     <td>Stable Diffusion内置到Blender</td>
   </tr>

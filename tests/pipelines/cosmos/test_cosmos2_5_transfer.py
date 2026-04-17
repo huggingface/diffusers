@@ -55,7 +55,7 @@ class Cosmos2_5_TransferWrapper(Cosmos2_5_TransferPipeline):
 class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = Cosmos2_5_TransferWrapper
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS.union({"controls"})
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     required_optional_params = frozenset(
@@ -176,15 +176,19 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
+        controls_generator = torch.Generator(device="cpu").manual_seed(seed)
+
         inputs = {
             "prompt": "dance monkey",
             "negative_prompt": "bad quality",
+            "controls": [torch.randn(3, 32, 32, generator=controls_generator) for _ in range(5)],
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 3.0,
             "height": 32,
             "width": 32,
             "num_frames": 3,
+            "num_frames_per_chunk": 16,
             "max_sequence_length": 16,
             "output_type": "pt",
         }
@@ -212,6 +216,56 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         self.assertEqual(generated_video.shape, (3, 3, 32, 32))
         self.assertTrue(torch.isfinite(generated_video).all())
 
+    def test_inference_autoregressive_multi_chunk(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_frames"] = 5
+        inputs["num_frames_per_chunk"] = 3
+        inputs["num_ar_conditional_frames"] = 1
+
+        video = pipe(**inputs).frames
+        generated_video = video[0]
+        self.assertEqual(generated_video.shape, (5, 3, 32, 32))
+        self.assertTrue(torch.isfinite(generated_video).all())
+
+    def test_inference_autoregressive_multi_chunk_no_condition_frames(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_frames"] = 5
+        inputs["num_frames_per_chunk"] = 3
+        inputs["num_ar_conditional_frames"] = 0
+
+        video = pipe(**inputs).frames
+        generated_video = video[0]
+        self.assertEqual(generated_video.shape, (5, 3, 32, 32))
+        self.assertTrue(torch.isfinite(generated_video).all())
+
+    def test_num_frames_per_chunk_above_rope_raises(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_frames_per_chunk"] = 17
+
+        with self.assertRaisesRegex(ValueError, "too large for RoPE setting"):
+            pipe(**inputs)
+
     def test_inference_with_controls(self):
         """Test inference with control inputs (ControlNet)."""
         device = "cpu"
@@ -222,13 +276,13 @@ class Cosmos2_5_TransferPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        # Add control video input - should be a video tensor
-        inputs["controls"] = [torch.randn(3, 3, 32, 32)]  # num_frames, channels, height, width
+        inputs["controls"] = [torch.randn(3, 32, 32) for _ in range(5)]  # list of 5 frames (C, H, W)
         inputs["controls_conditioning_scale"] = 1.0
+        inputs["num_frames"] = None
 
         video = pipe(**inputs).frames
         generated_video = video[0]
-        self.assertEqual(generated_video.shape, (3, 3, 32, 32))
+        self.assertEqual(generated_video.shape, (5, 3, 32, 32))
         self.assertTrue(torch.isfinite(generated_video).all())
 
     def test_callback_inputs(self):

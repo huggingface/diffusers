@@ -1,0 +1,36 @@
+name: Issue Labeler
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Install dependencies
+        run: pip install huggingface_hub
+      - name: Get labels from LLM
+        id: get-labels
+        env:
+          HF_TOKEN: ${{ secrets.ISSUE_LABELER_HF_TOKEN }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          LABELS=$(python utils/label_issues.py)
+          echo "labels=$LABELS" >> "$GITHUB_OUTPUT"
+      - name: Apply labels
+        if: steps.get-labels.outputs.labels != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          LABELS: ${{ steps.get-labels.outputs.labels }}
+        run: |
+          for label in $(echo "$LABELS" | python -c "import json,sys; print('\n'.join(json.load(sys.stdin)))"); do
+            gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+          done
