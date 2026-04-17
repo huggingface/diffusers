@@ -247,15 +247,15 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         ).to(device)
 
         outputs = self.text_encoder(
-            input_ids=model_inputs.get("input_ids"),
-            attention_mask=model_inputs.get("attention_mask"),
+            input_ids=model_inputs["input_ids"],
+            attention_mask=model_inputs["attention_mask"],
             pixel_values=model_inputs.get("pixel_values"),
             image_grid_thw=model_inputs.get("image_grid_thw"),
             output_hidden_states=True,
         )
 
         hidden_states = outputs.hidden_states[-1]
-        split_hidden_states = self._extract_masked_hidden(hidden_states, model_inputs.get("attention_mask"))
+        split_hidden_states = self._extract_masked_hidden(hidden_states, model_inputs["attention_mask"])
         split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
         attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
         max_seq_len = max([e.size(0) for e in split_hidden_states])
@@ -358,6 +358,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
+
         if prompt_embeds is not None and prompt_embeds_mask is None:
             logger.warning(
                 "If `prompt_embeds` are provided, `prompt_embeds_mask` also have to be passed. Make sure to generate `prompt_embeds_mask` from the same text encoder that was used to generate `prompt_embeds`."

@@ -253,7 +253,7 @@ class QwenImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
             prompt=prompt,
-            image=inputs.get("image") if "image" in inputs else None,
+            image=inputs.get("image"),
             device=torch_device,
             num_images_per_prompt=1,
             max_sequence_length=inputs.get("max_sequence_length", 16),

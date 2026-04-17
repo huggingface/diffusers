@@ -258,15 +258,15 @@ class QwenImageEditInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         ).to(device)
 
         outputs = self.text_encoder(
-            input_ids=model_inputs.get("input_ids"),
-            attention_mask=model_inputs.get("attention_mask"),
+            input_ids=model_inputs["input_ids"],
+            attention_mask=model_inputs["attention_mask"],
             pixel_values=model_inputs.get("pixel_values"),
             image_grid_thw=model_inputs.get("image_grid_thw"),
             output_hidden_states=True,
         )
 
         hidden_states = outputs.hidden_states[-1]
-        split_hidden_states = self._extract_masked_hidden(hidden_states, model_inputs.get("attention_mask"))
+        split_hidden_states = self._extract_masked_hidden(hidden_states, model_inputs["attention_mask"])
         split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
         attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
         max_seq_len = max([e.size(0) for e in split_hidden_states])
