@@ -490,6 +490,8 @@
     - sections:
       - local: api/pipelines/audioldm2
         title: AudioLDM 2
+      - local: api/pipelines/longcat_audio_dit
+        title: LongCat-AudioDiT
       - local: api/pipelines/stable_audio
         title: Stable Audio
       title: Audio

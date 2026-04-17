@@ -777,7 +777,8 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         # Pad token
         feats_cat = torch.cat(feats, dim=0)
-        feats_cat[torch.cat(inner_pad_mask)] = pad_token
+        mask = torch.cat(inner_pad_mask).unsqueeze(-1)
+        feats_cat = torch.where(mask, pad_token, feats_cat)
         feats = list(feats_cat.split(item_seqlens, dim=0))
 
         # RoPE
