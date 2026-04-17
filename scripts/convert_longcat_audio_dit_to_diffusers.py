@@ -131,6 +131,7 @@ def convert_longcat_audio_dit(
         cross_attn_norm=config.get("dit_cross_attn_norm", False),
         eps=config.get("dit_eps", 1e-6),
         use_latent_condition=config.get("dit_use_latent_condition", True),
+        ff_mult=config.get("dit_ff_mult", 4),
     )
     transformer.load_state_dict(transformer_state_dict, strict=True)
     transformer = transformer.to(dtype=torch_dtype)
