@@ -191,7 +191,12 @@ class CosmosControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 dim=1,
             )
 
-        control_hidden_states = torch.cat([control_hidden_states, torch.zeros_like(controls_latents[:, :1])], dim=1)
+        if condition_mask is not None:
+            control_hidden_states = torch.cat([control_hidden_states, condition_mask], dim=1)
+        else:
+            control_hidden_states = torch.cat(
+                [control_hidden_states, torch.zeros_like(controls_latents[:, :1])], dim=1
+            )
 
         padding_mask_resized = transforms.functional.resize(
             padding_mask, list(control_hidden_states.shape[-2:]), interpolation=transforms.InterpolationMode.NEAREST

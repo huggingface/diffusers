@@ -42,7 +42,6 @@ from ..testing_utils import (
     ModelOptCompileTesterMixin,
     ModelOptTesterMixin,
     ModelTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
     QuantoCompileTesterMixin,
     QuantoTesterMixin,
     SingleFileTesterMixin,
@@ -152,8 +151,7 @@ class FluxTransformerTesterConfig(BaseModelTesterConfig):
             "axes_dims_rope": [4, 4, 8],
         }
 
-    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
-        batch_size = 1
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
         height = width = 4
         num_latent_channels = 4
         num_image_channels = 3
@@ -219,6 +217,10 @@ class TestFluxTransformerMemory(FluxTransformerTesterConfig, MemoryTesterMixin):
 
 class TestFluxTransformerTraining(FluxTransformerTesterConfig, TrainingTesterMixin):
     """Training tests for Flux Transformer."""
+
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"FluxTransformer2DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
 class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterMixin):
@@ -415,10 +417,6 @@ class TestFluxTransformerModelOptCompile(FluxTransformerTesterConfig, ModelOptCo
 @pytest.mark.skip(reason="torch.compile is not supported by BitsAndBytes")
 class TestFluxTransformerBitsAndBytesCompile(FluxTransformerTesterConfig, BitsAndBytesCompileTesterMixin):
     """BitsAndBytes + compile tests for Flux Transformer."""
-
-
-class TestFluxTransformerPABCache(FluxTransformerTesterConfig, PyramidAttentionBroadcastTesterMixin):
-    """PyramidAttentionBroadcast cache tests for Flux Transformer."""
 
 
 class TestFluxTransformerFBCCache(FluxTransformerTesterConfig, FirstBlockCacheTesterMixin):

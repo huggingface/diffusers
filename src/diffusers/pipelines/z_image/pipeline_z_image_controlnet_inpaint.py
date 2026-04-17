@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer, PreTrainedModel
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin
+from ...loaders import FromSingleFileMixin, ZImageLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.controlnets import ZImageControlNetModel
 from ...models.transformers import ZImageTransformer2DModel
@@ -185,7 +185,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class ZImageControlNetInpaintPipeline(DiffusionPipeline, FromSingleFileMixin):
+class ZImageControlNetInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMixin):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
@@ -372,7 +372,7 @@ class ZImageControlNetInpaintPipeline(DiffusionPipeline, FromSingleFileMixin):
 
     @property
     def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1
+        return self._guidance_scale > 0
 
     @property
     def joint_attention_kwargs(self):

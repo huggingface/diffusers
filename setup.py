@@ -124,7 +124,7 @@ _deps = [
     "pytest-xdist",
     "python>=3.10.0",
     "ruff==0.9.10",
-    "safetensors>=0.3.1",
+    "safetensors>=0.8.0-rc.0",
     "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython<3.1.19",
     "scipy",
@@ -146,6 +146,7 @@ _deps = [
     "phonemizer",
     "opencv-python",
     "timm",
+    "flashpack",
 ]
 
 # this is a lookup table with items like:
@@ -250,6 +251,7 @@ extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
+extras["flashpack"] = deps_list("flashpack")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
@@ -276,7 +278,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.37.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.38.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

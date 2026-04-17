@@ -1,0 +1,63 @@
+name: PR Labeler
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9  # v5
+        with:
+          sync-labels: true
+
+  missing-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Check for missing tests
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" \
+            | python utils/check_test_missing.py
+      - name: Add or remove missing-tests label
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "${{ steps.check.outcome }}" = "failure" ]; then
+            gh pr edit "$PR_NUMBER" --add-label "missing-tests"
+          else
+            gh pr edit "$PR_NUMBER" --remove-label "missing-tests" 2>/dev/null || true
+          fi
+
+  size-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label PR by diff size
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          DIFF_SIZE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.additions + .deletions')
+          for label in size/S size/M size/L; do
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label "$label" 2>/dev/null || true
+          done
+          if [ "$DIFF_SIZE" -lt 50 ]; then
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "size/S"
+          elif [ "$DIFF_SIZE" -lt 200 ]; then
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "size/M"
+          else
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "size/L"
+          fi

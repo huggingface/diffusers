@@ -60,7 +60,7 @@ export_to_video(video.frames[0], "output.mp4", fps=8)
   <tr>
     <th style="text-align: center;">Face Image</th>
     <th style="text-align: center;">Video</th>
-    <th style="text-align: center;">Description</th
+    <th style="text-align: center;">Description</th>
   </tr>
   <tr>
     <td><img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/consisid/consisid_image_0.png?download=true" style="height: auto; width: 600px;"></td>

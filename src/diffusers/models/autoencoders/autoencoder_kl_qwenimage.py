@@ -105,7 +105,14 @@ class QwenImageRMS_norm(nn.Module):
         self.bias = nn.Parameter(torch.zeros(shape)) if bias else 0.0
 
     def forward(self, x):
-        return F.normalize(x, dim=(1 if self.channel_first else -1)) * self.scale * self.gamma + self.bias
+        needs_fp32_normalize = x.dtype in (torch.float16, torch.bfloat16) or any(
+            t in str(x.dtype) for t in ("float4_", "float8_")
+        )
+        normalized = F.normalize(x.float() if needs_fp32_normalize else x, dim=(1 if self.channel_first else -1)).to(
+            x.dtype
+        )
+
+        return normalized * self.scale * self.gamma + self.bias
 
 
 class QwenImageUpsample(nn.Upsample):
@@ -173,7 +180,7 @@ class QwenImageResample(nn.Module):
                     feat_cache[idx] = "Rep"
                     feat_idx[0] += 1
                 else:
-                    cache_x = x[:, :, -CACHE_T:, :, :].clone()
+                    cache_x = x[:, :, -min(CACHE_T, x.shape[2]) :, :, :].clone()
                     if cache_x.shape[2] < 2 and feat_cache[idx] is not None and feat_cache[idx] != "Rep":
                         # cache last frame of last two chunk
                         cache_x = torch.cat(
@@ -251,7 +258,7 @@ class QwenImageResidualBlock(nn.Module):
 
         if feat_cache is not None:
             idx = feat_idx[0]
-            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            cache_x = x[:, :, -min(CACHE_T, x.shape[2]) :, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
 
@@ -270,7 +277,7 @@ class QwenImageResidualBlock(nn.Module):
 
         if feat_cache is not None:
             idx = feat_idx[0]
-            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            cache_x = x[:, :, -min(CACHE_T, x.shape[2]) :, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
 
@@ -439,7 +446,7 @@ class QwenImageEncoder3d(nn.Module):
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         if feat_cache is not None:
             idx = feat_idx[0]
-            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            cache_x = x[:, :, -min(CACHE_T, x.shape[2]) :, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
                 cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
@@ -464,7 +471,7 @@ class QwenImageEncoder3d(nn.Module):
         x = self.nonlinearity(x)
         if feat_cache is not None:
             idx = feat_idx[0]
-            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            cache_x = x[:, :, -min(CACHE_T, x.shape[2]) :, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
                 cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
@@ -629,7 +636,7 @@ class QwenImageDecoder3d(nn.Module):
         ## conv1
         if feat_cache is not None:
             idx = feat_idx[0]
-            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            cache_x = x[:, :, -min(CACHE_T, x.shape[2]) :, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
                 cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
@@ -651,7 +658,7 @@ class QwenImageDecoder3d(nn.Module):
         x = self.nonlinearity(x)
         if feat_cache is not None:
             idx = feat_idx[0]
-            cache_x = x[:, :, -CACHE_T:, :, :].clone()
+            cache_x = x[:, :, -min(CACHE_T, x.shape[2]) :, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
                 cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)

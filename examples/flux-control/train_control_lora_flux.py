@@ -58,7 +58,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.37.0.dev0")
+check_min_version("0.38.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1251,7 +1251,7 @@ def main(args):
 
                 # text encoding.
                 captions = batch["captions"]
-                text_encoding_pipeline = text_encoding_pipeline.to("cuda")
+                text_encoding_pipeline = text_encoding_pipeline.to(accelerator.device)
                 with torch.no_grad():
                     prompt_embeds, pooled_prompt_embeds, text_ids = text_encoding_pipeline.encode_prompt(
                         captions, prompt_2=None

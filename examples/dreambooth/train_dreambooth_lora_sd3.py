@@ -73,7 +73,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.37.0.dev0")
+check_min_version("0.38.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1719,8 +1719,10 @@ def main(args):
             text_encoder_two.train()
 
             # set top parameter requires_grad = True for gradient checkpointing works
-            accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
-            accelerator.unwrap_model(text_encoder_two).text_model.embeddings.requires_grad_(True)
+            _te_one = accelerator.unwrap_model(text_encoder_one)
+            (_te_one.text_model if hasattr(_te_one, "text_model") else _te_one).embeddings.requires_grad_(True)
+            _te_two = accelerator.unwrap_model(text_encoder_two)
+            (_te_two.text_model if hasattr(_te_two, "text_model") else _te_two).embeddings.requires_grad_(True)
 
         for step, batch in enumerate(train_dataloader):
             models_to_accumulate = [transformer]
