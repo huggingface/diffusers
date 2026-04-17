@@ -13,61 +13,49 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import torch
 
 from diffusers import HiDreamImageTransformer2DModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    ModelTesterMixin,
+    TrainingTesterMixin,
 )
-from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class HiDreamTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = HiDreamImageTransformer2DModel
-    main_input_name = "hidden_states"
-    model_split_percents = [0.8, 0.8, 0.9]
+class HiDreamTransformerTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return HiDreamImageTransformer2DModel
 
     @property
-    def dummy_input(self):
-        batch_size = 2
-        num_channels = 4
-        height = width = 32
-        embedding_dim_t5, embedding_dim_llama, embedding_dim_pooled = 8, 4, 8
-        sequence_length = 8
+    def main_input_name(self) -> str:
+        return "hidden_states"
 
-        hidden_states = torch.randn((batch_size, num_channels, height, width)).to(torch_device)
-        encoder_hidden_states_t5 = torch.randn((batch_size, sequence_length, embedding_dim_t5)).to(torch_device)
-        encoder_hidden_states_llama3 = torch.randn((batch_size, batch_size, sequence_length, embedding_dim_llama)).to(
-            torch_device
-        )
-        pooled_embeds = torch.randn((batch_size, embedding_dim_pooled)).to(torch_device)
-        timesteps = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
+    @property
+    def model_split_percents(self) -> list:
+        return [0.8, 0.8, 0.9]
 
+    @property
+    def output_shape(self) -> tuple:
+        return (4, 32, 32)
+
+    @property
+    def input_shape(self) -> tuple:
+        return (4, 32, 32)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
         return {
-            "hidden_states": hidden_states,
-            "encoder_hidden_states_t5": encoder_hidden_states_t5,
-            "encoder_hidden_states_llama3": encoder_hidden_states_llama3,
-            "pooled_embeds": pooled_embeds,
-            "timesteps": timesteps,
-        }
-
-    @property
-    def input_shape(self):
-        return (4, 32, 32)
-
-    @property
-    def output_shape(self):
-        return (4, 32, 32)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
             "patch_size": 2,
             "in_channels": 4,
             "out_channels": 4,
@@ -82,15 +70,39 @@ class HiDreamTransformerTests(ModelTesterMixin, unittest.TestCase):
             "axes_dims_rope": (4, 2, 2),
             "max_resolution": (32, 32),
             "llama_layers": (0, 1),
-            "force_inference_output": True,  # TODO: as we don't implement MoE loss in training tests.
+            "force_inference_output": True,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
 
-    @unittest.skip("HiDreamImageTransformer2DModel uses a dedicated attention processor. This test doesn't apply")
-    def test_set_attn_processor_for_determinism(self):
-        pass
+    def get_dummy_inputs(self, batch_size: int = 2) -> dict[str, torch.Tensor]:
+        num_channels = 4
+        height = width = 32
+        embedding_dim_t5, embedding_dim_llama, embedding_dim_pooled = 8, 4, 8
+        sequence_length = 8
 
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_channels, height, width), generator=self.generator, device=torch_device
+            ),
+            "encoder_hidden_states_t5": randn_tensor(
+                (batch_size, sequence_length, embedding_dim_t5), generator=self.generator, device=torch_device
+            ),
+            "encoder_hidden_states_llama3": randn_tensor(
+                (batch_size, batch_size, sequence_length, embedding_dim_llama),
+                generator=self.generator,
+                device=torch_device,
+            ),
+            "pooled_embeds": randn_tensor(
+                (batch_size, embedding_dim_pooled), generator=self.generator, device=torch_device
+            ),
+            "timesteps": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
+        }
+
+
+class TestHiDreamTransformer(HiDreamTransformerTesterConfig, ModelTesterMixin):
+    pass
+
+
+class TestHiDreamTransformerTraining(HiDreamTransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HiDreamImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
