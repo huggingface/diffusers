@@ -40,6 +40,7 @@ from .controlnet_sd3 import (
     StableDiffusion3ControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
+from .deprecated.wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .flux import (
     FluxControlImg2ImgPipeline,
     FluxControlInpaintPipeline,
@@ -76,6 +77,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .lumina import LuminaPipeline
 from .lumina2 import Lumina2Pipeline
+from .nucleusmoe_image import NucleusMoEImagePipeline
 from .ovis_image import OvisImagePipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
@@ -95,6 +97,7 @@ from .pag import (
     StableDiffusionXLPAGPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+from .prx import PRXPipeline
 from .qwenimage import (
     QwenImageControlNetPipeline,
     QwenImageEditInpaintPipeline,
@@ -123,7 +126,6 @@ from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
 )
 from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
-from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .z_image import (
     ZImageControlNetInpaintPipeline,
     ZImageControlNetPipeline,
@@ -178,6 +180,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("helios", HeliosPipeline),
         ("helios-pyramid", HeliosPyramidPipeline),
         ("cogview4-control", CogView4ControlPipeline),
+        ("nucleusmoe-image", NucleusMoEImagePipeline),
         ("qwenimage", QwenImagePipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
         ("z-image", ZImagePipeline),
@@ -185,6 +188,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("z-image-controlnet-inpaint", ZImageControlNetInpaintPipeline),
         ("z-image-omni", ZImageOmniPipeline),
         ("ovis", OvisImagePipeline),
+        ("prx", PRXPipeline),
     ]
 )
 

@@ -21,29 +21,31 @@
 > [!TIP]
 > Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
 
-## Loading original format checkpoints
-
-Original format checkpoints that have not been converted to diffusers-expected format can be loaded using the `from_single_file` method.
+## Basic usage
 
 ```python
 import torch
-from diffusers import Cosmos2TextToImagePipeline, CosmosTransformer3DModel
+from diffusers import Cosmos2_5_PredictBasePipeline
+from diffusers.utils import export_to_video
 
-model_id = "nvidia/Cosmos-Predict2-2B-Text2Image"
-transformer = CosmosTransformer3DModel.from_single_file(
-    "https://huggingface.co/nvidia/Cosmos-Predict2-2B-Text2Image/blob/main/model.pt",
-    torch_dtype=torch.bfloat16,
-).to("cuda")
-pipe = Cosmos2TextToImagePipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.bfloat16)
+model_id = "nvidia/Cosmos-Predict2.5-2B"
+pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(
+    model_id, revision="diffusers/base/post-trained", torch_dtype=torch.bfloat16
+)
 pipe.to("cuda")
 
-prompt = "A close-up shot captures a vibrant yellow scrubber vigorously working on a grimy plate, its bristles moving in circular motions to lift stubborn grease and food residue. The dish, once covered in remnants of a hearty meal, gradually reveals its original glossy surface. Suds form and bubble around the scrubber, creating a satisfying visual of cleanliness in progress. The sound of scrubbing fills the air, accompanied by the gentle clinking of the dish against the sink. As the scrubber continues its task, the dish transforms, gleaming under the bright kitchen lights, symbolizing the triumph of cleanliness over mess."
+prompt = "As the red light shifts to green, the red bus at the intersection begins to move forward, its headlights cutting through the falling snow. The snowy tire tracks deepen as the vehicle inches ahead, casting fresh lines onto the slushy road. Around it, streetlights glow warmer, illuminating the drifting flakes and wet reflections on the asphalt. Other cars behind start to edge forward, their beams joining the scene. The stillness of the urban street transitions into motion as the quiet snowfall is punctuated by the slow advance of traffic through the frosty city corridor."
 negative_prompt = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
 
 output = pipe(
-    prompt=prompt, negative_prompt=negative_prompt, generator=torch.Generator().manual_seed(1)
-).images[0]
-output.save("output.png")
+    image=None,
+    video=None,
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    num_frames=93,
+    generator=torch.Generator().manual_seed(1),
+).frames[0]
+export_to_video(output, "text2world.mp4", fps=16)
 ```
 
 ## Cosmos2_5_TransferPipeline

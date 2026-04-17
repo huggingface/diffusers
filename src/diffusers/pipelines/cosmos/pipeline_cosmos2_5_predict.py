@@ -16,20 +16,27 @@ from typing import Callable
 
 import numpy as np
 import torch
-import torchvision
-import torchvision.transforms
-import torchvision.transforms.functional
 from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLWan, CosmosTransformer3DModel
 from ...schedulers import UniPCMultistepScheduler
-from ...utils import is_cosmos_guardrail_available, is_torch_xla_available, logging, replace_example_docstring
+from ...utils import (
+    is_cosmos_guardrail_available,
+    is_torch_xla_available,
+    is_torchvision_available,
+    logging,
+    replace_example_docstring,
+)
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import CosmosPipelineOutput
+
+
+if is_torchvision_available():
+    import torchvision.transforms.functional
 
 
 if is_cosmos_guardrail_available():

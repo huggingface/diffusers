@@ -744,7 +744,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: list[PIL.Image.Image, PIL.Image.Image] | None = None,
+        image: PIL.Image.Image | list[PIL.Image.Image] | None = None,
         prompt: str | list[str] = None,
         height: int | None = None,
         width: int | None = None,

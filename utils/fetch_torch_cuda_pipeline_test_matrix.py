@@ -43,7 +43,7 @@ def filter_pipelines(usage_dict, usage_cutoff=10000):
 
 
 def fetch_pipeline_objects():
-    models = api.list_models(library="diffusers")
+    models = api.list_models(filter="diffusers")
     downloads = defaultdict(int)
 
     for model in models:
