@@ -855,19 +855,21 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 instead.
             image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
-                numpy array and pytorch tensor, the expected value range is between `[0, 1]`. If it's a tensor or a list
-                of tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
-                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`. It can also accept image latents directly,
-                in which case encoding is skipped. Latents must be in patchified form of shape `(B, latent_channels * 4, H // 2, W // 2)`, where
-                each 2×2 spatial patch has been folded into the channel dimension.
+                numpy array and pytorch tensor, the expected value range is between `[0, 1]`. If it's a tensor or a
+                list of tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or
+                a list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`. It can also accept image
+                latents directly, in which case encoding is skipped. Latents must be in patchified form of shape `(B,
+                latent_channels * 4, H // 2, W // 2)`, where each 2×2 spatial patch has been folded into the channel
+                dimension.
             image_reference (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`, *optional*):
                 `Image`, numpy array or tensor representing an image batch to be used as the reference for the masked
                 area. This allows conditioning the inpainted region on a specific reference image. For both numpy array
-                and pytorch tensor, the expected value range is between `[0, 1]`. If it's a tensor or a list of tensors,
-                the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a list of arrays,
-                the expected shape should be `(B, H, W, C)` or `(H, W, C)`. It can also accept image latents directly,
-                in which case encoding is skipped. Latents must be in patchified form of shape `(B, latent_channels * 4, H // 2, W // 2)`, where
-                each 2×2 spatial patch has been folded into the channel dimension.
+                and pytorch tensor, the expected value range is between `[0, 1]`. If it's a tensor or a list of
+                tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a list
+                of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`. It can also accept image latents
+                directly, in which case encoding is skipped. Latents must be in patchified form of shape `(B,
+                latent_channels * 4, H // 2, W // 2)`, where each 2×2 spatial patch has been folded into the channel
+                dimension.
             mask_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
                 are repainted while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a
