@@ -1674,9 +1674,19 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             and any(norm_key in k for norm_key in self._control_lora_supported_norm_keys)
         }
 
-        transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
+        transformer = getattr(self, self.transformer_name, None)
+        text_encoder = getattr(self, self.text_encoder_name, None)
+
+        if transformer is None and text_encoder is None:
+            logger.warning(
+                "No loadable LoRA components (transformer, text_encoder) found in this pipeline. "
+                "Skipping LoRA weight loading. This can happen when calling `load_lora_weights` on a "
+                "modular sub-pipeline that does not contain the expected components."
+            )
+            return
+
         has_param_with_expanded_shape = False
-        if len(transformer_lora_state_dict) > 0:
+        if transformer is not None and len(transformer_lora_state_dict) > 0:
             has_param_with_expanded_shape = self._maybe_expand_transformer_param_shape_or_error_(
                 transformer, transformer_lora_state_dict, transformer_norm_state_dict
             )
@@ -1687,43 +1697,50 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 "As a result, the state_dict of the transformer has been expanded to match the LoRA parameter shapes. "
                 "To get a comprehensive list of parameter names that were modified, enable debug logging."
             )
-        if len(transformer_lora_state_dict) > 0:
+        if transformer is not None and len(transformer_lora_state_dict) > 0:
             transformer_lora_state_dict = self._maybe_expand_lora_state_dict(
                 transformer=transformer, lora_state_dict=transformer_lora_state_dict
             )
             for k in transformer_lora_state_dict:
                 state_dict.update({k: transformer_lora_state_dict[k]})
 
-        self.load_lora_into_transformer(
-            state_dict,
-            network_alphas=network_alphas,
-            transformer=transformer,
-            adapter_name=adapter_name,
-            metadata=metadata,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
+        if transformer is not None:
+            self.load_lora_into_transformer(
+                state_dict,
+                network_alphas=network_alphas,
+                transformer=transformer,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
+        elif len(transformer_lora_state_dict) > 0:
+            logger.warning(
+                "LoRA weights contain transformer parameters but the pipeline does not have a transformer component. "
+                "Skipping transformer LoRA loading."
+            )
 
-        if len(transformer_norm_state_dict) > 0:
+        if transformer is not None and len(transformer_norm_state_dict) > 0:
             transformer._transformer_norm_layers = self._load_norm_into_transformer(
                 transformer_norm_state_dict,
                 transformer=transformer,
                 discard_original_layers=False,
             )
 
-        self.load_lora_into_text_encoder(
-            state_dict,
-            network_alphas=network_alphas,
-            text_encoder=self.text_encoder,
-            prefix=self.text_encoder_name,
-            lora_scale=self.lora_scale,
-            adapter_name=adapter_name,
-            metadata=metadata,
-            _pipeline=self,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            hotswap=hotswap,
-        )
+        if text_encoder is not None:
+            self.load_lora_into_text_encoder(
+                state_dict,
+                network_alphas=network_alphas,
+                text_encoder=text_encoder,
+                prefix=self.text_encoder_name,
+                lora_scale=self.lora_scale,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
 
     @classmethod
     def load_lora_into_transformer(
@@ -5724,9 +5741,18 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
+        transformer = getattr(self, self.transformer_name, None)
+        if transformer is None:
+            logger.warning(
+                f"The `{self.transformer_name}` component is not available in this pipeline. "
+                "Skipping LoRA weight loading. This can happen when calling `load_lora_weights` on a "
+                "modular sub-pipeline that does not contain the transformer component."
+            )
+            return
+
         self.load_lora_into_transformer(
             state_dict,
-            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            transformer=transformer,
             adapter_name=adapter_name,
             metadata=metadata,
             _pipeline=self,
