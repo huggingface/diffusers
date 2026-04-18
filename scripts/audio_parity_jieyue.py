@@ -295,9 +295,10 @@ def run_original_leg(args, variant_ckpt_name, example, task, src_audio_tensor):
     latent = result["target_latents"]
 
     audio = vae.decode(latent.transpose(1, 2)).sample.float()
-    std = audio.std(dim=[1, 2], keepdim=True) * 5.0
-    std[std < 1.0] = 1.0
-    audio = audio / std
+    # Same peak normalization as acestep/core/generation/handler/generate_music_decode.py.
+    peak = audio.abs().amax(dim=[1, 2], keepdim=True)
+    if torch.any(peak > 1.0):
+        audio = audio / peak.clamp(min=1.0)
     return latent.detach().cpu(), audio.detach().cpu(), vae.config.sampling_rate
 
 

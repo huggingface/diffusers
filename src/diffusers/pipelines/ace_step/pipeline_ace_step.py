@@ -91,6 +91,67 @@ SHIFT_TIMESTEPS = {
 
 VALID_SHIFTS = [1.0, 2.0, 3.0]
 
+
+class _APGMomentumBuffer:
+    """Running-average buffer used by APG guidance.
+
+    Ported from `acestep/models/common/apg_guidance.py`. The negative momentum
+    (`-0.75` by default) is intentional — each step reverses the sign of the
+    previous average and adds the new diff, which has the effect of alternating
+    the guidance direction and prevents the denoising trajectory from being
+    pulled too far off-distribution.
+    """
+
+    def __init__(self, momentum: float = -0.75):
+        self.momentum = momentum
+        self.running_average: Union[float, torch.Tensor] = 0.0
+
+    def update(self, update_value: torch.Tensor) -> None:
+        self.running_average = update_value + self.momentum * self.running_average
+
+
+def _apg_forward(
+    pred_cond: torch.Tensor,
+    pred_uncond: torch.Tensor,
+    guidance_scale: float,
+    momentum_buffer: Optional[_APGMomentumBuffer] = None,
+    eta: float = 0.0,
+    norm_threshold: float = 2.5,
+    dims: Tuple[int, ...] = (-1,),
+) -> torch.Tensor:
+    """APG (Adaptive Projected Guidance) forward step — used by base / SFT models.
+
+    Matches `apg_forward` in `acestep/models/common/apg_guidance.py`. Differs from
+    vanilla CFG in three ways: (1) accumulates `(pred_cond - pred_uncond)` through
+    a momentum buffer, (2) caps the L2 norm of the accumulated diff at
+    `norm_threshold`, (3) projects the diff onto the component orthogonal to
+    `pred_cond` before scaling.
+    """
+    diff = pred_cond - pred_uncond
+    if momentum_buffer is not None:
+        momentum_buffer.update(diff)
+        diff = momentum_buffer.running_average
+
+    if norm_threshold > 0:
+        diff_norm = diff.norm(p=2, dim=list(dims), keepdim=True)
+        scale_factor = torch.minimum(torch.ones_like(diff_norm), norm_threshold / diff_norm)
+        diff = diff * scale_factor
+
+    # Project `diff` onto `pred_cond` direction; keep only the orthogonal part
+    # (plus `eta * parallel`, typically eta=0).
+    orig_dtype = diff.dtype
+    device_type = diff.device.type
+    if device_type == "mps":  # `normalize` on MPS is slower; match the original fallback.
+        diff_f, cond_f = diff.cpu().double(), pred_cond.cpu().double()
+    else:
+        diff_f, cond_f = diff.double(), pred_cond.double()
+    cond_dir = F.normalize(cond_f, dim=list(dims))
+    parallel = (diff_f * cond_dir).sum(dim=list(dims), keepdim=True) * cond_dir
+    orthogonal = diff_f - parallel
+    normalized_update = (orthogonal + eta * parallel).to(orig_dtype).to(diff.device)
+
+    return pred_cond + (guidance_scale - 1) * normalized_update
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
@@ -1192,6 +1253,8 @@ class AceStepPipeline(DiffusionPipeline):
 
         # 10. Denoising loop (flow matching ODE)
         xt = latents
+        # APG momentum is stateful across steps, so instantiate once before the loop.
+        momentum_buffer = _APGMomentumBuffer() if do_cfg else None
         with self.progress_bar(total=num_steps) as progress_bar:
             for step_idx in range(num_steps):
                 current_timestep = t_schedule[step_idx].item()
@@ -1203,7 +1266,7 @@ class AceStepPipeline(DiffusionPipeline):
                 apply_cfg = do_cfg and (cfg_interval_start <= timestep_ratio <= cfg_interval_end)
 
                 if apply_cfg:
-                    # Batched CFG: stack (cond, null) on batch dim and run the DiT once.
+                    # Batched guidance: stack (cond, null) on batch dim and run the DiT once.
                     # Matches `acestep/models/base/modeling_acestep_v15_base.py:1972-2022`.
                     model_output = self.transformer(
                         hidden_states=torch.cat([xt, xt], dim=0),
@@ -1216,7 +1279,16 @@ class AceStepPipeline(DiffusionPipeline):
                         return_dict=False,
                     )
                     vt_cond, vt_uncond = model_output[0].chunk(2, dim=0)
-                    vt = vt_uncond + guidance_scale * (vt_cond - vt_uncond)
+                    # ACE-Step base / SFT use APG — not vanilla CFG. Vanilla CFG
+                    # (`vt_uncond + guidance * (vt_cond - vt_uncond)`) produces off-genre,
+                    # over-guided outputs here. See `acestep/models/common/apg_guidance.py`.
+                    vt = _apg_forward(
+                        pred_cond=vt_cond,
+                        pred_uncond=vt_uncond,
+                        guidance_scale=guidance_scale,
+                        momentum_buffer=momentum_buffer,
+                        dims=(1,),  # time dim; matches the original's `dims=[1]`
+                    )
                 else:
                     # Standard forward pass (no CFG)
                     model_output = self.transformer(
@@ -1279,12 +1351,17 @@ class AceStepPipeline(DiffusionPipeline):
         else:
             audio = self.vae.decode(audio_latents).sample
 
-        # Anti-clipping normalization (from handler.py)
+        # Peak normalization — matches the original decode helper at
+        # acestep/core/generation/handler/generate_music_decode.py: divide only when
+        # the peak exceeds 1.0 so we scale the whole clip down to ±1 without touching
+        # outputs that are already within range. A `std * 5` proxy (earlier revision
+        # of this file) is not equivalent and silently over-attenuates some clips
+        # while letting others clip.
         if audio.dtype != torch.float32:
             audio = audio.float()
-        std = torch.std(audio, dim=[1, 2], keepdim=True) * 5.0
-        std[std < 1.0] = 1.0
-        audio = audio / std
+        peak = audio.abs().amax(dim=[1, 2], keepdim=True)
+        if torch.any(peak > 1.0):
+            audio = audio / peak.clamp(min=1.0)
 
         if output_type == "np":
             audio = audio.cpu().float().numpy()
