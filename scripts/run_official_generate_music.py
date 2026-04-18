@@ -82,8 +82,21 @@ def main():
     from acestep.llm_inference import LLMHandler
     from acestep.inference import GenerationParams, GenerationConfig, generate_music
 
+    import torch
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     print("[official] initialising handlers ...")
-    dit_handler = AceStepHandler(config_path=variant_ckpt)
+    dit_handler = AceStepHandler()
+    # Mirror cli.py:1400+: call initialize_service to bind a specific DiT variant.
+    dit_handler.initialize_service(
+        project_root=args.original_repo,
+        config_path=variant_ckpt,
+        device=device,
+        use_flash_attention=dit_handler.is_flash_attention_available(device),
+        compile_model=False,
+        offload_to_cpu=False,
+        offload_dit_to_cpu=False,
+    )
     # We intentionally skip LM reasoning so the test is deterministic and doesn't
     # pollute the audio with LM-suggested metas/audio-codes we can't reproduce
     # from the diffusers side yet.
