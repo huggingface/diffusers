@@ -506,6 +506,10 @@ class AceStepConditionEncoder(ModelMixin, ConfigMixin):
             sliding_window=sliding_window,
         )
 
+        # Learned null-condition embedding for classifier-free guidance, trained with
+        # `cfg_ratio=0.15` in the original model. Broadcast along the sequence dim when used.
+        self.null_condition_emb = nn.Parameter(torch.randn(1, 1, hidden_size))
+
     def forward(
         self,
         text_hidden_states: torch.FloatTensor,

@@ -95,7 +95,7 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     # =========================================================================
     transformer_sd = {}
     condition_encoder_sd = {}
-    other_sd = {}  # tokenizer, detokenizer, null_condition_emb
+    other_sd = {}  # tokenizer, detokenizer (audio quantization — not used by the text2music pipeline)
 
     for key, value in state_dict.items():
         if key.startswith("decoder."):
@@ -113,6 +113,11 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
             # Strip "encoder." prefix for the condition encoder
             new_key = key[len("encoder.") :]
             condition_encoder_sd[new_key] = value.to(target_dtype)
+        elif key == "null_condition_emb":
+            # Learned unconditional embedding (used by the base/SFT CFG path).
+            # Keep it co-located with the condition encoder since that is where the
+            # pipeline pulls unconditional sequences from.
+            condition_encoder_sd["null_condition_emb"] = value.to(target_dtype)
         else:
             other_sd[key] = value.to(target_dtype)
 
@@ -124,7 +129,8 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     # 2. Build configs for each sub-model
     # =========================================================================
 
-    # Transformer (DiT) config
+    # Transformer (DiT) config. `is_turbo` / `model_version` propagate the variant so
+    # the pipeline can pick the right CFG / shift / step-count defaults at inference.
     transformer_config = {
         "_class_name": "AceStepDiTModel",
         "_diffusers_version": "0.33.0.dev0",
@@ -145,6 +151,8 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         "use_sliding_window": original_config["use_sliding_window"],
         "sliding_window": original_config["sliding_window"],
         "layer_types": original_config["layer_types"],
+        "is_turbo": bool(original_config.get("is_turbo", False)),
+        "model_version": original_config.get("model_version"),
     }
 
     # Condition encoder config
@@ -268,13 +276,16 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
 
     # Report other keys that were not saved to transformer or condition_encoder
     if other_sd:
-        print(f"\nNote: {len(other_sd)} keys were not included in transformer or condition_encoder:")
-        for key in sorted(other_sd.keys()):
+        print(f"\nNote: {len(other_sd)} keys were dropped (tokenizer / detokenizer weights):")
+        for key in sorted(other_sd.keys())[:10]:
             print(f"  {key}")
-        print("These include tokenizer/detokenizer weights and null_condition_emb.")
-        print("The null_condition_emb, tokenizer, and detokenizer are part of the original")
-        print("AceStepConditionGenerationModel but are not needed for the Diffusers pipeline")
-        print("in text2music mode (they are used for cover/repaint tasks).")
+        if len(other_sd) > 10:
+            print(f"  ... ({len(other_sd) - 10} more)")
+        print(
+            "These belong to the audio tokenizer / detokenizer used by the 5Hz LM path "
+            "(cover / audio-code tasks). The Diffusers text2music pipeline does not "
+            "currently expose them."
+        )
 
     print(f"\nConversion complete! Output saved to: {output_dir}")
     print("\nTo load the pipeline:")

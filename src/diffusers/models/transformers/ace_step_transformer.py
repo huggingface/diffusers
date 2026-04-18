@@ -517,6 +517,12 @@ class AceStepDiTModel(ModelMixin, ConfigMixin):
         use_sliding_window: bool = True,
         sliding_window: int = 128,
         layer_types: Optional[List[str]] = None,
+        # Variant metadata. Turbo models have guidance distilled into the weights and
+        # should run without CFG; base/SFT models require CFG with the learned
+        # `AceStepConditionEncoder.null_condition_emb`. The pipeline reads these to
+        # pick default `guidance_scale`, `shift`, and `num_inference_steps`.
+        is_turbo: bool = False,
+        model_version: Optional[str] = None,
     ):
         super().__init__()
         self.patch_size = patch_size

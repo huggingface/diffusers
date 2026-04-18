@@ -30,12 +30,17 @@ from .modeling_ace_step import AceStepConditionEncoder
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-# SFT prompt template from ACE-Step constants
-SFT_GEN_PROMPT = """# Instruction {}
+# SFT prompt template from ACE-Step constants. The newline between each section label
+# (`# Instruction`, `# Caption`, `# Metas`) and its content is load-bearing — the text
+# encoder was trained with this exact format.
+SFT_GEN_PROMPT = """# Instruction
+{}
 
-# Caption {}
+# Caption
+{}
 
-# Metas {}<|endoftext|>
+# Metas
+{}<|endoftext|>
 """
 
 DEFAULT_DIT_INSTRUCTION = "Fill the audio semantic mask based on the given conditions:"
@@ -188,6 +193,25 @@ class AceStepPipeline(DiffusionPipeline):
             transformer=transformer,
             condition_encoder=condition_encoder,
         )
+
+    @property
+    def is_turbo(self) -> bool:
+        """Whether the loaded transformer is a turbo / guidance-distilled variant."""
+        cfg = self.transformer.config
+        return bool(getattr(cfg, "is_turbo", False)) or getattr(cfg, "model_version", None) == "turbo"
+
+    def _variant_defaults(self) -> dict:
+        """Per-variant sampling defaults matching the original `inference.py`.
+
+        Turbo variants ship with guidance distilled into weights (CFG off by default) and
+        use the 8-step `SHIFT_TIMESTEPS` schedule with `shift=3.0`. Base/SFT variants use
+        CFG (via the learned `AceStepConditionEncoder.null_condition_emb`) with a linear
+        timestep schedule at `shift=1.0`.
+        """
+        if self.is_turbo:
+            return {"num_inference_steps": 8, "shift": 3.0, "guidance_scale": 1.0}
+        # Match `acestep/inference.py` defaults for base/SFT.
+        return {"num_inference_steps": 27, "shift": 1.0, "guidance_scale": 7.0}
 
     @staticmethod
     def _get_task_instruction(
@@ -480,26 +504,29 @@ class AceStepPipeline(DiffusionPipeline):
         Returns:
             `torch.Tensor`: Tensor of timestep values.
         """
-        # Use custom timesteps if provided
+        # Custom override: caller supplies the exact timestep sequence (matches original's
+        # `timesteps=` arg).
         if timesteps is not None:
             return torch.tensor(timesteps, device=device, dtype=dtype)
 
-        # Use pre-defined schedules for known shift values
-        original_shift = shift
-        shift = min(VALID_SHIFTS, key=lambda x: abs(x - shift))
-        if original_shift != shift:
-            logger.warning(f"shift={original_shift} not supported, rounded to nearest valid shift={shift}")
+        # Turbo variants ship with a fixed 8-step `SHIFT_TIMESTEPS` table keyed on
+        # `shift in {1, 2, 3}`. Anything else falls through to the linear+shift schedule
+        # used by base/SFT (matches `base/modeling_acestep_v15_base.py:1931-1934`).
+        if self.is_turbo and num_inference_steps == 8:
+            nearest = min(VALID_SHIFTS, key=lambda x: abs(x - shift))
+            if nearest != shift:
+                logger.warning(
+                    f"[AceStepPipeline] turbo only supports shift in {VALID_SHIFTS}; "
+                    f"rounding shift={shift} to {nearest}."
+                )
+            return torch.tensor(SHIFT_TIMESTEPS[nearest], device=device, dtype=dtype)
 
-        t_schedule_list = SHIFT_TIMESTEPS[shift]
-
-        # Truncate or extend to match num_inference_steps
-        if num_inference_steps < len(t_schedule_list):
-            t_schedule_list = t_schedule_list[:num_inference_steps]
-        elif num_inference_steps > len(t_schedule_list):
-            # Generate a linear schedule for non-standard step counts
-            t_schedule_list = [1.0 - i / num_inference_steps for i in range(num_inference_steps)]
-
-        return torch.tensor(t_schedule_list, device=device, dtype=dtype)
+        # Base / SFT schedule: linear in [1, 0] with `N+1` points, then drop the final
+        # `t=0` node, then apply the flow-matching shift transform.
+        t = torch.linspace(1.0, 0.0, num_inference_steps + 1, device=device, dtype=dtype)
+        if shift != 1.0:
+            t = shift * t / (1 + (shift - 1) * t)
+        return t[:-1]
 
     @staticmethod
     def _normalize_audio_to_stereo_48k(audio: torch.Tensor, sr: int) -> torch.Tensor:
@@ -832,9 +859,12 @@ class AceStepPipeline(DiffusionPipeline):
         lyrics: Union[str, List[str]] = "",
         audio_duration: float = 60.0,
         vocal_language: Union[str, List[str]] = "en",
-        num_inference_steps: int = 8,
-        guidance_scale: float = 7.0,
-        shift: float = 3.0,
+        # These three have variant-aware defaults: if left as `None`, they fall back to
+        # the variant recipe (turbo: 8 steps / shift=3.0 / guidance=1.0; base+SFT:
+        # 27 steps / shift=1.0 / guidance=7.0). See `_variant_defaults`.
+        num_inference_steps: Optional[int] = None,
+        guidance_scale: Optional[float] = None,
+        shift: Optional[float] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pt",
@@ -959,6 +989,19 @@ class AceStepPipeline(DiffusionPipeline):
         device = self._execution_device
         dtype = self.transformer.dtype
         acoustic_dim = self.transformer.config.audio_acoustic_hidden_dim
+
+        # Variant-aware defaults. The converter writes `is_turbo` / `model_version` into
+        # the transformer config. Turbo checkpoints have CFG distilled into the weights
+        # and ship with the 8-step `SHIFT_TIMESTEPS` schedule (shift=3.0); base/SFT
+        # checkpoints use a linear+shift schedule with CFG via the learned
+        # `null_condition_emb`.
+        variant_defaults = self._variant_defaults()
+        if num_inference_steps is None:
+            num_inference_steps = variant_defaults["num_inference_steps"]
+        if shift is None:
+            shift = variant_defaults["shift"]
+        if guidance_scale is None:
+            guidance_scale = variant_defaults["guidance_scale"]
 
         # Auto-detect task type from audio_codes
         if task_type == "text2music" and audio_codes is not None:
@@ -1118,32 +1161,24 @@ class AceStepPipeline(DiffusionPipeline):
             latents=latents,
         )
 
-        # 8. Prepare null condition for CFG (if guidance_scale > 1)
+        # 8. Prepare null condition for CFG. Matches the base-model behaviour in
+        # `acestep/models/base/modeling_acestep_v15_base.py`: broadcast the learned
+        # `null_condition_emb` to the shape of the conditional sequence. Re-encoding empty
+        # strings through the text encoder produces out-of-distribution conditioning and
+        # visibly degrades audio quality — do not do that.
         do_cfg = guidance_scale > 1.0
         null_encoder_hidden_states = None
         if do_cfg:
-            # Create null (empty) text condition
-            null_text_hs, null_text_mask, null_lyric_hs, null_lyric_mask = self.encode_prompt(
-                prompt=[""] * batch_size,
-                lyrics=[""] * batch_size,
-                device=device,
-                vocal_language=vocal_language,
-                audio_duration=audio_duration,
-                instruction=instruction,
-                bpm=bpm,
-                keyscale=keyscale,
-                timesignature=timesignature,
-                max_text_length=max_text_length,
-                max_lyric_length=max_lyric_length,
-            )
-            null_encoder_hidden_states, _ = self.condition_encoder(
-                text_hidden_states=null_text_hs,
-                text_attention_mask=null_text_mask,
-                lyric_hidden_states=null_lyric_hs,
-                lyric_attention_mask=null_lyric_mask,
-                refer_audio_acoustic_hidden_states_packed=refer_audio_acoustic,
-                refer_audio_order_mask=refer_audio_order_mask,
-            )
+            null_emb = getattr(self.condition_encoder, "null_condition_emb", None)
+            if null_emb is None:
+                raise ValueError(
+                    "Classifier-free guidance requested (guidance_scale > 1.0) but the "
+                    "condition encoder does not expose `null_condition_emb`. Re-run the "
+                    "converter against a base/SFT checkpoint, or pass `guidance_scale=1.0`."
+                )
+            null_encoder_hidden_states = null_emb.to(
+                device=encoder_hidden_states.device, dtype=encoder_hidden_states.dtype
+            ).expand_as(encoder_hidden_states)
 
         # 9. Get timestep schedule
         t_schedule = self._get_timestep_schedule(
@@ -1168,29 +1203,19 @@ class AceStepPipeline(DiffusionPipeline):
                 apply_cfg = do_cfg and (cfg_interval_start <= timestep_ratio <= cfg_interval_end)
 
                 if apply_cfg:
-                    # Conditional forward pass
-                    cond_output = self.transformer(
-                        hidden_states=xt,
-                        timestep=t_curr_tensor,
-                        timestep_r=t_curr_tensor,
-                        encoder_hidden_states=encoder_hidden_states,
-                        context_latents=context_latents,
+                    # Batched CFG: stack (cond, null) on batch dim and run the DiT once.
+                    # Matches `acestep/models/base/modeling_acestep_v15_base.py:1972-2022`.
+                    model_output = self.transformer(
+                        hidden_states=torch.cat([xt, xt], dim=0),
+                        timestep=torch.cat([t_curr_tensor, t_curr_tensor], dim=0),
+                        timestep_r=torch.cat([t_curr_tensor, t_curr_tensor], dim=0),
+                        encoder_hidden_states=torch.cat(
+                            [encoder_hidden_states, null_encoder_hidden_states], dim=0
+                        ),
+                        context_latents=torch.cat([context_latents, context_latents], dim=0),
                         return_dict=False,
                     )
-                    vt_cond = cond_output[0]
-
-                    # Unconditional forward pass
-                    uncond_output = self.transformer(
-                        hidden_states=xt,
-                        timestep=t_curr_tensor,
-                        timestep_r=t_curr_tensor,
-                        encoder_hidden_states=null_encoder_hidden_states,
-                        context_latents=context_latents,
-                        return_dict=False,
-                    )
-                    vt_uncond = uncond_output[0]
-
-                    # CFG: v = v_uncond + guidance_scale * (v_cond - v_uncond)
+                    vt_cond, vt_uncond = model_output[0].chunk(2, dim=0)
                     vt = vt_uncond + guidance_scale * (vt_cond - vt_uncond)
                 else:
                     # Standard forward pass (no CFG)
