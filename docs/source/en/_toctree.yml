@@ -324,6 +324,8 @@
         title: SparseControlNetModel
       title: ControlNets
     - sections:
+      - local: api/models/ace_step_transformer
+        title: AceStepDiTModel
       - local: api/models/allegro_transformer3d
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d

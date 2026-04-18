@@ -2,6 +2,7 @@ from ...utils import is_torch_available
 
 
 if is_torch_available():
+    from .ace_step_transformer import AceStepDiTModel
     from .auraflow_transformer_2d import AuraFlowTransformer2DModel
     from .cogvideox_transformer_3d import CogVideoXTransformer3DModel
     from .consisid_transformer_3d import ConsisIDTransformer3DModel
