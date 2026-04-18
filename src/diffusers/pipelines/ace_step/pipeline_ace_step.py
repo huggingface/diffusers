@@ -889,8 +889,16 @@ class AceStepPipeline(DiffusionPipeline):
         Returns:
             `torch.Tensor`: Chunk mask of shape `[batch, latent_length, acoustic_dim]`.
         """
+        # The mask encodes what the DiT should do per latent frame. The original
+        # pipeline uses three sentinel values (see `acestep/inference.py` comment at
+        # `chunk_mask_mode`):
+        #   2.0 -> "auto": let the model decide (default for text2music / cover)
+        #   1.0 -> keep this frame from src_latents
+        #   0.0 -> explicitly repaint this frame
+        # The DiT was trained on these exact values; using any other magnitude puts
+        # context_latents out of distribution.
         if task_type in ("repaint", "lego") and has_src_audio:
-            # Create a mask where the repaint region is 1 (generate) and outside is 0 (keep)
+            # Latent frame rate is 25 Hz, and 48 kHz / 1920 = 25 frames/s.
             start_latent = int((repainting_start or 0.0) * SAMPLE_RATE / 1920)
             if repainting_end is not None and repainting_end > 0:
                 end_latent = int(repainting_end * SAMPLE_RATE / 1920)
@@ -900,15 +908,15 @@ class AceStepPipeline(DiffusionPipeline):
             start_latent = max(0, min(start_latent, latent_length - 1))
             end_latent = max(start_latent + 1, min(end_latent, latent_length))
 
-            mask_1d = torch.zeros(latent_length, device=device, dtype=dtype)
-            mask_1d[start_latent:end_latent] = 1.0
-            chunk_mask = mask_1d.unsqueeze(0).unsqueeze(-1).expand(batch_size, -1, acoustic_dim)
-        elif task_type == "text2music":
-            # Full generation
-            chunk_mask = torch.ones(batch_size, latent_length, acoustic_dim, device=device, dtype=dtype)
+            # Outside the repaint window: keep (1.0). Inside: repaint (0.0).
+            mask_1d = torch.ones(latent_length, device=device, dtype=dtype)
+            mask_1d[start_latent:end_latent] = 0.0
+            chunk_mask = mask_1d.unsqueeze(0).unsqueeze(-1).expand(batch_size, -1, acoustic_dim).clone()
         else:
-            # cover, extract, complete, lego without src_audio: full generation
-            chunk_mask = torch.ones(batch_size, latent_length, acoustic_dim, device=device, dtype=dtype)
+            # text2music / cover / extract / complete / lego-without-src: model-decided mask (2.0)
+            chunk_mask = torch.full(
+                (batch_size, latent_length, acoustic_dim), 2.0, device=device, dtype=dtype
+            )
 
         return chunk_mask
 
@@ -1204,11 +1212,11 @@ class AceStepPipeline(DiffusionPipeline):
             has_src_audio=has_src_audio,
         )
 
-        # For repaint task: replace the repaint region in src_latents with zeros
+        # For repaint: zero the src_latents inside the repaint window. The chunk_mask
+        # built above holds `0.0` inside the repaint window and `1.0` outside, so a
+        # straight element-wise multiply drops the to-be-repainted region.
         if task_type in ("repaint",) and has_src_audio:
-            src_latents = src_latents.clone()
-            # Where chunk_mask is 1, set src_latents to 0 (silence)
-            src_latents = src_latents * (1.0 - chunk_mask)
+            src_latents = src_latents * chunk_mask
 
         context_latents = torch.cat([src_latents, chunk_mask], dim=-1)
 
