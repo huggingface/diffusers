@@ -23,6 +23,7 @@ from PIL import Image, ImageFilter, ImageOps
 
 from .configuration_utils import ConfigMixin, register_to_config
 from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
+from .utils.pil_utils import TORCH_INTERPOLATION
 
 
 PipelineImageInput = (
@@ -506,15 +507,21 @@ class VaeImageProcessor(ConfigMixin):
                 raise ValueError(f"resize_mode {resize_mode} is not supported")
 
         elif isinstance(image, torch.Tensor):
+            torch_mode, use_antialias = TORCH_INTERPOLATION[self.config.resample]
             image = torch.nn.functional.interpolate(
                 image,
                 size=(height, width),
+                mode=torch_mode,
+                antialias=use_antialias,
             )
         elif isinstance(image, np.ndarray):
+            torch_mode, use_antialias = TORCH_INTERPOLATION[self.config.resample]
             image = self.numpy_to_pt(image)
             image = torch.nn.functional.interpolate(
                 image,
                 size=(height, width),
+                mode=torch_mode,
+                antialias=use_antialias,
             )
             image = self.pt_to_numpy(image)
 
