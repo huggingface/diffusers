@@ -91,7 +91,11 @@ def parse_args():
     p.add_argument("--dtype", default="bf16", choices=["bf16", "fp32"])
     p.add_argument("--attn", default="flash_attention_2",
                    choices=["flash_attention_2", "sdpa", "eager"])
-    p.add_argument("--out", default="/tmp/ace_parity_out")
+    p.add_argument("--out", default="/tmp/ace_parity_out",
+                   help="Where to write .wav outputs.")
+    p.add_argument("--converted-root", default=os.environ.get("ACESTEP_CONVERTED_ROOT", "/tmp"),
+                   help="Cache dir for converted diffusers checkpoints (~5 GB per variant). "
+                        "On jieyue use a vepfs path.")
     p.add_argument("--skip-original", action="store_true")
     p.add_argument("--skip-diffusers", action="store_true")
     return p.parse_args()
@@ -125,7 +129,10 @@ def load_audio_to_48k_stereo(path):
 
 
 def ensure_diffusers_checkpoint(args, variant_ckpt_name):
-    out = f"/tmp/acestep-{variant_ckpt_name}-diffusers"
+    # Each converted pipeline is ~5 GB (transformer + condition_encoder +
+    # text_encoder + vae). Default the cache to --converted-root so users can
+    # point it at a big disk (vepfs on jieyue, /tmp locally).
+    out = os.path.join(args.converted_root, f"{variant_ckpt_name}-diffusers")
     if os.path.isdir(os.path.join(out, "transformer")):
         return out
     cmd = [
