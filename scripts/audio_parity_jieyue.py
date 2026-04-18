@@ -47,13 +47,14 @@ VARIANTS = ["turbo", "base", "sft"]
 VARIANT_TO_CHECKPOINT = {
     "turbo": "acestep-v15-turbo",
     "base": "acestep-v15-base",
-    # Many releases ship a single base checkpoint. If you have a distinct SFT
-    # checkpoint, override with --sft-checkpoint-dir.
-    "sft": "acestep-v15-base",
+    "sft": "acestep-v15-sft",
 }
+# Which ACE-Step python module hosts `AceStepConditionGenerationModel` for a
+# given variant. Keeps the original leg honest — don't cross-import modeling files.
 VARIANT_TO_MODELING_MOD = {
     "acestep-v15-turbo": "acestep.models.turbo.modeling_acestep_v15_turbo",
     "acestep-v15-base": "acestep.models.base.modeling_acestep_v15_base",
+    "acestep-v15-sft": "acestep.models.sft.modeling_acestep_v15_base",
 }
 
 
