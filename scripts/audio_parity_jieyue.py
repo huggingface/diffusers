@@ -329,6 +329,11 @@ def run_diffusers_leg(args, variant_ckpt_name, example, task, src_audio_tensor):
     print(f"[parity][diff][{args.variant}/{task}] is_turbo={pipe.is_turbo} "
           f"defaults={pipe._variant_defaults()}")
 
+    # Match the ORIGINAL's `prepare_noise`: `torch.Generator(device=device).manual_seed(seed)`.
+    # The CUDA vs CPU RNG streams are NOT identical for the same seed; if the diffusers
+    # pipeline's noise initialization follows a different device than the original, the
+    # denoising trajectories diverge and the outputs aren't comparable.
+    generator = torch.Generator(device=device).manual_seed(args.seed)
     call_kwargs = dict(
         prompt=caption,
         lyrics=lyrics,
@@ -340,7 +345,7 @@ def run_diffusers_leg(args, variant_ckpt_name, example, task, src_audio_tensor):
         bpm=example.get("bpm"),
         keyscale=example.get("keyscale"),
         timesignature=example.get("timesignature"),
-        generator=torch.Generator(device="cpu").manual_seed(args.seed),
+        generator=generator,
         output_type="pt",
         task_type=task,
     )
