@@ -269,13 +269,14 @@ class AceStepPipeline(DiffusionPipeline):
         CFG (via the learned `AceStepConditionEncoder.null_condition_emb`) with a linear
         timestep schedule at `shift=1.0`.
         """
-        # Defaults match `acestep/inference.py` (`GenerationParams`): shift=1.0 across
-        # ALL variants (turbo included — the turbo schedule comes from SHIFT_TIMESTEPS[
-        # 1.0], not SHIFT_TIMESTEPS[3.0]). Previously hardcoded 3.0 for turbo, which
-        # picked a different 8-step schedule than the real pipeline.
+        # Defaults match `acestep/inference.py` (`GenerationParams`): shift=1.0 and
+        # inference_steps=8 across ALL variants (turbo included). The turbo schedule
+        # comes from SHIFT_TIMESTEPS[1.0], not SHIFT_TIMESTEPS[3.0]. Base/SFT at only
+        # 8 steps looks surprising but is the documented default — users override to
+        # 30-100 if they want higher quality.
         if self.is_turbo:
             return {"num_inference_steps": 8, "shift": 1.0, "guidance_scale": 1.0}
-        return {"num_inference_steps": 27, "shift": 1.0, "guidance_scale": 7.0}
+        return {"num_inference_steps": 8, "shift": 1.0, "guidance_scale": 7.0}
 
     @staticmethod
     def _get_task_instruction(

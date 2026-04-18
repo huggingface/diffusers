@@ -282,10 +282,10 @@ def run_original_leg(args, variant_ckpt_name, example, task, src_audio_tensor):
     attn_mask = torch.ones(1, latent_len, device=device, dtype=dtype)
 
     is_turbo = args.variant == "turbo"
-    steps = args.steps or (8 if is_turbo else 27)
-    # `shift=1.0` across all variants matches `acestep/inference.py`'s
-    # GenerationParams.shift default (the turbo 8-step schedule comes from
-    # SHIFT_TIMESTEPS[1.0], not [3.0]).
+    # Match `acestep/inference.py` GenerationParams defaults: steps=8, shift=1.0 for
+    # every variant (turbo included). guidance_scale=1.0 for turbo (guidance
+    # distilled in), 7.0 for base/SFT (uses APG with the learned null_condition_emb).
+    steps = args.steps if args.steps is not None else 8
     shift = args.shift if args.shift is not None else 1.0
     guidance = args.guidance_scale if args.guidance_scale is not None else (
         1.0 if is_turbo else 7.0
