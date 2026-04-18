@@ -411,8 +411,25 @@ def main():
         print("[parity] no default source audio found (cover/repaint will be skipped)")
 
     if args.matrix:
+        # Phase A: text2music for every variant (produces the source audio we'll
+        # feed into cover / repaint if none was supplied).
         for variant in VARIANTS:
-            for task in TASKS:
+            print(f"\n[parity] === {variant} / text2music ===")
+            run_one(args, variant, "text2music", example, src_audio, args.out)
+
+        # If the caller didn't hand us a source file, use the first variant's
+        # text2music official output as the shared cover/repaint input.
+        if src_audio is None:
+            fallback = os.path.join(args.out, f"{VARIANTS[0]}_text2music_official.wav")
+            if os.path.exists(fallback):
+                src_audio = fallback
+                print(f"\n[parity] cover/repaint source audio (fallback): {src_audio}")
+            else:
+                print(f"\n[parity] WARNING: no source audio found; cover/repaint will be skipped.")
+
+        # Phase B: cover + repaint with shared source audio.
+        for variant in VARIANTS:
+            for task in ("cover", "repaint"):
                 print(f"\n[parity] === {variant} / {task} ===")
                 run_one(args, variant, task, example, src_audio, args.out)
     else:
