@@ -59,6 +59,23 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
                 tokenizer.json
                 ...
     """
+    # Support `--checkpoint_dir <repo-id>` by snapshot-downloading it first. A
+    # local path that happens not to exist still raises the clearer FileNotFoundError
+    # below, so we only fall through to the Hub if the path is missing AND looks like
+    # a repo id (namespace/name).
+    if not os.path.exists(checkpoint_dir) and "/" in checkpoint_dir and not checkpoint_dir.startswith((".", "~", "/")):
+        try:
+            from huggingface_hub import snapshot_download
+
+            print(f"Downloading `{checkpoint_dir}` from the Hugging Face Hub ...")
+            checkpoint_dir = snapshot_download(repo_id=checkpoint_dir)
+            print(f"  -> local snapshot at {checkpoint_dir}")
+        except ImportError as e:
+            raise ImportError(
+                "To use a Hugging Face Hub repo id for --checkpoint_dir, install "
+                "`huggingface_hub`."
+            ) from e
+
     # Resolve paths
     dit_dir = os.path.join(checkpoint_dir, dit_config)
     vae_dir = os.path.join(checkpoint_dir, "vae")

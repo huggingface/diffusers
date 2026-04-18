@@ -261,6 +261,74 @@ class AceStepPipeline(DiffusionPipeline):
         cfg = self.transformer.config
         return bool(getattr(cfg, "is_turbo", False)) or getattr(cfg, "model_version", None) == "turbo"
 
+    @property
+    def sample_rate(self) -> int:
+        """Audio sampling rate read from the VAE config (48000 for ACE-Step 1.5)."""
+        return int(self.vae.config.sampling_rate)
+
+    @property
+    def latents_per_second(self) -> float:
+        """Latent-space frame rate = VAE sample_rate / product(downsampling_ratios).
+
+        For ACE-Step 1.5 this is 48000 / 1920 = 25 fps.
+        """
+        downsample = math.prod(getattr(self.vae.config, "downsampling_ratios", (1920,)))
+        return float(self.sample_rate) / float(downsample)
+
+    @property
+    def do_classifier_free_guidance(self) -> bool:
+        """True iff APG guidance should run in the denoising loop. Kept as a
+        property so user-facing code and the pipeline internals agree on the
+        flag (reviewer ask on PR #13095).
+        """
+        gs = getattr(self, "_guidance_scale", 1.0)
+        return gs is not None and gs > 1.0
+
+    def check_inputs(
+        self,
+        prompt: Union[str, List[str]],
+        lyrics: Union[str, List[str]],
+        task_type: str,
+        num_inference_steps: int,
+        guidance_scale: float,
+        shift: float,
+        audio_cover_strength: float,
+        cfg_interval_start: float,
+        cfg_interval_end: float,
+        repainting_start: Optional[float],
+        repainting_end: Optional[float],
+    ) -> None:
+        """Validate user-facing arguments before we start allocating noise tensors.
+
+        Reviewer comment on PR #13095 — follows the Flux2 pattern.
+        """
+        if prompt is None:
+            raise ValueError("`prompt` must be provided (a string or a list of strings).")
+        if not isinstance(prompt, (str, list)):
+            raise TypeError(f"`prompt` must be str or list[str], got {type(prompt).__name__}")
+        if lyrics is not None and not isinstance(lyrics, (str, list)):
+            raise TypeError(f"`lyrics` must be str or list[str], got {type(lyrics).__name__}")
+        if task_type not in TASK_TYPES:
+            raise ValueError(f"`task_type` must be one of {TASK_TYPES}, got {task_type!r}.")
+        if num_inference_steps is None or num_inference_steps < 1:
+            raise ValueError(f"`num_inference_steps` must be >= 1, got {num_inference_steps!r}.")
+        if guidance_scale is not None and guidance_scale < 0:
+            raise ValueError(f"`guidance_scale` must be >= 0, got {guidance_scale!r}.")
+        if shift is not None and shift <= 0:
+            raise ValueError(f"`shift` must be > 0, got {shift!r}.")
+        if not 0.0 <= audio_cover_strength <= 1.0:
+            raise ValueError(f"`audio_cover_strength` must be in [0, 1], got {audio_cover_strength!r}.")
+        if not 0.0 <= cfg_interval_start <= 1.0 or not 0.0 <= cfg_interval_end <= 1.0:
+            raise ValueError("`cfg_interval_start` / `cfg_interval_end` must be in [0, 1].")
+        if cfg_interval_start > cfg_interval_end:
+            raise ValueError("`cfg_interval_start` must be <= `cfg_interval_end`.")
+        if task_type == "repaint":
+            if repainting_start is not None and repainting_end is not None and repainting_end > 0 \
+                    and repainting_start >= repainting_end:
+                raise ValueError(
+                    f"For repaint, need `repainting_start` < `repainting_end` (got {repainting_start} / {repainting_end})."
+                )
+
     def _variant_defaults(self) -> dict:
         """Per-variant sampling defaults matching the original `inference.py`.
 
@@ -531,8 +599,7 @@ class AceStepPipeline(DiffusionPipeline):
         Returns:
             Noise latents of shape `(batch_size, latent_length, acoustic_dim)`.
         """
-        # 25 Hz latent rate for ACE-Step
-        latent_length = int(audio_duration * 25)
+        latent_length = int(audio_duration * self.latents_per_second)
         acoustic_dim = self.transformer.config.audio_acoustic_hidden_dim
 
         if latents is not None:
@@ -623,6 +690,23 @@ class AceStepPipeline(DiffusionPipeline):
 
         audio = torch.clamp(audio, -1.0, 1.0)
         return audio
+
+    def encode_audio(
+        self,
+        audio: torch.Tensor,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> torch.Tensor:
+        """Public entry point for encoding a waveform into VAE latents in the layout
+        the DiT expects (`(B, T, D)` or `(T, D)`).
+
+        The input audio can be 1D/2D/3D; stereo is required. Use this instead of
+        calling the VAE directly if you want the tiled encode + layout transpose
+        that the pipeline applies internally (reviewer ask on PR #13095).
+        """
+        device = device if device is not None else self._execution_device
+        dtype = dtype if dtype is not None else self.transformer.dtype
+        return self._encode_audio_to_latents(audio, device=device, dtype=dtype)
 
     def _encode_audio_to_latents(self, audio: torch.Tensor, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
         """
@@ -935,10 +1019,10 @@ class AceStepPipeline(DiffusionPipeline):
         # and 0.0 outside. I confirmed this by dumping the chunk_masks tensor that
         # generate_audio actually receives (unique values = [True]).
         if task_type in ("repaint", "lego") and has_src_audio:
-            # Latent frame rate is 25 Hz, and 48 kHz / 1920 = 25 frames/s.
-            start_latent = int((repainting_start or 0.0) * SAMPLE_RATE / 1920)
+            lps = self.latents_per_second
+            start_latent = int((repainting_start or 0.0) * lps)
             if repainting_end is not None and repainting_end > 0:
-                end_latent = int(repainting_end * SAMPLE_RATE / 1920)
+                end_latent = int(repainting_end * lps)
             else:
                 end_latent = latent_length
 
@@ -974,8 +1058,17 @@ class AceStepPipeline(DiffusionPipeline):
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pt",
         return_dict: bool = True,
+        # Legacy (step_idx, timestep, latents) callback — kept for backwards
+        # compatibility with earlier revisions of this pipeline. Prefer
+        # `callback_on_step_end` for new code.
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        # Modern callback matching the rest of diffusers: called every step with
+        # `(pipe, step_idx, timestep, callback_kwargs)`. Return a dict to override
+        # named tensor inputs (e.g. `latents`). Set `pipe._interrupt = True` inside
+        # the callback to stop the loop early.
+        callback_on_step_end: Optional[Callable[..., dict]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ("latents",),
         instruction: Optional[str] = None,
         max_text_length: int = 256,
         max_lyric_length: int = 2048,
@@ -1096,10 +1189,8 @@ class AceStepPipeline(DiffusionPipeline):
         acoustic_dim = self.transformer.config.audio_acoustic_hidden_dim
 
         # Variant-aware defaults. The converter writes `is_turbo` / `model_version` into
-        # the transformer config. Turbo checkpoints have CFG distilled into the weights
-        # and ship with the 8-step `SHIFT_TIMESTEPS` schedule (shift=3.0); base/SFT
-        # checkpoints use a linear+shift schedule with CFG via the learned
-        # `null_condition_emb`.
+        # the transformer config. Turbo checkpoints have CFG distilled into the weights;
+        # base/SFT use APG via the learned `null_condition_emb`.
         variant_defaults = self._variant_defaults()
         if num_inference_steps is None:
             num_inference_steps = variant_defaults["num_inference_steps"]
@@ -1107,6 +1198,25 @@ class AceStepPipeline(DiffusionPipeline):
             shift = variant_defaults["shift"]
         if guidance_scale is None:
             guidance_scale = variant_defaults["guidance_scale"]
+
+        self.check_inputs(
+            prompt=prompt,
+            lyrics=lyrics,
+            task_type=task_type,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            shift=shift,
+            audio_cover_strength=audio_cover_strength,
+            cfg_interval_start=cfg_interval_start,
+            cfg_interval_end=cfg_interval_end,
+            repainting_start=repainting_start,
+            repainting_end=repainting_end,
+        )
+        # Stash a few args as instance state so `do_classifier_free_guidance` and the
+        # step-end callback can read them without the full arg bundle.
+        self._guidance_scale = guidance_scale
+        self._num_timesteps = num_inference_steps
+        self._interrupt = False
 
         # Auto-detect task type from audio_codes
         if task_type == "text2music" and audio_codes is not None:
@@ -1150,8 +1260,8 @@ class AceStepPipeline(DiffusionPipeline):
             max_lyric_length=max_lyric_length,
         )
 
-        # 2. Prepare source latents and latent length
-        latent_length = int(audio_duration * 25)
+        # 2. Prepare source latents and latent length (VAE-driven latent frame rate).
+        latent_length = int(audio_duration * self.latents_per_second)
 
         if has_src_audio:
             src_latents, src_latent_length = self._prepare_src_audio_and_latents(
@@ -1286,7 +1396,7 @@ class AceStepPipeline(DiffusionPipeline):
         # 7. Prepare noise latents
         latents = self.prepare_latents(
             batch_size=batch_size,
-            audio_duration=latent_length / 25.0,  # Use actual latent length
+            audio_duration=latent_length / self.latents_per_second,
             dtype=dtype,
             device=device,
             generator=generator,
@@ -1404,8 +1514,23 @@ class AceStepPipeline(DiffusionPipeline):
 
                 progress_bar.update()
 
+                # Legacy callback (kept for back-compat).
                 if callback is not None and step_idx % callback_steps == 0:
                     callback(step_idx, t_curr_tensor, xt)
+
+                # Modern callback_on_step_end: lets users inspect / override named
+                # tensor inputs (see `callback_on_step_end_tensor_inputs`).
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    local_vars = {"latents": xt}
+                    for k in callback_on_step_end_tensor_inputs:
+                        if k in local_vars:
+                            callback_kwargs[k] = local_vars[k]
+                    callback_outputs = callback_on_step_end(self, step_idx, current_timestep, callback_kwargs)
+                    if callback_outputs is not None:
+                        xt = callback_outputs.pop("latents", xt)
+                    if getattr(self, "_interrupt", False):
+                        break
 
         # 11. Post-processing: decode latents to audio
         if output_type == "latent":
