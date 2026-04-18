@@ -21,6 +21,17 @@ else:
         "nearest": PIL.Image.NEAREST,
     }
 
+# Maps VaeImageProcessor `resample` config strings to torch.nn.functional.interpolate modes.
+# "lanczos" has no native torch equivalent; bilinear+antialias is the closest high-quality substitute.
+# The bool indicates whether antialias=True should be passed (not supported for "nearest").
+TORCH_INTERPOLATION = {
+    "linear": ("bilinear", True),
+    "bilinear": ("bilinear", True),
+    "bicubic": ("bicubic", True),
+    "lanczos": ("bilinear", True),
+    "nearest": ("nearest", False),
+}
+
 
 def pt_to_pil(images):
     """
