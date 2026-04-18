@@ -510,6 +510,17 @@ class AceStepConditionEncoder(ModelMixin, ConfigMixin):
         # `cfg_ratio=0.15` in the original model. Broadcast along the sequence dim when used.
         self.null_condition_emb = nn.Parameter(torch.randn(1, 1, hidden_size))
 
+        # Silence latent — VAE-encoded audio-silence, stored as (1, T_long, audio_acoustic_hidden_dim).
+        # When no reference audio is provided, the pipeline slices `silence_latent[:, :timbre_fix_frame, :]`
+        # and feeds that to the timbre encoder. Passing literal zeros puts the timbre encoder
+        # OOD and produces drone-like audio (observed on all text2music outputs before this fix).
+        # The buffer is a non-persistent placeholder; the converter overwrites it via state_dict.
+        self.register_buffer(
+            "silence_latent",
+            torch.zeros(1, 15000, 64),
+            persistent=True,
+        )
+
     def forward(
         self,
         text_hidden_states: torch.FloatTensor,

@@ -268,11 +268,31 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
             shutil.copy2(src, os.path.join(tokenizer_output_dir, fname))
     print(f"Copied tokenizer -> {tokenizer_output_dir}")
 
-    # Copy silence_latent.pt if it exists
+    # Bake silence_latent into the condition_encoder checkpoint.
+    #
+    # The original loader in
+    # acestep/core/generation/handler/init_service_loader.py:214 does
+    #     self.silence_latent = torch.load(...).transpose(1, 2)
+    # converting the stored [B, C=64, T=15000] tensor to [B, T, C=64] before any
+    # downstream slicing. Do the same transpose here and register it as the
+    # `silence_latent` buffer on AceStepConditionEncoder — the pipeline slices
+    # `silence_latent[:, :timbre_fix_frame, :]` to build the "silence" input to the
+    # timbre encoder when no reference audio is supplied. Passing literal zeros
+    # produces drone-like audio.
     silence_latent_src = os.path.join(dit_dir, "silence_latent.pt")
     if os.path.exists(silence_latent_src):
+        silence_raw = torch.load(silence_latent_src, weights_only=True, map_location="cpu")
+        silence_latent = silence_raw.transpose(1, 2).to(target_dtype).contiguous()
+        print(f"  silence_latent raw shape: {tuple(silence_raw.shape)} -> baked shape: {tuple(silence_latent.shape)}")
+        # Re-save the condition_encoder file with silence_latent merged in.
+        condition_encoder_sd["silence_latent"] = silence_latent
+        save_file(
+            condition_encoder_sd,
+            os.path.join(condition_encoder_dir, "diffusion_pytorch_model.safetensors"),
+        )
+        # Keep a copy at the pipeline root for debugging; not required by from_pretrained.
         shutil.copy2(silence_latent_src, os.path.join(output_dir, "silence_latent.pt"))
-        print(f"Copied silence_latent.pt -> {output_dir}")
+        print(f"Baked silence_latent into condition_encoder + kept raw copy at {output_dir}/silence_latent.pt")
 
     # Report other keys that were not saved to transformer or condition_encoder
     if other_sd:

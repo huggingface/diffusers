@@ -1152,15 +1152,37 @@ class AceStepPipeline(DiffusionPipeline):
                 reference_audio=reference_audio, batch_size=batch_size, device=device, dtype=dtype
             )
         else:
-            # Use silence reference
+            # No reference audio: use the learned silence_latent that ships with the
+            # condition encoder. Matches
+            # acestep/core/generation/handler/conditioning_embed.py:47
+            #     if all(refer_audio == 0): refer_audio_latent = silence_latent[:, :750, :]
+            # The silence_latent tensor is stored as (1, T_long=15000, C=64) so the slice
+            # gives (1, timbre_fix_frame=750, timbre_hidden_dim=64). Literal zeros are
+            # OOD for the timbre encoder and produce drone-like output.
             timbre_fix_frame = 750
-            refer_audio_acoustic = torch.zeros(
-                batch_size,
-                timbre_fix_frame,
-                self.condition_encoder.config.timbre_hidden_dim,
-                device=device,
-                dtype=dtype,
-            )
+            silence_latent = getattr(self.condition_encoder, "silence_latent", None)
+            if silence_latent is not None and silence_latent.abs().sum() > 0:
+                refer_audio_acoustic = (
+                    silence_latent[:, :timbre_fix_frame, :]
+                    .to(device=device, dtype=dtype)
+                    .expand(batch_size, -1, -1)
+                    .contiguous()
+                )
+            else:
+                # Pre-fix fallback for legacy converted pipelines that don't carry
+                # `silence_latent`. Warn loudly — this path produces drone audio.
+                logger.warning(
+                    "[AceStepPipeline] `condition_encoder.silence_latent` missing or all-zero; "
+                    "falling back to literal zeros. Re-run the converter to get a usable "
+                    "silence reference."
+                )
+                refer_audio_acoustic = torch.zeros(
+                    batch_size,
+                    timbre_fix_frame,
+                    self.condition_encoder.config.timbre_hidden_dim,
+                    device=device,
+                    dtype=dtype,
+                )
             refer_audio_order_mask = torch.arange(batch_size, device=device, dtype=torch.long)
 
         # 5. Encode conditions

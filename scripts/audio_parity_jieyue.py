@@ -170,8 +170,16 @@ def run_original_leg(args, variant_ckpt_name, example, task, src_audio_tensor):
     model.config._attn_implementation = args.attn
     model.eval().to(device)
 
-    silence_latent = torch.load(os.path.join(checkpoint, "silence_latent.pt"),
-                                map_location=device).to(dtype)
+    # Match the handler's loader
+    # (acestep/core/generation/handler/init_service_loader.py:214):
+    # transpose from [B, C, T] to [B, T, C] so the `[:, :750, :]` slices downstream
+    # produce the expected [B, 750, 64] timbre-encoder input.
+    silence_latent = (
+        torch.load(os.path.join(checkpoint, "silence_latent.pt"),
+                   map_location=device, weights_only=True)
+        .transpose(1, 2)
+        .to(device=device, dtype=dtype)
+    )
 
     from transformers import AutoModel, AutoTokenizer
     te_dir = os.path.join(args.checkpoint_dir, "Qwen3-Embedding-0.6B")
@@ -220,8 +228,9 @@ def run_original_leg(args, variant_ckpt_name, example, task, src_audio_tensor):
         os.path.join(args.checkpoint_dir, "vae"), torch_dtype=dtype
     ).eval().to(device)
 
-    refer = torch.zeros(1, model.config.timbre_fix_frame,
-                        model.config.timbre_hidden_dim, device=device, dtype=dtype)
+    # Use the learned silence_latent instead of zeros; zeros are OOD for the timbre
+    # encoder and produce drone-like audio (observed on all pre-fix outputs).
+    refer = silence_latent[:, : model.config.timbre_fix_frame, :].to(device=device, dtype=dtype).contiguous()
     refer_order = torch.tensor([0], device=device, dtype=torch.long)
     is_covers = torch.tensor([0], device=device, dtype=torch.long)
 
