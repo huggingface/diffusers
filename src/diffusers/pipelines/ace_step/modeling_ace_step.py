@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Pipeline-specific models for ACE-Step 1.5: ConditionEncoder, LyricEncoder, TimbreEncoder, AudioTokenizer, and
-AudioTokenDetokenizer.
+"""Pipeline-specific models for ACE-Step 1.5.
 
-These models are used within the AceStepPipeline to encode conditioning inputs (text, lyrics, timbre) for
-cross-attention in the DiT model.
+Holds the condition encoder (lyric + timbre + text packing), the encoder layer
+(``AceStepEncoderLayer`` — not used by the DiT itself, hence kept here), and the
+``_pack_sequences`` helper. The DiT uses the RoPE helper, ``AceStepAttention``,
+and ``_create_4d_mask`` from ``diffusers/models/transformers/ace_step_transformer.py``.
 """
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -28,12 +28,12 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
+from ...models.normalization import RMSNorm
 from ...models.transformers.ace_step_transformer import (
-    AceStepEncoderLayer,
-    AceStepRMSNorm,
-    AceStepRotaryEmbedding,
+    AceStepAttention,
+    AceStepMLP,
+    _ace_step_rotary_freqs,
     _create_4d_mask,
-    _pack_sequences,
 )
 from ...utils import logging
 
@@ -41,45 +41,132 @@ from ...utils import logging
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# --------------------------------------------------------------------------- #
+#                        helpers used only by condition encoder                #
+# --------------------------------------------------------------------------- #
+
+
+def _pack_sequences(
+    hidden1: torch.Tensor, hidden2: torch.Tensor, mask1: torch.Tensor, mask2: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Pack two masked sequences into one with all valid tokens first.
+
+    Concatenates ``hidden1`` + ``hidden2`` along the sequence dim, then stably sorts
+    each batch so mask=1 tokens come before mask=0 tokens. Returns the packed
+    hidden states plus a fresh contiguous mask.
+    """
+    hidden_cat = torch.cat([hidden1, hidden2], dim=1)
+    mask_cat = torch.cat([mask1, mask2], dim=1)
+
+    B, L, D = hidden_cat.shape
+    sort_idx = mask_cat.argsort(dim=1, descending=True, stable=True)
+    hidden_left = torch.gather(hidden_cat, 1, sort_idx.unsqueeze(-1).expand(B, L, D))
+    lengths = mask_cat.sum(dim=1)
+    new_mask = torch.arange(L, dtype=torch.long, device=hidden_cat.device).unsqueeze(0) < lengths.unsqueeze(1)
+    return hidden_left, new_mask
+
+
+class AceStepEncoderLayer(nn.Module):
+    """Pre-LN transformer block used by the lyric and timbre encoders.
+
+    Kept inside the pipeline package because the main DiT does not consume it
+    (reviewer comment on PR #13095).
+    """
+
+    def __init__(
+        self,
+        hidden_size: int,
+        num_attention_heads: int,
+        num_key_value_heads: int,
+        head_dim: int,
+        intermediate_size: int,
+        attention_bias: bool = False,
+        attention_dropout: float = 0.0,
+        rms_norm_eps: float = 1e-6,
+        sliding_window: Optional[int] = None,
+    ):
+        super().__init__()
+        self.self_attn = AceStepAttention(
+            hidden_size=hidden_size,
+            num_attention_heads=num_attention_heads,
+            num_key_value_heads=num_key_value_heads,
+            head_dim=head_dim,
+            attention_bias=attention_bias,
+            attention_dropout=attention_dropout,
+            is_cross_attention=False,
+            sliding_window=sliding_window,
+            rms_norm_eps=rms_norm_eps,
+        )
+        self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
+        self.post_attention_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
+        self.mlp = AceStepMLP(hidden_size, intermediate_size)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        residual = hidden_states
+        hidden_states = self.input_layernorm(hidden_states)
+        hidden_states = self.self_attn(
+            hidden_states=hidden_states,
+            position_embeddings=position_embeddings,
+            attention_mask=attention_mask,
+        )
+        hidden_states = residual + hidden_states
+
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
+        return hidden_states
+
+
+def _run_encoder_layers(
+    layers: nn.ModuleList,
+    layer_types: list,
+    hidden_states: torch.Tensor,
+    position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+    full_attn_mask: torch.Tensor,
+    sliding_attn_mask: Optional[torch.Tensor],
+    gradient_checkpointing: bool,
+    gradient_checkpointing_func,
+) -> torch.Tensor:
+    """Shared encoder-layer loop used by the lyric + timbre encoders.
+
+    Picks the per-layer mask based on ``layer_types`` and optionally wraps each
+    call in ``gradient_checkpointing_func`` (matches the original ACE-Step
+    encoders that enable gradient checkpointing during training — reviewer
+    comment on PR #13095).
+    """
+    for i, layer_module in enumerate(layers):
+        mask = sliding_attn_mask if layer_types[i] == "sliding_attention" and sliding_attn_mask is not None else full_attn_mask
+        if gradient_checkpointing and torch.is_grad_enabled():
+            hidden_states = gradient_checkpointing_func(
+                layer_module, hidden_states, position_embeddings, mask
+            )
+        else:
+            hidden_states = layer_module(
+                hidden_states=hidden_states,
+                position_embeddings=position_embeddings,
+                attention_mask=mask,
+            )
+    return hidden_states
+
+
+# --------------------------------------------------------------------------- #
+#                                  encoders                                    #
+# --------------------------------------------------------------------------- #
+
+
 class AceStepLyricEncoder(ModelMixin, ConfigMixin):
-    """
-    Encoder for processing lyric text embeddings in the ACE-Step pipeline.
+    """Lyric encoder: projects Qwen3 lyric embeddings and runs a small transformer.
 
-    Encodes lyric text hidden states using a transformer encoder architecture with bidirectional attention. Projects
-    text embeddings to model hidden size and processes them through multiple encoder layers.
-
-    Parameters:
-        hidden_size (`int`, defaults to 2048):
-            Dimension of the hidden representations.
-        intermediate_size (`int`, defaults to 6144):
-            Dimension of the MLP representations.
-        text_hidden_dim (`int`, defaults to 1024):
-            Dimension of the input text embeddings from the text encoder.
-        num_lyric_encoder_hidden_layers (`int`, defaults to 8):
-            Number of transformer encoder layers.
-        num_attention_heads (`int`, defaults to 16):
-            Number of attention heads.
-        num_key_value_heads (`int`, defaults to 8):
-            Number of key/value heads for grouped query attention.
-        head_dim (`int`, defaults to 128):
-            Dimension of each attention head.
-        max_position_embeddings (`int`, defaults to 32768):
-            Maximum sequence length for rotary embeddings.
-        rope_theta (`float`, defaults to 1000000.0):
-            Base period of the RoPE embeddings.
-        attention_bias (`bool`, defaults to `False`):
-            Whether to use bias in attention layers.
-        attention_dropout (`float`, defaults to 0.0):
-            Dropout probability for attention weights.
-        rms_norm_eps (`float`, defaults to 1e-6):
-            Epsilon for RMS normalization.
-        use_sliding_window (`bool`, defaults to `True`):
-            Whether to use sliding window attention.
-        sliding_window (`int`, defaults to 128):
-            Sliding window size.
-        layer_types (`list`, *optional*):
-            Attention pattern for each layer.
+    Output feeds the DiT cross-attention (after packing with text + timbre).
     """
+
+    _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(
@@ -91,12 +178,10 @@ class AceStepLyricEncoder(ModelMixin, ConfigMixin):
         num_attention_heads: int = 16,
         num_key_value_heads: int = 8,
         head_dim: int = 128,
-        max_position_embeddings: int = 32768,
         rope_theta: float = 1000000.0,
         attention_bias: bool = False,
         attention_dropout: float = 0.0,
         rms_norm_eps: float = 1e-6,
-        use_sliding_window: bool = True,
         sliding_window: int = 128,
         layer_types: list = None,
     ):
@@ -109,10 +194,10 @@ class AceStepLyricEncoder(ModelMixin, ConfigMixin):
             ]
 
         self.embed_tokens = nn.Linear(text_hidden_dim, hidden_size)
-        self.norm = AceStepRMSNorm(hidden_size, eps=rms_norm_eps)
-        self.rotary_emb = AceStepRotaryEmbedding(
-            dim=head_dim, max_position_embeddings=max_position_embeddings, base=rope_theta
-        )
+        self.norm = RMSNorm(hidden_size, eps=rms_norm_eps)
+        self.head_dim = head_dim
+        self.rope_theta = rope_theta
+        self.sliding_window = sliding_window
 
         self.layers = nn.ModuleList(
             [
@@ -132,106 +217,54 @@ class AceStepLyricEncoder(ModelMixin, ConfigMixin):
         )
 
         self._layer_types = layer_types
-        self._use_sliding_window = use_sliding_window
-        self._sliding_window = sliding_window
+        self.gradient_checkpointing = False
 
     def forward(
         self,
         inputs_embeds: torch.FloatTensor,
         attention_mask: torch.Tensor,
     ) -> torch.Tensor:
-        """
-        Args:
-            inputs_embeds (`torch.FloatTensor` of shape `(batch_size, seq_len, text_hidden_dim)`):
-                Lyric text embeddings from the text encoder.
-            attention_mask (`torch.Tensor` of shape `(batch_size, seq_len)`):
-                Attention mask for padding (1 for valid, 0 for padding).
-
-        Returns:
-            `torch.Tensor`: Encoded lyric hidden states of shape `(batch_size, seq_len, hidden_size)`.
-        """
         inputs_embeds = self.embed_tokens(inputs_embeds)
 
         seq_len = inputs_embeds.shape[1]
         dtype = inputs_embeds.dtype
         device = inputs_embeds.device
 
-        position_ids = torch.arange(seq_len, device=device).unsqueeze(0)
-        position_embeddings = self.rotary_emb(inputs_embeds, position_ids)
+        cos, sin = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
+        position_embeddings = (cos, sin)
 
-        # Build attention masks
         full_attn_mask = _create_4d_mask(
             seq_len=seq_len, dtype=dtype, device=device, attention_mask=attention_mask, is_causal=False
         )
-        sliding_attn_mask = None
-        if self._use_sliding_window:
-            sliding_attn_mask = _create_4d_mask(
-                seq_len=seq_len,
-                dtype=dtype,
-                device=device,
-                attention_mask=attention_mask,
-                sliding_window=self._sliding_window,
-                is_sliding_window=True,
-                is_causal=False,
-            )
+        sliding_attn_mask = _create_4d_mask(
+            seq_len=seq_len,
+            dtype=dtype,
+            device=device,
+            attention_mask=attention_mask,
+            sliding_window=self.sliding_window,
+            is_sliding_window=True,
+            is_causal=False,
+        )
 
-        hidden_states = inputs_embeds
-        for i, layer_module in enumerate(self.layers):
-            layer_type = self._layer_types[i]
-            if layer_type == "sliding_attention" and sliding_attn_mask is not None:
-                mask = sliding_attn_mask
-            else:
-                mask = full_attn_mask
-
-            hidden_states = layer_module(
-                hidden_states=hidden_states,
-                position_embeddings=position_embeddings,
-                attention_mask=mask,
-            )
-
-        hidden_states = self.norm(hidden_states)
-        return hidden_states
+        hidden_states = _run_encoder_layers(
+            self.layers,
+            self._layer_types,
+            inputs_embeds,
+            position_embeddings,
+            full_attn_mask,
+            sliding_attn_mask,
+            self.gradient_checkpointing,
+            self._gradient_checkpointing_func if hasattr(self, "_gradient_checkpointing_func") else None,
+        )
+        return self.norm(hidden_states)
 
 
 class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
+    """Timbre encoder: consumes VAE-encoded reference-audio latents and returns a
+    pooled per-batch timbre embedding (plus a presence mask).
     """
-    Encoder for extracting timbre embeddings from reference audio in the ACE-Step pipeline.
 
-    Processes packed reference audio acoustic features to extract timbre representations. Outputs are unpacked back to
-    batch format for use in conditioning.
-
-    Parameters:
-        hidden_size (`int`, defaults to 2048):
-            Dimension of the hidden representations.
-        intermediate_size (`int`, defaults to 6144):
-            Dimension of the MLP representations.
-        timbre_hidden_dim (`int`, defaults to 64):
-            Dimension of the input acoustic features.
-        num_timbre_encoder_hidden_layers (`int`, defaults to 4):
-            Number of transformer encoder layers.
-        num_attention_heads (`int`, defaults to 16):
-            Number of attention heads.
-        num_key_value_heads (`int`, defaults to 8):
-            Number of key/value heads.
-        head_dim (`int`, defaults to 128):
-            Dimension of each attention head.
-        max_position_embeddings (`int`, defaults to 32768):
-            Maximum sequence length for rotary embeddings.
-        rope_theta (`float`, defaults to 1000000.0):
-            Base period of the RoPE embeddings.
-        attention_bias (`bool`, defaults to `False`):
-            Whether to use bias in attention layers.
-        attention_dropout (`float`, defaults to 0.0):
-            Dropout probability for attention weights.
-        rms_norm_eps (`float`, defaults to 1e-6):
-            Epsilon for RMS normalization.
-        use_sliding_window (`bool`, defaults to `True`):
-            Whether to use sliding window attention.
-        sliding_window (`int`, defaults to 128):
-            Sliding window size.
-        layer_types (`list`, *optional*):
-            Attention pattern for each layer.
-    """
+    _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(
@@ -243,12 +276,10 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
         num_attention_heads: int = 16,
         num_key_value_heads: int = 8,
         head_dim: int = 128,
-        max_position_embeddings: int = 32768,
         rope_theta: float = 1000000.0,
         attention_bias: bool = False,
         attention_dropout: float = 0.0,
         rms_norm_eps: float = 1e-6,
-        use_sliding_window: bool = True,
         sliding_window: int = 128,
         layer_types: list = None,
     ):
@@ -261,11 +292,11 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
             ]
 
         self.embed_tokens = nn.Linear(timbre_hidden_dim, hidden_size)
-        self.norm = AceStepRMSNorm(hidden_size, eps=rms_norm_eps)
-        self.rotary_emb = AceStepRotaryEmbedding(
-            dim=head_dim, max_position_embeddings=max_position_embeddings, base=rope_theta
-        )
+        self.norm = RMSNorm(hidden_size, eps=rms_norm_eps)
         self.special_token = nn.Parameter(torch.randn(1, 1, hidden_size))
+        self.head_dim = head_dim
+        self.rope_theta = rope_theta
+        self.sliding_window = sliding_window
 
         self.layers = nn.ModuleList(
             [
@@ -285,27 +316,12 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
         )
 
         self._layer_types = layer_types
-        self._use_sliding_window = use_sliding_window
-        self._sliding_window = sliding_window
+        self.gradient_checkpointing = False
 
     @staticmethod
     def unpack_timbre_embeddings(
         timbre_embs_packed: torch.Tensor, refer_audio_order_mask: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Unpack packed timbre embeddings into batch format.
-
-        Args:
-            timbre_embs_packed (`torch.Tensor` of shape `(N, d)`):
-                Packed timbre embeddings.
-            refer_audio_order_mask (`torch.Tensor` of shape `(N,)`):
-                Order mask indicating batch assignment.
-
-        Returns:
-            Tuple of `(unpacked_embeddings, mask)`:
-            - `unpacked_embeddings` of shape `(B, max_count, d)`
-            - `mask` of shape `(B, max_count)`
-        """
         N, d = timbre_embs_packed.shape
         device = timbre_embs_packed.device
         dtype = timbre_embs_packed.dtype
@@ -333,7 +349,6 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
 
         mask_flat = (one_hot.sum(dim=0) > 0).long()
         new_mask = mask_flat.reshape(B, max_count)
-
         return timbre_embs_unpack, new_mask
 
     def forward(
@@ -341,107 +356,59 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
         refer_audio_acoustic_hidden_states_packed: torch.FloatTensor,
         refer_audio_order_mask: torch.LongTensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Args:
-            refer_audio_acoustic_hidden_states_packed (`torch.FloatTensor` of shape `(N, T, timbre_hidden_dim)`):
-                Packed reference audio acoustic features.
-            refer_audio_order_mask (`torch.LongTensor` of shape `(N,)`):
-                Order mask indicating which batch element each packed sequence belongs to.
-
-        Returns:
-            Tuple of `(timbre_embeddings, timbre_mask)`:
-            - `timbre_embeddings` of shape `(B, max_refs, hidden_size)`
-            - `timbre_mask` of shape `(B, max_refs)`
-        """
         inputs_embeds = self.embed_tokens(refer_audio_acoustic_hidden_states_packed)
 
         seq_len = inputs_embeds.shape[1]
         dtype = inputs_embeds.dtype
         device = inputs_embeds.device
 
-        position_ids = torch.arange(seq_len, device=device).unsqueeze(0)
-        position_embeddings = self.rotary_emb(inputs_embeds, position_ids)
+        cos, sin = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
+        position_embeddings = (cos, sin)
 
-        # Build attention masks
         full_attn_mask = _create_4d_mask(
             seq_len=seq_len, dtype=dtype, device=device, attention_mask=None, is_causal=False
         )
-        sliding_attn_mask = None
-        if self._use_sliding_window:
-            sliding_attn_mask = _create_4d_mask(
-                seq_len=seq_len,
-                dtype=dtype,
-                device=device,
-                attention_mask=None,
-                sliding_window=self._sliding_window,
-                is_sliding_window=True,
-                is_causal=False,
-            )
+        sliding_attn_mask = _create_4d_mask(
+            seq_len=seq_len,
+            dtype=dtype,
+            device=device,
+            attention_mask=None,
+            sliding_window=self.sliding_window,
+            is_sliding_window=True,
+            is_causal=False,
+        )
 
-        hidden_states = inputs_embeds
-        for i, layer_module in enumerate(self.layers):
-            layer_type = self._layer_types[i]
-            if layer_type == "sliding_attention" and sliding_attn_mask is not None:
-                mask = sliding_attn_mask
-            else:
-                mask = full_attn_mask
-
-            hidden_states = layer_module(
-                hidden_states=hidden_states,
-                position_embeddings=position_embeddings,
-                attention_mask=mask,
-            )
+        hidden_states = _run_encoder_layers(
+            self.layers,
+            self._layer_types,
+            inputs_embeds,
+            position_embeddings,
+            full_attn_mask,
+            sliding_attn_mask,
+            self.gradient_checkpointing,
+            self._gradient_checkpointing_func if hasattr(self, "_gradient_checkpointing_func") else None,
+        )
 
         hidden_states = self.norm(hidden_states)
-        # Extract first token (CLS-like) as timbre embedding
+        # CLS-like pooling: first-token embedding per packed sequence.
         hidden_states = hidden_states[:, 0, :]
-        timbre_embs_unpack, timbre_embs_mask = self.unpack_timbre_embeddings(hidden_states, refer_audio_order_mask)
+        timbre_embs_unpack, timbre_embs_mask = self.unpack_timbre_embeddings(
+            hidden_states, refer_audio_order_mask
+        )
         return timbre_embs_unpack, timbre_embs_mask
 
 
+# --------------------------------------------------------------------------- #
+#                               condition encoder                              #
+# --------------------------------------------------------------------------- #
+
+
 class AceStepConditionEncoder(ModelMixin, ConfigMixin):
+    """Fuses text + lyric + timbre conditioning into the packed sequence used by
+    the DiT's cross-attention.
     """
-    Condition encoder for the ACE-Step pipeline.
 
-    Encodes multiple conditioning inputs (text, lyrics, timbre) and packs them into a single sequence for
-    cross-attention in the DiT model. This model handles projection, encoding, and sequence packing.
-
-    Parameters:
-        hidden_size (`int`, defaults to 2048):
-            Dimension of the hidden representations.
-        intermediate_size (`int`, defaults to 6144):
-            Dimension of the MLP representations.
-        text_hidden_dim (`int`, defaults to 1024):
-            Dimension of the input text embeddings.
-        timbre_hidden_dim (`int`, defaults to 64):
-            Dimension of the input acoustic features.
-        num_lyric_encoder_hidden_layers (`int`, defaults to 8):
-            Number of lyric encoder layers.
-        num_timbre_encoder_hidden_layers (`int`, defaults to 4):
-            Number of timbre encoder layers.
-        num_attention_heads (`int`, defaults to 16):
-            Number of attention heads.
-        num_key_value_heads (`int`, defaults to 8):
-            Number of key/value heads.
-        head_dim (`int`, defaults to 128):
-            Dimension of each attention head.
-        max_position_embeddings (`int`, defaults to 32768):
-            Maximum sequence length for rotary embeddings.
-        rope_theta (`float`, defaults to 1000000.0):
-            Base period of the RoPE embeddings.
-        attention_bias (`bool`, defaults to `False`):
-            Whether to use bias in attention layers.
-        attention_dropout (`float`, defaults to 0.0):
-            Dropout probability for attention weights.
-        rms_norm_eps (`float`, defaults to 1e-6):
-            Epsilon for RMS normalization.
-        use_sliding_window (`bool`, defaults to `True`):
-            Whether to use sliding window attention.
-        sliding_window (`int`, defaults to 128):
-            Sliding window size.
-        layer_types (`list`, *optional*):
-            Attention pattern for each layer.
-    """
+    _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(
@@ -455,21 +422,17 @@ class AceStepConditionEncoder(ModelMixin, ConfigMixin):
         num_attention_heads: int = 16,
         num_key_value_heads: int = 8,
         head_dim: int = 128,
-        max_position_embeddings: int = 32768,
         rope_theta: float = 1000000.0,
         attention_bias: bool = False,
         attention_dropout: float = 0.0,
         rms_norm_eps: float = 1e-6,
-        use_sliding_window: bool = True,
         sliding_window: int = 128,
         layer_types: list = None,
     ):
         super().__init__()
 
-        # Text projector
         self.text_projector = nn.Linear(text_hidden_dim, hidden_size, bias=False)
 
-        # Lyric encoder
         self.lyric_encoder = AceStepLyricEncoder(
             hidden_size=hidden_size,
             intermediate_size=intermediate_size,
@@ -478,17 +441,14 @@ class AceStepConditionEncoder(ModelMixin, ConfigMixin):
             num_attention_heads=num_attention_heads,
             num_key_value_heads=num_key_value_heads,
             head_dim=head_dim,
-            max_position_embeddings=max_position_embeddings,
             rope_theta=rope_theta,
             attention_bias=attention_bias,
             attention_dropout=attention_dropout,
             rms_norm_eps=rms_norm_eps,
-            use_sliding_window=use_sliding_window,
             sliding_window=sliding_window,
             layer_types=layer_types,
         )
 
-        # Timbre encoder
         self.timbre_encoder = AceStepTimbreEncoder(
             hidden_size=hidden_size,
             intermediate_size=intermediate_size,
@@ -497,12 +457,10 @@ class AceStepConditionEncoder(ModelMixin, ConfigMixin):
             num_attention_heads=num_attention_heads,
             num_key_value_heads=num_key_value_heads,
             head_dim=head_dim,
-            max_position_embeddings=max_position_embeddings,
             rope_theta=rope_theta,
             attention_bias=attention_bias,
             attention_dropout=attention_dropout,
             rms_norm_eps=rms_norm_eps,
-            use_sliding_window=use_sliding_window,
             sliding_window=sliding_window,
         )
 
@@ -530,43 +488,16 @@ class AceStepConditionEncoder(ModelMixin, ConfigMixin):
         refer_audio_acoustic_hidden_states_packed: torch.FloatTensor,
         refer_audio_order_mask: torch.LongTensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Encode text, lyrics, and timbre into a single packed conditioning sequence.
-
-        Args:
-            text_hidden_states (`torch.FloatTensor` of shape `(batch_size, text_seq_len, text_hidden_dim)`):
-                Text embeddings from the text encoder.
-            text_attention_mask (`torch.Tensor` of shape `(batch_size, text_seq_len)`):
-                Attention mask for text.
-            lyric_hidden_states (`torch.FloatTensor` of shape `(batch_size, lyric_seq_len, text_hidden_dim)`):
-                Lyric embeddings from the text encoder.
-            lyric_attention_mask (`torch.Tensor` of shape `(batch_size, lyric_seq_len)`):
-                Attention mask for lyrics.
-            refer_audio_acoustic_hidden_states_packed (`torch.FloatTensor` of shape `(N, T, timbre_hidden_dim)`):
-                Packed reference audio acoustic features.
-            refer_audio_order_mask (`torch.LongTensor` of shape `(N,)`):
-                Order mask for reference audio packing.
-
-        Returns:
-            Tuple of `(encoder_hidden_states, encoder_attention_mask)`:
-            - `encoder_hidden_states` of shape `(batch_size, total_seq_len, hidden_size)`
-            - `encoder_attention_mask` of shape `(batch_size, total_seq_len)`
-        """
-        # Project text
         text_hidden_states = self.text_projector(text_hidden_states)
 
-        # Encode lyrics
         lyric_hidden_states = self.lyric_encoder(
-            inputs_embeds=lyric_hidden_states,
-            attention_mask=lyric_attention_mask,
+            inputs_embeds=lyric_hidden_states, attention_mask=lyric_attention_mask
         )
 
-        # Encode timbre
         timbre_embs_unpack, timbre_embs_mask = self.timbre_encoder(
             refer_audio_acoustic_hidden_states_packed, refer_audio_order_mask
         )
 
-        # Pack sequences: lyrics + timbre, then + text
         encoder_hidden_states, encoder_attention_mask = _pack_sequences(
             lyric_hidden_states, timbre_embs_unpack, lyric_attention_mask, timbre_embs_mask
         )

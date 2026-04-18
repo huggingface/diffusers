@@ -131,8 +131,10 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
 
     # Transformer (DiT) config. `is_turbo` / `model_version` propagate the variant so
     # the pipeline can pick the right CFG / shift / step-count defaults at inference.
+    # Note: `max_position_embeddings` is dropped (RoPE computes freqs on-the-fly per call),
+    # and `use_sliding_window` is implied by the mix of `layer_types`.
     transformer_config = {
-        "_class_name": "AceStepDiTModel",
+        "_class_name": "AceStepTransformer1DModel",
         "_diffusers_version": "0.33.0.dev0",
         "hidden_size": original_config["hidden_size"],
         "intermediate_size": original_config["intermediate_size"],
@@ -143,12 +145,10 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         "in_channels": original_config["in_channels"],
         "audio_acoustic_hidden_dim": original_config["audio_acoustic_hidden_dim"],
         "patch_size": original_config["patch_size"],
-        "max_position_embeddings": original_config["max_position_embeddings"],
         "rope_theta": original_config["rope_theta"],
         "attention_bias": original_config["attention_bias"],
         "attention_dropout": original_config["attention_dropout"],
         "rms_norm_eps": original_config["rms_norm_eps"],
-        "use_sliding_window": original_config["use_sliding_window"],
         "sliding_window": original_config["sliding_window"],
         "layer_types": original_config["layer_types"],
         "is_turbo": bool(original_config.get("is_turbo", False)),
@@ -168,12 +168,10 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         "num_attention_heads": original_config["num_attention_heads"],
         "num_key_value_heads": original_config["num_key_value_heads"],
         "head_dim": original_config["head_dim"],
-        "max_position_embeddings": original_config["max_position_embeddings"],
         "rope_theta": original_config["rope_theta"],
         "attention_bias": original_config["attention_bias"],
         "attention_dropout": original_config["attention_dropout"],
         "rms_norm_eps": original_config["rms_norm_eps"],
-        "use_sliding_window": original_config["use_sliding_window"],
         "sliding_window": original_config["sliding_window"],
     }
 
@@ -202,7 +200,7 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         "condition_encoder": ["diffusers", "AceStepConditionEncoder"],
         "text_encoder": ["transformers", text_encoder_class_name],
         "tokenizer": ["transformers", tokenizer_class_name],
-        "transformer": ["diffusers", "AceStepDiTModel"],
+        "transformer": ["diffusers", "AceStepTransformer1DModel"],
         "vae": ["diffusers", "AutoencoderOobleck"],
     }
 
