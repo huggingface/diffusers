@@ -1421,17 +1421,21 @@ class AceStepPipeline(DiffusionPipeline):
         else:
             audio = self.vae.decode(audio_latents).sample
 
-        # Peak normalization — matches the original decode helper at
-        # acestep/core/generation/handler/generate_music_decode.py: divide only when
-        # the peak exceeds 1.0 so we scale the whole clip down to ±1 without touching
-        # outputs that are already within range. A `std * 5` proxy (earlier revision
-        # of this file) is not equivalent and silently over-attenuates some clips
-        # while letting others clip.
+        # Two-stage normalization matches the real pipeline:
+        # 1. `_decode_generate_music_pred_latents`: if peak > 1, divide by peak (hard
+        #    anti-clip).
+        # 2. `generate_music` -> `normalize_audio(target_db=-1.0)`: rescale to peak =
+        #    10 ** (-1.0 / 20) ≈ 0.891 so the output has consistent loudness.
+        # Without step 2, diffusers output was ~1.12x louder than the reference even
+        # when the latent content was matching.
         if audio.dtype != torch.float32:
             audio = audio.float()
         peak = audio.abs().amax(dim=[1, 2], keepdim=True)
         if torch.any(peak > 1.0):
             audio = audio / peak.clamp(min=1.0)
+        target_amp = 10.0 ** (-1.0 / 20.0)  # -1 dBFS
+        peak = audio.abs().amax(dim=[1, 2], keepdim=True).clamp(min=1e-6)
+        audio = audio * (target_amp / peak)
 
         if output_type == "np":
             audio = audio.cpu().float().numpy()
