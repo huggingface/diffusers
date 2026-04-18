@@ -269,9 +269,12 @@ class AceStepPipeline(DiffusionPipeline):
         CFG (via the learned `AceStepConditionEncoder.null_condition_emb`) with a linear
         timestep schedule at `shift=1.0`.
         """
+        # Defaults match `acestep/inference.py` (`GenerationParams`): shift=1.0 across
+        # ALL variants (turbo included — the turbo schedule comes from SHIFT_TIMESTEPS[
+        # 1.0], not SHIFT_TIMESTEPS[3.0]). Previously hardcoded 3.0 for turbo, which
+        # picked a different 8-step schedule than the real pipeline.
         if self.is_turbo:
-            return {"num_inference_steps": 8, "shift": 3.0, "guidance_scale": 1.0}
-        # Match `acestep/inference.py` defaults for base/SFT.
+            return {"num_inference_steps": 8, "shift": 1.0, "guidance_scale": 1.0}
         return {"num_inference_steps": 27, "shift": 1.0, "guidance_scale": 7.0}
 
     @staticmethod
@@ -832,6 +835,40 @@ class AceStepPipeline(DiffusionPipeline):
         refer_audio_order_mask = torch.arange(batch_size, device=device, dtype=torch.long)
         return refer_audio_acoustic, refer_audio_order_mask
 
+    def _silence_latent_tiled(
+        self,
+        latent_length: int,
+        device: torch.device,
+        dtype: torch.dtype,
+        batch_size: int = 1,
+    ) -> torch.Tensor:
+        """Produce a `(batch, latent_length, C)` silence tensor by slicing / tiling the
+        learned `silence_latent` buffer. Matches the handler's `silence_latent_tiled`
+        (conditioning_target.py) which is used as the default `src_latents` when no
+        target audio is given and as the "repaint fill" inside the repaint window.
+        Passing zeros here puts the DiT's `context_latents` input out of distribution
+        (flat/drone audio)."""
+        sl = getattr(self.condition_encoder, "silence_latent", None)
+        if sl is None or sl.abs().sum() == 0:
+            logger.warning(
+                "[AceStepPipeline] silence_latent missing/zero; falling back to zeros for "
+                "src_latents. Re-run the converter with the latest script."
+            )
+            return torch.zeros(
+                batch_size,
+                latent_length,
+                self.transformer.config.audio_acoustic_hidden_dim,
+                device=device, dtype=dtype,
+            )
+        sl = sl.to(device=device, dtype=dtype)  # (1, T_long, C)
+        T_long = sl.shape[1]
+        if T_long >= latent_length:
+            tiled = sl[:, :latent_length, :]
+        else:
+            repeats = (latent_length + T_long - 1) // T_long
+            tiled = sl.repeat(1, repeats, 1)[:, :latent_length, :]
+        return tiled.expand(batch_size, -1, -1).contiguous()
+
     def _prepare_src_audio_and_latents(
         self,
         src_audio: torch.Tensor,
@@ -889,14 +926,13 @@ class AceStepPipeline(DiffusionPipeline):
         Returns:
             `torch.Tensor`: Chunk mask of shape `[batch, latent_length, acoustic_dim]`.
         """
-        # The mask encodes what the DiT should do per latent frame. The original
-        # pipeline uses three sentinel values (see `acestep/inference.py` comment at
-        # `chunk_mask_mode`):
-        #   2.0 -> "auto": let the model decide (default for text2music / cover)
-        #   1.0 -> keep this frame from src_latents
-        #   0.0 -> explicitly repaint this frame
-        # The DiT was trained on these exact values; using any other magnitude puts
-        # context_latents out of distribution.
+        # The real handler (acestep/core/generation/handler/conditioning_masks.py:64-67)
+        # starts with a BOOL tensor: True inside the "generate" window, False outside.
+        # The chunk_mask_modes["auto"] override tries to set entries to `2.0`, but the
+        # underlying tensor is bool so `tensor[i] = 2.0` is cast to `True` — net effect:
+        # the value fed to the DiT after `.to(dtype)` is 1.0 everywhere a span is active
+        # and 0.0 outside. I confirmed this by dumping the chunk_masks tensor that
+        # generate_audio actually receives (unique values = [True]).
         if task_type in ("repaint", "lego") and has_src_audio:
             # Latent frame rate is 25 Hz, and 48 kHz / 1920 = 25 frames/s.
             start_latent = int((repainting_start or 0.0) * SAMPLE_RATE / 1920)
@@ -908,15 +944,14 @@ class AceStepPipeline(DiffusionPipeline):
             start_latent = max(0, min(start_latent, latent_length - 1))
             end_latent = max(start_latent + 1, min(end_latent, latent_length))
 
-            # Outside the repaint window: keep (1.0). Inside: repaint (0.0).
-            mask_1d = torch.ones(latent_length, device=device, dtype=dtype)
-            mask_1d[start_latent:end_latent] = 0.0
+            # 1.0 INSIDE the repaint window (generate), 0.0 outside (keep src).
+            # Matches conditioning_masks.py line 64: `mask[start:end] = True`.
+            mask_1d = torch.zeros(latent_length, device=device, dtype=dtype)
+            mask_1d[start_latent:end_latent] = 1.0
             chunk_mask = mask_1d.unsqueeze(0).unsqueeze(-1).expand(batch_size, -1, acoustic_dim).clone()
         else:
-            # text2music / cover / extract / complete / lego-without-src: model-decided mask (2.0)
-            chunk_mask = torch.full(
-                (batch_size, latent_length, acoustic_dim), 2.0, device=device, dtype=dtype
-            )
+            # Full generation span: ones everywhere (bool True cast to float).
+            chunk_mask = torch.ones(batch_size, latent_length, acoustic_dim, device=device, dtype=dtype)
 
         return chunk_mask
 
@@ -1123,7 +1158,10 @@ class AceStepPipeline(DiffusionPipeline):
             )
             latent_length = src_latent_length
         else:
-            src_latents = torch.zeros(batch_size, latent_length, acoustic_dim, device=device, dtype=dtype)
+            # text2music / cover without ref audio: fill with silence_latent tiled to
+            # `latent_length`. Matches handler's `silence_latent_tiled`. Zeros here
+            # produce drone-like output (observed on all pre-fix text2music runs).
+            src_latents = self._silence_latent_tiled(latent_length, device, dtype, batch_size)
 
         # 3. Handle audio_codes: decode to latents for cover task
         if audio_codes is not None:
@@ -1144,7 +1182,7 @@ class AceStepPipeline(DiffusionPipeline):
                     code_latent_length = len(code_ids_first) * 5
                     latent_length = code_latent_length
                     # Reset src_latents to silence for the new length
-                    src_latents = torch.zeros(batch_size, latent_length, acoustic_dim, device=device, dtype=dtype)
+                    src_latents = self._silence_latent_tiled(latent_length, device, dtype, batch_size)
 
         # 4. Prepare reference audio for timbre encoder
         if reference_audio is not None:
@@ -1234,11 +1272,13 @@ class AceStepPipeline(DiffusionPipeline):
             has_src_audio=has_src_audio,
         )
 
-        # For repaint: zero the src_latents inside the repaint window. The chunk_mask
-        # built above holds `0.0` inside the repaint window and `1.0` outside, so a
-        # straight element-wise multiply drops the to-be-repainted region.
+        # For repaint: substitute silence_latent INSIDE the repaint window, keep the
+        # original src_latents outside. Matches conditioning_masks.py: src_latent[
+        # start:end] = silence_latent_tiled[start:end]. chunk_mask is 1 inside the
+        # window, 0 outside.
         if task_type in ("repaint",) and has_src_audio:
-            src_latents = src_latents * chunk_mask
+            sl_tiled = self._silence_latent_tiled(latent_length, device=device, dtype=dtype, batch_size=batch_size)
+            src_latents = torch.where(chunk_mask > 0.5, sl_tiled, src_latents)
 
         context_latents = torch.cat([src_latents, chunk_mask], dim=-1)
 

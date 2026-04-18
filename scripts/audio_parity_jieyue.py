@@ -235,12 +235,20 @@ def run_original_leg(args, variant_ckpt_name, example, task, src_audio_tensor):
     is_covers = torch.tensor([0], device=device, dtype=torch.long)
 
     acoustic_dim = model.config.audio_acoustic_hidden_dim
-    chunk_mode_all_mask = 2.0  # model-decided ('auto') repaint default
+
+    def silence_tiled(length):
+        # silence_latent is (1, T_long, C)
+        T_long = silence_latent.shape[1]
+        if T_long >= length:
+            return silence_latent[:, :length, :].to(dtype=dtype).contiguous()
+        reps = (length + T_long - 1) // T_long
+        return silence_latent.repeat(1, reps, 1)[:, :length, :].to(dtype=dtype).contiguous()
 
     if task == "text2music":
         latent_len = int(duration * 25)
-        src_latents = torch.zeros(1, latent_len, acoustic_dim, device=device, dtype=dtype)
-        chunk_mask = torch.ones(1, latent_len, acoustic_dim, device=device, dtype=dtype) * chunk_mode_all_mask
+        # Handler uses silence_latent_tiled (not zeros) as src_latents for text2music.
+        src_latents = silence_tiled(latent_len)
+        chunk_mask = torch.ones(1, latent_len, acoustic_dim, device=device, dtype=dtype)
     elif task == "cover":
         assert src_audio_tensor is not None, "cover needs --src-audio"
         aud = src_audio_tensor.to(device=device, dtype=vae.dtype).unsqueeze(0)
@@ -250,7 +258,7 @@ def run_original_leg(args, variant_ckpt_name, example, task, src_audio_tensor):
         latent_len = ref_latents.shape[1]
         duration = latent_len / 25.0
         src_latents = ref_latents
-        chunk_mask = torch.ones(1, latent_len, acoustic_dim, device=device, dtype=dtype) * chunk_mode_all_mask
+        chunk_mask = torch.ones(1, latent_len, acoustic_dim, device=device, dtype=dtype)
         is_covers = torch.tensor([1], device=device, dtype=torch.long)
     elif task == "repaint":
         assert src_audio_tensor is not None, "repaint needs --src-audio"
@@ -262,9 +270,12 @@ def run_original_leg(args, variant_ckpt_name, example, task, src_audio_tensor):
         duration = latent_len / 25.0
         start_f = int(args.repainting_start * 25)
         end_f = int(min(args.repainting_end, duration) * 25)
-        chunk_mask = torch.ones(1, latent_len, acoustic_dim, device=device, dtype=dtype)
-        chunk_mask[:, start_f:end_f, :] = 0.0
-        src_latents = src_lat * chunk_mask
+        # chunk_mask: 1 inside repaint, 0 outside (matches handler bool True inside).
+        chunk_mask = torch.zeros(1, latent_len, acoustic_dim, device=device, dtype=dtype)
+        chunk_mask[:, start_f:end_f, :] = 1.0
+        # src_latents: silence inside repaint, original outside.
+        sl_tiled = silence_tiled(latent_len)
+        src_latents = torch.where(chunk_mask > 0.5, sl_tiled, src_lat)
     else:
         raise ValueError(task)
 
@@ -272,7 +283,10 @@ def run_original_leg(args, variant_ckpt_name, example, task, src_audio_tensor):
 
     is_turbo = args.variant == "turbo"
     steps = args.steps or (8 if is_turbo else 27)
-    shift = args.shift if args.shift is not None else (3.0 if is_turbo else 1.0)
+    # `shift=1.0` across all variants matches `acestep/inference.py`'s
+    # GenerationParams.shift default (the turbo 8-step schedule comes from
+    # SHIFT_TIMESTEPS[1.0], not [3.0]).
+    shift = args.shift if args.shift is not None else 1.0
     guidance = args.guidance_scale if args.guidance_scale is not None else (
         1.0 if is_turbo else 7.0
     )
