@@ -82,7 +82,7 @@ See [../../models.md](../../models.md) for the attention pattern, implementation
 
 ## Modular Pipeline Conversion
 
-See [modular-conversion.md](modular-conversion.md) for the full guide on converting standard pipelines to modular format, including block types, build order, guider abstraction, and conversion checklist.
+See [modular.md](../../modular.md) for the full guide on modular pipeline conventions, block types, build order, guider abstraction, gotchas, and conversion checklist.
 
 ---
 

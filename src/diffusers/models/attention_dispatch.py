@@ -423,7 +423,9 @@ def dispatch_attention_fn(
         **attention_kwargs,
         "_parallel_config": parallel_config,
     }
-    if is_torch_version(">=", "2.5.0"):
+    # Equivalent to `is_torch_version(">=", "2.5.0")` — use module-level constant to avoid
+    # Dynamo tracing into the lru_cache-wrapped `is_torch_version` during torch.compile.
+    if _CAN_USE_FLEX_ATTN:
         kwargs["enable_gqa"] = enable_gqa
 
     if _AttentionBackendRegistry._checks_enabled:
@@ -538,7 +540,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
                 f"Backend '{backend.value}' needs to be used with a `kernels` version of at least 0.12. Please update with `pip install -U kernels`."
             )
 
-        if backend == AttentionBackendName.FLASH_4_HUB and not is_kernels_available(">=", "0.12.3"):
+        if backend == AttentionBackendName.FLASH_4_HUB and not is_kernels_version(">=", "0.12.3"):
             raise RuntimeError(
                 f"Backend '{backend.value}' needs to be used with a `kernels` version of at least 0.12.3. Please update with `pip install -U kernels`."
             )
@@ -862,23 +864,23 @@ def _native_attention_backward_op(
     key.requires_grad_(True)
     value.requires_grad_(True)
 
-    query_t, key_t, value_t = (x.permute(0, 2, 1, 3) for x in (query, key, value))
-    out = torch.nn.functional.scaled_dot_product_attention(
-        query=query_t,
-        key=key_t,
-        value=value_t,
-        attn_mask=ctx.attn_mask,
-        dropout_p=ctx.dropout_p,
-        is_causal=ctx.is_causal,
-        scale=ctx.scale,
-        enable_gqa=ctx.enable_gqa,
-    )
-    out = out.permute(0, 2, 1, 3)
+    with torch.enable_grad():
+        query_t, key_t, value_t = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+        out = torch.nn.functional.scaled_dot_product_attention(
+            query=query_t,
+            key=key_t,
+            value=value_t,
+            attn_mask=ctx.attn_mask,
+            dropout_p=ctx.dropout_p,
+            is_causal=ctx.is_causal,
+            scale=ctx.scale,
+            enable_gqa=ctx.enable_gqa,
+        )
+        out = out.permute(0, 2, 1, 3)
 
-    grad_out_t = grad_out.permute(0, 2, 1, 3)
-    grad_query_t, grad_key_t, grad_value_t = torch.autograd.grad(
-        outputs=out, inputs=[query_t, key_t, value_t], grad_outputs=grad_out_t, retain_graph=False
-    )
+        grad_query_t, grad_key_t, grad_value_t = torch.autograd.grad(
+            outputs=out, inputs=[query_t, key_t, value_t], grad_outputs=grad_out, retain_graph=False
+        )
 
     grad_query = grad_query_t.permute(0, 2, 1, 3)
     grad_key = grad_key_t.permute(0, 2, 1, 3)
@@ -1519,17 +1521,16 @@ def _maybe_modify_attn_mask_npu(query: torch.Tensor, key: torch.Tensor, attn_mas
     if attn_mask is not None and torch.all(attn_mask != 0):
         attn_mask = None
 
-    # Reshape Attention Mask: [batch_size, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
+    # Reshape Attention Mask: [batch_size, seq_len_k] or [batch_size, 1, 1, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
     # https://www.hiascend.com/document/detail/zh/Pytorch/730/apiref/torchnpuCustomsapi/docs/context/torch_npu-npu_fusion_attention.md
-    if (
-        attn_mask is not None
-        and attn_mask.ndim == 2
-        and attn_mask.shape[0] == query.shape[0]
-        and attn_mask.shape[1] == key.shape[1]
-    ):
-        B, Sq, Skv = attn_mask.shape[0], query.shape[1], key.shape[1]
+    if attn_mask is not None:
+        if attn_mask.ndim == 2 and attn_mask.shape[0] == query.shape[0] and attn_mask.shape[1] == key.shape[1]:
+            batch_size, seq_len_q, seq_len_kv = attn_mask.shape[0], query.shape[1], key.shape[1]
+            attn_mask = attn_mask.unsqueeze(1).expand(batch_size, seq_len_q, seq_len_kv).unsqueeze(1).contiguous()
+        elif attn_mask.ndim == 4 and attn_mask.shape[1:3] == (1, 1):
+            attn_mask = attn_mask.expand(-1, -1, query.shape[1], -1).contiguous()
+
         attn_mask = ~attn_mask.to(torch.bool)
-        attn_mask = attn_mask.unsqueeze(1).expand(B, Sq, Skv).unsqueeze(1).contiguous()
 
     return attn_mask
 

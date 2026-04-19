@@ -51,7 +51,42 @@ python flux_inference.py
 
 The script loads the text encoders onto the CPU and the Flux transformer and VAE models onto the TPU. The first time the script runs, the compilation time is longer, while the cache stores the compiled programs. On subsequent runs, compilation is much faster and the subsequent passes being the fastest. 
 
-On a Trillium v6e-4, you should expect ~6 sec / 4 images or 1.5 sec / image (as devices run generation in parallel):
+On a Trillium v6e-4, you should expect ~6 sec / 4 images or 1.5 sec / image (as devices run generation in parallel).
+
+> **Note:** `flux_inference.py` uses `xmp.spawn` (one process per chip) and requires the full model to fit on a single chip. If you run into OOM errors (e.g., on v5e with 16GB HBM per chip), use the SPMD version instead — see below.
+
+### SPMD version (for v5e-8 and similar)
+
+On TPU configurations where a single chip cannot hold the full FLUX transformer (~16GB in bf16), use `flux_inference_spmd.py`. This script uses PyTorch/XLA SPMD to shard the transformer across multiple chips using a `(data, model)` mesh — 4-way model parallel so each chip holds ~4GB of weights, with the remaining chips for data parallelism.
+
+```bash
+python flux_inference_spmd.py --schnell
+```
+
+Key differences from `flux_inference.py`:
+- **Single-process SPMD** instead of multi-process `xmp.spawn` — the XLA compiler handles all collective communication transparently.
+- **Transformer weights are sharded** across the `"model"` mesh axis using `xs.mark_sharding`.
+- **VAE lives on CPU**, moved to XLA only for decode (then moved back), since the transformer stays on device throughout.
+- **Text encoding** runs on CPU before loading the transformer.
+
+On a v5litepod-8 (v5e, 8 chips, 16GB HBM each) with FLUX.1-schnell, expect ~1.76 sec/image at steady state (after compilation):
+
+```
+2026-04-15 02:24:30 [info     ] SPMD mesh: (2, 4), axes: ('data', 'model'), devices: 8
+2026-04-15 02:24:30 [info     ] encoding prompt on CPU...
+2026-04-15 02:26:20 [info     ] loading VAE on CPU...
+2026-04-15 02:26:20 [info     ] loading flux transformer from black-forest-labs/FLUX.1-schnell
+2026-04-15 02:27:22 [info     ] starting compilation run...
+2026-04-15 02:52:55 [info     ] compilation took 1533.4575625509997 sec.
+2026-04-15 02:52:56 [info     ] starting inference run...
+2026-04-15 02:56:11 [info     ] inference time: 195.74092420299985
+2026-04-15 02:56:13 [info     ] inference time: 1.7625778899996476
+2026-04-15 02:56:13 [info     ] avg. inference over 2 iterations took 98.75175104649975 sec.
+```
+
+The first inference iteration includes VAE compilation (~195s). The second iteration shows the true steady-state speed (~1.76s).
+
+### v6e-4 results (original `flux_inference.py`)
 
 ```bash
 WARNING:root:libtpu.so and TPU device found. Setting PJRT_DEVICE=TPU.
