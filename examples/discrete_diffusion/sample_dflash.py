@@ -27,6 +27,7 @@ Example:
 import argparse
 
 import torch
+from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 from diffusers import DFlashPipeline
 
@@ -106,20 +107,22 @@ def main():
     print(f"Loading draft model: {args.draft_model_id}")
     print(f"Loading target model: {args.target_model_id}")
     dtype_arg = torch_dtype if torch_dtype is not None else "auto"
-    pipe = DFlashPipeline.from_pretrained(
-        draft_model_id=args.draft_model_id,
-        target_model_id=args.target_model_id,
-        mask_token=args.mask_token,
-        draft_model_kwargs={
-            "trust_remote_code": True,
-            "dtype": dtype_arg,
-            "device_map": args.device,
-        },
-        target_model_kwargs={
-            "dtype": dtype_arg,
-            "device_map": args.device,
-        },
+    # Draft model is a custom DFlashDraftModel; use AutoModel so trust_remote_code routes to the class in `auto_map`.
+    draft_model = AutoModel.from_pretrained(
+        args.draft_model_id,
+        trust_remote_code=True,
+        dtype=dtype_arg,
+        device_map=args.device,
     )
+    target_model = AutoModelForCausalLM.from_pretrained(
+        args.target_model_id,
+        dtype=dtype_arg,
+        device_map=args.device,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(args.target_model_id)
+    if tokenizer.mask_token is None:
+        tokenizer.add_special_tokens({"mask_token": args.mask_token})
+    pipe = DFlashPipeline(draft_model=draft_model, target_model=target_model, tokenizer=tokenizer)
 
     chat_kwargs = {"enable_thinking": args.enable_thinking}
 

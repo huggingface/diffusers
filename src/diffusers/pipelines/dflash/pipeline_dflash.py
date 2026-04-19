@@ -298,8 +298,43 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         output_ids = self.prepare_latents(max_length, block_size, int(mask_token_id), device)
         position_ids = torch.arange(output_ids.shape[1], device=device).unsqueeze(0)
 
-        past_key_values_target = DynamicCache()
-        past_key_values_draft = DynamicCache()
+        target_config = getattr(self.target_model, "config", None)
+        draft_config = getattr(self.draft_model, "config", None)
+
+        # Fast path: some draft models (e.g. z-lab/Qwen3-8B-DFlash-b16) ship a self-contained
+        # `spec_generate` method. Delegate when available — it's the upstream-canonical loop and
+        # avoids re-implementing rollback. Newer drafts (Qwen3.5-4B-DFlash) drop this method, so
+        # fall back to the explicit pipeline loop below.
+        spec_generate = getattr(self.draft_model, "spec_generate", None)
+        if callable(spec_generate):
+            generated = spec_generate(
+                input_ids=input_ids,
+                max_new_tokens=int(max_new_tokens),
+                temperature=float(temperature),
+                target=self.target_model,
+                stop_token_ids=stop_token_ids,
+            )
+            sequences = generated[:, input_ids.shape[1] :]
+            texts = None
+            if output_type == "text" and getattr(self, "tokenizer", None) is not None:
+                texts = self.tokenizer.batch_decode(sequences, skip_special_tokens=True)
+            if not return_dict:
+                return sequences, texts
+            return DFlashPipelineOutput(sequences=sequences, texts=texts)
+
+        # Pass `config=` only when it looks like a real PretrainedConfig — hybrid-attention models
+        # (Qwen3.5) need it so `DynamicCache` instantiates the right per-layer cache types
+        # (linear vs full), but bare dummy configs in tests don't implement `get_text_config`.
+        def _new_cache(cfg):
+            if cfg is not None and hasattr(cfg, "get_text_config"):
+                try:
+                    return DynamicCache(config=cfg)
+                except Exception:
+                    pass
+            return DynamicCache()
+
+        past_key_values_target = _new_cache(target_config)
+        past_key_values_draft = _new_cache(draft_config)
 
         # 4. Prefill step
         output = self._target_forward(
@@ -346,6 +381,12 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             past_key_values_draft.crop(start)
             block_output_ids[:, 1:] = self.scheduler.sample(draft_logits, temperature=temperature)
 
+            # For hybrid-attention targets (Qwen3.5 etc.), linear-attention cache layers silently
+            # no-op on `.crop()`, so rejected speculative tokens would permanently contaminate the
+            # recurrent state. Snapshot before the verify forward so we can roll back on partial-accept.
+            target_needs_rollback = self.scheduler.cache_has_linear_attention(past_key_values_target)
+            target_snapshot = self.scheduler.snapshot_cache(past_key_values_target) if target_needs_rollback else None
+
             output = self._target_forward(
                 input_ids=block_output_ids,
                 position_ids=block_position_ids,
@@ -366,7 +407,23 @@ class DFlashPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
             output_ids[:, start : start + acceptance_length + 1] = block_output_ids[:, : acceptance_length + 1]
             output_ids[:, start + acceptance_length + 1] = step_output.next_token
             start += acceptance_length + 1
-            past_key_values_target.crop(start)
+            partial_accept = acceptance_length + 1 < int(block_size)
+            if target_needs_rollback and partial_accept:
+                # Restore linear-attn recurrent state (and full-attn KVs) to pre-verify, then re-run
+                # target on just the accepted prefix to advance all layer types cleanly to `start`.
+                self.scheduler.restore_cache(past_key_values_target, target_snapshot)
+                accepted_ids = block_output_ids[:, : acceptance_length + 1]
+                accepted_pos = block_position_ids[:, : acceptance_length + 1]
+                self._target_forward(
+                    input_ids=accepted_ids,
+                    position_ids=accepted_pos,
+                    past_key_values=past_key_values_target,
+                    output_hidden_states=False,
+                    logits_to_keep=1,
+                )
+            elif not target_needs_rollback:
+                # Full-attn-only cache: cheap crop is fine.
+                past_key_values_target.crop(start)
             target_hidden = _extract_context_feature(output.hidden_states, target_layer_ids)[
                 :, : acceptance_length + 1, :
             ]

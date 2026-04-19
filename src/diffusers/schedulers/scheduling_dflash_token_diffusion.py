@@ -119,6 +119,80 @@ class DFlashTokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         )
 
     @staticmethod
+    def cache_has_linear_attention(cache) -> bool:
+        """
+        Detect whether a `DynamicCache` contains any linear-attention layers (e.g. Qwen3.5's gated-delta-net layers).
+        The spec-decoding loop needs this to know whether a partial-accept block requires snapshot/restore rather than
+        a plain `.crop()` — transformers' `DynamicCache.crop()` silently no-ops on linear-attention layers, so rejected
+        speculative tokens would otherwise permanently contaminate the recurrent state.
+
+        Duck-typed on `recurrent_states`/`conv_states` attributes to avoid importing transformers.
+        """
+        for layer in getattr(cache, "layers", []):
+            if hasattr(layer, "recurrent_states") and hasattr(layer, "conv_states"):
+                return True
+        return False
+
+    @staticmethod
+    def snapshot_cache(cache) -> list[dict]:
+        """
+        Clone the full per-layer cache state so a speculative target forward can be rolled back.
+
+        Handles both full-attention `DynamicLayer` (keys/values) and linear-attention layers
+        (conv_states/recurrent_states plus their init flags). Mirrors upstream DFlash's MLX `_GDNStateCapture`
+        rollback, but via full-layer restore rather than kernel-level replay. Pair with `restore_cache()`; no-op if the
+        caller only ever fully-accepts.
+        """
+        snapshots: list[dict] = []
+        for layer in getattr(cache, "layers", []):
+            snap: dict = {"cls": type(layer)}
+            if hasattr(layer, "keys") and layer.keys is not None:
+                snap["keys"] = layer.keys.clone()
+                snap["values"] = layer.values.clone()
+            if hasattr(layer, "recurrent_states"):
+                snap["has_previous_state"] = bool(getattr(layer, "has_previous_state", False))
+                snap["is_recurrent_states_initialized"] = bool(
+                    getattr(layer, "is_recurrent_states_initialized", False)
+                )
+                snap["is_conv_states_initialized"] = bool(getattr(layer, "is_conv_states_initialized", False))
+                snap["recurrent_states"] = (
+                    layer.recurrent_states.clone() if getattr(layer, "recurrent_states", None) is not None else None
+                )
+                snap["conv_states"] = (
+                    layer.conv_states.clone() if getattr(layer, "conv_states", None) is not None else None
+                )
+            snapshots.append(snap)
+        return snapshots
+
+    @staticmethod
+    def restore_cache(cache, snapshots: list[dict]) -> None:
+        """
+        Restore a cache to the state captured by `snapshot_cache()`. After this call, the caller should re-advance the
+        cache (e.g. by re-running the target model on just the accepted prefix) so both full- and linear-attention
+        layers end up at the committed token count.
+        """
+        for layer, snap in zip(cache.layers, snapshots):
+            if "keys" in snap:
+                # DynamicLayer: reassign (shapes will have grown during the verify forward, so
+                # in-place copy is not safe here).
+                layer.keys = snap["keys"]
+                layer.values = snap["values"]
+            if "recurrent_states" in snap:
+                # LinearAttentionLayer: in-place copy preserves any static-address assumption
+                # (e.g. for cudagraph capture) on the live tensors.
+                layer.has_previous_state = snap["has_previous_state"]
+                layer.is_recurrent_states_initialized = snap["is_recurrent_states_initialized"]
+                layer.is_conv_states_initialized = snap["is_conv_states_initialized"]
+                if snap["recurrent_states"] is not None and getattr(layer, "recurrent_states", None) is not None:
+                    layer.recurrent_states.copy_(snap["recurrent_states"])
+                elif snap["recurrent_states"] is not None:
+                    layer.recurrent_states = snap["recurrent_states"].clone()
+                if snap["conv_states"] is not None and getattr(layer, "conv_states", None) is not None:
+                    layer.conv_states.copy_(snap["conv_states"])
+                elif snap["conv_states"] is not None:
+                    layer.conv_states = snap["conv_states"].clone()
+
+    @staticmethod
     def check_should_stop(
         output_ids: torch.LongTensor,
         stop_token_ids: list[int] | None,
