@@ -207,7 +207,7 @@ class DeprecateTester(unittest.TestCase):
 class FourierFilterTester(unittest.TestCase):
     """Tests for :func:`diffusers.utils.torch_utils.fourier_filter` (FreeU helper)."""
 
-    def _run_without_complexhalf_warning(self, dtype) -> "torch.Tensor":
+    def _run_without_complexhalf_warning(self, dtype):
         import torch
 
         from diffusers.utils.torch_utils import fourier_filter
