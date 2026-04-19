@@ -223,8 +223,10 @@ def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.T
     # Non-power of 2 images must be float32
     if (W & (W - 1)) != 0 or (H & (H - 1)) != 0:
         x = x.to(dtype=torch.float32)
-    # fftn does not support bfloat16
-    elif x.dtype == torch.bfloat16:
+    # fftn does not support bfloat16, and produces the experimental ComplexHalf
+    # dtype (torch.complex32) when given float16, which is numerically unstable
+    # and triggers a UserWarning.
+    elif x.dtype in (torch.bfloat16, torch.float16):
         x = x.to(dtype=torch.float32)
 
     # FFT
