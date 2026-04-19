@@ -292,6 +292,18 @@ class ModuleGroup:
             else:
                 self._process_tensors_from_modules(None)
 
+        # Gate the default stream on the transfer stream completing before the forward pass runs.
+        # On CUDA, implicit stream ordering often masks this race; on AMD ROCm (gfx1xxx) the
+        # first matmul can race ahead of the async CPU→GPU copies and raise a device-mismatch
+        # error ("mat2 is on cpu") inside the first matmul of the loaded module.
+        # `wait_stream` is a no-op when both handles refer to the same stream.
+        if self.stream is not None:
+            current_default = self._torch_accelerator_module.current_stream()
+            if hasattr(current_default, "wait_stream"):
+                current_default.wait_stream(self.stream)
+            else:
+                self.stream.synchronize()
+
     def _offload_to_disk(self):
         self._check_disk_offload_torchao()
 
