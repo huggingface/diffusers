@@ -30,7 +30,6 @@ from .encoders import (
 )
 from .inputs import StableDiffusion3AdditionalInputsStep, StableDiffusion3TextInputStep
 
-
 logger = logging.get_logger(__name__)
 
 
@@ -134,14 +133,6 @@ class StableDiffusion3T2ICoreDenoiseStep(SequentialPipelineBlocks):
               The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
           joint_attention_kwargs (`dict`, *optional*):
               A kwargs dictionary passed along to the AttentionProcessor.
-          guidance_scale (`None`, *optional*, defaults to 7.0):
-              Guidance scale as defined in Classifier-Free Diffusion Guidance.
-          skip_layer_guidance_scale (`None`, *optional*, defaults to 2.8):
-              The scale of the guidance for the skipped layers.
-          skip_layer_guidance_stop (`None`, *optional*, defaults to 0.2):
-              The step fraction at which the guidance for skipped layers stops.
-          skip_layer_guidance_start (`None`, *optional*, defaults to 0.01):
-              The step fraction at which the guidance for skipped layers starts.
 
       Outputs:
           latents (`Tensor`):
@@ -202,14 +193,6 @@ class StableDiffusion3I2ICoreDenoiseStep(SequentialPipelineBlocks):
               The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
           joint_attention_kwargs (`dict`, *optional*):
               A kwargs dictionary passed along to the AttentionProcessor.
-          guidance_scale (`None`, *optional*, defaults to 7.0):
-              Guidance scale as defined in Classifier-Free Diffusion Guidance.
-          skip_layer_guidance_scale (`None`, *optional*, defaults to 2.8):
-              The scale of the guidance for the skipped layers.
-          skip_layer_guidance_stop (`None`, *optional*, defaults to 0.2):
-              The step fraction at which the guidance for skipped layers stops.
-          skip_layer_guidance_start (`None`, *optional*, defaults to 0.01):
-              The step fraction at which the guidance for skipped layers starts.
 
       Outputs:
           latents (`Tensor`):
@@ -279,14 +262,6 @@ class StableDiffusion3AutoCoreDenoiseStep(AutoPipelineBlocks):
               The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
           joint_attention_kwargs (`dict`, *optional*):
               A kwargs dictionary passed along to the AttentionProcessor.
-          guidance_scale (`None`, *optional*, defaults to 7.0):
-              Guidance scale as defined in Classifier-Free Diffusion Guidance.
-          skip_layer_guidance_scale (`None`, *optional*, defaults to 2.8):
-              The scale of the guidance for the skipped layers.
-          skip_layer_guidance_stop (`None`, *optional*, defaults to 0.2):
-              The step fraction at which the guidance for skipped layers stops.
-          skip_layer_guidance_start (`None`, *optional*, defaults to 0.01):
-              The step fraction at which the guidance for skipped layers starts.
 
       Outputs:
           latents (`Tensor`):
@@ -342,14 +317,6 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation for tokenizer_2.
           negative_prompt_3 (`None`, *optional*):
               The prompt or prompts not to guide the image generation for tokenizer_3.
-          prompt_embeds (`Tensor`, *optional*):
-              Pre-generated text embeddings.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              Pre-generated negative text embeddings.
-          pooled_prompt_embeds (`Tensor`, *optional*):
-              Pre-generated pooled text embeddings.
-          negative_pooled_prompt_embeds (`Tensor`, *optional*):
-              Pre-generated negative pooled text embeddings.
           clip_skip (`int`, *optional*):
               Number of layers to be skipped from CLIP while computing the prompt embeddings.
           max_sequence_length (`int`, *optional*, defaults to 256):
@@ -382,14 +349,6 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
               Indicates extent to transform the reference image.
           mu (`float`, *optional*):
               The mu value used for dynamic shifting. If not provided, it is dynamically calculated.
-          guidance_scale (`None`, *optional*, defaults to 7.0):
-              Guidance scale as defined in Classifier-Free Diffusion Guidance.
-          skip_layer_guidance_scale (`None`, *optional*, defaults to 2.8):
-              The scale of the guidance for the skipped layers.
-          skip_layer_guidance_stop (`None`, *optional*, defaults to 0.2):
-              The step fraction at which the guidance for skipped layers stops.
-          skip_layer_guidance_start (`None`, *optional*, defaults to 0.01):
-              The step fraction at which the guidance for skipped layers starts.
           output_type (`None`, *optional*, defaults to pil):
               The output format of the generated image (e.g., 'pil', 'pt', 'np').
 

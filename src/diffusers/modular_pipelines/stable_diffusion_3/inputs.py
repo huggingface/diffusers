@@ -19,7 +19,6 @@ from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import InputParam, OutputParam
 from .modular_pipeline import StableDiffusion3ModularPipeline
 
-
 logger = logging.get_logger(__name__)
 
 
@@ -81,7 +80,9 @@ def repeat_tensor_to_batch_size(
 
 
 # Copied from diffusers.modular_pipelines.qwenimage.inputs.calculate_dimension_from_latents
-def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: int) -> tuple[int, int]:
+def calculate_dimension_from_latents(
+    latents: torch.Tensor, vae_scale_factor: int
+) -> tuple[int, int]:
     """Calculate image dimensions from latent tensor dimensions.
 
     This function converts latent space dimensions to image space dimensions by multiplying the latent height and width
@@ -102,7 +103,9 @@ def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: in
     """
     # make sure the latents are not packed
     if latents.ndim != 4 and latents.ndim != 5:
-        raise ValueError(f"unpacked latents must have 4 or 5 dimensions, but got {latents.ndim}")
+        raise ValueError(
+            f"unpacked latents must have 4 or 5 dimensions, but got {latents.ndim}"
+        )
 
     latent_height, latent_width = latents.shape[-2:]
 
@@ -117,9 +120,7 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return (
-            "Text input processing step that standardizes text embeddings for SD3, applying CFG duplication if needed."
-        )
+        return "Text input processing step that standardizes text embeddings for SD3, applying CFG duplication if needed."
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -154,7 +155,7 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> list[str]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "batch_size",
@@ -189,32 +190,44 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
         block_state.dtype = block_state.prompt_embeds.dtype
 
         _, seq_len, _ = block_state.prompt_embeds.shape
-        prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1)
+        prompt_embeds = block_state.prompt_embeds.repeat(
+            1, block_state.num_images_per_prompt, 1
+        )
+        prompt_embeds = prompt_embeds.view(
+            block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
+        )
 
-        pooled_prompt_embeds = block_state.pooled_prompt_embeds.repeat(1, block_state.num_images_per_prompt)
+        pooled_prompt_embeds = block_state.pooled_prompt_embeds.repeat(
+            1, block_state.num_images_per_prompt
+        )
         pooled_prompt_embeds = pooled_prompt_embeds.view(
             block_state.batch_size * block_state.num_images_per_prompt, -1
         )
 
         if getattr(block_state, "negative_prompt_embeds", None) is not None:
             _, neg_seq_len, _ = block_state.negative_prompt_embeds.shape
-            negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
+            negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(
+                1, block_state.num_images_per_prompt, 1
+            )
             negative_prompt_embeds = negative_prompt_embeds.view(
                 block_state.batch_size * block_state.num_images_per_prompt,
                 neg_seq_len,
                 -1,
             )
 
-            negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.repeat(
-                1, block_state.num_images_per_prompt
+            negative_pooled_prompt_embeds = (
+                block_state.negative_pooled_prompt_embeds.repeat(
+                    1, block_state.num_images_per_prompt
+                )
             )
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.view(
                 block_state.batch_size * block_state.num_images_per_prompt, -1
@@ -242,10 +255,14 @@ class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
         additional_batch_inputs: list[str] = [],
     ):
         self._image_latent_inputs = (
-            image_latent_inputs if isinstance(image_latent_inputs, list) else [image_latent_inputs]
+            image_latent_inputs
+            if isinstance(image_latent_inputs, list)
+            else [image_latent_inputs]
         )
         self._additional_batch_inputs = (
-            additional_batch_inputs if isinstance(additional_batch_inputs, list) else [additional_batch_inputs]
+            additional_batch_inputs
+            if isinstance(additional_batch_inputs, list)
+            else [additional_batch_inputs]
         )
         super().__init__()
 
@@ -262,11 +279,17 @@ class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
                 description="The number of images to generate per prompt.",
             ),
             InputParam("batch_size", required=True, description="The batch size."),
-            InputParam("height", description="The height in pixels of the generated image."),
-            InputParam("width", description="The width in pixels of the generated image."),
+            InputParam(
+                "height", description="The height in pixels of the generated image."
+            ),
+            InputParam(
+                "width", description="The width in pixels of the generated image."
+            ),
         ]
         for name in self._image_latent_inputs + self._additional_batch_inputs:
-            inputs.append(InputParam(name, description=f"Latent input {name} to be processed."))
+            inputs.append(
+                InputParam(name, description=f"Latent input {name} to be processed.")
+            )
         return inputs
 
     @property
@@ -284,7 +307,9 @@ class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
             ),
         ]
 
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
 
         for input_name in self._image_latent_inputs:
@@ -292,7 +317,9 @@ class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
             if tensor is None:
                 continue
 
-            height, width = calculate_dimension_from_latents(tensor, components.vae_scale_factor)
+            height, width = calculate_dimension_from_latents(
+                tensor, components.vae_scale_factor
+            )
             block_state.height = block_state.height or height
             block_state.width = block_state.width or width
 

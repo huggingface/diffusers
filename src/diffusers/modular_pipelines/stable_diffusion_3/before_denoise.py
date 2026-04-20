@@ -23,7 +23,6 @@ from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import StableDiffusion3ModularPipeline
 
-
 logger = logging.get_logger(__name__)
 
 
@@ -74,9 +73,13 @@ def retrieve_timesteps(
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
-        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
+        raise ValueError(
+            "Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values"
+        )
     if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        accepts_timesteps = "timesteps" in set(
+            inspect.signature(scheduler.set_timesteps).parameters.keys()
+        )
         if not accepts_timesteps:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -86,7 +89,9 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
         num_inference_steps = len(timesteps)
     elif sigmas is not None:
-        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        accept_sigmas = "sigmas" in set(
+            inspect.signature(scheduler.set_timesteps).parameters.keys()
+        )
         if not accept_sigmas:
             raise ValueError(
                 f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
@@ -115,7 +120,9 @@ def _get_initial_timesteps_and_optionals(
 ):
     scheduler_kwargs = {}
     if scheduler.config.get("use_dynamic_shifting", None) and mu is None:
-        image_seq_len = (height // vae_scale_factor // patch_size) * (width // vae_scale_factor // patch_size)
+        image_seq_len = (height // vae_scale_factor // patch_size) * (
+            width // vae_scale_factor // patch_size
+        )
         mu = calculate_shift(
             image_seq_len,
             scheduler.config.get("base_image_seq_len", 256),
@@ -156,7 +163,9 @@ class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
                 "timesteps",
                 description="Custom timesteps to use for the denoising process.",
             ),
-            InputParam("sigmas", description="Custom sigmas to use for the denoising process."),
+            InputParam(
+                "sigmas", description="Custom sigmas to use for the denoising process."
+            ),
             InputParam(
                 "height",
                 type_hint=int,
@@ -190,7 +199,9 @@ class StableDiffusion3SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -237,7 +248,9 @@ class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
                 "timesteps",
                 description="Custom timesteps to use for the denoising process.",
             ),
-            InputParam("sigmas", description="Custom sigmas to use for the denoising process."),
+            InputParam(
+                "sigmas", description="Custom sigmas to use for the denoising process."
+            ),
             InputParam(
                 "strength",
                 default=0.6,
@@ -285,7 +298,9 @@ class StableDiffusion3Img2ImgSetTimestepsStep(ModularPipelineBlocks):
         return timesteps, num_inference_steps - t_start
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -372,7 +387,9 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
         batch_size = block_state.batch_size * block_state.num_images_per_prompt
@@ -381,7 +398,9 @@ class StableDiffusion3PrepareLatentsStep(ModularPipelineBlocks):
         block_state.width = block_state.width or components.default_width
 
         if block_state.latents is not None:
-            block_state.latents = block_state.latents.to(device=block_state.device, dtype=block_state.dtype)
+            block_state.latents = block_state.latents.to(
+                device=block_state.device, dtype=block_state.dtype
+            )
         else:
             shape = (
                 batch_size,
@@ -433,15 +452,18 @@ class StableDiffusion3Img2ImgPrepareLatentsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
+            OutputParam.template("latents"),
             OutputParam(
                 "initial_noise",
                 type_hint=torch.Tensor,
                 description="The initial noise applied to the image latents.",
-            )
+            ),
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> PipelineState:
         block_state = self.get_block_state(state)
         latent_timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])
         block_state.initial_noise = block_state.latents
