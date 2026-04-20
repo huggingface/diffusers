@@ -255,6 +255,11 @@ class AceStepPipeline(DiffusionPipeline):
             condition_encoder=condition_encoder,
         )
 
+        # ACE-Step is designed for variable-length audio up to 10 minutes. Enable
+        # VAE tiling by default so the encode/decode paths stay bounded in VRAM
+        # for long inputs. Users can call `pipe.vae.disable_tiling()` to opt out.
+        self.vae.enable_tiling()
+
     @property
     def is_turbo(self) -> bool:
         """Whether the loaded transformer is a turbo / guidance-distilled variant."""
@@ -706,140 +711,25 @@ class AceStepPipeline(DiffusionPipeline):
         return self._encode_audio_to_latents(audio, device=device, dtype=dtype)
 
     def _encode_audio_to_latents(self, audio: torch.Tensor, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-        """
-        Encode audio waveform to VAE latents using tiled encoding for memory efficiency.
+        """Encode a waveform to VAE latents in the `[B, T, D]` layout the DiT expects.
 
-        Args:
-            audio (`torch.Tensor`): Audio tensor of shape `[channels, samples]` or `[batch, channels, samples]`.
-            device (`torch.device`): Target device.
-            dtype (`torch.dtype`): Target dtype.
-
-        Returns:
-            `torch.Tensor`: Latents of shape `[T, D]` or `[batch, T, D]`.
+        Relies on `AutoencoderOobleck.enable_tiling()` (called from `__init__`) for
+        memory-bounded long-audio encoding.
         """
         input_was_2d = audio.dim() == 2
         if input_was_2d:
             audio = audio.unsqueeze(0)
 
-        # Tiled encode for memory efficiency
         audio = audio.to(device=device, dtype=self.vae.dtype)
-        latents = self._tiled_encode(audio)
+        with torch.no_grad():
+            latents = self.vae.encode(audio).latent_dist.sample()
 
-        # Transpose: [batch, D, T] -> [batch, T, D]
+        # [B, D, T] -> [B, T, D]
         latents = latents.transpose(1, 2).to(dtype=dtype)
 
         if input_was_2d:
             latents = latents.squeeze(0)
         return latents
-
-    def _tiled_encode(
-        self,
-        audio: torch.Tensor,
-        chunk_size: int = 48000 * 30,
-        overlap: int = 48000 * 2,
-    ) -> torch.Tensor:
-        """
-        Encode audio to latents using tiling to reduce VRAM usage.
-
-        Args:
-            audio (`torch.Tensor`): Audio tensor of shape `[batch, channels, samples]`.
-            chunk_size (`int`, *optional*): Size of audio chunk to process at once (in samples).
-            overlap (`int`, *optional*): Overlap size in audio samples.
-
-        Returns:
-            `torch.Tensor`: Latents of shape `[batch, channels, T]`.
-        """
-        _B, _C, S = audio.shape
-
-        if S <= chunk_size:
-            with torch.no_grad():
-                return self.vae.encode(audio).latent_dist.sample()
-
-        stride = chunk_size - 2 * overlap
-        if stride <= 0:
-            raise ValueError(f"chunk_size {chunk_size} must be > 2 * overlap {overlap}")
-
-        num_steps = math.ceil(S / stride)
-        encoded_latent_list = []
-        downsample_factor = None
-
-        for i in range(num_steps):
-            core_start = i * stride
-            core_end = min(core_start + stride, S)
-            win_start = max(0, core_start - overlap)
-            win_end = min(S, core_end + overlap)
-
-            audio_chunk = audio[:, :, win_start:win_end]
-            with torch.no_grad():
-                latent_chunk = self.vae.encode(audio_chunk).latent_dist.sample()
-
-            if downsample_factor is None:
-                downsample_factor = audio_chunk.shape[-1] / latent_chunk.shape[-1]
-
-            added_start = core_start - win_start
-            trim_start = int(round(added_start / downsample_factor))
-            added_end = win_end - core_end
-            trim_end = int(round(added_end / downsample_factor))
-
-            latent_len = latent_chunk.shape[-1]
-            end_idx = latent_len - trim_end if trim_end > 0 else latent_len
-            encoded_latent_list.append(latent_chunk[:, :, trim_start:end_idx])
-
-        return torch.cat(encoded_latent_list, dim=-1)
-
-    def _tiled_decode(
-        self,
-        latents: torch.Tensor,
-        chunk_size: int = 512,
-        overlap: int = 64,
-    ) -> torch.Tensor:
-        """
-        Decode latents to audio using tiling to reduce VRAM usage.
-
-        Args:
-            latents (`torch.Tensor`): Latents of shape `[batch, channels, T]`.
-            chunk_size (`int`, *optional*): Size of latent chunk to process at once.
-            overlap (`int`, *optional*): Overlap size in latent frames.
-
-        Returns:
-            `torch.Tensor`: Audio of shape `[batch, channels, samples]`.
-        """
-        _B, _C, T = latents.shape
-
-        if T <= chunk_size:
-            return self.vae.decode(latents).sample
-
-        stride = chunk_size - 2 * overlap
-        if stride <= 0:
-            raise ValueError(f"chunk_size {chunk_size} must be > 2 * overlap {overlap}")
-
-        num_steps = math.ceil(T / stride)
-        decoded_audio_list = []
-        upsample_factor = None
-
-        for i in range(num_steps):
-            core_start = i * stride
-            core_end = min(core_start + stride, T)
-            win_start = max(0, core_start - overlap)
-            win_end = min(T, core_end + overlap)
-
-            latent_chunk = latents[:, :, win_start:win_end]
-            decoder_output = self.vae.decode(latent_chunk)
-            audio_chunk = decoder_output.sample
-
-            if upsample_factor is None:
-                upsample_factor = audio_chunk.shape[-1] / latent_chunk.shape[-1]
-
-            added_start = core_start - win_start
-            trim_start = int(round(added_start * upsample_factor))
-            added_end = win_end - core_end
-            trim_end = int(round(added_end * upsample_factor))
-
-            audio_len = audio_chunk.shape[-1]
-            end_idx = audio_len - trim_end if trim_end > 0 else audio_len
-            decoded_audio_list.append(audio_chunk[:, :, trim_start:end_idx])
-
-        return torch.cat(decoded_audio_list, dim=-1)
 
     @staticmethod
     def _parse_audio_code_string(code_str: str) -> List[int]:
@@ -1088,7 +978,6 @@ class AceStepPipeline(DiffusionPipeline):
         audio_cover_strength: float = 1.0,
         cfg_interval_start: float = 0.0,
         cfg_interval_end: float = 1.0,
-        use_tiled_decode: bool = True,
         timesteps: Optional[List[float]] = None,
     ):
         r"""
@@ -1161,8 +1050,6 @@ class AceStepPipeline(DiffusionPipeline):
                 Start ratio (0.0-1.0) of the timestep range where CFG is applied.
             cfg_interval_end (`float`, *optional*, defaults to 1.0):
                 End ratio (0.0-1.0) of the timestep range where CFG is applied.
-            use_tiled_decode (`bool`, *optional*, defaults to `True`):
-                Whether to use tiled decoding for memory-efficient VAE decode.
             timesteps (`List[float]`, *optional*):
                 Custom timestep schedule. If provided, overrides `num_inference_steps` and `shift`.
 
@@ -1535,14 +1422,11 @@ class AceStepPipeline(DiffusionPipeline):
                 return (xt,)
             return AudioPipelineOutput(audios=xt)
 
-        # Decode latents to audio waveform using VAE
-        # VAE expects [B, C, T] format, our latents are [B, T, C]
-        audio_latents = xt.transpose(1, 2)  # [B, T, C] -> [B, C, T]
-
-        if use_tiled_decode:
-            audio = self._tiled_decode(audio_latents)
-        else:
-            audio = self.vae.decode(audio_latents).sample
+        # Decode latents to audio waveform using VAE. VAE expects [B, C, T]; our
+        # latents are [B, T, C]. Tiling for long audio is handled inside
+        # `AutoencoderOobleck.decode` (enabled on pipeline init).
+        audio_latents = xt.transpose(1, 2)
+        audio = self.vae.decode(audio_latents).sample
 
         # Two-stage normalization matches the real pipeline:
         # 1. `_decode_generate_music_pred_latents`: if peak > 1, divide by peak (hard

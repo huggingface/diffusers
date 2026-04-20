@@ -14,11 +14,12 @@
 """Diffusion Transformer (DiT) for ACE-Step 1.5 music generation.
 
 Follows the diffusers conventions: reuse ``RMSNorm``, ``get_1d_rotary_pos_embed`` /
-``apply_rotary_emb``, ``get_timestep_embedding`` from the shared primitive modules,
-and register on ``AttentionMixin`` / ``CacheMixin`` for attention-wide operations
-(QKV fusion, attention-backend dispatch, MagCache/etc.). Helpers only used by the
-condition encoder (``_pack_sequences`` and the shared ``AceStepEncoderLayer``)
-live in ``diffusers/pipelines/ace_step/modeling_ace_step.py``.
+``apply_rotary_emb`` and the ``Timesteps`` sinusoid from the shared primitive
+modules, and register on ``AttentionMixin`` / ``CacheMixin`` for attention-wide
+operations (QKV fusion, attention-backend dispatch, MagCache/etc.). Helpers only
+used by the condition encoder (``_pack_sequences`` and the shared
+``AceStepEncoderLayer``) live in
+``diffusers/pipelines/ace_step/modeling_ace_step.py``.
 """
 
 import math
@@ -32,7 +33,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ..attention import AttentionMixin
 from ..cache_utils import CacheMixin
-from ..embeddings import apply_rotary_emb, get_1d_rotary_pos_embed, get_timestep_embedding
+from ..embeddings import Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
@@ -131,15 +132,16 @@ class AceStepTimestepEmbedding(nn.Module):
     """Sinusoidal timestep embedding + 2-layer MLP + 6-way AdaLN scale/shift projection.
 
     Matches the original ACE-Step checkpoint layout exactly (``linear_1``,
-    ``linear_2``, ``time_proj``) so the converter maps keys 1:1. Uses
-    ``get_timestep_embedding`` from diffusers' shared primitives instead of an
-    inline sinusoid helper.
+    ``linear_2``, ``time_proj``) so the converter maps keys 1:1. The sinusoid
+    itself is the shared ``Timesteps`` module (``flip_sin_to_cos=True`` for
+    ACE-Step's ``cat([cos, sin])`` convention).
     """
 
     def __init__(self, in_channels: int = 256, time_embed_dim: int = 2048, scale: float = 1000.0):
         super().__init__()
         self.in_channels = in_channels
         self.scale = scale
+        self.time_sinusoid = Timesteps(num_channels=in_channels, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.linear_1 = nn.Linear(in_channels, time_embed_dim, bias=True)
         self.act1 = nn.SiLU()
         self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim, bias=True)
@@ -147,16 +149,7 @@ class AceStepTimestepEmbedding(nn.Module):
         self.time_proj = nn.Linear(time_embed_dim, time_embed_dim * 6)
 
     def forward(self, t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # ACE-Step concats cos first then sin (`cat([cos, sin], dim=-1)`). diffusers'
-        # `get_timestep_embedding` calls that ordering `flip_sin_to_cos=True`.
-        t_freq = get_timestep_embedding(
-            t * self.scale,
-            embedding_dim=self.in_channels,
-            flip_sin_to_cos=True,
-            downscale_freq_shift=0,
-            scale=1,
-            max_period=10000,
-        )
+        t_freq = self.time_sinusoid(t * self.scale)
         temb = self.linear_1(t_freq.to(t.dtype))
         temb = self.act1(temb)
         temb = self.linear_2(temb)
