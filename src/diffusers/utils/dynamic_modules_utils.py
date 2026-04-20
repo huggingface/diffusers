@@ -309,16 +309,18 @@ def get_cached_module_file(
     else:
         module_file_or_url = os.path.join(pretrained_model_name_or_path, module_file)
 
-    if os.path.isfile(module_file_or_url):
+    is_local_file = os.path.isfile(module_file_or_url)
+    is_community_pipeline = not is_local_file and pretrained_model_name_or_path.count("/") == 0
+
+    if not is_community_pipeline or DIFFUSERS_DISABLE_REMOTE_CODE:
+        trust_remote_code = resolve_trust_remote_code(
+            trust_remote_code, str(pretrained_model_name_or_path), has_remote_code=True
+        )
+
+    if is_local_file:
         resolved_module_file = module_file_or_url
         submodule = "local"
-        if not trust_remote_code:
-            raise ValueError(
-                f"The directory {pretrained_model_name_or_path} contains custom code in {module_file} which must be executed to correctly "
-                f"load the model. You can inspect the file content at {module_file_or_url}.\n"
-                f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
-            )
-    elif pretrained_model_name_or_path.count("/") == 0:
+    elif is_community_pipeline:
         available_versions = get_diffusers_versions()
         # cut ".dev0"
         latest_version = "v" + ".".join(__version__.split(".")[:3])
@@ -335,13 +337,6 @@ def get_cached_module_file(
             raise ValueError(
                 f"`custom_revision`: {revision} does not exist. Please make sure to choose one of"
                 f" {', '.join(available_versions + ['main'])}."
-            )
-
-        if not trust_remote_code:
-            raise ValueError(
-                f"The community pipeline for {pretrained_model_name_or_path} contains custom code which must be executed to correctly "
-                f"load the model. You can inspect the repository content at https://hf.co/datasets/{COMMUNITY_PIPELINES_MIRROR_ID}/blob/main/{revision}/{pretrained_model_name_or_path}.py.\n"
-                f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
             )
 
         try:
@@ -367,12 +362,6 @@ def get_cached_module_file(
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
     else:
-        if not trust_remote_code:
-            raise ValueError(
-                f"The repository for {pretrained_model_name_or_path} contains custom code in {module_file} which must be executed to correctly "
-                f"load the model. You can inspect the repository content at https://hf.co/{pretrained_model_name_or_path}/blob/main/{module_file}.\n"
-                f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
-            )
         try:
             # Load from URL or cache if already cached
             resolved_module_file = hf_hub_download(
@@ -527,9 +516,6 @@ def get_class_from_dynamic_module(
     cls = get_class_from_dynamic_module("sgugger/my-bert-model", "modeling.py", "MyBertModel")
     ```"""
     # And lastly we get the class inside our newly created module
-    trust_remote_code = resolve_trust_remote_code(
-        trust_remote_code, str(pretrained_model_name_or_path), has_remote_code=True
-    )
     final_module = get_cached_module_file(
         pretrained_model_name_or_path,
         module_file,
