@@ -84,7 +84,7 @@ class GGUFQuantizer(DiffusersQuantizer):
         inferred_shape = _quant_shape_from_byte_shape(loaded_param_shape, type_size, block_size)
         if inferred_shape != current_param_shape:
             raise ValueError(
-                f"{param_name} has an expected quantized shape of: {inferred_shape}, but received shape: {loaded_param_shape}"
+                f"{param_name} has an expected quantized shape of: {current_param_shape}, but received shape: {inferred_shape} (inferred from byte shape {loaded_param_shape})"
             )
 
         return True
