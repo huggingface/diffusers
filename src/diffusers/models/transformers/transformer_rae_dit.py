@@ -1,3 +1,18 @@
+# coding=utf-8
+# Copyright 2026 HuggingFace Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 from math import pi, sqrt
@@ -18,29 +33,28 @@ def _expand_conditioning_tokens(hidden_states: torch.Tensor, target_length: int)
     if hidden_states.shape[1] == target_length:
         return hidden_states
 
-    if target_length % hidden_states.shape[1] != 0:
-        raise ValueError(
-            f"Cannot repeat sequence of length {hidden_states.shape[1]} to match target length {target_length}."
-        )
-
     if hidden_states.shape[1] == 1:
         return hidden_states.expand(-1, target_length, -1)
 
     source_side = int(sqrt(hidden_states.shape[1]))
     target_side = int(sqrt(target_length))
-    if (
-        source_side * source_side == hidden_states.shape[1]
-        and target_side * target_side == target_length
-        and target_side % source_side == 0
-    ):
-        scale = target_side // source_side
+    if source_side * source_side == hidden_states.shape[1] and target_side * target_side == target_length:
         batch_size, _, channels = hidden_states.shape
         hidden_states = hidden_states.reshape(batch_size, source_side, source_side, channels)
-        hidden_states = hidden_states.repeat_interleave(scale, dim=1).repeat_interleave(scale, dim=2)
-        return hidden_states.reshape(batch_size, target_length, channels)
+
+        if target_side % source_side == 0:
+            scale = target_side // source_side
+            hidden_states = hidden_states.repeat_interleave(scale, dim=1).repeat_interleave(scale, dim=2)
+            return hidden_states.reshape(batch_size, target_length, channels)
+
+        if source_side % target_side == 0:
+            scale = source_side // target_side
+            hidden_states = hidden_states.permute(0, 3, 1, 2)
+            hidden_states = F.avg_pool2d(hidden_states, kernel_size=scale, stride=scale)
+            return hidden_states.permute(0, 2, 3, 1).reshape(batch_size, target_length, channels)
 
     raise ValueError(
-        "Cannot expand conditioning tokens without preserving their 2D layout: "
+        "Cannot remap conditioning tokens without preserving their 2D layout: "
         f"source length {hidden_states.shape[1]} is incompatible with target length {target_length}."
     )
 
@@ -321,6 +335,7 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["pos_embed", "norm", "final_layer"]
+    _no_split_modules = ["RAEDiTBlock"]
 
     @register_to_config
     def __init__(
@@ -445,8 +460,9 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
 
+        swap_swiglu_projection_halves = not getattr(self, "_swiglu_projection_halves_swapped", False)
         for block in self.blocks:
-            if block.use_swiglu:
+            if block.use_swiglu and swap_swiglu_projection_halves:
                 _swap_swiglu_projection_halves(block.mlp)
             nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
@@ -455,6 +471,7 @@ class RAEDiT2DModel(ModelMixin, ConfigMixin):
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].bias, 0)
         nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
+        self._swiglu_projection_halves_swapped = True
 
     def unpatchify(self, hidden_states: torch.Tensor) -> torch.Tensor:
         channels = self.in_channels

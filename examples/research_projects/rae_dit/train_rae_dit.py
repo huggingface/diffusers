@@ -138,7 +138,7 @@ def parse_args():
         "--pretrained_transformer_model_name_or_path",
         type=str,
         default=None,
-        help="Optional path or Hub id for a pretrained RAEDiT transformer checkpoint.",
+        help="Optional stage-2 checkpoint root or transformer path/Hub id for a pretrained RAEDiT checkpoint.",
     )
     parser.add_argument("--patch_size", type=int, default=1, help="Latent patch size for the Stage-2 transformer.")
     parser.add_argument("--encoder_hidden_size", type=int, default=1152, help="Encoder token width.")
@@ -319,6 +319,74 @@ def maybe_load_resumed_scheduler(
     return restored_scheduler
 
 
+def resolve_pretrained_stage2_paths(
+    pretrained_transformer_model_name_or_path: str,
+) -> tuple[tuple[str, dict], tuple[str, dict] | None, bool]:
+    model_root = pretrained_transformer_model_name_or_path
+
+    if os.path.isdir(model_root):
+        transformer_dir = os.path.join(model_root, "transformer")
+        if os.path.isdir(transformer_dir):
+            scheduler_spec = (
+                (model_root, {"subfolder": "scheduler"}) if os.path.isdir(os.path.join(model_root, "scheduler")) else None
+            )
+            return (model_root, {"subfolder": "transformer"}), scheduler_spec, True
+
+        if os.path.basename(os.path.normpath(model_root)) == "transformer":
+            stage2_root = os.path.dirname(model_root)
+            scheduler_dir = os.path.join(stage2_root, "scheduler")
+            scheduler_spec = (stage2_root, {"subfolder": "scheduler"}) if os.path.isdir(scheduler_dir) else None
+            return (model_root, {}), scheduler_spec, True
+
+        return (model_root, {}), None, False
+
+    return (model_root, {"subfolder": "transformer"}), (model_root, {"subfolder": "scheduler"}), True
+
+
+def load_pretrained_transformer(pretrained_transformer_model_name_or_path: str) -> tuple[RAEDiT2DModel, bool]:
+    (transformer_path, transformer_kwargs), _, expects_pretrained_scheduler = resolve_pretrained_stage2_paths(
+        pretrained_transformer_model_name_or_path
+    )
+    try:
+        return RAEDiT2DModel.from_pretrained(transformer_path, **transformer_kwargs), expects_pretrained_scheduler
+    except OSError:
+        if transformer_kwargs:
+            return RAEDiT2DModel.from_pretrained(pretrained_transformer_model_name_or_path), False
+        raise
+
+
+def maybe_load_pretrained_scheduler(
+    args,
+    pretrained_transformer_model_name_or_path: str | None,
+    noise_scheduler: FlowMatchEulerDiscreteScheduler,
+    expects_pretrained_scheduler: bool = False,
+) -> FlowMatchEulerDiscreteScheduler:
+    if pretrained_transformer_model_name_or_path is None:
+        return noise_scheduler
+
+    _, scheduler_spec, _ = resolve_pretrained_stage2_paths(pretrained_transformer_model_name_or_path)
+    if expects_pretrained_scheduler and scheduler_spec is None:
+        raise ValueError(
+            "Pretrained Stage-2 checkpoints used for finetuning must include a sibling `scheduler/` directory."
+        )
+    if scheduler_spec is None:
+        return noise_scheduler
+
+    scheduler_path, scheduler_kwargs = scheduler_spec
+    try:
+        restored_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(scheduler_path, **scheduler_kwargs)
+    except OSError:
+        if expects_pretrained_scheduler:
+            raise ValueError(
+                "Pretrained Stage-2 checkpoints used for finetuning must include a readable `scheduler/` config."
+            )
+        return noise_scheduler
+
+    args.num_train_timesteps = int(restored_scheduler.config.num_train_timesteps)
+    args.flow_shift = float(restored_scheduler.config.shift)
+    return restored_scheduler
+
+
 def get_latent_spec(autoencoder: AutoencoderRAE) -> tuple[int, int]:
     if not autoencoder.config.reshape_to_2d:
         raise ValueError("Stage-2 RAE DiT training expects `AutoencoderRAE.reshape_to_2d=True`.")
@@ -394,6 +462,19 @@ def validate_args(args):
     if args.validation_guidance_scale < 1.0:
         raise ValueError(
             f"`--validation_guidance_scale` must be >= 1.0, but got {args.validation_guidance_scale}."
+        )
+
+
+def validate_transformer_validation_args(args, transformer: RAEDiT2DModel):
+    validation_enabled = args.validation_class_label is not None
+    if not validation_enabled or args.validation_guidance_scale <= 1.0:
+        return
+
+    class_dropout_prob = float(transformer.config.class_dropout_prob)
+    if class_dropout_prob <= 0:
+        raise ValueError(
+            "Validation classifier-free guidance requires a transformer with a null class token. "
+            f"Got `class_dropout_prob={class_dropout_prob}` with `--validation_guidance_scale={args.validation_guidance_scale}`."
         )
 
 
@@ -528,8 +609,11 @@ def main():
         drop_last=True,
     )
 
+    expects_pretrained_scheduler = False
     if args.pretrained_transformer_model_name_or_path is not None:
-        transformer = RAEDiT2DModel.from_pretrained(args.pretrained_transformer_model_name_or_path)
+        transformer, expects_pretrained_scheduler = load_pretrained_transformer(
+            args.pretrained_transformer_model_name_or_path
+        )
         if transformer.config.in_channels != latent_channels or transformer.config.sample_size != latent_size:
             raise ValueError(
                 "Loaded transformer latent shape does not match the selected AutoencoderRAE. "
@@ -559,6 +643,8 @@ def main():
             use_pos_embed=args.use_pos_embed,
         )
 
+    validate_transformer_validation_args(args, transformer)
+
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
 
@@ -567,6 +653,13 @@ def main():
         num_train_timesteps=args.num_train_timesteps,
         shift=flow_shift,
     )
+    noise_scheduler = maybe_load_pretrained_scheduler(
+        args=args,
+        pretrained_transformer_model_name_or_path=args.pretrained_transformer_model_name_or_path,
+        noise_scheduler=noise_scheduler,
+        expects_pretrained_scheduler=expects_pretrained_scheduler,
+    )
+    flow_shift = float(noise_scheduler.config.shift)
 
     if args.scale_lr:
         args.learning_rate = (

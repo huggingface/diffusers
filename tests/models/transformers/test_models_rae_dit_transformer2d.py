@@ -219,6 +219,14 @@ class TestRAEDiT2DModel(RAEDiT2DTesterConfig, ModelTesterMixin):
         )
         assert torch.equal(repeated, expected)
 
+    def test_expand_conditioning_tokens_downsamples_preserving_2d_layout(self):
+        hidden_states = torch.arange(1.0, 17.0).reshape(1, 16, 1)
+
+        reduced = _expand_conditioning_tokens(hidden_states, target_length=4)
+
+        expected = torch.tensor([[[3.5], [5.5], [11.5], [13.5]]])
+        assert torch.equal(reduced, expected)
+
     def test_initialize_weights_preserves_unspecialized_linear_layers(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device)
         sentinel_weight = torch.full_like(model.s_projector.weight, 0.1234)
@@ -230,6 +238,18 @@ class TestRAEDiT2DModel(RAEDiT2DTesterConfig, ModelTesterMixin):
 
         assert torch.equal(model.s_projector.weight, sentinel_weight)
         assert torch.equal(model.s_projector.bias, sentinel_bias)
+
+    def test_initialize_weights_reinitializes_owned_layers_without_flipping_swiglu(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        hidden_states = randn_tensor((2, 4, model.encoder_hidden_size), generator=self.generator, device=torch_device)
+
+        mlp_output_before = model.blocks[0].mlp(hidden_states)
+        timestep_weight_before = model.t_embedder.mlp[0].weight.detach().clone()
+
+        model.initialize_weights()
+
+        assert not torch.equal(model.t_embedder.mlp[0].weight, timestep_weight_before)
+        assert torch.allclose(model.blocks[0].mlp(hidden_states), mlp_output_before, atol=1e-6, rtol=1e-5)
 
     def test_expand_conditioning_tokens_broadcasts_global_conditioning(self):
         hidden_states = torch.tensor([[[1.0, 2.0]]])

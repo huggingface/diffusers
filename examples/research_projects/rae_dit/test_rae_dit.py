@@ -18,6 +18,7 @@ import math
 import os
 import sys
 import tempfile
+from unittest import mock
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -27,7 +28,7 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
-from diffusers import AutoencoderRAE
+from diffusers import AutoencoderRAE, RAEDiT2DModel
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 
 
@@ -39,9 +40,12 @@ from train_rae_dit import (  # noqa: E402
     compute_resume_offsets,
     compute_training_schedule,
     is_training_complete,
+    load_pretrained_transformer,
+    maybe_load_pretrained_scheduler,
     maybe_load_resumed_scheduler,
     should_skip_resumed_batch,
     validate_args,
+    validate_transformer_validation_args,
 )
 
 
@@ -163,6 +167,34 @@ class RAEDiT(ExamplesTestsAccelerate):
                 image = Image.new("RGB", (resolution, resolution), color=color)
                 image.save(os.path.join(class_dir, f"sample_{image_idx}.png"))
         return dataset_dir
+
+    def _create_tiny_stage2(self, tmpdir, *, class_dropout_prob=0.1, num_train_timesteps=10, shift=7.0):
+        stage2_dir = os.path.join(tmpdir, "tiny-stage2")
+        transformer_dir = os.path.join(stage2_dir, "transformer")
+        scheduler_dir = os.path.join(stage2_dir, "scheduler")
+
+        model = RAEDiT2DModel(
+            sample_size=4,
+            patch_size=1,
+            in_channels=64,
+            hidden_size=(32, 32),
+            depth=(1, 1),
+            num_heads=(4, 4),
+            mlp_ratio=2.0,
+            class_dropout_prob=class_dropout_prob,
+            num_classes=2,
+            use_qknorm=True,
+            use_swiglu=True,
+            use_rope=True,
+            use_rmsnorm=True,
+            wo_shift=False,
+            use_pos_embed=True,
+        )
+        model.save_pretrained(transformer_dir, safe_serialization=False)
+        FlowMatchEulerDiscreteScheduler(num_train_timesteps=num_train_timesteps, shift=shift).save_pretrained(
+            scheduler_dir
+        )
+        return stage2_dir
 
     def test_autoencoder_rae_from_pretrained_loads_local_checkpoint(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -310,3 +342,129 @@ class RAEDiT(ExamplesTestsAccelerate):
         self.assertEqual(restored.config.shift, 7.0)
         self.assertEqual(args.num_train_timesteps, 10)
         self.assertEqual(args.flow_shift, 7.0)
+
+    def test_load_pretrained_transformer_supports_stage_root_and_transformer_subdir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stage2_dir = self._create_tiny_stage2(tmpdir)
+
+            from_root, from_root_expects_scheduler = load_pretrained_transformer(stage2_dir)
+            from_transformer_dir, from_transformer_dir_expects_scheduler = load_pretrained_transformer(
+                os.path.join(stage2_dir, "transformer")
+            )
+
+        self.assertEqual(from_root.config.sample_size, 4)
+        self.assertEqual(from_transformer_dir.config.sample_size, 4)
+        self.assertEqual(from_root.config.in_channels, 64)
+        self.assertEqual(from_transformer_dir.config.in_channels, 64)
+        self.assertTrue(from_root_expects_scheduler)
+        self.assertTrue(from_transformer_dir_expects_scheduler)
+
+    def test_load_pretrained_transformer_falls_back_to_direct_repo_load(self):
+        with mock.patch("train_rae_dit.RAEDiT2DModel.from_pretrained") as from_pretrained:
+            from_pretrained.side_effect = [OSError("missing transformer subfolder"), mock.sentinel.transformer]
+
+            loaded, expects_scheduler = load_pretrained_transformer("org/repo")
+
+        self.assertIs(loaded, mock.sentinel.transformer)
+        self.assertFalse(expects_scheduler)
+        self.assertEqual(from_pretrained.call_args_list, [mock.call("org/repo", subfolder="transformer"), mock.call("org/repo")])
+
+    def test_maybe_load_pretrained_scheduler_prefers_stage2_config(self):
+        args = SimpleNamespace(num_train_timesteps=999, flow_shift=2.5)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stage2_dir = self._create_tiny_stage2(tmpdir, num_train_timesteps=17, shift=3.5)
+            restored = maybe_load_pretrained_scheduler(
+                args=args,
+                pretrained_transformer_model_name_or_path=stage2_dir,
+                noise_scheduler=FlowMatchEulerDiscreteScheduler(num_train_timesteps=999, shift=2.5),
+                expects_pretrained_scheduler=True,
+            )
+
+        self.assertEqual(restored.config.num_train_timesteps, 17)
+        self.assertEqual(restored.config.shift, 3.5)
+        self.assertEqual(args.num_train_timesteps, 17)
+        self.assertEqual(args.flow_shift, 3.5)
+
+    def test_maybe_load_pretrained_scheduler_supports_transformer_subdir_input(self):
+        args = SimpleNamespace(num_train_timesteps=999, flow_shift=2.5)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stage2_dir = self._create_tiny_stage2(tmpdir, num_train_timesteps=23, shift=4.5)
+            restored = maybe_load_pretrained_scheduler(
+                args=args,
+                pretrained_transformer_model_name_or_path=os.path.join(stage2_dir, "transformer"),
+                noise_scheduler=FlowMatchEulerDiscreteScheduler(num_train_timesteps=999, shift=2.5),
+                expects_pretrained_scheduler=True,
+            )
+
+        self.assertEqual(restored.config.num_train_timesteps, 23)
+        self.assertEqual(restored.config.shift, 4.5)
+        self.assertEqual(args.num_train_timesteps, 23)
+        self.assertEqual(args.flow_shift, 4.5)
+
+    def test_maybe_load_pretrained_scheduler_rejects_local_stage2_root_without_scheduler(self):
+        args = SimpleNamespace(num_train_timesteps=999, flow_shift=2.5)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stage2_dir = os.path.join(tmpdir, "tiny-stage2")
+            RAEDiT2DModel(
+                sample_size=4,
+                patch_size=1,
+                in_channels=64,
+                hidden_size=(32, 32),
+                depth=(1, 1),
+                num_heads=(4, 4),
+                mlp_ratio=2.0,
+                class_dropout_prob=0.1,
+                num_classes=2,
+                use_qknorm=True,
+                use_swiglu=True,
+                use_rope=True,
+                use_rmsnorm=True,
+                wo_shift=False,
+                use_pos_embed=True,
+            ).save_pretrained(os.path.join(stage2_dir, "transformer"), safe_serialization=False)
+
+            with self.assertRaises(ValueError):
+                maybe_load_pretrained_scheduler(
+                    args=args,
+                    pretrained_transformer_model_name_or_path=stage2_dir,
+                    noise_scheduler=FlowMatchEulerDiscreteScheduler(num_train_timesteps=999, shift=2.5),
+                    expects_pretrained_scheduler=True,
+                )
+
+    def test_maybe_load_pretrained_scheduler_rejects_remote_stage2_root_without_scheduler(self):
+        args = SimpleNamespace(num_train_timesteps=999, flow_shift=2.5)
+
+        with mock.patch("train_rae_dit.FlowMatchEulerDiscreteScheduler.from_pretrained", side_effect=OSError("missing scheduler")):
+            with self.assertRaises(ValueError):
+                maybe_load_pretrained_scheduler(
+                    args=args,
+                    pretrained_transformer_model_name_or_path="org/repo",
+                    noise_scheduler=FlowMatchEulerDiscreteScheduler(num_train_timesteps=999, shift=2.5),
+                    expects_pretrained_scheduler=True,
+                )
+
+    def test_validate_transformer_validation_args_rejects_cfg_without_null_class_token(self):
+        args = SimpleNamespace(validation_class_label=0, validation_guidance_scale=1.5)
+        transformer = RAEDiT2DModel(
+            sample_size=4,
+            patch_size=1,
+            in_channels=64,
+            hidden_size=(32, 32),
+            depth=(1, 1),
+            num_heads=(4, 4),
+            mlp_ratio=2.0,
+            class_dropout_prob=0.0,
+            num_classes=2,
+            use_qknorm=True,
+            use_swiglu=True,
+            use_rope=True,
+            use_rmsnorm=True,
+            wo_shift=False,
+            use_pos_embed=True,
+        )
+
+        with self.assertRaises(ValueError):
+            validate_transformer_validation_args(args, transformer)

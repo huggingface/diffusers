@@ -75,13 +75,16 @@ If you already have a converted or partially trained Stage-2 checkpoint, resume 
 ```bash
 accelerate launch examples/research_projects/rae_dit/train_rae_dit.py \
   --pretrained_rae_model_name_or_path nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08 \
-  --pretrained_transformer_model_name_or_path /path/to/previous/transformer \
+  --pretrained_transformer_model_name_or_path /path/to/previous \
   --train_data_dir /path/to/imagenet_like_folder \
   --output_dir /tmp/rae-dit-finetune \
   --resolution 256 \
   --train_batch_size 8 \
   --max_train_steps 50000
 ```
+
+The preferred input is the stage-2 root that contains sibling `transformer/` and `scheduler/` folders. A local
+`.../transformer` path still works when there is a sibling `scheduler/` directory next to it.
 
 ## Notes
 
