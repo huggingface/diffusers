@@ -618,34 +618,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
 
         return prompt_embeds, prompt_embeds_mask
 
-    def decode_latents(self, latents: torch.Tensor, enable_tiling: bool = True) -> torch.Tensor:
-        """
-        Decode latents to pixel values.
-
-        .. deprecated:: 1.0.0
-            Use the VAE directly instead of calling this method.
-
-        Args:
-            latents: Latent tensor to decode.
-            enable_tiling: Whether to enable tiled decoding to save memory.
-
-        Returns:
-            Float tensor of shape (..., H, W, C) with values in [0, 1].
-        """
-        deprecation_message = "The decode_latents method is deprecated."
-        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
-
-        latents = 1 / self.vae.config.scaling_factor * latents
-        if enable_tiling:
-            self.vae.enable_tiling()
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
-        if image.ndim == 4:
-            image = image.cpu().permute(0, 2, 3, 1).float()
-        else:
-            image = image.cpu().float()
-        return image
-
     def check_inputs(
         self,
         prompt,
