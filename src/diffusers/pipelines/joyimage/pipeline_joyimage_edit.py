@@ -1,8 +1,7 @@
 import inspect
 import math
 from dataclasses import dataclass
-from types import SimpleNamespace
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -257,33 +256,6 @@ def _dynamic_resize_from_bucket(image_size: Tuple[int, int],  basesize: int = 51
 
 
 
-def _build_args(
-    args: Any,
-    text_encoder: Qwen3VLForConditionalGeneration,
-) -> Any:
-    """
-    Return args unchanged if provided, otherwise construct a default namespace.
-
-    Args:
-        args: Existing args object, or None.
-        text_encoder: Text encoder used to resolve the checkpoint path when args is None.
-
-    Returns:
-        The original args object, or a SimpleNamespace with sensible defaults.
-    """
-    if args is not None:
-        return args
-
-    text_encoder_ckpt = _get_text_encoder_ckpt(text_encoder)
-    return SimpleNamespace(
-        enable_multi_task_training=False,
-        text_token_max_length=2048,
-        dit_precision="bf16",
-        vae_precision="bf16",
-        text_encoder_arch_config={"params": {"text_encoder_ckpt": text_encoder_ckpt}},
-    )
-
-
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -364,7 +336,9 @@ class JoyImageEditPipeline(DiffusionPipeline):
         tokenizer: Qwen2Tokenizer,
         transformer: JoyImageEditTransformer3DModel,
         processor: Qwen3VLProcessor,
-        args: Any = None,
+        enable_multi_task_training: bool = False,
+        text_token_max_length: int = 2048,
+        text_encoder_ckpt: Optional[str] = None,
     ):
         """
         Initialise the pipeline and register all sub-modules.
@@ -376,10 +350,12 @@ class JoyImageEditPipeline(DiffusionPipeline):
             tokenizer: Tokenizer paired with the text encoder.
             transformer: 3-D transformer denoising network.
             processor: Qwen3-VL processor for multi-image prompt preparation.
-            args: Optional configuration namespace. Defaults are inferred when None.
+            enable_multi_task_training: Whether to enable multi-task training mode.
+            text_token_max_length: Maximum number of text tokens for the encoder.
+            text_encoder_ckpt: Path to text encoder checkpoint. Inferred from
+                ``text_encoder`` when not provided.
         """
         super().__init__()
-        self.args = _build_args(args=args, text_encoder=text_encoder)
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -389,6 +365,9 @@ class JoyImageEditPipeline(DiffusionPipeline):
             processor=processor,
         )
 
+        self.enable_multi_task_training = enable_multi_task_training
+        self.text_token_max_length = text_token_max_length
+
         self.vae_scale_factor_temporal = (
             self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         )
@@ -397,14 +376,11 @@ class JoyImageEditPipeline(DiffusionPipeline):
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
-        text_encoder_ckpt = dict(self.args.text_encoder_arch_config.get("params", {})).get(
-            "text_encoder_ckpt", _get_text_encoder_ckpt(self.text_encoder)
-        )
+        if text_encoder_ckpt is None:
+            text_encoder_ckpt = _get_text_encoder_ckpt(self.text_encoder)
         self.qwen_processor = (
             processor if processor is not None else AutoProcessor.from_pretrained(text_encoder_ckpt)
         )
-
-        self.text_token_max_length = self.args.text_token_max_length
 
         # Prompt templates used when encoding text with / without image tokens.
         self.prompt_template_encode = {
