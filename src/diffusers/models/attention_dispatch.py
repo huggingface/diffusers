@@ -1451,6 +1451,12 @@ def _sage_attention_forward_op(
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for Sage attention.")
 
+    # In ring attention, key/value views from chunked AsyncCollectiveTensor may have invalid data_ptr.
+    if key.storage_offset() > 0:
+        key = key.clone()
+    if value.storage_offset() > 0:
+        value = value.clone()
+
     out = sageattn(
         q=query,
         k=key,
@@ -1488,6 +1494,12 @@ def _sage_attention_hub_forward_op(
         raise ValueError("`dropout_p` is not yet supported for Sage attention.")
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for Sage attention.")
+
+    # In ring attention, key/value views from chunked AsyncCollectiveTensor may have invalid data_ptr.
+    if key.storage_offset() > 0:
+        key = key.clone()
+    if value.storage_offset() > 0:
+        value = value.clone()
 
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB].kernel_fn
     out = func(
