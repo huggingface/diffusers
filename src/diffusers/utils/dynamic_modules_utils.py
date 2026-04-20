@@ -527,6 +527,9 @@ def get_class_from_dynamic_module(
     cls = get_class_from_dynamic_module("sgugger/my-bert-model", "modeling.py", "MyBertModel")
     ```"""
     # And lastly we get the class inside our newly created module
+    trust_remote_code = resolve_trust_remote_code(
+        trust_remote_code, str(pretrained_model_name_or_path), has_remote_code=True
+    )
     final_module = get_cached_module_file(
         pretrained_model_name_or_path,
         module_file,
