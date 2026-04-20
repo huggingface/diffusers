@@ -21,7 +21,7 @@ import torch.nn.functional as F
 from transformers import PreTrainedModel, PreTrainedTokenizerFast
 
 from ...models import AutoencoderOobleck
-from ...models.transformers.ace_step_transformer import AceStepDiTModel
+from ...models.transformers.ace_step_transformer import AceStepTransformer1DModel
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
@@ -159,7 +159,7 @@ EXAMPLE_DOC_STRING = """
         >>> import soundfile as sf
         >>> from diffusers import AceStepPipeline
 
-        >>> pipe = AceStepPipeline.from_pretrained("ACE-Step/ACE-Step-v1-5-turbo", torch_dtype=torch.bfloat16)
+        >>> pipe = AceStepPipeline.from_pretrained("ACE-Step/Ace-Step1.5", torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
         >>> # Text-to-music generation with metadata
@@ -229,7 +229,7 @@ class AceStepPipeline(DiffusionPipeline):
             Text encoder model (e.g., Qwen3-Embedding-0.6B) for encoding text prompts and lyrics.
         tokenizer ([`~transformers.AutoTokenizer`]):
             Tokenizer for the text encoder.
-        transformer ([`AceStepDiTModel`]):
+        transformer ([`AceStepTransformer1DModel`]):
             The Diffusion Transformer (DiT) model for denoising audio latents.
         condition_encoder ([`AceStepConditionEncoder`]):
             Condition encoder that combines text, lyric, and timbre embeddings for cross-attention.
@@ -242,7 +242,7 @@ class AceStepPipeline(DiffusionPipeline):
         vae: AutoencoderOobleck,
         text_encoder: PreTrainedModel,
         tokenizer: PreTrainedTokenizerFast,
-        transformer: AceStepDiTModel,
+        transformer: AceStepTransformer1DModel,
         condition_encoder: AceStepConditionEncoder,
     ):
         super().__init__()
@@ -332,16 +332,13 @@ class AceStepPipeline(DiffusionPipeline):
     def _variant_defaults(self) -> dict:
         """Per-variant sampling defaults matching the original `inference.py`.
 
-        Turbo variants ship with guidance distilled into weights (CFG off by default) and
-        use the 8-step `SHIFT_TIMESTEPS` schedule with `shift=3.0`. Base/SFT variants use
-        CFG (via the learned `AceStepConditionEncoder.null_condition_emb`) with a linear
-        timestep schedule at `shift=1.0`.
+        Turbo variants ship with guidance distilled into weights (CFG off by default).
+        Base / SFT variants use APG guidance through the learned
+        `AceStepConditionEncoder.null_condition_emb`. All variants default to the
+        8-step `SHIFT_TIMESTEPS` table at `shift=1.0` per
+        `acestep/inference.py:GenerationParams` — base / sft users typically override
+        `num_inference_steps` to 30–60 for higher quality.
         """
-        # Defaults match `acestep/inference.py` (`GenerationParams`): shift=1.0 and
-        # inference_steps=8 across ALL variants (turbo included). The turbo schedule
-        # comes from SHIFT_TIMESTEPS[1.0], not SHIFT_TIMESTEPS[3.0]. Base/SFT at only
-        # 8 steps looks surprising but is the documented default — users override to
-        # 30-100 if they want higher quality.
         if self.is_turbo:
             return {"num_inference_steps": 8, "shift": 1.0, "guidance_scale": 1.0}
         return {"num_inference_steps": 8, "shift": 1.0, "guidance_scale": 7.0}
@@ -1048,9 +1045,9 @@ class AceStepPipeline(DiffusionPipeline):
         lyrics: Union[str, List[str]] = "",
         audio_duration: float = 60.0,
         vocal_language: Union[str, List[str]] = "en",
-        # These three have variant-aware defaults: if left as `None`, they fall back to
-        # the variant recipe (turbo: 8 steps / shift=3.0 / guidance=1.0; base+SFT:
-        # 27 steps / shift=1.0 / guidance=7.0). See `_variant_defaults`.
+        # These three have variant-aware defaults: if left as `None`, they fall back
+        # to the variant recipe (turbo: 8 steps / shift=1.0 / guidance=1.0; base+sft:
+        # 8 steps / shift=1.0 / guidance=7.0). See `_variant_defaults`.
         num_inference_steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         shift: Optional[float] = None,
