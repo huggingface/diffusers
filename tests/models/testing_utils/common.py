@@ -287,8 +287,9 @@ class ModelTesterMixin:
                 f"Parameter shape mismatch for {param_name}. Original: {param_1.shape}, loaded: {param_2.shape}"
             )
 
-        image = model(**self.get_dummy_inputs(), return_dict=False)[0]
-        new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
+        inputs_dict = self.get_dummy_inputs()
+        image = model(**inputs_dict, return_dict=False)[0]
+        new_image = new_model(**inputs_dict, return_dict=False)[0]
 
         assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
 
@@ -308,8 +309,9 @@ class ModelTesterMixin:
 
         new_model.to(torch_device)
 
-        image = model(**self.get_dummy_inputs(), return_dict=False)[0]
-        new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
+        inputs_dict = self.get_dummy_inputs()
+        image = model(**inputs_dict, return_dict=False)[0]
+        new_image = new_model(**inputs_dict, return_dict=False)[0]
 
         assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
 
@@ -337,8 +339,9 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        first = model(**self.get_dummy_inputs(), return_dict=False)[0]
-        second = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        inputs_dict = self.get_dummy_inputs()
+        first = model(**inputs_dict, return_dict=False)[0]
+        second = model(**inputs_dict, return_dict=False)[0]
 
         first_flat = first.flatten()
         second_flat = second.flatten()
@@ -395,8 +398,9 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        outputs_dict = model(**self.get_dummy_inputs())
-        outputs_tuple = model(**self.get_dummy_inputs(), return_dict=False)
+        inputs_dict = self.get_dummy_inputs()
+        outputs_dict = model(**inputs_dict)
+        outputs_tuple = model(**inputs_dict, return_dict=False)
 
         recursive_check(outputs_tuple, outputs_dict)
 
@@ -523,8 +527,10 @@ class ModelTesterMixin:
         new_model = new_model.to(torch_device)
 
         torch.manual_seed(0)
-        inputs_dict_new = self.get_dummy_inputs()
-        new_output = new_model(**inputs_dict_new, return_dict=False)[0]
+        # Re-create inputs only if they contain a generator (which needs to be reset)
+        if "generator" in inputs_dict:
+            inputs_dict = self.get_dummy_inputs()
+        new_output = new_model(**inputs_dict, return_dict=False)[0]
 
         assert_tensors_close(
             base_output, new_output, atol=atol, rtol=rtol, msg="Output should match after sharded save/load"
@@ -563,8 +569,10 @@ class ModelTesterMixin:
         new_model = new_model.to(torch_device)
 
         torch.manual_seed(0)
-        inputs_dict_new = self.get_dummy_inputs()
-        new_output = new_model(**inputs_dict_new, return_dict=False)[0]
+        # Re-create inputs only if they contain a generator (which needs to be reset)
+        if "generator" in inputs_dict:
+            inputs_dict = self.get_dummy_inputs()
+        new_output = new_model(**inputs_dict, return_dict=False)[0]
 
         assert_tensors_close(
             base_output, new_output, atol=atol, rtol=rtol, msg="Output should match after variant sharded save/load"
@@ -614,8 +622,10 @@ class ModelTesterMixin:
             model_parallel = model_parallel.to(torch_device)
 
             torch.manual_seed(0)
-            inputs_dict_parallel = self.get_dummy_inputs()
-            output_parallel = model_parallel(**inputs_dict_parallel, return_dict=False)[0]
+            # Re-create inputs only if they contain a generator (which needs to be reset)
+            if "generator" in inputs_dict:
+                inputs_dict = self.get_dummy_inputs()
+            output_parallel = model_parallel(**inputs_dict, return_dict=False)[0]
 
             assert_tensors_close(
                 base_output, output_parallel, atol=atol, rtol=rtol, msg="Output should match with parallel loading"
