@@ -227,8 +227,6 @@ def get_transformer_config() -> Tuple[Dict[str, Any], ...]:
             "rope_dim_list": [16, 56, 56],
             "text_states_dim": 4096,
             "rope_type": "rope",
-            "dit_modulation_type": "wanx",
-            "unpatchify_new": True,
             "rope_theta": 10000,
         },
     }
@@ -239,10 +237,27 @@ def convert_transformer(ckpt_path: str):
         original_state_dict = checkpoint["model"]
     else:
         original_state_dict = checkpoint
+
+    # Attention weights moved from block to block.attn submodule
+    attn_suffixes = (
+        "img_attn_qkv.", "img_attn_q_norm.", "img_attn_k_norm.", "img_attn_proj.",
+        "txt_attn_qkv.", "txt_attn_q_norm.", "txt_attn_k_norm.", "txt_attn_proj.",
+    )
+    remapped = {}
+    for key, value in original_state_dict.items():
+        new_key = key
+        if key.startswith("double_blocks."):
+            for suffix in attn_suffixes:
+                # double_blocks.0.img_attn_qkv.weight -> double_blocks.0.attn.img_attn_qkv.weight
+                if "." + suffix in key and ".attn." + suffix not in key:
+                    new_key = key.replace("." + suffix, ".attn." + suffix)
+                    break
+        remapped[new_key] = value
+
     config = get_transformer_config()
     with init_empty_weights():
         transformer = JoyImageEditTransformer3DModel(**config['diffusers_config'])
-    transformer.load_state_dict(original_state_dict, strict=True, assign=True)
+    transformer.load_state_dict(remapped, strict=True, assign=True)
     return transformer
 
 def get_args():

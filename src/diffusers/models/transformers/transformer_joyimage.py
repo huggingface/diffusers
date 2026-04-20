@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import math
 from typing import Any, Optional, Tuple
 
@@ -22,7 +23,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import FeedForward
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
@@ -229,9 +230,8 @@ class JoyImageAttnProcessor:
     """Attention processor for JoyImage double-stream joint attention.
 
     Implements the joint attention computation where text and image streams are
-    processed together.  The block stores fused QKV projections directly
-    (``img_attn_qkv`` / ``txt_attn_qkv``) so this processor operates on
-    a ``JoyImageTransformerBlock`` rather than on a generic ``Attention`` module.
+    processed together.  The :class:`JoyImageAttention` module stores fused QKV
+    projections (``img_attn_qkv`` / ``txt_attn_qkv``).
     """
 
     _attention_backend = None
@@ -242,7 +242,7 @@ class JoyImageAttnProcessor:
 
     def __call__(
         self,
-        block: "JoyImageTransformerBlock",
+        attn: "JoyImageAttention",
         hidden_states: torch.Tensor,  # image stream  (B, S_img, D)
         encoder_hidden_states: torch.Tensor = None,  # text stream  (B, S_txt, D)
         image_rotary_emb: Tuple[torch.Tensor, torch.Tensor] | None = None,
@@ -251,14 +251,14 @@ class JoyImageAttnProcessor:
         if encoder_hidden_states is None:
             raise ValueError("JoyImageAttnProcessor requires encoder_hidden_states (text stream)")
 
-        heads = block.num_attention_heads
+        heads = attn.heads
 
         # image stream: fused QKV -> split
-        img_qkv = block.img_attn_qkv(hidden_states)
+        img_qkv = attn.img_attn_qkv(hidden_states)
         img_query, img_key, img_value = img_qkv.chunk(3, dim=-1)
 
         # text stream: fused QKV -> split
-        txt_qkv = block.txt_attn_qkv(encoder_hidden_states)
+        txt_qkv = attn.txt_attn_qkv(encoder_hidden_states)
         txt_query, txt_key, txt_value = txt_qkv.chunk(3, dim=-1)
 
         # reshape to multi-head: (B, S, H, D)
@@ -271,10 +271,10 @@ class JoyImageAttnProcessor:
         txt_value = txt_value.unflatten(-1, (heads, -1))
 
         # QK norm
-        img_query = block.img_attn_q_norm(img_query)
-        img_key = block.img_attn_k_norm(img_key)
-        txt_query = block.txt_attn_q_norm(txt_query)
-        txt_key = block.txt_attn_k_norm(txt_key)
+        img_query = attn.img_attn_q_norm(img_query)
+        img_key = attn.img_attn_k_norm(img_key)
+        txt_query = attn.txt_attn_q_norm(txt_query)
+        txt_key = attn.txt_attn_k_norm(txt_key)
 
         # RoPE (custom implementation)
         if image_rotary_emb is not None:
@@ -308,10 +308,73 @@ class JoyImageAttnProcessor:
         txt_attn_output = joint_hidden_states[:, hidden_states.shape[1] :, :]
 
         # output projections
-        img_attn_output = block.img_attn_proj(img_attn_output)
-        txt_attn_output = block.txt_attn_proj(txt_attn_output)
+        img_attn_output = attn.img_attn_proj(img_attn_output)
+        txt_attn_output = attn.txt_attn_proj(txt_attn_output)
 
         return img_attn_output, txt_attn_output
+
+
+# ---------------------------------------------------------------------------
+# Attention module
+# ---------------------------------------------------------------------------
+
+
+class JoyImageAttention(nn.Module, AttentionModuleMixin):
+    """Joint attention module for JoyImage double-stream blocks.
+
+    Wraps the fused QKV projections, QK norms, and output projections for both
+    image and text streams. Delegates the actual attention computation to a
+    pluggable :class:`JoyImageAttnProcessor`.
+    """
+
+    _default_processor_cls = JoyImageAttnProcessor
+    _available_processors = [JoyImageAttnProcessor]
+    _supports_qkv_fusion = False
+
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        eps: float = 1e-6,
+        processor=None,
+    ):
+        super().__init__()
+
+        self.heads = num_attention_heads
+        self.head_dim = attention_head_dim
+        inner_dim = num_attention_heads * attention_head_dim
+
+        self.img_attn_qkv = nn.Linear(dim, inner_dim * 3, bias=True)
+        self.img_attn_q_norm = nn.RMSNorm(attention_head_dim, eps=eps)
+        self.img_attn_k_norm = nn.RMSNorm(attention_head_dim, eps=eps)
+        self.img_attn_proj = nn.Linear(inner_dim, dim, bias=True)
+
+        self.txt_attn_qkv = nn.Linear(dim, inner_dim * 3, bias=True)
+        self.txt_attn_q_norm = nn.RMSNorm(attention_head_dim, eps=eps)
+        self.txt_attn_k_norm = nn.RMSNorm(attention_head_dim, eps=eps)
+        self.txt_attn_proj = nn.Linear(inner_dim, dim, bias=True)
+
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        image_rotary_emb: Tuple[torch.Tensor, torch.Tensor] | None = None,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
+        unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters]
+        if len(unused_kwargs) > 0:
+            logger.warning(
+                f"joint_attention_kwargs {unused_kwargs} are not expected by "
+                f"{self.processor.__class__.__name__} and will be ignored."
+            )
+        kwargs = {k: w for k, w in kwargs.items() if k in attn_parameters}
+        return self.processor(self, hidden_states, encoder_hidden_states, image_rotary_emb, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -339,10 +402,6 @@ class JoyImageTransformerBlock(nn.Module):
     Each block processes an image stream and a text stream jointly through
     shared attention, following the SD3 / Flux double-stream pattern with
     WAN-style modulation.
-
-    Attention projections are stored **directly** on the block (fused QKV)
-    so that weight keys match the checkpoint layout, e.g.
-    ``double_blocks.0.img_attn_qkv.weight``.
     """
 
     def __init__(
@@ -359,7 +418,6 @@ class JoyImageTransformerBlock(nn.Module):
         self.dim = dim
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
-        inner_dim = num_attention_heads * attention_head_dim
         mlp_hidden_dim = int(dim * mlp_width_ratio)
 
         # image stream
@@ -374,20 +432,8 @@ class JoyImageTransformerBlock(nn.Module):
         self.txt_norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
         self.txt_mlp = FeedForward(dim, inner_dim=mlp_hidden_dim, activation_fn="gelu-approximate")
 
-        # ---- joint attention (fused QKV, directly on the block) ----
-        # image attention layers
-        self.img_attn_qkv = nn.Linear(dim, inner_dim * 3, bias=True)
-        self.img_attn_q_norm = nn.RMSNorm(attention_head_dim, eps=eps)
-        self.img_attn_k_norm = nn.RMSNorm(attention_head_dim, eps=eps)
-        self.img_attn_proj = nn.Linear(inner_dim, dim, bias=True)
-
-        # text attention layers
-        self.txt_attn_qkv = nn.Linear(dim, inner_dim * 3, bias=True)
-        self.txt_attn_q_norm = nn.RMSNorm(attention_head_dim, eps=eps)
-        self.txt_attn_k_norm = nn.RMSNorm(attention_head_dim, eps=eps)
-        self.txt_attn_proj = nn.Linear(inner_dim, dim, bias=True)
-
-        self.processor = JoyImageAttnProcessor()
+        # ---- joint attention ----
+        self.attn = JoyImageAttention(dim, num_attention_heads, attention_head_dim, eps=eps)
 
     def forward(
         self,
@@ -418,8 +464,7 @@ class JoyImageTransformerBlock(nn.Module):
         img_modulated = _modulate(self.img_norm1(hidden_states), img_mod1_shift, img_mod1_scale)
         txt_modulated = _modulate(self.txt_norm1(encoder_hidden_states), txt_mod1_shift, txt_mod1_scale)
 
-        img_attn, txt_attn = self.processor(
-            self,
+        img_attn, txt_attn = self.attn(
             hidden_states=img_modulated,
             encoder_hidden_states=txt_modulated,
             image_rotary_emb=image_rotary_emb,
@@ -446,7 +491,7 @@ class JoyImageTransformerBlock(nn.Module):
 # ---------------------------------------------------------------------------
 
 
-class JoyImageTransformer3DModel(ModelMixin, ConfigMixin):
+class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     """JoyImage Transformer model for image generation / editing.
 
     Dual-stream DiT architecture with WAN-style conditioning embeddings and
