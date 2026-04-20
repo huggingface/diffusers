@@ -1398,6 +1398,16 @@ def main(args):
                     torch_dtype=weight_dtype,
                 )
 
+                # `log_validation` casts the pipeline (and with it the still-shared `unet`) to
+                # `weight_dtype`, clobbering the fp32 LoRA params set earlier and breaking the
+                # next fp16 backward with "Attempting to unscale FP16 gradients". Re-upcast so
+                # training can resume.
+                if args.mixed_precision == "fp16":
+                    models = [unet]
+                    if args.train_text_encoder:
+                        models.append(text_encoder)
+                    cast_training_params(models, dtype=torch.float32)
+
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
