@@ -76,6 +76,19 @@ class AuraFlowPatchEmbed(nn.Module):
         h_p, w_p = h // self.patch_size, w // self.patch_size
         h_max, w_max = int(self.pos_embed_max_size**0.5), int(self.pos_embed_max_size**0.5)
 
+        # Guard against inputs larger than the pretrained positional embedding grid:
+        # without this check the centered crop produces negative / out-of-range
+        # indices, which silently corrupt the output on CPU and trigger a
+        # `vectorized_gather_kernel` device-side assert on CUDA that tears down
+        # the entire process (see #12656).
+        if h_p > h_max or w_p > w_max:
+            raise ValueError(
+                f"Input latent size ({h_p}, {w_p}) exceeds the pretrained positional "
+                f"embedding grid ({h_max}, {w_max}). The positional embedding supports "
+                f"latents up to ({h_max * self.patch_size}, {w_max * self.patch_size}) "
+                f"pixels at patch_size={self.patch_size}."
+            )
+
         # Calculate the top-left corner indices for the centered patch grid
         starth = h_max // 2 - h_p // 2
         startw = w_max // 2 - w_p // 2
