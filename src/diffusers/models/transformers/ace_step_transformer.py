@@ -22,6 +22,7 @@ used by the condition encoder (``_pack_sequences`` and the shared
 ``diffusers/pipelines/ace_step/modeling_ace_step.py``.
 """
 
+import inspect
 import math
 from typing import List, Optional, Tuple, Union
 
@@ -31,7 +32,8 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
-from ..attention import AttentionMixin
+from ..attention import AttentionMixin, AttentionModuleMixin
+from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -157,13 +159,82 @@ class AceStepTimestepEmbedding(nn.Module):
         return temb, timestep_proj
 
 
-class AceStepAttention(nn.Module):
-    """GQA attention with RMSNorm on query/key and optional sliding-window mask.
+class AceStepAttnProcessor2_0:
+    """Attention processor for ACE-Step GQA attention.
 
-    The block matches the original ACE-Step attention layout (``q_proj``,
-    ``k_proj``, ``v_proj``, ``o_proj``, ``q_norm``, ``k_norm``). Self-attention
-    applies RoPE on query+key; cross-attention does not.
+    Dispatches the actual attention call through ``dispatch_attention_fn`` so users
+    can pick flash / sage / native backends via ``model.set_attention_backend(...)``
+    or the ``attention_backend`` context manager. Uses the ``(B, L, H, D)`` tensor
+    layout that the diffusers attention backends consume directly.
     """
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "AceStepAttnProcessor2_0 requires PyTorch 2.0. Please upgrade your pytorch version."
+            )
+
+    def __call__(
+        self,
+        attn: "AceStepAttention",
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        is_cross = attn.is_cross_attention and encoder_hidden_states is not None
+        kv_input = encoder_hidden_states if is_cross else hidden_states
+
+        # Project to (B, L, H, D). Q uses ``heads``; K/V use ``kv_heads`` (GQA).
+        query = attn.to_q(hidden_states).unflatten(-1, (attn.heads, attn.head_dim))
+        key = attn.to_k(kv_input).unflatten(-1, (attn.kv_heads, attn.head_dim))
+        value = attn.to_v(kv_input).unflatten(-1, (attn.kv_heads, attn.head_dim))
+
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+
+        # RoPE on self-attention only. Matches Qwen3 layout:
+        # freqs = cat([freq_half, freq_half], dim=-1); rotate-half splits last dim.
+        if not is_cross and image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb, use_real=True, use_real_unbind_dim=-2, sequence_dim=1)
+            key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2, sequence_dim=1)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=attn.dropout if attn.training else 0.0,
+            scale=attn.scaling,
+            enable_gqa=attn.heads != attn.kv_heads,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3).to(query.dtype)
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
+
+
+class AceStepAttention(torch.nn.Module, AttentionModuleMixin):
+    """GQA attention with RMSNorm on query/key for ACE-Step 1.5.
+
+    Uses the diffusers ``Attention`` + ``AttnProcessor`` split: this module holds
+    the projections and Q/K norm; the processor runs the attention dispatch.
+    Self-attention applies RoPE on query/key; cross-attention reads K/V from
+    ``encoder_hidden_states`` and does not apply RoPE.
+
+    GQA means Q has ``heads * head_dim`` output while K/V have
+    ``kv_heads * head_dim`` — QKV fusion is therefore disabled
+    (``_supports_qkv_fusion = False``).
+    """
+
+    _default_processor_cls = AceStepAttnProcessor2_0
+    _available_processors = [AceStepAttnProcessor2_0]
+    _supports_qkv_fusion = False
 
     def __init__(
         self,
@@ -171,72 +242,51 @@ class AceStepAttention(nn.Module):
         num_attention_heads: int,
         num_key_value_heads: int,
         head_dim: int,
-        attention_bias: bool = False,
-        attention_dropout: float = 0.0,
+        bias: bool = False,
+        dropout: float = 0.0,
+        eps: float = 1e-6,
         is_cross_attention: bool = False,
-        sliding_window: Optional[int] = None,
-        rms_norm_eps: float = 1e-6,
+        processor: Optional[AceStepAttnProcessor2_0] = None,
     ):
         super().__init__()
+        self.heads = num_attention_heads
+        self.kv_heads = num_key_value_heads
         self.head_dim = head_dim
-        self.num_attention_heads = num_attention_heads
-        self.num_key_value_heads = num_key_value_heads
-        self.num_key_value_groups = num_attention_heads // num_key_value_heads
+        self.dropout = dropout
         self.scaling = head_dim ** -0.5
-        self.attention_dropout = attention_dropout
         self.is_cross_attention = is_cross_attention
-        self.sliding_window = sliding_window
 
-        self.q_proj = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=attention_bias)
-        self.k_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
-        self.v_proj = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=attention_bias)
-        self.o_proj = nn.Linear(num_attention_heads * head_dim, hidden_size, bias=attention_bias)
-        self.q_norm = RMSNorm(head_dim, eps=rms_norm_eps)
-        self.k_norm = RMSNorm(head_dim, eps=rms_norm_eps)
+        self.to_q = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=bias)
+        self.to_k = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=bias)
+        self.to_v = nn.Linear(hidden_size, num_key_value_heads * head_dim, bias=bias)
+        self.to_out = nn.ModuleList(
+            [nn.Linear(num_attention_heads * head_dim, hidden_size, bias=bias), nn.Dropout(0.0)]
+        )
+        self.norm_q = RMSNorm(head_dim, eps=eps)
+        self.norm_k = RMSNorm(head_dim, eps=eps)
+
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
 
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        **kwargs,
     ) -> torch.Tensor:
-        input_shape = hidden_states.shape[:-1]
-        # (B, L, H, D)
-        q_shape = (*input_shape, self.num_attention_heads, self.head_dim)
-        query_states = self.q_norm(self.q_proj(hidden_states).view(q_shape)).transpose(-3, -2)
-
-        is_cross = self.is_cross_attention and encoder_hidden_states is not None
-        kv_input = encoder_hidden_states if is_cross else hidden_states
-        kv_shape = (*kv_input.shape[:-1], self.num_key_value_heads, self.head_dim)
-        key_states = self.k_norm(self.k_proj(kv_input).view(kv_shape)).transpose(-3, -2)
-        value_states = self.v_proj(kv_input).view(kv_shape).transpose(-3, -2)
-
-        if not is_cross and position_embeddings is not None:
-            cos, sin = position_embeddings
-            query_states = apply_rotary_emb(
-                query_states, (cos, sin), use_real=True, use_real_unbind_dim=-2
-            )
-            key_states = apply_rotary_emb(
-                key_states, (cos, sin), use_real=True, use_real_unbind_dim=-2
-            )
-
-        # Expand KV heads to match Q heads for grouped-query attention.
-        if self.num_key_value_groups > 1:
-            key_states = key_states.repeat_interleave(self.num_key_value_groups, dim=-3)
-            value_states = value_states.repeat_interleave(self.num_key_value_groups, dim=-3)
-
-        attn_output = F.scaled_dot_product_attention(
-            query_states,
-            key_states,
-            value_states,
-            attn_mask=attention_mask,
-            dropout_p=self.attention_dropout if self.training else 0.0,
-            scale=self.scaling,
+        attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
+        kwargs = {k: v for k, v in kwargs.items() if k in attn_parameters}
+        return self.processor(
+            self,
+            hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            attention_mask=attention_mask,
+            image_rotary_emb=image_rotary_emb,
+            **kwargs,
         )
-
-        attn_output = attn_output.transpose(-3, -2).reshape(*input_shape, -1).contiguous()
-        return self.o_proj(attn_output)
 
 
 class AceStepTransformerBlock(nn.Module):
@@ -266,11 +316,10 @@ class AceStepTransformerBlock(nn.Module):
             num_attention_heads=num_attention_heads,
             num_key_value_heads=num_key_value_heads,
             head_dim=head_dim,
-            attention_bias=attention_bias,
-            attention_dropout=attention_dropout,
+            bias=attention_bias,
+            dropout=attention_dropout,
+            eps=rms_norm_eps,
             is_cross_attention=False,
-            sliding_window=sliding_window,
-            rms_norm_eps=rms_norm_eps,
         )
 
         self.use_cross_attention = use_cross_attention
@@ -281,10 +330,10 @@ class AceStepTransformerBlock(nn.Module):
                 num_attention_heads=num_attention_heads,
                 num_key_value_heads=num_key_value_heads,
                 head_dim=head_dim,
-                attention_bias=attention_bias,
-                attention_dropout=attention_dropout,
+                bias=attention_bias,
+                dropout=attention_dropout,
+                eps=rms_norm_eps,
                 is_cross_attention=True,
-                rms_norm_eps=rms_norm_eps,
             )
 
         self.mlp_norm = RMSNorm(hidden_size, eps=rms_norm_eps)
@@ -311,7 +360,7 @@ class AceStepTransformerBlock(nn.Module):
         )
         attn_output = self.self_attn(
             hidden_states=norm_hidden_states,
-            position_embeddings=position_embeddings,
+            image_rotary_emb=position_embeddings,
             attention_mask=attention_mask,
         )
         hidden_states = (hidden_states + attn_output * gate_msa).type_as(hidden_states)

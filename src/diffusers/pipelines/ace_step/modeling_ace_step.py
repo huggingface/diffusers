@@ -91,11 +91,10 @@ class AceStepEncoderLayer(nn.Module):
             num_attention_heads=num_attention_heads,
             num_key_value_heads=num_key_value_heads,
             head_dim=head_dim,
-            attention_bias=attention_bias,
-            attention_dropout=attention_dropout,
+            bias=attention_bias,
+            dropout=attention_dropout,
+            eps=rms_norm_eps,
             is_cross_attention=False,
-            sliding_window=sliding_window,
-            rms_norm_eps=rms_norm_eps,
         )
         self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
@@ -111,7 +110,7 @@ class AceStepEncoderLayer(nn.Module):
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states = self.self_attn(
             hidden_states=hidden_states,
-            position_embeddings=position_embeddings,
+            image_rotary_emb=position_embeddings,
             attention_mask=attention_mask,
         )
         hidden_states = residual + hidden_states

@@ -114,6 +114,24 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     condition_encoder_sd = {}
     other_sd = {}  # tokenizer, detokenizer (audio quantization — not used by the text2music pipeline)
 
+    # Rename original ACE-Step attention keys to the diffusers `Attention` +
+    # `AttnProcessor` convention (`to_q`/`to_k`/`to_v`/`to_out.0`/`norm_q`/`norm_k`).
+    # Applies uniformly to both the DiT (self-attn and cross-attn) and the
+    # condition-encoder self-attention, since both use `AceStepAttention`.
+    _ATTN_KEY_RENAMES = [
+        (".q_proj.", ".to_q."),
+        (".k_proj.", ".to_k."),
+        (".v_proj.", ".to_v."),
+        (".o_proj.", ".to_out.0."),
+        (".q_norm.", ".norm_q."),
+        (".k_norm.", ".norm_k."),
+    ]
+
+    def _rename_attn_keys(key: str) -> str:
+        for old, new in _ATTN_KEY_RENAMES:
+            key = key.replace(old, new)
+        return key
+
     for key, value in state_dict.items():
         if key.startswith("decoder."):
             # Strip "decoder." prefix for the transformer
@@ -125,10 +143,12 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
             # In diffusers, we use standalone Conv1d/ConvTranspose1d named proj_in_conv/proj_out_conv.
             new_key = new_key.replace("proj_in.1.", "proj_in_conv.")
             new_key = new_key.replace("proj_out.1.", "proj_out_conv.")
+            new_key = _rename_attn_keys(new_key)
             transformer_sd[new_key] = value.to(target_dtype)
         elif key.startswith("encoder."):
             # Strip "encoder." prefix for the condition encoder
             new_key = key[len("encoder.") :]
+            new_key = _rename_attn_keys(new_key)
             condition_encoder_sd[new_key] = value.to(target_dtype)
         elif key == "null_condition_emb":
             # Learned unconditional embedding (used by the base/SFT CFG path).
