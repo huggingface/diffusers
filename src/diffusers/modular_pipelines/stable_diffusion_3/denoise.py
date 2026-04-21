@@ -29,6 +29,7 @@ from ..modular_pipeline import (
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import StableDiffusion3ModularPipeline
 
+
 logger = logging.get_logger(__name__)
 
 
@@ -105,11 +106,7 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
         do_cfg = getattr(block_state, "negative_prompt_embeds", None) is not None
 
         guider_inputs = {
-            "hidden_states": (
-                (block_state.latents, block_state.latents)
-                if do_cfg
-                else block_state.latents
-            ),
+            "hidden_states": ((block_state.latents, block_state.latents) if do_cfg else block_state.latents),
             "encoder_hidden_states": (
                 (
                     getattr(block_state, "prompt_embeds", None),
@@ -128,9 +125,7 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
             ),
         }
 
-        components.guider.set_state(
-            step=i, num_inference_steps=block_state.num_inference_steps, timestep=t
-        )
+        components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         guider_state = components.guider.prepare_inputs(guider_inputs)
 
         for guider_state_batch in guider_state:
@@ -147,9 +142,7 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
                 timestep=timestep,
                 encoder_hidden_states=prompt_embeds,
                 pooled_projections=pooled_projections,
-                joint_attention_kwargs=getattr(
-                    block_state, "joint_attention_kwargs", None
-                ),
+                joint_attention_kwargs=getattr(block_state, "joint_attention_kwargs", None),
                 return_dict=False,
             )[0]
 
@@ -218,24 +211,18 @@ class StableDiffusion3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(
-        self, components: StableDiffusion3ModularPipeline, state: PipelineState
-    ) -> PipelineState:
+    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.num_warmup_steps = max(
-            len(block_state.timesteps)
-            - block_state.num_inference_steps * components.scheduler.order,
+            len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order,
             0,
         )
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(
-                    components, block_state, i=i, t=t
-                )
+                components, block_state = self.loop_step(components, block_state, i=i, t=t)
                 if i == len(block_state.timesteps) - 1 or (
-                    (i + 1) > block_state.num_warmup_steps
-                    and (i + 1) % components.scheduler.order == 0
+                    (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
                 ):
                     progress_bar.update()
 

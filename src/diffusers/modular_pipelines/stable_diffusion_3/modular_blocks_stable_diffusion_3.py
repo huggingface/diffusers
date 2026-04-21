@@ -30,6 +30,7 @@ from .encoders import (
 )
 from .inputs import StableDiffusion3AdditionalInputsStep, StableDiffusion3TextInputStep
 
+
 logger = logging.get_logger(__name__)
 
 

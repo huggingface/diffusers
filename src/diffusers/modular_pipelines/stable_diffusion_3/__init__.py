@@ -9,6 +9,7 @@ from ...utils import (
     is_transformers_available,
 )
 
+
 _dummy_objects = {}
 _import_structure = {}
 
@@ -20,9 +21,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modular_blocks_stable_diffusion_3"] = [
-        "StableDiffusion3AutoBlocks"
-    ]
+    _import_structure["modular_blocks_stable_diffusion_3"] = ["StableDiffusion3AutoBlocks"]
     _import_structure["modular_pipeline"] = ["StableDiffusion3ModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
