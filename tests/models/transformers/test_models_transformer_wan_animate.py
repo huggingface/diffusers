@@ -231,7 +231,7 @@ class TestWanAnimateTransformer3DTorchAo(WanAnimateTransformer3DTesterConfig, To
                 (1, 16, 4, 16, 16), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
             "face_pixel_values": randn_tensor(
-                (1, 3, 5, 512, 512), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+                (1, 3, 13, 512, 512), generator=self.generator, device=torch_device, dtype=self.torch_dtype
             ),
             "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
         }
