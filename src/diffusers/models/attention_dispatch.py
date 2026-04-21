@@ -1916,7 +1916,10 @@ class TemplatedRingAttention(torch.autograd.Function):
 
             # Refer to:
             # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
-            if is_torch_version("<", "2.9.0"):
+            # Use ndim check instead of torch version: on AMD ROCm, torch>=2.9 still returns
+            # LSE as [B,H,S] (3D) rather than [B,H,S,1] (4D), so the version gate is incorrect.
+            # Checking ndim is both backend-agnostic and torch-version-agnostic.
+            if lse.ndim < out.ndim:
                 lse = lse.unsqueeze(-1)
             if prev_out is not None:
                 out = prev_out - torch.nn.functional.sigmoid(lse - prev_lse) * (prev_out - out)
@@ -2206,7 +2209,9 @@ def _templated_unified_attention(
         # lse is of shape (B, S, H_LOCAL, 1)
         # Refer to:
         # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
-        if is_torch_version("<", "2.9.0"):
+        # Use ndim check instead of torch version: on AMD ROCm, torch>=2.9 still returns
+        # LSE as [B,H,S] (3D), so SeqAllToAllDim must receive 4D regardless of torch version.
+        if lse.ndim == 3:
             lse = lse.unsqueeze(-1)  # (B, S, H_LOCAL, 1)
         lse = SeqAllToAllDim.apply(ulysses_group, lse, gather_idx, scatter_idx)
         lse = lse.squeeze(-1)
