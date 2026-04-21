@@ -304,6 +304,11 @@ def get_cached_module_file(
     # Download and cache module_file from the repo `pretrained_model_name_or_path` of grab it if it's a local file.
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
+    if DIFFUSERS_DISABLE_REMOTE_CODE:
+        raise ValueError(
+            "Downloading remote code is disabled globally via the DIFFUSERS_DISABLE_REMOTE_CODE environment variable."
+        )
+
     if subfolder is not None:
         module_file_or_url = os.path.join(pretrained_model_name_or_path, subfolder, module_file)
     else:
@@ -312,14 +317,15 @@ def get_cached_module_file(
     is_local_file = os.path.isfile(module_file_or_url)
     is_community_pipeline = not is_local_file and pretrained_model_name_or_path.count("/") == 0
 
-    if not is_community_pipeline or DIFFUSERS_DISABLE_REMOTE_CODE:
-        trust_remote_code = resolve_trust_remote_code(
-            trust_remote_code, str(pretrained_model_name_or_path), has_remote_code=True
-        )
-
     if is_local_file:
         resolved_module_file = module_file_or_url
         submodule = "local"
+        if not trust_remote_code:
+            raise ValueError(
+                f"The directory {pretrained_model_name_or_path} contains custom code in {module_file} which must be executed to correctly "
+                f"load the model. You can inspect the file content at {module_file_or_url}.\n"
+                f"Pass `trust_remote_code=True` to allow loading remote code modules."
+            )
     elif is_community_pipeline:
         available_versions = get_diffusers_versions()
         # cut ".dev0"
@@ -362,6 +368,12 @@ def get_cached_module_file(
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
     else:
+        if not trust_remote_code:
+            raise ValueError(
+                f"The repository for {pretrained_model_name_or_path} contains custom code in {module_file} which must be executed to correctly "
+                f"load the model. You can inspect the repository content at https://hf.co/{pretrained_model_name_or_path}/blob/main/{module_file}.\n"
+                f"Pass `trust_remote_code=True` to allow loading remote code modules."
+            )
         try:
             # Load from URL or cache if already cached
             resolved_module_file = hf_hub_download(
