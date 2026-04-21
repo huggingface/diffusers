@@ -857,7 +857,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     @pytest.mark.parametrize(
         "quant_type",
         [
-            "int4wo"
+            "int4wo",
             "int8wo",
             "int8dq",
         ],
@@ -869,7 +869,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     @pytest.mark.parametrize(
         "quant_type",
         [
-            "int4wo"
+            "int4wo",
             "int8wo",
             "int8dq",
         ],
@@ -884,7 +884,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     @pytest.mark.parametrize(
         "quant_type",
         [
-            "int4wo"
+            "int4wo",
             "int8wo",
             "int8dq",
         ],
