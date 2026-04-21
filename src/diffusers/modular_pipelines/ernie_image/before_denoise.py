@@ -225,7 +225,11 @@ class ErnieImagePrepareLatentsStep(ModularPipelineBlocks):
                 default=1,
                 description="Number of images to generate per prompt.",
             ),
-            InputParam("generator", description="Torch generator for deterministic noise sampling."),
+            InputParam(
+                "generator",
+                type_hint=torch.Generator,
+                description="Torch generator for deterministic noise sampling.",
+            ),
             InputParam(
                 "batch_size",
                 required=True,

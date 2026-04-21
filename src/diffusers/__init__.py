@@ -442,6 +442,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "ErnieImageAutoBlocks",
+            "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
             "Flux2KleinAutoBlocks",
             "Flux2KleinBaseAutoBlocks",
@@ -449,8 +451,6 @@ else:
             "Flux2KleinModularPipeline",
             "Flux2ModularPipeline",
             "FluxAutoBlocks",
-            "ErnieImageAutoBlocks",
-            "ErnieImageModularPipeline",
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
             "FluxModularPipeline",
@@ -1233,14 +1233,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            ErnieImageAutoBlocks,
+            ErnieImageModularPipeline,
             Flux2AutoBlocks,
             Flux2KleinAutoBlocks,
             Flux2KleinBaseAutoBlocks,
             Flux2KleinBaseModularPipeline,
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
-            ErnieImageAutoBlocks,
-            ErnieImageModularPipeline,
             FluxAutoBlocks,
             FluxKontextAutoBlocks,
             FluxKontextModularPipeline,
