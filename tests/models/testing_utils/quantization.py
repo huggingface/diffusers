@@ -419,7 +419,8 @@ class QuantizationTesterMixin:
         # Step 3: run forward and backward pass
         inputs = self._get_dummy_inputs_for_model(model)
 
-        with torch.amp.autocast(torch_device, dtype=torch.float16):
+        # Use bfloat16 instead of float16 to avoid gradient underflow with quantized layers
+        with torch.amp.autocast(torch_device, dtype=torch.bfloat16):
             out = model(**inputs, return_dict=False)[0]
             out.norm().backward()
 
@@ -838,7 +839,12 @@ class TorchAoConfigMixin:
         return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
 
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
+        from torchao.utils import TorchAOBaseTensor
+
         assert isinstance(module, torch.nn.Linear), f"Layer {name} is not Linear, got {type(module)}"
+        assert isinstance(module.weight, TorchAOBaseTensor), (
+            f"Layer {name} weight is {type(module.weight)}, expected TorchAOBaseTensor"
+        )
 
 
 @is_torchao
