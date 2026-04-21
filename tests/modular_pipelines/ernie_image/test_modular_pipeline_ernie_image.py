@@ -22,7 +22,6 @@ from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 ERNIE_IMAGE_WORKFLOWS = {
     "text2image": [
-        ("prompt_enhancer", "ErnieImagePromptEnhancerStep"),
         ("text_encoder", "ErnieImageTextEncoderStep"),
         ("denoise.input", "ErnieImageTextInputStep"),
         ("denoise.set_timesteps", "ErnieImageSetTimestepsStep"),
@@ -36,7 +35,7 @@ ERNIE_IMAGE_WORKFLOWS = {
 class TestErnieImageModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = ErnieImageModularPipeline
     pipeline_blocks_class = ErnieImageAutoBlocks
-    pretrained_model_name_or_path = "hf-internal-testing/tiny-ernie-image-modular-pipe"
+    pretrained_model_name_or_path = "akshan-main/tiny-ernie-image-modular-pipe"
 
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
@@ -51,7 +50,6 @@ class TestErnieImageModularPipelineFast(ModularPipelineTesterMixin):
             "num_inference_steps": 2,
             "height": 32,
             "width": 32,
-            "use_pe": False,
             "output_type": "pt",
         }
 

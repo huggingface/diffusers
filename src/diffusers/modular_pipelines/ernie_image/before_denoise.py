@@ -117,22 +117,31 @@ class ErnieImageTextInputStep(ModularPipelineBlocks):
             ),
         ]
 
+    @staticmethod
+    def _expand(hiddens: list[torch.Tensor], num_images_per_prompt: int) -> list[torch.Tensor]:
+        if num_images_per_prompt == 1:
+            return list(hiddens)
+        return [h for h in hiddens for _ in range(num_images_per_prompt)]
+
     @torch.no_grad()
     def __call__(self, components: ErnieImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.transformer.dtype
         text_in_dim = components.text_in_dim
+        num_images_per_prompt = block_state.num_images_per_prompt
 
         prompt_embeds = block_state.prompt_embeds
-        block_state.batch_size = getattr(block_state, "batch_size", None) or len(prompt_embeds)
+        block_state.batch_size = block_state.batch_size or len(prompt_embeds)
 
+        prompt_embeds = self._expand(prompt_embeds, num_images_per_prompt)
         text_bth, text_lens = _pad_text(prompt_embeds, device, dtype, text_in_dim)
         block_state.text_bth = text_bth
         block_state.text_lens = text_lens
 
-        negative_prompt_embeds = getattr(block_state, "negative_prompt_embeds", None)
+        negative_prompt_embeds = block_state.negative_prompt_embeds
         if negative_prompt_embeds is not None:
+            negative_prompt_embeds = self._expand(negative_prompt_embeds, num_images_per_prompt)
             negative_text_bth, negative_text_lens = _pad_text(negative_prompt_embeds, device, dtype, text_in_dim)
             block_state.negative_text_bth = negative_text_bth
             block_state.negative_text_lens = negative_text_lens

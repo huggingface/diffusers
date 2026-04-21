@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from ...utils import logging
-from ..modular_pipeline import SequentialPipelineBlocks
+from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
     ErnieImagePrepareLatentsStep,
@@ -26,6 +26,51 @@ from .encoders import ErnieImagePromptEnhancerStep, ErnieImageTextEncoderStep
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# auto_docstring
+class ErnieImageAutoPromptEnhancerStep(AutoPipelineBlocks):
+    """
+    Auto block that runs the optional prompt enhancer when `use_pe` is provided.
+       - `ErnieImagePromptEnhancerStep` is used when `use_pe` is set.
+       - If `use_pe` is not provided, the step is skipped.
+
+      Components:
+          pe (`AutoModelForCausalLM`) pe_tokenizer (`AutoTokenizer`)
+
+      Inputs:
+          prompt (`str`, *optional*):
+              The prompt or prompts to guide image generation.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          pe_system_prompt (`str`, *optional*):
+              Optional system prompt passed to the prompt enhancer.
+          pe_temperature (`float`, *optional*, defaults to 0.6):
+              Sampling temperature used when generating with the prompt enhancer.
+          pe_top_p (`float`, *optional*, defaults to 0.95):
+              Nucleus sampling `top_p` used when generating with the prompt enhancer.
+
+      Outputs:
+          prompt (`list`):
+              The prompt list after prompt-enhancer rewriting.
+          revised_prompts (`list`):
+              The prompts returned by the prompt enhancer.
+    """
+
+    model_name = "ernie-image"
+    block_classes = [ErnieImagePromptEnhancerStep]
+    block_names = ["prompt_enhancer"]
+    block_trigger_inputs = ["use_pe"]
+
+    @property
+    def description(self):
+        return (
+            "Auto block that runs the optional prompt enhancer when `use_pe` is provided.\n"
+            " - `ErnieImagePromptEnhancerStep` is used when `use_pe` is set.\n"
+            " - If `use_pe` is not provided, the step is skipped."
+        )
 
 
 # auto_docstring
@@ -95,21 +140,19 @@ class ErnieImageAutoBlocks(SequentialPipelineBlocks):
           (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLFlux2`) pachifier (`ErnieImagePachifier`)
 
       Inputs:
-          prompt (`None`):
+          prompt (`str`, *optional*):
               The prompt or prompts to guide image generation.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          use_pe (`bool`, *optional*, defaults to True):
-              Whether to use the prompt enhancer to rewrite the prompt before encoding.
           pe_system_prompt (`str`, *optional*):
               Optional system prompt passed to the prompt enhancer.
           pe_temperature (`float`, *optional*, defaults to 0.6):
               Sampling temperature used when generating with the prompt enhancer.
           pe_top_p (`float`, *optional*, defaults to 0.95):
               Nucleus sampling `top_p` used when generating with the prompt enhancer.
-          negative_prompt (`None`, *optional*):
+          negative_prompt (`str`, *optional*):
               The prompt or prompts to avoid during image generation.
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               Number of images to generate per prompt.
@@ -131,7 +174,7 @@ class ErnieImageAutoBlocks(SequentialPipelineBlocks):
 
     model_name = "ernie-image"
     block_classes = [
-        ErnieImagePromptEnhancerStep,
+        ErnieImageAutoPromptEnhancerStep,
         ErnieImageTextEncoderStep,
         ErnieImageCoreDenoiseStep,
         ErnieImageVaeDecoderStep,

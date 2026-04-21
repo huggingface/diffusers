@@ -33,10 +33,7 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return (
-            "Prompt enhancer step that rewrites the input prompt using a causal language model (PE). "
-            "If `use_pe` is False or the PE components are not loaded, the step is a no-op."
-        )
+        return "Prompt enhancer step that rewrites the input prompt using a causal language model (PE)."
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -48,15 +45,14 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("prompt", required=True, description="The prompt or prompts to guide image generation."),
+            InputParam(
+                "prompt",
+                required=True,
+                type_hint=str,
+                description="The prompt or prompts to guide image generation.",
+            ),
             InputParam("height", type_hint=int, description="The height in pixels of the generated image."),
             InputParam("width", type_hint=int, description="The width in pixels of the generated image."),
-            InputParam(
-                "use_pe",
-                type_hint=bool,
-                default=True,
-                description="Whether to use the prompt enhancer to rewrite the prompt before encoding.",
-            ),
             InputParam(
                 "pe_system_prompt",
                 type_hint=str,
@@ -80,16 +76,8 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam(
-                "prompt",
-                type_hint=list,
-                description="The prompt list after optional prompt-enhancer rewriting.",
-            ),
-            OutputParam(
-                "revised_prompts",
-                type_hint=list,
-                description="The prompts returned by the prompt enhancer when it ran, else None.",
-            ),
+            OutputParam("prompt", type_hint=list, description="The prompt list after prompt-enhancer rewriting."),
+            OutputParam("revised_prompts", type_hint=list, description="The prompts returned by the prompt enhancer."),
         ]
 
     @staticmethod
@@ -133,21 +121,13 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
         if isinstance(prompt, str):
             prompt = [prompt]
 
-        pe = getattr(components, "pe", None)
-        pe_tokenizer = getattr(components, "pe_tokenizer", None)
-        if not block_state.use_pe or pe is None or pe_tokenizer is None:
-            block_state.prompt = prompt
-            block_state.revised_prompts = None
-            self.set_block_state(state, block_state)
-            return components, state
-
         height = block_state.height or components.default_height
         width = block_state.width or components.default_width
 
         revised = [
             self._enhance_prompt(
-                pe=pe,
-                pe_tokenizer=pe_tokenizer,
+                pe=components.pe,
+                pe_tokenizer=components.pe_tokenizer,
                 prompt=p,
                 device=device,
                 width=width,
@@ -191,13 +171,11 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("prompt", description="The prompt or prompts to guide image generation."),
-            InputParam("negative_prompt", description="The prompt or prompts to avoid during image generation."),
+            InputParam("prompt", type_hint=str, description="The prompt or prompts to guide image generation."),
             InputParam(
-                "num_images_per_prompt",
-                type_hint=int,
-                default=1,
-                description="Number of images to generate per prompt.",
+                "negative_prompt",
+                type_hint=str,
+                description="The prompt or prompts to avoid during image generation.",
             ),
         ]
 
@@ -208,13 +186,13 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
                 "prompt_embeds",
                 type_hint=list,
                 kwargs_type="denoiser_input_fields",
-                description="List of per-prompt text embeddings of shape (T, H) used as conditioning for the transformer.",
+                description="List of per-prompt text embeddings of shape (T, H).",
             ),
             OutputParam(
                 "negative_prompt_embeds",
                 type_hint=list,
                 kwargs_type="denoiser_input_fields",
-                description="List of per-prompt negative text embeddings used for classifier-free guidance.",
+                description="List of per-prompt negative text embeddings for classifier-free guidance.",
             ),
         ]
 
@@ -224,7 +202,6 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
         tokenizer: AutoTokenizer,
         prompt: list[str],
         device: torch.device,
-        num_images_per_prompt: int,
     ) -> list[torch.Tensor]:
         text_hiddens = []
         for p in prompt:
@@ -233,10 +210,7 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
                 ids = [tokenizer.bos_token_id if tokenizer.bos_token_id is not None else 0]
             input_ids = torch.tensor([ids], device=device)
             outputs = text_encoder(input_ids=input_ids, output_hidden_states=True)
-            # Second-to-last hidden state matches ErnieImage training
-            hidden = outputs.hidden_states[-2][0]
-            for _ in range(num_images_per_prompt):
-                text_hiddens.append(hidden)
+            text_hiddens.append(outputs.hidden_states[-2][0])
         return text_hiddens
 
     @torch.no_grad()
@@ -249,14 +223,12 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
             prompt = [""]
         if isinstance(prompt, str):
             prompt = [prompt]
-        num_images_per_prompt = block_state.num_images_per_prompt
 
         block_state.prompt_embeds = self._encode(
             text_encoder=components.text_encoder,
             tokenizer=components.tokenizer,
             prompt=prompt,
             device=device,
-            num_images_per_prompt=num_images_per_prompt,
         )
 
         if components.requires_unconditional_embeds:
@@ -275,7 +247,6 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
                 tokenizer=components.tokenizer,
                 prompt=negative_prompt,
                 device=device,
-                num_images_per_prompt=num_images_per_prompt,
             )
         else:
             block_state.negative_prompt_embeds = None
