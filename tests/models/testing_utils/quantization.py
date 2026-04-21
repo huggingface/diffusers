@@ -823,6 +823,9 @@ class TorchAoConfigMixin:
     @staticmethod
     def _get_quant_config(config_name):
         config_cls = getattr(_torchao_quantization, config_name)
+        # TorchAO int4 quantization requires plain_int32 packing format on Intel XPU
+        if torch_device == "xpu":
+            config_cls.int4_packing_format = "plain_int32"
         return TorchAoConfig(config_cls())
 
     def _create_quantized_model(self, config_name, **extra_kwargs):
