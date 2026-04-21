@@ -1175,8 +1175,10 @@ class StableDiffusionXLPipeline(
                     - (self.denoising_end * self.scheduler.config.num_train_timesteps)
                 )
             )
-            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
-            timesteps = timesteps[:num_inference_steps]
+            num_inference_steps = (
+                (torch.as_tensor(timesteps)[:: self.scheduler.order] >= discrete_timestep_cutoff).sum().item()
+            )
+            timesteps = timesteps[: num_inference_steps * self.scheduler.order]
 
         # 9. Optionally get Guidance Scale Embedding
         timestep_cond = None
