@@ -299,7 +299,14 @@ def gather_size_by_comm(size: int, group: dist.ProcessGroup) -> list[int]:
     # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
     comm_backends = str(dist.get_backend(group=group))
     # NOTE: e.g., dist.init_process_group(backend="cpu:gloo,cuda:nccl")
-    gather_device = "cpu" if "cpu" in comm_backends else torch.accelerator.current_accelerator()
+    # `torch.accelerator` is only available in PyTorch >= 2.6; diffusers still supports
+    # older versions, so fall back to the current CUDA device when the module is missing.
+    if "cpu" in comm_backends:
+        gather_device = "cpu"
+    elif hasattr(torch, "accelerator"):
+        gather_device = torch.accelerator.current_accelerator()
+    else:
+        gather_device = torch.cuda.current_device()
     gathered_sizes = [torch.empty((1,), device=gather_device, dtype=torch.int64) for _ in range(world_size)]
     dist.all_gather(
         gathered_sizes,
