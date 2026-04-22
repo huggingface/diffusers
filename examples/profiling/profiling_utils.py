@@ -169,7 +169,9 @@ class PipelineProfiler:
         pipe.set_progress_bar_config(disable=True)
 
         if annotate:
-            annotate_pipeline(pipe)
+            self._restore_annotations = annotate_pipeline(pipe)
+        else:
+            self._restore_annotations = None
         return pipe
 
     def run(self):
@@ -215,7 +217,9 @@ class PipelineProfiler:
             )
         )
 
-        # Cleanup
+        # Cleanup -- restore patched methods so class-level patches don't persist
+        if self._restore_annotations is not None:
+            self._restore_annotations()
         pipe.to("cpu")
         del pipe
         flush()
