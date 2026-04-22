@@ -49,7 +49,7 @@ def main(args):
     if num_devices >= 4:
         mesh = xs.Mesh(np.arange(num_devices), (num_devices // 4, 4), ("data", "model"))
     else:
-        NotImplementedError
+        raise NotImplementedError(f"SPMD mesh requires at least 4 devices, got {num_devices}")
     xs.set_global_mesh(mesh)
     logger.info(f"SPMD mesh: {mesh.mesh_shape}, axes: {mesh.axis_names}, devices: {num_devices}")
 
