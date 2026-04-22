@@ -142,6 +142,14 @@ class QuantizationTesterMixin:
         except (AssertionError, AttributeError):
             return False
 
+    def _get_dummy_inputs_for_model(self, model):
+        inputs = self.get_dummy_inputs()
+        model_dtype = next(model.parameters()).dtype
+        return {
+            k: v.to(model_dtype) if isinstance(v, torch.Tensor) and v.is_floating_point() else v
+            for k, v in inputs.items()
+        }
+
     def _load_unquantized_model(self):
         kwargs = getattr(self, "pretrained_model_kwargs", {})
         return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
@@ -174,7 +182,7 @@ class QuantizationTesterMixin:
         model_quantized = self._create_quantized_model(config_kwargs)
         model_quantized.to(torch_device)
 
-        inputs = self.get_dummy_inputs()
+        inputs = self._get_dummy_inputs_for_model(model_quantized)
         output = model_quantized(**inputs, return_dict=False)[0]
 
         assert output is not None, "Model output is None"
@@ -222,7 +230,8 @@ class QuantizationTesterMixin:
         # Move LoRA adapter weights to device (they default to CPU)
         model.to(torch_device)
 
-        inputs = self.get_dummy_inputs()
+        inputs = self._get_dummy_inputs_for_model(model)
+
         output = model(**inputs, return_dict=False)[0]
 
         assert output is not None, "Model output is None with LoRA"
@@ -236,7 +245,8 @@ class QuantizationTesterMixin:
 
         model_loaded = self.model_class.from_pretrained(str(tmp_path))
 
-        inputs = self.get_dummy_inputs()
+        inputs = self._get_dummy_inputs_for_model(model_loaded)
+
         output = model_loaded(**inputs, return_dict=False)[0]
         assert not torch.isnan(output).any(), "Loaded model output contains NaN"
 
@@ -334,7 +344,8 @@ class QuantizationTesterMixin:
         assert hasattr(model, "hf_device_map"), "Model should have hf_device_map attribute"
         assert model.hf_device_map is not None, "hf_device_map should not be None"
 
-        inputs = self.get_dummy_inputs()
+        inputs = self._get_dummy_inputs_for_model(model)
+
         output = model(**inputs, return_dict=False)[0]
         assert output is not None, "Model output is None"
         assert not torch.isnan(output).any(), "Model output contains NaN"
@@ -360,14 +371,7 @@ class QuantizationTesterMixin:
                 assert not self._is_module_quantized(module), f"Module {name} is still quantized after dequantize()"
 
         # Get model dtype from first parameter
-        model_dtype = next(model.parameters()).dtype
-
-        inputs = self.get_dummy_inputs()
-        # Cast inputs to model dtype
-        inputs = {
-            k: v.to(model_dtype) if isinstance(v, torch.Tensor) and v.is_floating_point() else v
-            for k, v in inputs.items()
-        }
+        inputs = self._get_dummy_inputs_for_model(model)
         output = model(**inputs, return_dict=False)[0]
         assert output is not None, "Model output is None after dequantization"
         assert not torch.isnan(output).any(), "Model output contains NaN after dequantization"
@@ -413,7 +417,7 @@ class QuantizationTesterMixin:
             pytest.skip("No attention layers found in model for adapter training test")
 
         # Step 3: run forward and backward pass
-        inputs = self.get_dummy_inputs()
+        inputs = self._get_dummy_inputs_for_model(model)
 
         with torch.amp.autocast(torch_device, dtype=torch.float16):
             out = model(**inputs, return_dict=False)[0]
@@ -597,7 +601,8 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
                             f"Module {name} should be uint8 but is {module.weight.dtype}"
                         )
 
-            inputs = self.get_dummy_inputs()
+            inputs = self._get_dummy_inputs_for_model(model)
+
             _ = model(**inputs)
         finally:
             if original_fp32_modules is not None:
@@ -915,7 +920,8 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
 
         model_loaded = self.model_class.from_pretrained(str(tmp_path), device_map=str(torch_device))
 
-        inputs = self.get_dummy_inputs()
+        inputs = self._get_dummy_inputs_for_model(model_loaded)
+
         output = model_loaded(**inputs, return_dict=False)[0]
         assert not torch.isnan(output).any(), "Loaded model output contains NaN"
 
@@ -1172,6 +1178,14 @@ class QuantizationCompileTesterMixin:
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
     """
 
+    def _get_dummy_inputs_for_model(self, model):
+        inputs = self.get_dummy_inputs()
+        model_dtype = next(model.parameters()).dtype
+        return {
+            k: v.to(model_dtype) if isinstance(v, torch.Tensor) and v.is_floating_point() else v
+            for k, v in inputs.items()
+        }
+
     def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
@@ -1197,7 +1211,8 @@ class QuantizationCompileTesterMixin:
         model = torch.compile(model, fullgraph=True)
 
         with torch._dynamo.config.patch(error_on_recompile=True):
-            inputs = self.get_dummy_inputs()
+            inputs = self._get_dummy_inputs_for_model(model)
+
             output = model(**inputs, return_dict=False)[0]
             assert output is not None, "Model output is None"
             assert not torch.isnan(output).any(), "Model output contains NaN"
@@ -1228,7 +1243,8 @@ class QuantizationCompileTesterMixin:
         model.enable_group_offload(**group_offload_kwargs)
         model = torch.compile(model)
 
-        inputs = self.get_dummy_inputs()
+        inputs = self._get_dummy_inputs_for_model(model)
+
         output = model(**inputs, return_dict=False)[0]
         assert output is not None, "Model output is None"
         assert not torch.isnan(output).any(), "Model output contains NaN"
