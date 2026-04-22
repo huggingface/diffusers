@@ -31,7 +31,7 @@ deps = {
     "pytest-xdist": "pytest-xdist",
     "python": "python>=3.10.0",
     "ruff": "ruff==0.9.10",
-    "safetensors": "safetensors>=0.3.1",
+    "safetensors": "safetensors>=0.8.0-rc.0",
     "sentencepiece": "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython": "GitPython<3.1.19",
     "scipy": "scipy",
@@ -53,4 +53,5 @@ deps = {
     "phonemizer": "phonemizer",
     "opencv-python": "opencv-python",
     "timm": "timm",
+    "flashpack": "flashpack",
 }
