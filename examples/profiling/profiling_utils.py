@@ -29,14 +29,18 @@ def annotate_pipeline(pipe):
     """Apply profiler annotations to key pipeline methods.
 
     Monkey-patches bound methods so they appear as named spans in the trace.
-    Non-invasive — no source modifications required.
+    Non-invasive -- no source modifications required.
 
     Sub-component methods are patched at the **class level** (via
-    setattr(type(component), ...)) rather than on the instance. This
+    `setattr(type(component), ...)`) rather than on the instance. This
     ensures Python's descriptor protocol re-binds the wrapper to whichever
     instance accesses it, so shallow-copied components (e.g. the duplicated
     audio_scheduler inside LTX2) call their own logic rather than the
     original instance's.
+
+    Returns:
+        A restore callable that undoes all patches and restores the
+        original method definitions, making the annotation transient.
     """
     annotations = [
         ("transformer", "forward", "transformer_forward"),
@@ -44,6 +48,8 @@ def annotate_pipeline(pipe):
         ("vae", "encode", "vae_encode"),
         ("scheduler", "step", "scheduler_step"),
     ]
+
+    saved = []  # (target, method_name, original_value, is_class_patch)
 
     # Annotate sub-component methods
     for component_name, method_name, label in annotations:
@@ -54,20 +60,36 @@ def annotate_pipeline(pipe):
         if method is None:
             continue
         if inspect.ismethod(method):
-            # Wrap the underlying function and patch at the class level so
-            # that the descriptor protocol correctly rebinds the wrapper to
-            # whichever instance accesses it.  This prevents instance-
-            # isolation bugs when a component is shallow-copied after
-            # annotation (e.g. audio_scheduler = copy.copy(self.scheduler)
-            # in the LTX2 pipeline).
-            setattr(type(component), method_name, annotate(method.__func__, label))
+            # Patch at the class level so the descriptor protocol correctly
+            # re-binds the wrapper to whichever instance accesses it. This
+            # prevents instance-isolation bugs when a component is
+            # shallow-copied. The original class attribute is saved so the
+            # patch can be reversed when restore() is called.
+            cls = type(component)
+            original = cls.__dict__.get(method_name)
+            setattr(cls, method_name, annotate(method.__func__, label))
+            saved.append((cls, method_name, original, True))
         else:
+            original = component.__dict__.get(method_name)
             setattr(component, method_name, annotate(method, label))
+            saved.append((component, method_name, original, False))
 
     # Annotate pipeline-level methods
     if hasattr(pipe, "encode_prompt"):
+        original = pipe.__dict__.get("encode_prompt")
         pipe.encode_prompt = annotate(pipe.encode_prompt, "encode_prompt")
+        saved.append((pipe, "encode_prompt", original, False))
 
+    def restore():
+        """Undo all patches applied by annotate_pipeline, restoring originals."""
+        for target, name, original, is_class in saved:
+            if original is None:
+                if name in vars(target):
+                    delattr(target, name)
+            else:
+                setattr(target, name, original)
+
+    return restore
 
 def flush():
     gc.collect()
