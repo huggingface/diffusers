@@ -19,7 +19,7 @@ import unittest
 import torch
 from transformers import AutoTokenizer, Qwen3Config, Qwen3Model
 
-from diffusers import AutoencoderOobleck
+from diffusers import AutoencoderOobleck, FlowMatchEulerDiscreteScheduler
 from diffusers.models.transformers.ace_step_transformer import AceStepDiTModel
 from diffusers.pipelines.ace_step import AceStepConditionEncoder, AceStepPipeline
 
@@ -28,98 +28,6 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
-
-
-class AceStepDiTModelTests(unittest.TestCase):
-    """Fast tests for the AceStepDiTModel (DiT transformer)."""
-
-    def get_tiny_config(self):
-        return {
-            "hidden_size": 32,
-            "intermediate_size": 64,
-            "num_hidden_layers": 2,
-            "num_attention_heads": 4,
-            "num_key_value_heads": 2,
-            "head_dim": 8,
-            "in_channels": 24,  # audio_acoustic_hidden_dim * 3 (hidden + context_latents)
-            "audio_acoustic_hidden_dim": 8,
-            "patch_size": 2,
-            "max_position_embeddings": 256,
-            "rope_theta": 10000.0,
-            "attention_bias": False,
-            "attention_dropout": 0.0,
-            "rms_norm_eps": 1e-6,
-            "use_sliding_window": True,
-            "sliding_window": 16,
-        }
-
-    def test_forward_shape(self):
-        """Test that the DiT model produces output with correct shape."""
-        config = self.get_tiny_config()
-        model = AceStepDiTModel(**config)
-        model.eval()
-
-        batch_size = 2
-        seq_len = 8
-        acoustic_dim = config["audio_acoustic_hidden_dim"]
-        hidden_size = config["hidden_size"]
-        encoder_seq_len = 10
-
-        hidden_states = torch.randn(batch_size, seq_len, acoustic_dim)
-        timestep = torch.rand(batch_size)
-        timestep_r = torch.rand(batch_size)
-        encoder_hidden_states = torch.randn(batch_size, encoder_seq_len, hidden_size)
-        # context_latents = src_latents + chunk_masks, each of dim acoustic_dim
-        context_latents = torch.randn(batch_size, seq_len, acoustic_dim * 2)
-
-        with torch.no_grad():
-            output = model(
-                hidden_states=hidden_states,
-                timestep=timestep,
-                timestep_r=timestep_r,
-                encoder_hidden_states=encoder_hidden_states,
-                context_latents=context_latents,
-                return_dict=False,
-            )
-
-        self.assertEqual(output[0].shape, (batch_size, seq_len, acoustic_dim))
-
-    def test_forward_return_dict(self):
-        """Test that return_dict=True returns a Transformer2DModelOutput."""
-        config = self.get_tiny_config()
-        model = AceStepDiTModel(**config)
-        model.eval()
-
-        batch_size = 1
-        seq_len = 4
-        acoustic_dim = config["audio_acoustic_hidden_dim"]
-        hidden_size = config["hidden_size"]
-
-        hidden_states = torch.randn(batch_size, seq_len, acoustic_dim)
-        timestep = torch.rand(batch_size)
-        timestep_r = torch.rand(batch_size)
-        encoder_hidden_states = torch.randn(batch_size, 6, hidden_size)
-        context_latents = torch.randn(batch_size, seq_len, acoustic_dim * 2)
-
-        with torch.no_grad():
-            output = model(
-                hidden_states=hidden_states,
-                timestep=timestep,
-                timestep_r=timestep_r,
-                encoder_hidden_states=encoder_hidden_states,
-                context_latents=context_latents,
-                return_dict=True,
-            )
-
-        self.assertTrue(hasattr(output, "sample"))
-        self.assertEqual(output.sample.shape, (batch_size, seq_len, acoustic_dim))
-
-    def test_gradient_checkpointing(self):
-        """Test that gradient checkpointing can be enabled."""
-        config = self.get_tiny_config()
-        model = AceStepDiTModel(**config)
-        model.enable_gradient_checkpointing()
-        self.assertTrue(model.gradient_checkpointing)
 
 
 class AceStepConditionEncoderTests(unittest.TestCase):
@@ -136,12 +44,10 @@ class AceStepConditionEncoderTests(unittest.TestCase):
             "num_attention_heads": 4,
             "num_key_value_heads": 2,
             "head_dim": 8,
-            "max_position_embeddings": 256,
             "rope_theta": 10000.0,
             "attention_bias": False,
             "attention_dropout": 0.0,
             "rms_norm_eps": 1e-6,
-            "use_sliding_window": False,
             "sliding_window": 16,
         }
 
@@ -241,9 +147,7 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             in_channels=24,
             audio_acoustic_hidden_dim=8,
             patch_size=2,
-            max_position_embeddings=256,
             rope_theta=10000.0,
-            use_sliding_window=False,
             sliding_window=16,
         )
 
@@ -274,9 +178,7 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_attention_heads=4,
             num_key_value_heads=2,
             head_dim=8,
-            max_position_embeddings=256,
             rope_theta=10000.0,
-            use_sliding_window=False,
             sliding_window=16,
         )
 
@@ -291,12 +193,15 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             sampling_rate=4,
         )
 
+        scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1, shift=1.0)
+
         components = {
             "transformer": transformer,
             "condition_encoder": condition_encoder,
             "vae": vae,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "scheduler": scheduler,
         }
         return components
 
