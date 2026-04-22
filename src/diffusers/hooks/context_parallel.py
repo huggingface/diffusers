@@ -214,6 +214,10 @@ class ContextParallelSplitHook(ModelHook):
                 return PartitionAnythingSharder.shard_anything(
                     x, cp_input.split_dim, self.parallel_config._flattened_mesh
                 )
+            elif self.parallel_config.ring_anything:
+                return PartitionAnythingSharder.shard_anything(
+                    x, cp_input.split_dim, self.parallel_config._flattened_mesh
+                )
             return EquipartitionSharder.shard(x, cp_input.split_dim, self.parallel_config._flattened_mesh)
 
 
