@@ -376,3 +376,17 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     @property
     def is_compileable(self) -> bool:
         return True
+
+    def _dequantize(self, model):
+        from torchao.utils import TorchAOBaseTensor
+
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Linear) and isinstance(module.weight, TorchAOBaseTensor):
+                device = module.weight.device
+                dequantized_weight = module.weight.dequantize().to(device)
+                module.weight = nn.Parameter(dequantized_weight)
+                # Reset extra_repr if it was overridden
+                if hasattr(module.extra_repr, "__func__") and module.extra_repr.__func__ is not nn.Linear.extra_repr:
+                    module.extra_repr = types.MethodType(nn.Linear.extra_repr, module)
+
+        return model
