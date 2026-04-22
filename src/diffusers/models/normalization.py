@@ -195,7 +195,7 @@ class AdaLayerNormZeroSingle(nn.Module):
         self,
         x: torch.Tensor,
         emb: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         emb = self.linear(self.silu(emb))
         shift_msa, scale_msa, gate_msa = emb.chunk(3, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
