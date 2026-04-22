@@ -186,11 +186,12 @@ jobs:
             exit 0
           fi
 
-          IS_FORK=$(gh pr view "$PR_NUMBER" --json isCrossRepository --jq '.isCrossRepository')
-          if [[ "$IS_FORK" == "true" ]]; then
-            post_status "⚠️ Claude made edits, but this PR is from a fork so I can't open a follow-up PR against the fork branch. See [workflow run]($RUN_URL)."
-            exit 0
-          fi
+          # For fork PRs, an earlier step redirected `origin` to a local bare
+          # repo to sandbox claude-code-action. Undo that redirect so our new
+          # branch pushes to the real base repo. Safe: the cherry-picked commit
+          # below contains only Claude's edits within the allowed paths — not
+          # any of the fork's other changes.
+          git config --unset-all url."file:///tmp/local-origin.git".insteadOf 2>/dev/null || true
 
           NEW_BRANCH="claude/pr-${PR_NUMBER}-$(date -u +%Y%m%d-%H%M%S)"
 
