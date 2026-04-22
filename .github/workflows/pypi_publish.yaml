@@ -32,6 +32,11 @@ jobs:
       - name: Build the dist files
         run: python -m build
 
+      - name: Validate dist metadata
+        run: |
+          pip install twine
+          twine check --strict dist/*
+
       - name: Install from built wheel
         run: pip install dist/*.whl
 
@@ -45,7 +50,7 @@ jobs:
           python -c "from diffusers import *"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: python-dist
           path: dist/
@@ -53,17 +58,21 @@ jobs:
   publish-to-pypi:
     needs: build-and-test
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     environment: pypi-release
     permissions:
       id-token: write
 
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: python-dist
           path: dist/
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish package distributions to TestPyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
+        with:
+          verbose: true
