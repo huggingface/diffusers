@@ -8,6 +8,9 @@ on:
     branches:
       - 'v*-release'
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: ubuntu-22.04
