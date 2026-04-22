@@ -124,14 +124,8 @@ class ErnieImageLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: ErnieImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
         guider_inputs = {
-            "text_bth": (
-                getattr(block_state, "text_bth", None),
-                getattr(block_state, "negative_text_bth", None),
-            ),
-            "text_lens": (
-                getattr(block_state, "text_lens", None),
-                getattr(block_state, "negative_text_lens", None),
-            ),
+            "text_bth": (block_state.text_bth, block_state.negative_text_bth),
+            "text_lens": (block_state.text_lens, block_state.negative_text_lens),
         }
 
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)

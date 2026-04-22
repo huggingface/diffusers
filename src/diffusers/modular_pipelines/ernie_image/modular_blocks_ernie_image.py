@@ -55,8 +55,6 @@ class ErnieImageAutoPromptEnhancerStep(AutoPipelineBlocks):
       Outputs:
           prompt (`list`):
               The prompt list after prompt-enhancer rewriting.
-          revised_prompts (`list`):
-              The prompts returned by the prompt enhancer.
     """
 
     model_name = "ernie-image"
@@ -89,8 +87,6 @@ class ErnieImageCoreDenoiseStep(SequentialPipelineBlocks):
               List of per-prompt negative text embeddings from the text encoder step.
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               Number of images to generate per prompt.
-          batch_size (`int`, *optional*):
-              Prompt batch size. Resolved from `prompt_embeds` when not provided.
           num_inference_steps (`int`, *optional*, defaults to 50):
               Number of denoising steps.
           height (`int`, *optional*):
@@ -99,7 +95,7 @@ class ErnieImageCoreDenoiseStep(SequentialPipelineBlocks):
               The width in pixels of the generated image.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents. If provided, skips noise sampling.
-          generator (`None`, *optional*):
+          generator (`Generator`, *optional*):
               Torch generator for deterministic noise sampling.
 
       Outputs:
@@ -156,13 +152,11 @@ class ErnieImageAutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts to avoid during image generation.
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               Number of images to generate per prompt.
-          batch_size (`int`, *optional*):
-              Prompt batch size. Resolved from `prompt_embeds` when not provided.
           num_inference_steps (`int`, *optional*, defaults to 50):
               Number of denoising steps.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents. If provided, skips noise sampling.
-          generator (`None`, *optional*):
+          generator (`Generator`, *optional*):
               Torch generator for deterministic noise sampling.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', or 'pt'.

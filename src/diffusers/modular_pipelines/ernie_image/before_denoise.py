@@ -79,12 +79,6 @@ class ErnieImageTextInputStep(ModularPipelineBlocks):
                 default=1,
                 description="Number of images to generate per prompt.",
             ),
-            InputParam(
-                "batch_size",
-                type_hint=int,
-                default=None,
-                description="Prompt batch size. Resolved from `prompt_embeds` when not provided.",
-            ),
         ]
 
     @property
@@ -132,7 +126,7 @@ class ErnieImageTextInputStep(ModularPipelineBlocks):
         num_images_per_prompt = block_state.num_images_per_prompt
 
         prompt_embeds = block_state.prompt_embeds
-        block_state.batch_size = block_state.batch_size or len(prompt_embeds)
+        block_state.batch_size = len(prompt_embeds)
 
         prompt_embeds = self._expand(prompt_embeds, num_images_per_prompt)
         text_bth, text_lens = _pad_text(prompt_embeds, device, dtype, text_in_dim)
@@ -220,21 +214,15 @@ class ErnieImagePrepareLatentsStep(ModularPipelineBlocks):
                 description="Pre-generated noisy latents. If provided, skips noise sampling.",
             ),
             InputParam(
-                "num_images_per_prompt",
-                type_hint=int,
-                default=1,
-                description="Number of images to generate per prompt.",
-            ),
-            InputParam(
                 "generator",
                 type_hint=torch.Generator,
                 description="Torch generator for deterministic noise sampling.",
             ),
             InputParam(
-                "batch_size",
+                "text_bth",
                 required=True,
-                type_hint=int,
-                description="Prompt batch size resolved by the text input step.",
+                type_hint=torch.Tensor,
+                description="Padded text hidden states; used to derive the total batch size for the latents.",
             ),
         ]
 
@@ -264,7 +252,7 @@ class ErnieImagePrepareLatentsStep(ModularPipelineBlocks):
         width = block_state.width or components.default_width
         self._check_inputs(components, height, width)
 
-        total_batch_size = block_state.batch_size * block_state.num_images_per_prompt
+        total_batch_size = block_state.text_bth.shape[0]
         latent_h = height // components.vae_scale_factor
         latent_w = width // components.vae_scale_factor
         num_channels_latents = components.num_channels_latents

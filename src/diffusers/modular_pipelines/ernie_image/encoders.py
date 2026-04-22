@@ -77,7 +77,6 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("prompt", type_hint=list, description="The prompt list after prompt-enhancer rewriting."),
-            OutputParam("revised_prompts", type_hint=list, description="The prompts returned by the prompt enhancer."),
         ]
 
     @staticmethod
@@ -140,7 +139,6 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
         ]
 
         block_state.prompt = revised
-        block_state.revised_prompts = list(revised)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -250,8 +248,6 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
             )
         else:
             block_state.negative_prompt_embeds = None
-
-        state.set("batch_size", len(prompt))
 
         self.set_block_state(state, block_state)
         return components, state
