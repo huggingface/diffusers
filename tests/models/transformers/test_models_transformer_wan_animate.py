@@ -113,27 +113,32 @@ class WanAnimateTransformer3DTesterConfig(BaseModelTesterConfig):
                 (batch_size, 2 * num_channels + 4, num_frames + 1, height, width),
                 generator=self.generator,
                 device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
             "encoder_hidden_states": randn_tensor(
                 (batch_size, sequence_length, text_encoder_embedding_dim),
                 generator=self.generator,
                 device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "encoder_hidden_states_image": randn_tensor(
                 (batch_size, clip_seq_len, clip_dim),
                 generator=self.generator,
                 device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "pose_hidden_states": randn_tensor(
                 (batch_size, num_channels, num_frames, height, width),
                 generator=self.generator,
                 device=torch_device,
+                dtype=self.torch_dtype,
             ),
             "face_pixel_values": randn_tensor(
                 (batch_size, 3, inference_segment_length, face_height, face_width),
                 generator=self.generator,
                 device=torch_device,
+                dtype=self.torch_dtype,
             ),
         }
 
