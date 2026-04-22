@@ -329,6 +329,18 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         shutil.copy2(silence_latent_src, os.path.join(output_dir, "silence_latent.pt"))
         print(f"Baked silence_latent into condition_encoder + kept raw copy at {output_dir}/silence_latent.pt")
 
+    # Save scheduler config. ACE-Step drives the DiT with t ∈ [0, 1] and computes its own
+    # shifted / turbo sigma schedule, which it passes to
+    # `scheduler.set_timesteps(sigmas=...)` at sampling time. So the scheduler itself
+    # needs `num_train_timesteps=1` (so `scheduler.timesteps == sigmas`) and `shift=1.0`
+    # (so it doesn't re-shift already-shifted sigmas). All other defaults are fine.
+    from diffusers import FlowMatchEulerDiscreteScheduler
+
+    scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1, shift=1.0)
+    scheduler_output_dir = os.path.join(output_dir, "scheduler")
+    scheduler.save_pretrained(scheduler_output_dir)
+    print(f"Saved scheduler config -> {scheduler_output_dir}")
+
     # Report other keys that were not saved to transformer or condition_encoder
     if other_sd:
         print(f"\nNote: {len(other_sd)} keys were dropped (tokenizer / detokenizer weights):")

@@ -22,6 +22,7 @@ from transformers import PreTrainedModel, PreTrainedTokenizerFast
 
 from ...models import AutoencoderOobleck
 from ...models.transformers.ace_step_transformer import AceStepTransformer1DModel
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
@@ -233,6 +234,11 @@ class AceStepPipeline(DiffusionPipeline):
             The Diffusion Transformer (DiT) model for denoising audio latents.
         condition_encoder ([`AceStepConditionEncoder`]):
             Condition encoder that combines text, lyric, and timbre embeddings for cross-attention.
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
+            Flow-matching Euler scheduler. ACE-Step feeds the DiT timesteps in `[0, 1]`, so the
+            scheduler is configured with `num_train_timesteps=1` and `shift=1.0` — the pipeline
+            computes its shifted / turbo sigma schedule itself and passes it via
+            `set_timesteps(sigmas=...)`.
     """
 
     model_cpu_offload_seq = "text_encoder->condition_encoder->transformer->vae"
@@ -244,6 +250,7 @@ class AceStepPipeline(DiffusionPipeline):
         tokenizer: PreTrainedTokenizerFast,
         transformer: AceStepTransformer1DModel,
         condition_encoder: AceStepConditionEncoder,
+        scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
 
@@ -253,6 +260,7 @@ class AceStepPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             transformer=transformer,
             condition_encoder=condition_encoder,
+            scheduler=scheduler,
         )
 
         # ACE-Step is designed for variable-length audio up to 10 minutes. Enable
@@ -1306,23 +1314,27 @@ class AceStepPipeline(DiffusionPipeline):
                 device=encoder_hidden_states.device, dtype=encoder_hidden_states.dtype
             ).expand_as(encoder_hidden_states)
 
-        # 9. Get timestep schedule
+        # 9. Configure scheduler with ACE-Step's custom sigma schedule. `_get_timestep_schedule`
+        #    already returns the shifted / turbo sigmas in `[0, 1]`; the scheduler was
+        #    registered with `num_train_timesteps=1` and `shift=1.0` so it consumes them
+        #    verbatim (and appends the terminal 0 used on the final Euler step).
         t_schedule = self._get_timestep_schedule(
             num_inference_steps=num_inference_steps,
             shift=shift,
             device=device,
-            dtype=dtype,
+            dtype=torch.float32,
             timesteps=timesteps,
         )
-        num_steps = len(t_schedule)
+        self.scheduler.set_timesteps(sigmas=t_schedule.tolist(), device=device)
+        num_steps = len(self.scheduler.timesteps)
 
         # 10. Denoising loop (flow matching ODE)
         xt = latents
         # APG momentum is stateful across steps, so instantiate once before the loop.
         momentum_buffer = _APGMomentumBuffer() if do_cfg else None
         with self.progress_bar(total=num_steps) as progress_bar:
-            for step_idx in range(num_steps):
-                current_timestep = t_schedule[step_idx].item()
+            for step_idx, t_sched in enumerate(self.scheduler.timesteps):
+                current_timestep = float(t_sched)
                 t_curr_tensor = current_timestep * torch.ones((batch_size,), device=device, dtype=dtype)
 
                 # Determine if CFG should be applied at this timestep
@@ -1384,17 +1396,11 @@ class AceStepPipeline(DiffusionPipeline):
                     # Blend: strength * cover_vt + (1 - strength) * text2music_vt
                     vt = audio_cover_strength * vt + (1.0 - audio_cover_strength) * vt_nc
 
-                # On final step, directly compute x0
-                if step_idx == num_steps - 1:
-                    xt = xt - vt * t_curr_tensor.unsqueeze(-1).unsqueeze(-1)
-                    progress_bar.update()
-                    break
-
-                # Euler ODE step: x_{t-1} = x_t - v_t * dt
-                next_timestep = t_schedule[step_idx + 1].item()
-                dt = current_timestep - next_timestep
-                dt_tensor = dt * torch.ones((batch_size,), device=device, dtype=dtype).unsqueeze(-1).unsqueeze(-1)
-                xt = xt - vt * dt_tensor
+                # Euler ODE step via the scheduler. The scheduler appends a terminal
+                # sigma=0, so on the last step `dt = 0 - t_curr = -t_curr` and
+                # `prev = x + dt * v = x - t_curr * v` — the "project to x0" step the
+                # hand-rolled loop did as a special case.
+                xt = self.scheduler.step(vt, t_sched, xt, return_dict=False)[0]
 
                 progress_bar.update()
 
