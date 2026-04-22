@@ -11,8 +11,7 @@ from ...utils import (
 
 
 _dummy_objects = {}
-_additional_imports = {}
-_import_structure = {"pipeline_output": ["Flux2PipelineOutput"]}
+_import_structure = {}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -22,10 +21,11 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_flux2"] = ["Flux2Pipeline"]
-    _import_structure["pipeline_flux2_klein"] = ["Flux2KleinPipeline"]
-    _import_structure["pipeline_flux2_klein_inpaint"] = ["Flux2KleinInpaintPipeline"]
-    _import_structure["pipeline_flux2_klein_kv"] = ["Flux2KleinKVPipeline"]
+    _import_structure["modular_blocks_hunyuan_video1_5"] = [
+        "HunyuanVideo15AutoBlocks",
+    ]
+    _import_structure["modular_pipeline"] = ["HunyuanVideo15ModularPipeline"]
+
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -33,10 +33,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .pipeline_flux2 import Flux2Pipeline
-        from .pipeline_flux2_klein import Flux2KleinPipeline
-        from .pipeline_flux2_klein_inpaint import Flux2KleinInpaintPipeline
-        from .pipeline_flux2_klein_kv import Flux2KleinKVPipeline
+        from .modular_blocks_hunyuan_video1_5 import HunyuanVideo15AutoBlocks
+        from .modular_pipeline import HunyuanVideo15ModularPipeline
 else:
     import sys
 
@@ -48,6 +46,4 @@ else:
     )
 
     for name, value in _dummy_objects.items():
-        setattr(sys.modules[__name__], name, value)
-    for name, value in _additional_imports.items():
         setattr(sys.modules[__name__], name, value)

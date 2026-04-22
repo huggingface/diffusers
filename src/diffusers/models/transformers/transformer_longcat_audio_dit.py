@@ -475,6 +475,7 @@ class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
         use_latent_condition: bool = True,
+        ff_mult: float = 4.0,
     ):
         super().__init__()
         dim = dit_dim
@@ -498,7 +499,7 @@ class LongCatAudioDiTTransformer(ModelMixin, ConfigMixin):
                     cross_attn_norm=cross_attn_norm,
                     adaln_type=adaln_type,
                     adaln_use_text_cond=adaln_use_text_cond,
-                    ff_mult=4.0,
+                    ff_mult=ff_mult,
                 )
                 for _ in range(dit_depth)
             ]
