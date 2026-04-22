@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - "v*"
+      - v*
+    branches:
+      - 'v*-release'
 
 jobs:
   build-and-test:
