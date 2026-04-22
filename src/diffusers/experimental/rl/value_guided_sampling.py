@@ -57,13 +57,13 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         for key in self.data.keys():
             try:
                 self.means[key] = self.data[key].mean()
-            except:  # noqa: E722
+            except Exception:
                 pass
         self.stds = {}
         for key in self.data.keys():
             try:
                 self.stds[key] = self.data[key].std()
-            except:  # noqa: E722
+            except Exception:
                 pass
         self.state_dim = env.observation_space.shape[0]
         self.action_dim = env.action_space.shape[0]
