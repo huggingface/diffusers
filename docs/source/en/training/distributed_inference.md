@@ -371,6 +371,40 @@ We ran a benchmark for FLUX.1-dev with Ulysses, Ring, Unified Attention and Ulys
 
 From the above table, it is clear that Ulysses Anything Attention offers better compatibility with arbitrary sequence lengths while maintaining the same performance as the standard Ulysses Attention.
 
+
+### Ring Anything Attention
+
+The default Ring Attention requires the sequence length of hidden states to be evenly divisible across the ring degree. Ring Anything Attention is a variant of Ring Attention that supports arbitrary (non-evenly divisible) sequence lengths. It pads each rank's local KV to the global maximum sequence length, all-gathers the padded KV buffer, and slices back to each rank's true length before running attention.
+
+[`ContextParallelConfig`] supports Ring Anything Attention by specifying both `ring_degree` and `ring_anything`. Please note that Ring Anything Attention is not currently supported by Unified Attention. Pass the [`ContextParallelConfig`] with `ring_degree` set to bigger than 1 and `ring_anything=True` to [`~ModelMixin.enable_parallelism`].
+
+```py
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ring_degree=2, ring_anything=True))
+```
+
+> [!TIP] To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in `init_process_group`. This will significantly reduce communication latency.
+
+> [!NOTE]
+> Backward is not implemented yet; this mode is currently inference-only.
+> `attn_mask` must be `None`; non-None attention masks are not supported.
+
+We ran a benchmark for FLUX.1-dev with Ulysses, Ring, Unified Attention, Ulysses Anything Attention, and Ring Anything Attention on a node of 4 RTX 4090 (48GB) GPUs. The results are summarized as follows:
+
+| CP Backend         | Time / Iter (ms) | Steps / Sec | Peak Memory (GB) | Shape (HxW)|
+|--------------------|------------------|-------------|------------------|------------|
+| ulysses            |   259.07         |    3.86     |     33.83        | 1024x1024  |
+| ring               |   338.98         |    2.95     |     33.83        | 1024x1024  |
+| unified_balanced   |   321.54         |    3.11     |     33.83        | 1024x1024  |
+| ulysses_anything   |   259.07         |    3.86     |     33.83        | 1024x1024  |
+| ring_anything      |   340.14         |    2.94     |     33.83        | 1024x1024  |
+| ulysses            |   failed         |    failed   |     failed       | 1008x1008  |
+| ring               |   failed         |    failed   |     failed       | 1008x1008  |
+| unified_balanced   |   failed         |    failed   |     failed       | 1008x1008  |
+| ulysses_anything   |   253.16         |    3.95     |     33.75        | 1008x1008  |
+| ring_anything      |   335.57         |    2.98     |     33.75        | 1008x1008  |
+
+From the above table, Ring Anything Attention offers compatibility with arbitrary sequence lengths while maintaining performance comparable to the standard Ring Attention.
+
 ### parallel_config
 
 Pass `parallel_config` during model initialization to enable context parallelism.
