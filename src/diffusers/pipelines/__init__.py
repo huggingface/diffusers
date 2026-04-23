@@ -160,7 +160,12 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
-    _import_structure["flux2"] = ["Flux2Pipeline", "Flux2KleinPipeline", "Flux2KleinKVPipeline"]
+    _import_structure["flux2"] = [
+        "Flux2Pipeline",
+        "Flux2KleinPipeline",
+        "Flux2KleinInpaintPipeline",
+        "Flux2KleinKVPipeline",
+    ]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -326,6 +331,7 @@ else:
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
     _import_structure["longcat_image"] = ["LongCatImagePipeline", "LongCatImageEditPipeline"]
+    _import_structure["longcat_audio_dit"] = ["LongCatAudioDiTPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -335,6 +341,7 @@ else:
     )
     _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
+    _import_structure["ernie_image"] = ["ErnieImagePipeline"]
     _import_structure["ovis_image"] = ["OvisImagePipeline"]
     _import_structure["visualcloze"] = ["VisualClozePipeline", "VisualClozeGenerationPipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline", "PixArtSigmaPipeline"]
@@ -678,6 +685,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
         )
+        from .ernie_image import ErnieImagePipeline
         from .flux import (
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
@@ -694,7 +702,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
-        from .flux2 import Flux2KleinKVPipeline, Flux2KleinPipeline, Flux2Pipeline
+        from .flux2 import Flux2KleinInpaintPipeline, Flux2KleinKVPipeline, Flux2KleinPipeline, Flux2Pipeline
         from .glm_image import GlmImagePipeline
         from .helios import HeliosPipeline, HeliosPyramidPipeline
         from .hidream_image import HiDreamImagePipeline
@@ -751,6 +759,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .llada2 import LLaDA2Pipeline, LLaDA2PipelineOutput
+        from .longcat_audio_dit import LongCatAudioDiTPipeline
         from .longcat_image import LongCatImageEditPipeline, LongCatImagePipeline
         from .ltx import (
             LTXConditionPipeline,
