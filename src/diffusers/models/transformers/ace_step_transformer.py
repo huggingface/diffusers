@@ -23,7 +23,6 @@ used by the condition encoder (``_pack_sequences`` and the shared
 """
 
 import inspect
-import math
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -106,9 +105,7 @@ def _ace_step_rotary_freqs(
     repeat_interleave_real=False)`` + ``apply_rotary_emb(..., use_real_unbind_dim=-2)``.
     """
     positions = torch.arange(seq_len, device=device, dtype=torch.float32)
-    cos, sin = get_1d_rotary_pos_embed(
-        head_dim, positions, theta=theta, use_real=True, repeat_interleave_real=False
-    )
+    cos, sin = get_1d_rotary_pos_embed(head_dim, positions, theta=theta, use_real=True, repeat_interleave_real=False)
     return cos.to(dtype=dtype), sin.to(dtype=dtype)
 
 
@@ -173,9 +170,7 @@ class AceStepAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                "AceStepAttnProcessor2_0 requires PyTorch 2.0. Please upgrade your pytorch version."
-            )
+            raise ImportError("AceStepAttnProcessor2_0 requires PyTorch 2.0. Please upgrade your pytorch version.")
 
     def __call__(
         self,
@@ -253,7 +248,7 @@ class AceStepAttention(torch.nn.Module, AttentionModuleMixin):
         self.kv_heads = num_key_value_heads
         self.head_dim = head_dim
         self.dropout = dropout
-        self.scaling = head_dim ** -0.5
+        self.scaling = head_dim**-0.5
         self.is_cross_attention = is_cross_attention
 
         self.to_q = nn.Linear(hidden_size, num_attention_heads * head_dim, bias=bias)
@@ -339,7 +334,7 @@ class AceStepTransformerBlock(nn.Module):
         self.mlp_norm = RMSNorm(hidden_size, eps=rms_norm_eps)
         self.mlp = AceStepMLP(hidden_size, intermediate_size)
 
-        self.scale_shift_table = nn.Parameter(torch.randn(1, 6, hidden_size) / hidden_size ** 0.5)
+        self.scale_shift_table = nn.Parameter(torch.randn(1, 6, hidden_size) / hidden_size**0.5)
 
     def forward(
         self,
@@ -350,14 +345,12 @@ class AceStepTransformerBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-            self.scale_shift_table + temb
-        ).chunk(6, dim=1)
+        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (self.scale_shift_table + temb).chunk(
+            6, dim=1
+        )
 
         # Self-attention with AdaLN.
-        norm_hidden_states = (self.self_attn_norm(hidden_states) * (1 + scale_msa) + shift_msa).type_as(
-            hidden_states
-        )
+        norm_hidden_states = (self.self_attn_norm(hidden_states) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
         attn_output = self.self_attn(
             hidden_states=norm_hidden_states,
             image_rotary_emb=position_embeddings,
@@ -374,9 +367,7 @@ class AceStepTransformerBlock(nn.Module):
             )
             hidden_states = hidden_states + attn_output
 
-        norm_hidden_states = (self.mlp_norm(hidden_states) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            hidden_states
-        )
+        norm_hidden_states = (self.mlp_norm(hidden_states) * (1 + c_scale_msa) + c_shift_msa).type_as(hidden_states)
         ff_output = self.mlp(norm_hidden_states)
         hidden_states = (hidden_states + ff_output * c_gate_msa).type_as(hidden_states)
         return hidden_states
@@ -477,7 +468,7 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
             stride=patch_size,
             padding=0,
         )
-        self.scale_shift_table = nn.Parameter(torch.randn(1, 2, hidden_size) / hidden_size ** 0.5)
+        self.scale_shift_table = nn.Parameter(torch.randn(1, 2, hidden_size) / hidden_size**0.5)
 
         self.gradient_checkpointing = False
 
@@ -559,9 +550,7 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         )
 
         for i, layer_module in enumerate(self.layers):
-            layer_attn_mask = (
-                sliding_attn_mask if self.layer_types[i] == "sliding_attention" else full_attn_mask
-            )
+            layer_attn_mask = sliding_attn_mask if self.layer_types[i] == "sliding_attention" else full_attn_mask
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(

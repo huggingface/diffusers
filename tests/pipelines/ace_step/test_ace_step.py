@@ -342,7 +342,9 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_float16_inference(self, expected_max_diff=5e-2):
         super().test_float16_inference(expected_max_diff=expected_max_diff)
 
-    @unittest.skip("ACE-Step __call__ does not accept prompt_embeds, so encode_prompt isolation test is not applicable")
+    @unittest.skip(
+        "ACE-Step __call__ does not accept prompt_embeds, so encode_prompt isolation test is not applicable"
+    )
     def test_encode_prompt_works_in_isolation(self):
         pass
 

@@ -13,7 +13,7 @@ import os
 import shutil
 
 import torch
-from safetensors.torch import load_file, save_file
+from safetensors.torch import load_file
 
 
 def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="bf16"):
@@ -72,8 +72,7 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
             print(f"  -> local snapshot at {checkpoint_dir}")
         except ImportError as e:
             raise ImportError(
-                "To use a Hugging Face Hub repo id for --checkpoint_dir, install "
-                "`huggingface_hub`."
+                "To use a Hugging Face Hub repo id for --checkpoint_dir, install `huggingface_hub`."
             ) from e
 
     # Resolve paths
@@ -81,11 +80,28 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     vae_dir = os.path.join(checkpoint_dir, "vae")
     text_encoder_dir = os.path.join(checkpoint_dir, "Qwen3-Embedding-0.6B")
 
-    # Validate inputs
-    model_path = os.path.join(dit_dir, "model.safetensors")
+    # The DiT weights ship either as a single `model.safetensors` (the smaller turbo
+    # variant) or as sharded safetensors keyed by `model.safetensors.index.json`
+    # (the 5B XL variant). Resolve both layouts to `dit_weight_files` and load below.
+    single_model_path = os.path.join(dit_dir, "model.safetensors")
+    sharded_index_path = os.path.join(dit_dir, "model.safetensors.index.json")
     config_path = os.path.join(dit_dir, "config.json")
+    if os.path.exists(single_model_path):
+        dit_weight_files = [single_model_path]
+    elif os.path.exists(sharded_index_path):
+        with open(sharded_index_path) as f:
+            shard_index = json.load(f)
+        dit_weight_files = [os.path.join(dit_dir, s) for s in sorted(set(shard_index["weight_map"].values()))]
+        for p in dit_weight_files:
+            if not os.path.exists(p):
+                raise FileNotFoundError(f"sharded DiT weight missing: {p}")
+    else:
+        raise FileNotFoundError(
+            f"DiT weights not found at: {single_model_path} or {sharded_index_path}. "
+            "Expected either a single `model.safetensors` or a sharded "
+            "`model.safetensors.index.json` + per-shard files."
+        )
     for path, name in [
-        (model_path, "model weights"),
         (config_path, "config"),
         (vae_dir, "VAE"),
         (text_encoder_dir, "text encoder"),
@@ -103,8 +119,11 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     with open(config_path) as f:
         original_config = json.load(f)
 
-    print(f"Loading weights from {model_path}...")
-    state_dict = load_file(model_path)
+    print(f"Loading DiT weights from {len(dit_weight_files)} file(s) ...")
+    state_dict = {}
+    for p in dit_weight_files:
+        print(f"  loading {os.path.basename(p)}")
+        state_dict.update(load_file(p))
     print(f"  Total keys: {len(state_dict)}")
 
     # =========================================================================
@@ -212,98 +231,8 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         "sliding_window": original_config["sliding_window"],
     }
 
-    # Resolve actual tokenizer and text encoder class names for model_index.json
-    # (AutoTokenizer/AutoModel are not directly loadable by the pipeline loader)
-    from transformers import AutoConfig
-    from transformers import AutoModel as _AutoModel
-    from transformers import AutoTokenizer as _AutoTokenizer
-
-    _tok = _AutoTokenizer.from_pretrained(text_encoder_dir)
-    tokenizer_class_name = type(_tok).__name__
-    del _tok
-
-    _config = AutoConfig.from_pretrained(text_encoder_dir, trust_remote_code=True)
-    _model_cls = _AutoModel.from_config(_config)
-    text_encoder_class_name = type(_model_cls).__name__
-    del _model_cls, _config
-
-    print(f"  Tokenizer class: {tokenizer_class_name}")
-    print(f"  Text encoder class: {text_encoder_class_name}")
-
-    # model_index.json
-    model_index = {
-        "_class_name": "AceStepPipeline",
-        "_diffusers_version": "0.33.0.dev0",
-        "condition_encoder": ["diffusers", "AceStepConditionEncoder"],
-        "text_encoder": ["transformers", text_encoder_class_name],
-        "tokenizer": ["transformers", tokenizer_class_name],
-        "transformer": ["diffusers", "AceStepTransformer1DModel"],
-        "vae": ["diffusers", "AutoencoderOobleck"],
-    }
-
     # =========================================================================
-    # 3. Save everything
-    # =========================================================================
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Save model_index.json
-    model_index_path = os.path.join(output_dir, "model_index.json")
-    with open(model_index_path, "w") as f:
-        json.dump(model_index, f, indent=2)
-    print(f"\nSaved model_index.json -> {model_index_path}")
-
-    # Save transformer
-    transformer_dir = os.path.join(output_dir, "transformer")
-    os.makedirs(transformer_dir, exist_ok=True)
-    with open(os.path.join(transformer_dir, "config.json"), "w") as f:
-        json.dump(transformer_config, f, indent=2)
-    save_file(transformer_sd, os.path.join(transformer_dir, "diffusion_pytorch_model.safetensors"))
-    print(f"Saved transformer ({len(transformer_sd)} keys) -> {transformer_dir}")
-
-    # Save condition encoder
-    condition_encoder_dir = os.path.join(output_dir, "condition_encoder")
-    os.makedirs(condition_encoder_dir, exist_ok=True)
-    with open(os.path.join(condition_encoder_dir, "config.json"), "w") as f:
-        json.dump(condition_encoder_config, f, indent=2)
-    save_file(condition_encoder_sd, os.path.join(condition_encoder_dir, "diffusion_pytorch_model.safetensors"))
-    print(f"Saved condition_encoder ({len(condition_encoder_sd)} keys) -> {condition_encoder_dir}")
-
-    # Copy VAE
-    vae_output_dir = os.path.join(output_dir, "vae")
-    if os.path.exists(vae_output_dir):
-        shutil.rmtree(vae_output_dir)
-    shutil.copytree(vae_dir, vae_output_dir)
-    print(f"Copied VAE -> {vae_output_dir}")
-
-    # Copy text encoder
-    text_encoder_output_dir = os.path.join(output_dir, "text_encoder")
-    if os.path.exists(text_encoder_output_dir):
-        shutil.rmtree(text_encoder_output_dir)
-    shutil.copytree(text_encoder_dir, text_encoder_output_dir)
-    print(f"Copied text_encoder -> {text_encoder_output_dir}")
-
-    # Copy tokenizer (same source as text encoder for Qwen3)
-    tokenizer_output_dir = os.path.join(output_dir, "tokenizer")
-    if os.path.exists(tokenizer_output_dir):
-        shutil.rmtree(tokenizer_output_dir)
-    # Copy only tokenizer-related files
-    os.makedirs(tokenizer_output_dir, exist_ok=True)
-    tokenizer_files = [
-        "tokenizer.json",
-        "tokenizer_config.json",
-        "special_tokens_map.json",
-        "vocab.json",
-        "merges.txt",
-        "added_tokens.json",
-        "chat_template.jinja",
-    ]
-    for fname in tokenizer_files:
-        src = os.path.join(text_encoder_dir, fname)
-        if os.path.exists(src):
-            shutil.copy2(src, os.path.join(tokenizer_output_dir, fname))
-    print(f"Copied tokenizer -> {tokenizer_output_dir}")
-
-    # Bake silence_latent into the condition_encoder checkpoint.
+    # 3. Bake silence_latent into the condition_encoder state dict.
     #
     # The original loader in
     # acestep/core/generation/handler/init_service_loader.py:214 does
@@ -319,27 +248,71 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         silence_raw = torch.load(silence_latent_src, weights_only=True, map_location="cpu")
         silence_latent = silence_raw.transpose(1, 2).to(target_dtype).contiguous()
         print(f"  silence_latent raw shape: {tuple(silence_raw.shape)} -> baked shape: {tuple(silence_latent.shape)}")
-        # Re-save the condition_encoder file with silence_latent merged in.
         condition_encoder_sd["silence_latent"] = silence_latent
-        save_file(
-            condition_encoder_sd,
-            os.path.join(condition_encoder_dir, "diffusion_pytorch_model.safetensors"),
-        )
-        # Keep a copy at the pipeline root for debugging; not required by from_pretrained.
-        shutil.copy2(silence_latent_src, os.path.join(output_dir, "silence_latent.pt"))
-        print(f"Baked silence_latent into condition_encoder + kept raw copy at {output_dir}/silence_latent.pt")
 
-    # Save scheduler config. ACE-Step drives the DiT with t ∈ [0, 1] and computes its own
-    # shifted / turbo sigma schedule, which it passes to
-    # `scheduler.set_timesteps(sigmas=...)` at sampling time. So the scheduler itself
-    # needs `num_train_timesteps=1` (so `scheduler.timesteps == sigmas`) and `shift=1.0`
-    # (so it doesn't re-shift already-shifted sigmas). All other defaults are fine.
-    from diffusers import FlowMatchEulerDiscreteScheduler
+    # =========================================================================
+    # 4. Build the AceStepPipeline in memory and save via `save_pretrained`.
+    # Assembling the pipeline directly (rather than hand-writing model_index.json)
+    # ensures the saved repo stays in sync with the `AceStepPipeline.__init__`
+    # signature — e.g. a future sub-module added to the pipeline can't silently
+    # drift out of `model_index.json`.
+    # =========================================================================
+    from transformers import AutoModel, AutoTokenizer
 
+    from diffusers import (
+        AceStepPipeline,
+        AceStepTransformer1DModel,
+        AutoencoderOobleck,
+        FlowMatchEulerDiscreteScheduler,
+    )
+    from diffusers.pipelines.ace_step import AceStepConditionEncoder
+
+    # Drop metadata keys — they're re-populated by `save_pretrained` at save time.
+    transformer_init_kwargs = {k: v for k, v in transformer_config.items() if not k.startswith("_")}
+    condition_encoder_init_kwargs = {k: v for k, v in condition_encoder_config.items() if not k.startswith("_")}
+
+    print("\nConstructing transformer ...")
+    transformer = AceStepTransformer1DModel(**transformer_init_kwargs).to(target_dtype)
+    transformer.load_state_dict(transformer_sd, strict=True)
+
+    print("Constructing condition_encoder ...")
+    condition_encoder = AceStepConditionEncoder(**condition_encoder_init_kwargs).to(target_dtype)
+    condition_encoder.load_state_dict(condition_encoder_sd, strict=True)
+
+    print("Loading VAE ...")
+    vae = AutoencoderOobleck.from_pretrained(vae_dir).to(target_dtype)
+
+    print("Loading text encoder ...")
+    text_encoder = AutoModel.from_pretrained(text_encoder_dir, torch_dtype=target_dtype)
+
+    print("Loading tokenizer ...")
+    tokenizer = AutoTokenizer.from_pretrained(text_encoder_dir)
+
+    # ACE-Step drives the DiT with t ∈ [0, 1] and computes its own shifted / turbo
+    # sigma schedule, which it passes to `scheduler.set_timesteps(sigmas=...)` at
+    # sampling time. So the scheduler needs `num_train_timesteps=1` (so
+    # `scheduler.timesteps == sigmas`) and `shift=1.0` (so it doesn't re-shift
+    # already-shifted sigmas). All other defaults are fine.
     scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=1, shift=1.0)
-    scheduler_output_dir = os.path.join(output_dir, "scheduler")
-    scheduler.save_pretrained(scheduler_output_dir)
-    print(f"Saved scheduler config -> {scheduler_output_dir}")
+
+    pipe = AceStepPipeline(
+        vae=vae,
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        transformer=transformer,
+        condition_encoder=condition_encoder,
+        scheduler=scheduler,
+    )
+
+    print(f"\nSaving pipeline -> {output_dir}")
+    pipe.save_pretrained(output_dir, safe_serialization=True, max_shard_size="5GB")
+
+    # Keep the raw silence_latent.pt at the pipeline root for debugging — not
+    # required by `from_pretrained`, but makes it easy to re-derive the buffer
+    # without re-running the full conversion.
+    if os.path.exists(silence_latent_src):
+        shutil.copy2(silence_latent_src, os.path.join(output_dir, "silence_latent.pt"))
+        print(f"  kept raw silence_latent copy at {output_dir}/silence_latent.pt")
 
     # Report other keys that were not saved to transformer or condition_encoder
     if other_sd:

@@ -153,6 +153,7 @@ def _apg_forward(
 
     return pred_cond + (guidance_scale - 1) * normalized_update
 
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
@@ -242,6 +243,7 @@ class AceStepPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->condition_encoder->transformer->vae"
+    _callback_tensor_inputs = ["latents"]
 
     def __init__(
         self,
@@ -262,11 +264,6 @@ class AceStepPipeline(DiffusionPipeline):
             condition_encoder=condition_encoder,
             scheduler=scheduler,
         )
-
-        # ACE-Step is designed for variable-length audio up to 10 minutes. Enable
-        # VAE tiling by default so the encode/decode paths stay bounded in VRAM
-        # for long inputs. Users can call `pipe.vae.disable_tiling()` to opt out.
-        self.vae.enable_tiling()
 
     @property
     def is_turbo(self) -> bool:
@@ -336,8 +333,12 @@ class AceStepPipeline(DiffusionPipeline):
         if cfg_interval_start > cfg_interval_end:
             raise ValueError("`cfg_interval_start` must be <= `cfg_interval_end`.")
         if task_type == "repaint":
-            if repainting_start is not None and repainting_end is not None and repainting_end > 0 \
-                    and repainting_start >= repainting_end:
+            if (
+                repainting_start is not None
+                and repainting_end is not None
+                and repainting_end > 0
+                and repainting_start >= repainting_end
+            ):
                 raise ValueError(
                     f"For repaint, need `repainting_start` < `repainting_end` (got {repainting_start} / {repainting_end})."
                 )
@@ -609,7 +610,7 @@ class AceStepPipeline(DiffusionPipeline):
         Returns:
             Noise latents of shape `(batch_size, latent_length, acoustic_dim)`.
         """
-        latent_length = int(audio_duration * self.latents_per_second)
+        latent_length = math.ceil(audio_duration * self.latents_per_second)
         acoustic_dim = self.transformer.config.audio_acoustic_hidden_dim
 
         if latents is not None:
@@ -838,7 +839,8 @@ class AceStepPipeline(DiffusionPipeline):
                 batch_size,
                 latent_length,
                 self.transformer.config.audio_acoustic_hidden_dim,
-                device=device, dtype=dtype,
+                device=device,
+                dtype=dtype,
             )
         sl = sl.to(device=device, dtype=dtype)  # (1, T_long, C)
         T_long = sl.shape[1]
@@ -1153,7 +1155,7 @@ class AceStepPipeline(DiffusionPipeline):
         )
 
         # 2. Prepare source latents and latent length (VAE-driven latent frame rate).
-        latent_length = int(audio_duration * self.latents_per_second)
+        latent_length = math.ceil(audio_duration * self.latents_per_second)
 
         if has_src_audio:
             src_latents, src_latent_length = self._prepare_src_audio_and_latents(
@@ -1349,9 +1351,7 @@ class AceStepPipeline(DiffusionPipeline):
                         hidden_states=torch.cat([xt, xt], dim=0),
                         timestep=torch.cat([t_curr_tensor, t_curr_tensor], dim=0),
                         timestep_r=torch.cat([t_curr_tensor, t_curr_tensor], dim=0),
-                        encoder_hidden_states=torch.cat(
-                            [encoder_hidden_states, null_encoder_hidden_states], dim=0
-                        ),
+                        encoder_hidden_states=torch.cat([encoder_hidden_states, null_encoder_hidden_states], dim=0),
                         context_latents=torch.cat([context_latents, context_latents], dim=0),
                         return_dict=False,
                     )
@@ -1379,11 +1379,7 @@ class AceStepPipeline(DiffusionPipeline):
                     vt = model_output[0]
 
                 # Audio cover strength blending for cover tasks
-                if (
-                    audio_cover_strength < 1.0
-                    and non_cover_encoder_hidden_states is not None
-                    and task_type == "cover"
-                ):
+                if audio_cover_strength < 1.0 and non_cover_encoder_hidden_states is not None and task_type == "cover":
                     nc_output = self.transformer(
                         hidden_states=xt,
                         timestep=t_curr_tensor,

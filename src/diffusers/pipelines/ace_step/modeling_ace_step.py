@@ -140,11 +140,13 @@ def _run_encoder_layers(
     comment on PR #13095).
     """
     for i, layer_module in enumerate(layers):
-        mask = sliding_attn_mask if layer_types[i] == "sliding_attention" and sliding_attn_mask is not None else full_attn_mask
+        mask = (
+            sliding_attn_mask
+            if layer_types[i] == "sliding_attention" and sliding_attn_mask is not None
+            else full_attn_mask
+        )
         if gradient_checkpointing and torch.is_grad_enabled():
-            hidden_states = gradient_checkpointing_func(
-                layer_module, hidden_states, position_embeddings, mask
-            )
+            hidden_states = gradient_checkpointing_func(layer_module, hidden_states, position_embeddings, mask)
         else:
             hidden_states = layer_module(
                 hidden_states=hidden_states,
@@ -391,9 +393,7 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
         hidden_states = self.norm(hidden_states)
         # CLS-like pooling: first-token embedding per packed sequence.
         hidden_states = hidden_states[:, 0, :]
-        timbre_embs_unpack, timbre_embs_mask = self.unpack_timbre_embeddings(
-            hidden_states, refer_audio_order_mask
-        )
+        timbre_embs_unpack, timbre_embs_mask = self.unpack_timbre_embeddings(hidden_states, refer_audio_order_mask)
         return timbre_embs_unpack, timbre_embs_mask
 
 
@@ -467,14 +467,16 @@ class AceStepConditionEncoder(ModelMixin, ConfigMixin):
         # `cfg_ratio=0.15` in the original model. Broadcast along the sequence dim when used.
         self.null_condition_emb = nn.Parameter(torch.randn(1, 1, hidden_size))
 
-        # Silence latent — VAE-encoded audio-silence, stored as (1, T_long, audio_acoustic_hidden_dim).
+        # Silence latent — VAE-encoded audio-silence, stored as (1, T_long, timbre_hidden_dim).
         # When no reference audio is provided, the pipeline slices `silence_latent[:, :timbre_fix_frame, :]`
         # and feeds that to the timbre encoder. Passing literal zeros puts the timbre encoder
         # OOD and produces drone-like audio (observed on all text2music outputs before this fix).
-        # The buffer is a non-persistent placeholder; the converter overwrites it via state_dict.
+        # The placeholder here is overwritten by the converter with the real encoded silence,
+        # so its shape just needs to match the timbre-encoder input: last dim is
+        # `timbre_hidden_dim` (so smaller test configs with `timbre_hidden_dim != 64` also load).
         self.register_buffer(
             "silence_latent",
-            torch.zeros(1, 15000, 64),
+            torch.zeros(1, 15000, timbre_hidden_dim),
             persistent=True,
         )
 
