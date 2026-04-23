@@ -399,6 +399,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
+        inject_features: Optional[Dict] = None,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
         Args:
@@ -522,7 +523,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     attention_mask=attention_mask,
                 )
             else:
-                sample = upsample_block(
+                # sample = upsample_block(
+                #     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
+                # )
+                if inject_features is not None:
+                    sample, conv1_out, conv2_out, conv3_out = upsample_block(
+                    hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size,
+                    conv1_out=inject_features[0], conv2_out=inject_features[1], conv3_out=inject_features[2])
+                else:
+                    sample, conv1_out, conv2_out, conv3_out = upsample_block(
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
                 )
         # 6. post-process

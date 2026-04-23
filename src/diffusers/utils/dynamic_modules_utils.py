@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 from urllib import request
 
-from huggingface_hub import HfFolder, cached_download, hf_hub_download, model_info
+from huggingface_hub import HfFolder, hf_hub_download, model_info
 
 from .. import __version__
 from . import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging

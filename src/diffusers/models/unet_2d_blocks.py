@@ -1640,15 +1640,16 @@ class UpBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
-        for resnet in self.resnets:
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None,
+                conv1_out=None, conv2_out=None, conv3_out=None):
+
+        for i, resnet in enumerate(self.resnets):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
-
+                
             if self.training and self.gradient_checkpointing:
-
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
                         return module(*inputs)
@@ -1658,12 +1659,22 @@ class UpBlock2D(nn.Module):
                 hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
             else:
                 hidden_states = resnet(hidden_states, temb)
-
+                if i == 0:
+                    if conv1_out is not None:
+                        hidden_states = hidden_states + conv1_out
+    
+            if i == 0:
+                conv1_out = hidden_states
+            elif i == 1:
+                conv2_out = hidden_states
+            else:
+                conv3_out = hidden_states
+            
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size)
 
-        return hidden_states
+        return hidden_states, conv1_out, conv2_out, conv3_out
 
 
 class UpDecoderBlock2D(nn.Module):
