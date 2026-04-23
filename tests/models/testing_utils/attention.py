@@ -24,7 +24,7 @@ from diffusers.models.attention_dispatch import AttentionBackendName, _Attention
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import is_kernels_available, is_torch_version
 
-from ...testing_utils import assert_tensors_close, backend_empty_cache, is_attention, torch_device
+from ...testing_utils import assert_tensors_close, backend_empty_cache, is_attention, is_torch_compile, torch_device
 
 
 logger = logging.getLogger(__name__)
@@ -404,6 +404,7 @@ class AttentionBackendTesterMixin:
         )
 
     @pytest.mark.parametrize("backend", _ALL_BACKEND_PARAMS)
+    @is_torch_compile
     def test_compile(self, backend):
         """
         `torch.compile` tests checking for recompilation, graph breaks, forward can run, etc.
