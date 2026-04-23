@@ -83,7 +83,6 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
         if scheduler is None:
             scheduler = SDARTokenDiffusionScheduler()
         self.register_modules(model=model, tokenizer=tokenizer, scheduler=scheduler)
-        self._store_kv_supported: bool | None = None
 
     @property
     def num_timesteps(self):
@@ -431,31 +430,22 @@ class SDARPipeline(DiffusionPipeline, DiscreteDiffusionPipelineMixin):
     ) -> torch.Tensor:
         """Run the model forward pass and return logits.
 
-        Passes a 2D attention mask and lets the model handle internal conversion.
+        Follows the transformers v5 cache convention: `use_cache=True + past_key_values` always commits the appended
+        KVs to the cache. When `store_kv=False` (the SDAR denoising inner loop, which wants logits without growing the
+        cache), we snapshot the pre-forward seq length and `.crop()` back after the forward so the append is
+        effectively undone.
         """
-        kwargs = {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "position_ids": position_ids,
-            "past_key_values": past_key_values,
-            "use_cache": True,
-        }
-        if self._store_kv_supported is False:
-            output = self.model(**kwargs)
-            return output.logits if hasattr(output, "logits") else output[0]
-        if self._store_kv_supported is True:
-            kwargs["store_kv"] = store_kv
-            output = self.model(**kwargs)
-            return output.logits if hasattr(output, "logits") else output[0]
-        try:
-            kwargs["store_kv"] = store_kv
-            output = self.model(**kwargs)
-            self._store_kv_supported = True
-            return output.logits if hasattr(output, "logits") else output[0]
-        except TypeError:
-            output = self.model(**kwargs)
-            self._store_kv_supported = False
-            return output.logits if hasattr(output, "logits") else output[0]
+        prev_seq_len = past_key_values.get_seq_length() if past_key_values is not None else 0
+        output = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            use_cache=True,
+        )
+        if not store_kv and past_key_values is not None:
+            past_key_values.crop(prev_seq_len)
+        return output.logits if hasattr(output, "logits") else output[0]
 
     def _build_block_attention_mask_2d(
         self,

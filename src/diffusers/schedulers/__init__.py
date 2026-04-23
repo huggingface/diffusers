@@ -77,6 +77,10 @@ else:
         "HybridTokenDiffusionScheduler",
         "HybridTokenDiffusionSchedulerOutput",
     ]
+    _import_structure["scheduling_idlm_block_diffusion"] = [
+        "IDLMBlockDiffusionScheduler",
+        "IDLMBlockDiffusionSchedulerOutput",
+    ]
     _import_structure["scheduling_ipndm"] = ["IPNDMScheduler"]
     _import_structure["scheduling_k_dpm_2_ancestral_discrete"] = ["KDPM2AncestralDiscreteScheduler"]
     _import_structure["scheduling_k_dpm_2_discrete"] = ["KDPM2DiscreteScheduler"]
@@ -193,6 +197,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_helios import HeliosScheduler
         from .scheduling_helios_dmd import HeliosDMDScheduler
         from .scheduling_heun_discrete import HeunDiscreteScheduler
+        from .scheduling_idlm_block_diffusion import (
+            IDLMBlockDiffusionScheduler,
+            IDLMBlockDiffusionSchedulerOutput,
+        )
         from .scheduling_ipndm import IPNDMScheduler
         from .scheduling_k_dpm_2_ancestral_discrete import KDPM2AncestralDiscreteScheduler
         from .scheduling_k_dpm_2_discrete import KDPM2DiscreteScheduler

@@ -411,6 +411,7 @@ else:
         "Kandinsky5I2IPipeline",
     ]
     _import_structure["dflash"] = ["DFlashPipeline", "DFlashPipelineOutput"]
+    _import_structure["idlm"] = ["IDLMPipeline", "IDLMPipelineOutput"]
     _import_structure["sdar"] = ["SDARPipeline", "SDARPipelineOutput"]
     _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
     _import_structure["z_image"] = [
@@ -720,6 +721,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
+        from .idlm import IDLMPipeline, IDLMPipelineOutput
         from .kandinsky import (
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,

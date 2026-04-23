@@ -560,6 +560,8 @@
         title: HunyuanImage2.1
       - local: api/pipelines/hybrid_token_diffusion
         title: Hybrid Token Diffusion
+      - local: api/pipelines/idlm
+        title: I-DLM
       - local: api/pipelines/pix2pix
         title: InstructPix2Pix
       - local: api/pipelines/kandinsky
@@ -749,6 +751,8 @@
       title: HeunDiscreteScheduler
     - local: api/schedulers/hybrid_token_diffusion
       title: HybridTokenDiffusionScheduler
+    - local: api/schedulers/idlm_block_diffusion
+      title: IDLMBlockDiffusionScheduler
     - local: api/schedulers/ipndm
       title: IPNDMScheduler
     - local: api/schedulers/stochastic_karras_ve
