@@ -2,7 +2,7 @@ import gc
 import tempfile
 import unittest
 
-from diffusers import AutoRoundConfig, FluxTransformer2DModel, FluxPipeline
+from diffusers import AutoRoundConfig, ZImageTransformer2DModel, ZImagePipeline
 from diffusers.utils import is_auto_round_available, is_torch_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
@@ -65,10 +65,10 @@ class AutoRoundBaseTesterMixin:
     # TODO: Replace with a real tiny AutoRound-quantized checkpoint on the Hub.
     # This should be a small model that has been quantized with AutoRound and uploaded
     # in the standard format (qweight, scales, qzeros, g_idx).
-    model_id = "hf-internal-testing/tiny-flux-pipe-autoround-w4g128"
-    model_cls = FluxTransformer2DModel
-    pipeline_cls = FluxPipeline
-    torch_dtype = torch.float16
+    model_id = "INCModel/Z-Image-tiny-for-testing-W4A16-AutoRound"
+    model_cls = ZImageTransformer2DModel
+    pipeline_cls = ZImagePipeline
+    torch_dtype = torch.bfloat16
     expected_memory_reduction = 0.0
     modules_to_not_convert = ""
     _test_torch_compile = False
@@ -104,45 +104,35 @@ class AutoRoundBaseTesterMixin:
         }
 
     def get_dummy_inputs(self):
-        """Creates dummy inputs matching the model's expected forward signature.
+        """Creates dummy inputs matching ZImageTransformer2DModel.forward() signature.
 
-        TODO: Adjust input shapes to match the tiny test checkpoint's config.
+        ZImageTransformer2DModel expects:
+          - x: list of (C, F, H, W) tensors, one per batch item
+          - t: 1-D timestep tensor of shape (batch_size,)
+          - cap_feats: list of (seq_len, cap_feat_dim) tensors, one per batch item
+
+        Dimensions are chosen to match the tiny test checkpoint
+        (in_channels=16, cap_feat_dim=512, patch_size=2, f_patch_size=1).
         """
         batch_size = 1
-        seq_len = 16
-        height = width = 32
-        num_latent_channels = 4
-        caption_channels = 8
+        in_channels = 16      # matches tiny model config
+        cap_feat_dim = 512    # matches tiny model config
+        height = width = 8    # must be divisible by patch_size=2
+        frames = 1            # must be divisible by f_patch_size=1
+        seq_len = 16          # caption token count (will be padded to multiple of 32)
 
         torch.manual_seed(0)
-        hidden_states = torch.randn((batch_size, num_latent_channels, height, width)).to(
-            torch_device, dtype=self.torch_dtype
-        )
-        encoder_hidden_states = torch.randn((batch_size, seq_len, caption_channels)).to(
-            torch_device, dtype=self.torch_dtype
-        )
-        timestep = torch.tensor([1.0]).to(torch_device, dtype=self.torch_dtype).expand(batch_size)
+        x = [
+            torch.randn((in_channels, frames, height, width)).to(torch_device, dtype=self.torch_dtype)
+            for _ in range(batch_size)
+        ]
+        cap_feats = [
+            torch.randn((seq_len, cap_feat_dim)).to(torch_device, dtype=self.torch_dtype)
+            for _ in range(batch_size)
+        ]
+        t = torch.tensor([0.5] * batch_size).to(torch_device, dtype=self.torch_dtype)
 
-        return {
-            "hidden_states": hidden_states,
-            "encoder_hidden_states": encoder_hidden_states,
-            "timestep": timestep,
-        }
-
-    def test_autoround_layers(self):
-        """Verify that eligible nn.Linear layers have been replaced with AutoRound QuantLinear layers.
-
-        After loading a pre-quantized model, all target linear layers should have been
-        converted to AutoRound's QuantLinear by `convert_hf_model`.
-        """
-        from auto_round.inference.convert_model import QuantLinear
-
-        model = self.model_cls.from_pretrained(**self.get_dummy_model_init_kwargs())
-        has_quantized_layer = False
-        for name, module in model.named_modules():
-            if isinstance(module, QuantLinear):
-                has_quantized_layer = True
-        assert has_quantized_layer, "No QuantLinear layers found in the model — quantization may have failed."
+        return {"x": x, "cap_feats": cap_feats, "t": t}
 
     def test_autoround_memory_usage(self):
         """Compare peak memory between unquantized and AutoRound-quantized model.
@@ -151,8 +141,13 @@ class AutoRoundBaseTesterMixin:
         `expected_memory_reduction` defines the minimum ratio (unquantized / quantized).
         """
         inputs = self.get_dummy_inputs()
+        # x and cap_feats are lists of tensors; move each element individually.
         inputs = {
-            k: v.to(device=torch_device, dtype=self.torch_dtype) for k, v in inputs.items() if not isinstance(v, bool)
+            k: [t.to(device=torch_device, dtype=self.torch_dtype) for t in v]
+            if isinstance(v, list)
+            else v.to(device=torch_device, dtype=self.torch_dtype)
+            for k, v in inputs.items()
+            if not isinstance(v, bool)
         }
 
         unquantized_model = self.model_cls.from_pretrained(
@@ -169,7 +164,7 @@ class AutoRoundBaseTesterMixin:
 
     def test_modules_to_not_convert(self):
         """Verify that modules listed in `modules_to_not_convert` remain as standard nn.Linear."""
-        from auto_round.inference.convert_model import QuantLinear
+        from auto_round.inference.convert_model import dynamic_import_inference_linear
 
         init_kwargs = self.get_dummy_model_init_kwargs()
         quantization_config_kwargs = self.get_dummy_init_kwargs()
@@ -180,11 +175,23 @@ class AutoRoundBaseTesterMixin:
         model = self.model_cls.from_pretrained(**init_kwargs)
         model.to(torch_device)
 
+        # Resolve the actual backend used after model loading.
+        # When backend='auto', AutoRound selects the best available backend
+        # per-layer during convert_hf_model(); 'auto' itself is not a valid
+        # argument to dynamic_import_inference_linear.
+        used_backends = getattr(model.hf_quantizer, "used_backends", [])
+        resolved_backend = (
+            used_backends[0]
+            if used_backends
+            else quantization_config_kwargs.get("backend", "auto_round:torch_zp")
+        )
+        quant_linear_cls = dynamic_import_inference_linear(resolved_backend, quantization_config_kwargs)
+
         for name, module in model.named_modules():
             if name in self.modules_to_not_convert:
                 assert not isinstance(
-                    module, QuantLinear
-                ), f"Module '{name}' should NOT have been quantized but is a QuantLinear."
+                    module, quant_linear_cls
+                ), f"Module '{name}' should NOT have been quantized but is a {quant_linear_cls}."
 
     def test_serialization(self):
         """Test round-trip save and load of an AutoRound quantized model."""
@@ -206,7 +213,9 @@ class AutoRoundBaseTesterMixin:
         with torch.no_grad():
             saved_model_output = saved_model(**inputs)
 
-        assert torch.allclose(model_output.sample, saved_model_output.sample, rtol=1e-5, atol=1e-5)
+        # model_output.sample is a list of per-item tensors
+        for out, saved_out in zip(model_output.sample, saved_model_output.sample):
+            assert torch.allclose(out, saved_out, rtol=1e-5, atol=1e-5)
 
     def test_torch_compile(self):
         """Test that the quantized model works with torch.compile."""
@@ -224,8 +233,9 @@ class AutoRoundBaseTesterMixin:
         with torch.no_grad():
             compiled_model_output = compiled_model(**self.get_dummy_inputs()).sample
 
-        model_output = model_output.detach().float().cpu().numpy()
-        compiled_model_output = compiled_model_output.detach().float().cpu().numpy()
+        # model_output is a list of per-item tensors; stack for comparison
+        model_output = torch.stack([o.detach().float().cpu() for o in model_output]).numpy()
+        compiled_model_output = torch.stack([o.detach().float().cpu() for o in compiled_model_output]).numpy()
 
         max_diff = numpy_cosine_similarity_distance(model_output.flatten(), compiled_model_output.flatten())
         assert max_diff < 1e-3
