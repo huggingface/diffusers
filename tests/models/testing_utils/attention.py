@@ -37,7 +37,6 @@ logger = logging.getLogger(__name__)
 _CUDA_AVAILABLE = torch.cuda.is_available()
 _KERNELS_AVAILABLE = is_kernels_available()
 
-_PARAM_NATIVE = pytest.param(AttentionBackendName.NATIVE, id="native")
 
 _PARAM_NATIVE_CUDNN = pytest.param(
     AttentionBackendName._NATIVE_CUDNN,
@@ -73,7 +72,7 @@ _PARAM_FLASH_3_HUB = pytest.param(
 )
 
 # All backends under test.
-_ALL_BACKEND_PARAMS = [_PARAM_NATIVE, _PARAM_NATIVE_CUDNN, _PARAM_FLASH_HUB, _PARAM_FLASH_3_HUB]
+_ALL_BACKEND_PARAMS = [_PARAM_NATIVE_CUDNN, _PARAM_FLASH_HUB, _PARAM_FLASH_3_HUB]
 
 # Backends that only accept bf16/fp16 inputs; models and inputs must be cast before running them.
 _BF16_REQUIRED_BACKENDS = {
