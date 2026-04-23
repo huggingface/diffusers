@@ -124,7 +124,9 @@ def _create_accelerate_new_hook(old_hook):
     return new_hook
 
 
-def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix="", modules_to_not_convert=[]):
+def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix="", modules_to_not_convert=None):
+    if modules_to_not_convert is None:
+        modules_to_not_convert = []
     def _should_convert_to_gguf(state_dict, prefix):
         weight_key = prefix + "weight"
         return weight_key in state_dict and isinstance(state_dict[weight_key], GGUFParameter)
@@ -157,7 +159,9 @@ def _replace_with_gguf_linear(model, compute_dtype, state_dict, prefix="", modul
     return model
 
 
-def _dequantize_gguf_and_restore_linear(model, modules_to_not_convert=[]):
+def _dequantize_gguf_and_restore_linear(model, modules_to_not_convert=None):
+    if modules_to_not_convert is None:
+        modules_to_not_convert = []
     for name, module in model.named_children():
         if isinstance(module, GGUFLinear) and name not in modules_to_not_convert:
             device = module.weight.device
