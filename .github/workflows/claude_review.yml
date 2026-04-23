@@ -187,13 +187,10 @@ jobs:
           fi
 
           # For fork PRs, an earlier step redirected `origin` to a local bare
-          # repo to sandbox claude-code-action. Undo that redirect so our new
-          # branch pushes to the real base repo. Safe: the cherry-picked commit
-          # below contains only Claude's edits within the allowed paths — not
-          # any of the fork's other changes.
+          # repo to sandbox claude-code-action. Undo that redirect so our push
+          # reaches the real base repo. Safe: only Claude's edits within the
+          # allowed paths are committed below — never the fork's other changes.
           git config --unset-all url."file:///tmp/local-origin.git".insteadOf 2>/dev/null || true
-
-          NEW_BRANCH="claude/pr-${PR_NUMBER}-$(date -u +%Y%m%d-%H%M%S)"
 
           git config user.name "claude[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -203,7 +200,7 @@ jobs:
           # anything that landed in the index outside the allowed paths.
           DISALLOWED=$(git diff --cached --name-only | grep -vE '^(\.ai|src/diffusers)/' || true)
           if [[ -n "$DISALLOWED" ]]; then
-            post_status "❌ Refusing to open follow-up PR — files outside \`.ai/\` or \`src/diffusers/\` were staged:
+            post_status "❌ Refusing to push — files outside \`.ai/\` or \`src/diffusers/\` were staged:
           \`\`\`
           ${DISALLOWED}
           \`\`\`
@@ -211,9 +208,25 @@ jobs:
             exit 1
           fi
 
-          # Commit on the current (source PR) branch so we have a clean SHA,
+          PR_BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName')
+
+          if [[ "$PR_BRANCH" == claude/pr-* ]]; then
+            # Source PR is already a Claude-opened PR — iterate in place by
+            # committing and pushing straight to its head branch instead of
+            # opening yet another follow-up PR.
+            git commit -m "Apply follow-up changes from Claude (requested by @${COMMENT_USER})
+
+          Co-Authored-By: Claude <noreply@anthropic.com>"
+            git push origin "HEAD:${PR_BRANCH}"
+            post_status "✅ Pushed commit $(git rev-parse --short HEAD) directly to this PR."
+            exit 0
+          fi
+
+          # Otherwise: commit on the source PR's branch to get a clean SHA,
           # then cherry-pick onto a fresh branch cut from the default branch.
           # The follow-up PR's diff is therefore exactly Claude's edits vs. main.
+          NEW_BRANCH="claude/pr-${PR_NUMBER}-$(date -u +%Y%m%d-%H%M%S)"
+
           git commit -m "Apply changes from Claude (requested by @${COMMENT_USER} on #${PR_NUMBER})
 
           Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
@@ -235,6 +248,6 @@ jobs:
             --title "Apply Claude's changes from #${PR_NUMBER}" \
             --body "Automated PR with edits Claude made in response to \`COMMIT THIS\` from @${COMMENT_USER} on [#${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}).
 
-          Targets \`${BASE_BRANCH}\` — independent of #${PR_NUMBER}.")
+          Targets \`${BASE_BRANCH}\` — independent of #${PR_NUMBER}. Further \`COMMIT THIS\` requests on *this* PR will commit directly to it.")
 
           post_status "✅ Opened follow-up PR (into \`${BASE_BRANCH}\`) with Claude's edits: ${NEW_PR_URL}"
