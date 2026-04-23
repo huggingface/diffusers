@@ -175,6 +175,11 @@ class QuantizationTesterMixin:
         model_quantized.to(torch_device)
 
         inputs = self.get_dummy_inputs()
+        model_dtype = next(model_quantized.parameters()).dtype
+        inputs = {
+            k: v.to(dtype=model_dtype) if torch.is_tensor(v) and torch.is_floating_point(v) else v
+            for k, v in inputs.items()
+        }
         output = model_quantized(**inputs, return_dict=False)[0]
 
         assert output is not None, "Model output is None"
@@ -920,6 +925,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
         """Test that device_map='auto' works correctly with quantization."""
         self._test_quantization_device_map(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
 
+    @pytest.mark.xfail(reason="dequantize is not implemented in torchao")
     def test_torchao_dequantize(self):
         """Test that dequantize() works correctly."""
         self._test_dequantize(TorchAoConfigMixin.TORCHAO_QUANT_TYPES["int8wo"])
