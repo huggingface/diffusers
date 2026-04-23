@@ -287,20 +287,6 @@ class AttentionBackendTesterMixin:
         Use `pytest -m "not attention"` to skip these tests.
     """
 
-    # -----------------------------------------------------------------------
-    # Tolerance attributes — override in host class to loosen/tighten checks.
-    # -----------------------------------------------------------------------
-
-    # test_output_close_to_native: alternate backends (flash, cuDNN) may
-    # accumulate small numerical errors vs the reference PyTorch SDPA kernel.
-    backend_vs_native_atol: float = 1e-2
-    backend_vs_native_rtol: float = 1e-2
-
-    # test_compile: regional compilation introduces the same kind of numerical
-    # error as the non-compiled backend path, so the same loose tolerance applies.
-    compile_vs_native_atol: float = 1e-2
-    compile_vs_native_rtol: float = 1e-2
-
     def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
@@ -349,7 +335,7 @@ class AttentionBackendTesterMixin:
 
     @torch.no_grad()
     @pytest.mark.parametrize("backend", _ALL_BACKEND_PARAMS)
-    def test_output_close_to_native(self, backend):
+    def test_output_close_to_native(self, backend, atol=1e-2, rtol=1e-2):
         """All backends should produce model output numerically close to the native SDPA reference."""
         _skip_if_backend_requires_nondeterminism(backend)
 
@@ -381,8 +367,8 @@ class AttentionBackendTesterMixin:
         assert_tensors_close(
             backend_output,
             native_output,
-            atol=self.backend_vs_native_atol,
-            rtol=self.backend_vs_native_rtol,
+            atol=atol,
+            rtol=rtol,
             msg=f"Output from {backend} should be numerically close to native SDPA.",
         )
 
@@ -405,7 +391,7 @@ class AttentionBackendTesterMixin:
 
     @pytest.mark.parametrize("backend", _ALL_BACKEND_PARAMS)
     @is_torch_compile
-    def test_compile(self, backend):
+    def test_compile(self, backend, atol=1e-2, rtol=1e-2):
         """
         `torch.compile` tests checking for recompilation, graph breaks, forward can run, etc.
         For speed, we use regional compilation here (`model.compile_repeated_blocks()`
@@ -458,7 +444,7 @@ class AttentionBackendTesterMixin:
         assert_tensors_close(
             compile_output,
             native_output,
-            atol=self.compile_vs_native_atol,
-            rtol=self.compile_vs_native_rtol,
+            atol=atol,
+            rtol=rtol,
             msg=f"Compiled output with backend '{backend.value}' should be numerically close to eager native SDPA.",
         )
