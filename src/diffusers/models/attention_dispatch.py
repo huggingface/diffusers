@@ -2113,10 +2113,7 @@ class TemplatedRingAnythingAttention(torch.autograd.Function):
         ctx._parallel_config = _parallel_config
 
         kv_seq_len = key.shape[1]  # local S_KV (may differ across ranks)
-        kv_seq_len_tensor = torch.tensor([kv_seq_len], dtype=torch.long, device=key.device)
-        all_kv_seq_lens_tensor = funcol.all_gather_tensor(kv_seq_len_tensor, gather_dim=0, group=group)
-        all_kv_seq_lens_tensor = _wait_tensor(all_kv_seq_lens_tensor)
-        all_kv_seq_lens: list[int] = all_kv_seq_lens_tensor.tolist()
+        all_kv_seq_lens = gather_size_by_comm(kv_seq_len, group)
         s_max = max(all_kv_seq_lens)
 
         # Padding is applied on the sequence dimension (dim=1) at the end.
@@ -2133,7 +2130,6 @@ class TemplatedRingAnythingAttention(torch.autograd.Function):
 
         kv_buffer = torch.cat([key_padded.flatten(), value_padded.flatten()]).contiguous()
         kv_buffer = funcol.all_gather_tensor(kv_buffer, gather_dim=0, group=group)
-        kv_buffer = _wait_tensor(kv_buffer)
         kv_buffer = kv_buffer.chunk(world_size)
 
         # numel per-rank in the padded layout

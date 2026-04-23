@@ -247,6 +247,10 @@ class ContextParallelGatherHook(ModelHook):
                 output[i] = PartitionAnythingSharder.unshard_anything(
                     output[i], cpm.gather_dim, self.parallel_config._flattened_mesh
                 )
+            elif self.parallel_config.ring_anything:
+                output[i] = PartitionAnythingSharder.unshard_anything(
+                    output[i], cpm.gather_dim, self.parallel_config._flattened_mesh
+                )
             else:
                 output[i] = EquipartitionSharder.unshard(
                     output[i], cpm.gather_dim, self.parallel_config._flattened_mesh
