@@ -16,6 +16,7 @@
 from collections.abc import Iterator
 from fractions import Fraction
 from itertools import chain
+from pathlib import Path
 
 import numpy as np
 import PIL.Image
@@ -189,3 +190,182 @@ def encode_video(
         _write_audio(container, audio_stream, audio, audio_sample_rate)
 
     container.close()
+
+
+# ---------------------------------------------------------------------------
+# HDR export helpers (used with LTX2HDRLoraPipeline).
+#
+# These mirror the reference CLI's `save_exr_tensor`, `_linear_to_srgb`, and
+# `encode_exr_sequence_to_mp4` in `ltx_pipelines.utils.media_io`.
+# ---------------------------------------------------------------------------
+
+
+def save_exr_tensor(
+    tensor: torch.Tensor | np.ndarray,
+    file_path: str | Path,
+    half: bool = False,
+) -> None:
+    r"""
+    Save a single linear-HDR frame tensor to an OpenEXR file.
+
+    Args:
+        tensor (`torch.Tensor` or `np.ndarray`):
+            A float frame of shape `(H, W, C)` or `(C, H, W)` with linear HDR values in `[0, ∞)`. Channels are
+            assumed to be RGB.
+        file_path (`str` or `pathlib.Path`):
+            Output EXR path (e.g. `frame_00000.exr`).
+        half (`bool`, *optional*, defaults to `False`):
+            When `True`, writes the file as `float16` (HALF) with ZIP compression. `float16` tensors are always
+            saved as HALF regardless of this flag.
+
+    The resulting EXR is tagged with Rec.709/sRGB chromaticities and `colorSpace=sRGB` to match the reference.
+    Requires [OpenImageIO](https://openimageio.readthedocs.io) with OpenEXR support:
+    `pip install OpenImageIO` (or `pip install oiio`).
+    """
+    try:
+        import OpenImageIO
+    except ImportError as e:  # pragma: no cover - optional dep
+        raise ImportError(
+            "`save_exr_tensor` requires `OpenImageIO`. Install with `pip install OpenImageIO` (with OpenEXR support)."
+        ) from e
+
+    if isinstance(tensor, torch.Tensor):
+        use_half = half or tensor.dtype in (torch.float16, torch.half)
+        if tensor.dim() == 3 and tensor.shape[0] == 3:
+            tensor = tensor.permute(1, 2, 0)
+        arr = np.ascontiguousarray(tensor.detach().cpu().numpy().astype(np.float32))
+    else:
+        use_half = half or tensor.dtype == np.float16
+        if tensor.ndim == 3 and tensor.shape[0] == 3:
+            tensor = np.transpose(tensor, (1, 2, 0))
+        arr = np.ascontiguousarray(tensor.astype(np.float32))
+
+    file_path = str(file_path)
+    h, w = arr.shape[:2]
+    fmt = OpenImageIO.HALF if use_half else OpenImageIO.FLOAT
+    spec = OpenImageIO.ImageSpec(w, h, 3, fmt)
+    spec.channelnames = ("R", "G", "B")
+    spec.attribute("compression", "zip")
+    spec.attribute(
+        "chromaticities", "float[8]", (0.64, 0.33, 0.30, 0.60, 0.15, 0.06, 0.3127, 0.3290)
+    )
+    spec.attribute("colorSpace", "sRGB")
+
+    out = OpenImageIO.ImageOutput.create(file_path)
+    if out is None:
+        raise RuntimeError(
+            f"Failed to create EXR writer for '{file_path}'. Ensure OpenImageIO is built with OpenEXR support."
+        )
+    try:
+        if not out.open(file_path, spec):
+            raise RuntimeError(f"Failed to open EXR file '{file_path}': {out.geterror()}")
+        if not out.write_image(arr):
+            raise RuntimeError(f"Failed to write EXR image '{file_path}': {out.geterror()}")
+    finally:
+        out.close()
+
+
+def _linear_to_srgb(x: np.ndarray) -> np.ndarray:
+    r"""
+    Apply the sRGB OETF (IEC 61966-2-1) to a linear image. Input values must be in `[0, 1]`; values outside are
+    clipped.
+    """
+    x = np.clip(x, 0.0, 1.0)
+    return np.where(x <= 0.0031308, x * 12.92, 1.055 * np.power(x, 1.0 / 2.4) - 0.055)
+
+
+def encode_exr_sequence_to_mp4(
+    exr_dir: str | Path,
+    output_mp4: str | Path,
+    frame_rate: float,
+    crf: int = 18,
+) -> None:
+    r"""
+    Convert a linear-HDR EXR frame sequence into an sRGB-tonemapped H.264 `.mp4` preview.
+
+    Each EXR frame is loaded, clipped to `[0, 1]`, passed through the sRGB OETF (no exposure/gain, EV=0), quantized
+    to 8-bit BGR, and fed into a libx264 stream at the supplied `frame_rate`. This mirrors the reference CLI's
+    `encode_exr_sequence_to_mp4`.
+
+    Args:
+        exr_dir (`str` or `pathlib.Path`):
+            Directory containing `frame_*.exr` files (sorted lexicographically).
+        output_mp4 (`str` or `pathlib.Path`):
+            Output MP4 path.
+        frame_rate (`float`):
+            Frame rate for the output video.
+        crf (`int`, *optional*, defaults to `18`):
+            libx264 CRF quality factor. Lower values produce higher quality.
+
+    Requires `opencv-python` (for EXR reading via `OPENCV_IO_ENABLE_OPENEXR`).
+    """
+    import os
+
+    os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
+    try:
+        import cv2
+    except ImportError as e:  # pragma: no cover - optional dep
+        raise ImportError(
+            "`encode_exr_sequence_to_mp4` requires `opencv-python`. Install with `pip install opencv-python`."
+        ) from e
+
+    exr_dir = Path(exr_dir)
+    exr_files = sorted(exr_dir.glob("frame_*.exr"))
+    if not exr_files:
+        raise FileNotFoundError(f"No EXR frames found in {exr_dir}")
+
+    container = av.open(str(output_mp4), mode="w")
+    stream = container.add_stream("libx264", rate=Fraction(frame_rate).limit_denominator(1000))
+    stream.pix_fmt = "yuv420p"
+    stream.options = {"crf": str(crf), "movflags": "+faststart"}
+
+    try:
+        for i, exr_path in enumerate(exr_files):
+            hdr = cv2.imread(str(exr_path), cv2.IMREAD_UNCHANGED).astype(np.float32)
+            sdr = _linear_to_srgb(np.maximum(hdr, 0.0))
+            bgr8 = (sdr * 255.0 + 0.5).astype(np.uint8)
+
+            if i == 0:
+                stream.height = bgr8.shape[0]
+                stream.width = bgr8.shape[1]
+
+            frame = av.VideoFrame.from_ndarray(bgr8, format="bgr24")
+            for packet in stream.encode(frame):
+                container.mux(packet)
+
+        for packet in stream.encode():
+            container.mux(packet)
+    finally:
+        container.close()
+
+
+def save_hdr_video_frames_as_exr(
+    frames: torch.Tensor | np.ndarray,
+    exr_dir: str | Path,
+    *,
+    half: bool = False,
+) -> list[Path]:
+    r"""
+    Save a batch of linear-HDR frames to a directory as `frame_{idx:05d}.exr` files.
+
+    Args:
+        frames (`torch.Tensor` or `np.ndarray`):
+            HDR video tensor of shape `(F, H, W, C)` or `(F, C, H, W)` with linear HDR values in `[0, ∞)`.
+        exr_dir (`str` or `pathlib.Path`):
+            Output directory. Created if missing.
+        half (`bool`, *optional*, defaults to `False`):
+            Forwarded to [`save_exr_tensor`] — when `True`, writes EXR files as `float16`.
+
+    Returns:
+        `list[pathlib.Path]`: Paths of the written EXR files, in frame order.
+    """
+    exr_dir = Path(exr_dir)
+    exr_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    num_frames = frames.shape[0]
+    for i in range(num_frames):
+        frame = frames[i]
+        path = exr_dir / f"frame_{i:05d}.exr"
+        save_exr_tensor(frame, path, half=half)
+        paths.append(path)
+    return paths

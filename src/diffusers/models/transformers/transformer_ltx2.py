@@ -1331,6 +1331,7 @@ class LTX2VideoTransformer3DModel(
         audio_sigma: torch.Tensor | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         audio_encoder_attention_mask: torch.Tensor | None = None,
+        video_self_attention_mask: torch.Tensor | None = None,
         num_frames: int | None = None,
         height: int | None = None,
         width: int | None = None,
@@ -1374,6 +1375,12 @@ class LTX2VideoTransformer3DModel(
                 Optional multiplicative text attention mask of shape `(batch_size, text_seq_len)`.
             audio_encoder_attention_mask (`torch.Tensor`, *optional*):
                 Optional multiplicative text attention mask of shape `(batch_size, text_seq_len)` for audio modeling.
+            video_self_attention_mask (`torch.Tensor`, *optional*):
+                Optional multiplicative self-attention mask of shape `(batch_size, num_video_tokens,
+                num_video_tokens)` applied to the video self-attention in each transformer block. Values in `[0, 1]`
+                where `1` means full attention and `0` means masked. Used e.g. by the IC-LoRA pipeline to control
+                attention strength between noisy tokens and appended reference tokens. Audio self-attention is not
+                affected.
             num_frames (`int`, *optional*):
                 The number of latent video frames. Used if calculating the video coordinates for RoPE.
             height (`int`, *optional*):
@@ -1429,6 +1436,11 @@ class LTX2VideoTransformer3DModel(
         if audio_encoder_attention_mask is not None and audio_encoder_attention_mask.ndim == 2:
             audio_encoder_attention_mask = (1 - audio_encoder_attention_mask.to(audio_hidden_states.dtype)) * -10000.0
             audio_encoder_attention_mask = audio_encoder_attention_mask.unsqueeze(1)
+
+        # Convert video_self_attention_mask from multiplicative mask ([0, 1]) to additive bias form (0 / -10000)
+        # matching the encoder_attention_mask convention above. Shape is preserved: (B, T_v, T_v).
+        if video_self_attention_mask is not None:
+            video_self_attention_mask = (1 - video_self_attention_mask.to(hidden_states.dtype)) * -10000.0
 
         batch_size = hidden_states.size(0)
 
@@ -1569,7 +1581,7 @@ class LTX2VideoTransformer3DModel(
                     audio_cross_attn_rotary_emb,
                     encoder_attention_mask,
                     audio_encoder_attention_mask,
-                    None,  # self_attention_mask
+                    video_self_attention_mask,  # self_attention_mask (video-only)
                     None,  # audio_self_attention_mask
                     None,  # a2v_cross_attention_mask
                     None,  # v2a_cross_attention_mask
@@ -1598,7 +1610,7 @@ class LTX2VideoTransformer3DModel(
                     ca_audio_rotary_emb=audio_cross_attn_rotary_emb,
                     encoder_attention_mask=encoder_attention_mask,
                     audio_encoder_attention_mask=audio_encoder_attention_mask,
-                    self_attention_mask=None,
+                    self_attention_mask=video_self_attention_mask,
                     audio_self_attention_mask=None,
                     a2v_cross_attention_mask=None,
                     v2a_cross_attention_mask=None,

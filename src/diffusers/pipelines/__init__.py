@@ -324,6 +324,8 @@ else:
     _import_structure["ltx2"] = [
         "LTX2Pipeline",
         "LTX2ConditionPipeline",
+        "LTX2HDRLoraPipeline",
+        "LTX2ICLoraPipeline",
         "LTX2ImageToVideoPipeline",
         "LTX2LatentUpsamplePipeline",
     ]
@@ -768,7 +770,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXLatentUpsamplePipeline,
             LTXPipeline,
         )
-        from .ltx2 import LTX2ConditionPipeline, LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2Pipeline
+        from .ltx2 import (
+            LTX2ConditionPipeline,
+            LTX2HDRLoraPipeline,
+            LTX2ICLoraPipeline,
+            LTX2ImageToVideoPipeline,
+            LTX2LatentUpsamplePipeline,
+            LTX2Pipeline,
+        )
         from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
