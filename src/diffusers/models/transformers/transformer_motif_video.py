@@ -1,0 +1,1014 @@
+# Copyright 2026 Motif Technologies and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...hooks._helpers import TransformerBlockMetadata, TransformerBlockRegistry
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ..attention import FeedForward
+from ..attention_processor import Attention, AttentionProcessor
+from ..cache_utils import CacheMixin
+from ..embeddings import (
+    PixArtAlphaTextProjection,
+    TimestepEmbedding,
+    Timesteps,
+    apply_rotary_emb,
+    get_1d_rotary_pos_embed,
+)
+from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
+from ..normalization import (
+    AdaLayerNormContinuous,
+    AdaLayerNormZero,
+    AdaLayerNormZeroSingle,
+)
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+@dataclass
+class CrossAttentionInputs:
+    """Inputs for cross-attention mode where query is pre-projected externally.
+
+    Args:
+        query: Pre-projected query tensor [B, L, D]
+        key: Key tensor for attention [B, L, D]
+        value: Value tensor for attention [B, L, D]
+    """
+
+    query: torch.Tensor
+    key: torch.Tensor
+    value: torch.Tensor
+
+
+class MotifVideoAttnProcessor2_0:
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "MotifVideoAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
+            )
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+        cross_attn_inputs: Optional[CrossAttentionInputs] = None,
+    ) -> torch.Tensor:
+        """
+        Process attention with support for cross-attention mode.
+
+        Args:
+            attn: Attention layer
+            hidden_states: Input hidden states [B, L, D]
+            encoder_hidden_states: Optional encoder states [B, E, D]
+            attention_mask: Optional attention mask [B, 1, 1, N]
+            image_rotary_emb: Optional rotary embeddings
+            cross_attn_inputs: Optional pre-projected cross-attention inputs
+
+        Returns:
+            Tuple of (hidden_states, encoder_hidden_states)
+        """
+        if cross_attn_inputs is not None:
+            return self._handle_cross_attention_mode(attn, cross_attn_inputs, attention_mask, image_rotary_emb)
+
+        # Standard attention mode
+        if attn.add_q_proj is None and encoder_hidden_states is not None:
+            hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
+
+        query, key, value = self._project_qkv(attn, hidden_states)
+        query, key = self._normalize_qk(attn, query, key)
+        query, key = self._apply_rope(attn, query, key, encoder_hidden_states, image_rotary_emb)
+        query, key, value = self._add_encoder_conditioning(attn, query, key, value, encoder_hidden_states)
+        hidden_states = self._compute_attention(query, key, value, attention_mask)
+        return self._project_output(attn, hidden_states, encoder_hidden_states)
+
+    def _handle_cross_attention_mode(
+        self,
+        attn: Attention,
+        cross_attn_inputs: CrossAttentionInputs,
+        attention_mask: Optional[torch.Tensor],
+        image_rotary_emb: Optional[torch.Tensor],
+    ) -> Tuple[torch.Tensor, None]:
+        """Handle cross-attention mode with pre-projected query.
+
+        Query is already projected externally (cross_attn_query_proj + norm), so we skip to_q and only apply reshape +
+        norm_q + RoPE. K/V use to_k/to_v as normal.
+        """
+        query = cross_attn_inputs.query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        key = attn.to_k(cross_attn_inputs.key)
+        value = attn.to_v(cross_attn_inputs.value)
+
+        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb)
+
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.to(query.dtype)
+        return hidden_states, None
+
+    def _project_qkv(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Project hidden states to Q, K, V and reshape for attention."""
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+        return query, key, value
+
+    def _normalize_qk(
+        self,
+        attn: Attention,
+        query: torch.Tensor,
+        key: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Apply QK normalization if present."""
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+        return query, key
+
+    def _apply_rope(
+        self,
+        attn: Attention,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor],
+        image_rotary_emb: Optional[torch.Tensor],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Apply rotary positional embeddings to query and key."""
+        if image_rotary_emb is not None:
+            if attn.add_q_proj is None and encoder_hidden_states is not None:
+                split_idx = -encoder_hidden_states.shape[1]
+                query = torch.cat(
+                    [
+                        apply_rotary_emb(query[:, :, :split_idx], image_rotary_emb),
+                        query[:, :, split_idx:],
+                    ],
+                    dim=2,
+                )
+                key = torch.cat(
+                    [
+                        apply_rotary_emb(key[:, :, :split_idx], image_rotary_emb),
+                        key[:, :, split_idx:],
+                    ],
+                    dim=2,
+                )
+            else:
+                query = apply_rotary_emb(query, image_rotary_emb)
+                key = apply_rotary_emb(key, image_rotary_emb)
+
+        return query, key
+
+    def _add_encoder_conditioning(
+        self,
+        attn: Attention,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor],
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Add encoder conditioning QKV projections and normalization."""
+        if attn.add_q_proj is not None and encoder_hidden_states is not None:
+            encoder_query = attn.add_q_proj(encoder_hidden_states)
+            encoder_key = attn.add_k_proj(encoder_hidden_states)
+            encoder_value = attn.add_v_proj(encoder_hidden_states)
+
+            encoder_query = encoder_query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+            encoder_key = encoder_key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+            encoder_value = encoder_value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+
+            if attn.norm_added_q is not None:
+                encoder_query = attn.norm_added_q(encoder_query)
+            if attn.norm_added_k is not None:
+                encoder_key = attn.norm_added_k(encoder_key)
+
+            query = torch.cat([query, encoder_query], dim=2)
+            key = torch.cat([key, encoder_key], dim=2)
+            value = torch.cat([value, encoder_value], dim=2)
+
+        return query, key, value
+
+    def _compute_attention(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attention_mask: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        """Compute scaled dot-product attention."""
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
+        hidden_states = hidden_states.to(query.dtype)
+        return hidden_states
+
+    def _project_output(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor],
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Apply output projections and split encoder states."""
+        if encoder_hidden_states is not None:
+            hidden_states, encoder_hidden_states = (
+                hidden_states[:, : -encoder_hidden_states.shape[1]],
+                hidden_states[:, -encoder_hidden_states.shape[1] :],
+            )
+
+            if getattr(attn, "to_out", None) is not None:
+                hidden_states = attn.to_out[0](hidden_states)
+                hidden_states = attn.to_out[1](hidden_states)
+
+            if getattr(attn, "to_add_out", None) is not None:
+                encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        return hidden_states, encoder_hidden_states
+
+
+class MotifVideoPatchEmbed(nn.Module):
+    def __init__(
+        self,
+        patch_size: Union[int, Tuple[int, int, int]] = 16,
+        in_chans: int = 3,
+        embed_dim: int = 768,
+    ) -> None:
+        super().__init__()
+
+        patch_size = (patch_size, patch_size, patch_size) if isinstance(patch_size, int) else patch_size
+        self.proj = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.proj(hidden_states)
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)  # BCFHW -> BNC
+        return hidden_states
+
+
+class MotifVideoAdaNorm(nn.Module):
+    def __init__(self, in_features: int, out_features: Optional[int] = None) -> None:
+        super().__init__()
+
+        out_features = out_features or 2 * in_features
+        self.linear = nn.Linear(in_features, out_features)
+        self.nonlinearity = nn.SiLU()
+
+    def forward(self, temb: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        temb = self.linear(self.nonlinearity(temb))
+        gate_msa, gate_mlp = temb.chunk(2, dim=1)
+        gate_msa, gate_mlp = gate_msa.unsqueeze(1), gate_mlp.unsqueeze(1)
+        return gate_msa, gate_mlp
+
+
+class MotifVideoConditionEmbedding(nn.Module):
+    def __init__(
+        self,
+        embedding_dim: int,
+    ):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+
+    def forward(
+        self,
+        timestep: torch.Tensor,
+    ) -> torch.Tensor:
+        timesteps_proj = self.time_proj(timestep)
+        compute_dtype = next(
+            (p.dtype for p in self.timestep_embedder.parameters() if p.is_floating_point()),
+            torch.float32,  # safe fallback
+        )
+        conditioning = self.timestep_embedder(timesteps_proj.to(compute_dtype))  # (N, D)
+
+        return conditioning
+
+
+class MotifVideoRotaryPosEmbed(nn.Module):
+    def __init__(
+        self,
+        patch_size: int,
+        patch_size_t: int,
+        rope_dim: List[int],
+        theta: float = 256.0,
+    ):
+        """
+        Rotary Positional Embedding (RoPE) for video latents.
+
+        Args:
+            patch_size (`int`): Spatial patch size.
+            patch_size_t (`int`): Temporal patch size.
+            rope_dim (`List[int]`): Dimensions for RoPE across [Time, Height, Width] axes.
+            theta (`float`, *optional*, defaults to 256.0): Base frequency for rotary embeddings.
+        """
+        super().__init__()
+
+        self.patch_size = patch_size
+        self.patch_size_t = patch_size_t
+        self.rope_dim = rope_dim
+        self.theta = theta
+
+    def forward(self, hidden_states: torch.Tensor, timestep: Optional[torch.Tensor] = None) -> torch.Tensor:
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+        rope_sizes = [
+            num_frames // self.patch_size_t,
+            height // self.patch_size,
+            width // self.patch_size,
+        ]
+
+        axes_grids = []
+        for i in range(3):
+            grid = torch.arange(0, rope_sizes[i], device=hidden_states.device, dtype=torch.float32)
+            axes_grids.append(grid)
+        grid = torch.meshgrid(*axes_grids, indexing="ij")
+        grid = torch.stack(grid, dim=0)
+
+        freqs = []
+        for i in range(3):
+            freq = get_1d_rotary_pos_embed(
+                dim=self.rope_dim[i],
+                pos=grid[i].reshape(-1),
+                theta=self.theta,
+                use_real=True,
+                freqs_dtype=torch.float64,
+            )
+            freqs.append(freq)
+
+        freqs_cos = torch.cat([f[0] for f in freqs], dim=1)
+        freqs_sin = torch.cat([f[1] for f in freqs], dim=1)
+        return freqs_cos, freqs_sin
+
+
+class MotifVideoImageProjection(nn.Module):
+    def __init__(self, in_features: int, hidden_size: int):
+        super().__init__()
+        self.norm_in = nn.LayerNorm(in_features)
+        self.linear_1 = nn.Linear(in_features, in_features)
+        self.act_fn = nn.GELU()
+        self.linear_2 = nn.Linear(in_features, hidden_size)
+        self.norm_out = nn.LayerNorm(hidden_size)
+
+    def forward(self, image_embeds: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.norm_in(image_embeds)
+        hidden_states = self.linear_1(hidden_states)
+        hidden_states = self.act_fn(hidden_states)
+        hidden_states = self.linear_2(hidden_states)
+        hidden_states = self.norm_out(hidden_states)
+        return hidden_states
+
+
+class MotifVideoSingleTransformerBlock(nn.Module):
+    def __init__(
+        self,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        mlp_ratio: float = 4.0,
+        qk_norm: str = "rms_norm",
+        norm_type: str = "layer_norm",
+        enable_text_cross_attention: bool = False,
+    ) -> None:
+        super().__init__()
+
+        hidden_size = num_attention_heads * attention_head_dim
+        mlp_dim = int(hidden_size * mlp_ratio)
+
+        self.attn = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=None,
+            dim_head=attention_head_dim,
+            heads=num_attention_heads,
+            out_dim=hidden_size,
+            bias=True,
+            processor=MotifVideoAttnProcessor2_0(),
+            qk_norm=qk_norm,
+            eps=1e-6,
+            pre_only=True,
+        )
+
+        self.enable_text_cross_attention = enable_text_cross_attention
+        if enable_text_cross_attention:
+            self.cross_attn_query_proj = nn.Linear(hidden_size, hidden_size)
+            self.cross_attn_query_norm = nn.LayerNorm(hidden_size, eps=1e-6)
+            self.cross_attn_out_proj = nn.Linear(hidden_size, hidden_size)
+            nn.init.zeros_(self.cross_attn_out_proj.weight)
+            nn.init.zeros_(self.cross_attn_out_proj.bias)
+
+        self.norm = AdaLayerNormZeroSingle(hidden_size, norm_type=norm_type)
+        self.proj_mlp = nn.Linear(hidden_size, mlp_dim)
+        self.act_mlp = nn.GELU(approximate="tanh")
+        self.proj_out = nn.Linear(hidden_size + mlp_dim, hidden_size)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        temb: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        image_embed_seq_len: int = 0,
+    ) -> torch.Tensor:
+        video_tokens = hidden_states.shape[1]
+        encoder_seq_length = encoder_hidden_states.shape[1]
+        hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
+
+        residual = hidden_states
+
+        # 1. Input normalization
+        norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
+        mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
+
+        norm_hidden_states, norm_encoder_hidden_states = (
+            norm_hidden_states[:, :-encoder_seq_length, :],
+            norm_hidden_states[:, -encoder_seq_length:, :],
+        )
+
+        # 2. Attention
+        attn_output, context_attn_output = self.attn(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=norm_encoder_hidden_states,
+            attention_mask=attention_mask,
+            image_rotary_emb=image_rotary_emb,
+        )
+
+        # Text cross-attention: Q=proj(attn_output), K/V=normed text, reuse self.attn weights
+        if self.enable_text_cross_attention:
+            txt_kv = norm_encoder_hidden_states[:, image_embed_seq_len:, :]
+            text_mask = None
+            if attention_mask is not None:
+                text_mask = attention_mask[:, :, :, video_tokens + image_embed_seq_len :]
+            cross_q = self.cross_attn_query_proj(attn_output)
+            cross_output, _ = self.attn(
+                hidden_states=cross_q,
+                cross_attn_inputs=CrossAttentionInputs(
+                    query=cross_q,
+                    key=txt_kv,
+                    value=txt_kv,
+                ),
+                attention_mask=text_mask,
+                image_rotary_emb=image_rotary_emb,
+            )
+            attn_output = attn_output + self.cross_attn_out_proj(cross_output)
+
+        attn_output = torch.cat([attn_output, context_attn_output], dim=1)
+
+        # 3. Modulation and residual connection
+        hidden_states = torch.cat([attn_output, mlp_hidden_states], dim=2)
+        hidden_states = gate.unsqueeze(1) * self.proj_out(hidden_states)
+        hidden_states = hidden_states + residual
+
+        hidden_states, encoder_hidden_states = (
+            hidden_states[:, :-encoder_seq_length, :],
+            hidden_states[:, -encoder_seq_length:, :],
+        )
+        return hidden_states, encoder_hidden_states
+
+
+class MotifVideoTransformerBlock(nn.Module):
+    def __init__(
+        self,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        mlp_ratio: float,
+        qk_norm: str = "rms_norm",
+        norm_type: str = "layer_norm",
+        enable_text_cross_attention: bool = False,
+    ) -> None:
+        super().__init__()
+
+        hidden_size = num_attention_heads * attention_head_dim
+
+        self.norm1 = AdaLayerNormZero(hidden_size, norm_type=norm_type)
+        self.norm1_context = AdaLayerNormZero(hidden_size, norm_type=norm_type)
+
+        self.attn = Attention(
+            query_dim=hidden_size,
+            cross_attention_dim=None,
+            added_kv_proj_dim=hidden_size,
+            dim_head=attention_head_dim,
+            heads=num_attention_heads,
+            out_dim=hidden_size,
+            context_pre_only=False,
+            bias=True,
+            processor=MotifVideoAttnProcessor2_0(),
+            qk_norm=qk_norm,
+            eps=1e-6,
+        )
+
+        self.enable_text_cross_attention = enable_text_cross_attention
+        if enable_text_cross_attention:
+            self.cross_attn_query_proj = nn.Linear(hidden_size, hidden_size)
+            self.cross_attn_query_norm = nn.LayerNorm(hidden_size, eps=1e-6)
+            self.cross_attn_out_proj = nn.Linear(hidden_size, hidden_size)
+            nn.init.zeros_(self.cross_attn_out_proj.weight)
+            nn.init.zeros_(self.cross_attn_out_proj.bias)
+
+        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.norm2_context = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+
+        self.ff = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu-approximate")
+        self.ff_context = FeedForward(hidden_size, mult=mlp_ratio, activation_fn="gelu-approximate")
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        temb: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        image_embed_seq_len: int = 0,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # 1. Input normalization
+        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
+        norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
+            encoder_hidden_states, emb=temb
+        )
+
+        # 2. Joint attention
+        attn_output, context_attn_output = self.attn(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=norm_encoder_hidden_states,
+            attention_mask=attention_mask,
+            image_rotary_emb=image_rotary_emb,
+        )
+
+        # 3. Modulation and residual connection
+        hidden_states = hidden_states + attn_output * gate_msa.unsqueeze(1)
+
+        # Text cross-attention: Q=proj(attn_output), K/V=normed text, reuse self.attn weights
+        if self.enable_text_cross_attention:
+            txt_kv = norm_encoder_hidden_states[:, image_embed_seq_len:, :]
+            text_mask = None
+            if attention_mask is not None:
+                text_mask = attention_mask[:, :, :, hidden_states.shape[1] + image_embed_seq_len :]
+            cross_q = self.cross_attn_query_proj(attn_output)
+            cross_output, _ = self.attn(
+                hidden_states=cross_q,
+                cross_attn_inputs=CrossAttentionInputs(
+                    query=cross_q,
+                    key=txt_kv,
+                    value=txt_kv,
+                ),
+                attention_mask=text_mask,
+                image_rotary_emb=image_rotary_emb,
+            )
+            hidden_states = hidden_states + self.cross_attn_out_proj(cross_output)
+
+        encoder_hidden_states = encoder_hidden_states + context_attn_output * c_gate_msa.unsqueeze(1)
+
+        norm_hidden_states = self.norm2(hidden_states)
+        norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
+
+        norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+
+        # 4. Feed-forward
+        ff_output = self.ff(norm_hidden_states)
+        context_ff_output = self.ff_context(norm_encoder_hidden_states)
+
+        hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output
+        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+
+        return hidden_states, encoder_hidden_states
+
+
+TransformerBlockRegistry.register(
+    model_class=MotifVideoTransformerBlock,
+    metadata=TransformerBlockMetadata(
+        return_hidden_states_index=0,
+        return_encoder_hidden_states_index=1,
+    ),
+)
+TransformerBlockRegistry.register(
+    model_class=MotifVideoSingleTransformerBlock,
+    metadata=TransformerBlockMetadata(
+        return_hidden_states_index=0,
+        return_encoder_hidden_states_index=1,
+    ),
+)
+
+
+class MotifVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+    r"""
+    A Transformer model for video-like data used in the Motif-Video model.
+
+    Args:
+        in_channels (`int`, defaults to `33`):
+            The number of channels in the input.
+        out_channels (`int`, defaults to `16`):
+            The number of channels in the output.
+        num_attention_heads (`int`, defaults to `24`):
+            The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, defaults to `128`):
+            The number of channels in each head.
+        num_layers (`int`, defaults to `20`):
+            The number of layers of dual-stream blocks to use.
+        num_single_layers (`int`, defaults to `40`):
+            The number of layers of single-stream blocks to use.
+        num_decoder_layers (`int`, defaults to `0`):
+            The number of decoder layers in single-stream blocks.
+        mlp_ratio (`float`, defaults to `4.0`):
+            The ratio of the hidden layer size to the input size in the feedforward network.
+        patch_size (`int`, defaults to `2`):
+            The size of the spatial patches to use in the patch embedding layer.
+        patch_size_t (`int`, defaults to `1`):
+            The size of the temporal patches to use in the patch embedding layer.
+        qk_norm (`str`, defaults to `rms_norm`):
+            The normalization to use for the query and key projections in the attention layers.
+        text_embed_dim (`int`, defaults to `4096`):
+            Input dimension of text embeddings from the text encoder.
+        image_embed_dim (`int`, *optional*):
+            Input dimension of image embeddings from a vision encoder. If provided, enables image conditioning.
+        rope_theta (`float`, defaults to `256.0`):
+            The value of theta to use in the RoPE layer.
+        rope_axes_dim (`Tuple[int]`, defaults to `(16, 56, 56)`):
+            The dimensions of the axes to use in the RoPE layer.
+    """
+
+    _supports_gradient_checkpointing = True
+    _skip_layerwise_casting_patterns = ["x_embedder", "context_embedder", "norm"]
+    _no_split_modules = [
+        "MotifVideoTransformerBlock",
+        "MotifVideoSingleTransformerBlock",
+        "MotifVideoPatchEmbed",
+    ]
+
+    @register_to_config
+    def __init__(
+        self,
+        in_channels: int = 33,
+        out_channels: int = 16,
+        num_attention_heads: int = 24,
+        attention_head_dim: int = 128,
+        num_layers: int = 20,
+        num_single_layers: int = 40,
+        num_decoder_layers: int = 0,
+        mlp_ratio: float = 4.0,
+        patch_size: int = 2,
+        patch_size_t: int = 1,
+        qk_norm: str = "rms_norm",
+        norm_type: str = "layer_norm",
+        text_embed_dim: int = 4096,
+        image_embed_dim: int | None = None,
+        rope_theta: float = 256.0,
+        rope_axes_dim: Tuple[int, ...] = (16, 56, 56),
+        enable_text_cross_attention_dual: bool = False,
+        enable_text_cross_attention_single: bool = False,
+    ) -> None:
+        super().__init__()
+
+        inner_dim = num_attention_heads * attention_head_dim
+        out_channels = out_channels or in_channels
+
+        # 1. Latent and condition embedders
+        self.x_embedder = MotifVideoPatchEmbed((patch_size_t, patch_size, patch_size), in_channels, inner_dim)
+        self.context_embedder = PixArtAlphaTextProjection(in_features=text_embed_dim, hidden_size=inner_dim)
+
+        # First frame conditioning: Image conditioning embedders
+        self.image_embed_dim = image_embed_dim
+        if image_embed_dim is not None:
+            self.image_embedder = MotifVideoImageProjection(in_features=image_embed_dim, hidden_size=inner_dim)
+
+        self.time_text_embed = MotifVideoConditionEmbedding(inner_dim)
+
+        # 2. RoPE
+        self.rope = MotifVideoRotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
+
+        # Cross-attention config
+        self.enable_text_cross_attention_dual = enable_text_cross_attention_dual
+        self.enable_text_cross_attention_single = enable_text_cross_attention_single
+
+        # 3. Dual stream transformer blocks
+        self.transformer_blocks = nn.ModuleList(
+            [
+                MotifVideoTransformerBlock(
+                    num_attention_heads,
+                    attention_head_dim,
+                    mlp_ratio=mlp_ratio,
+                    qk_norm=qk_norm,
+                    norm_type=norm_type,
+                    enable_text_cross_attention=enable_text_cross_attention_dual,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        # 4. Single stream transformer blocks
+        # Encoder blocks get cross-attention; decoder blocks do not (no text stream in decoder)
+        num_encoder_single = num_single_layers - num_decoder_layers
+        self.single_transformer_blocks = nn.ModuleList(
+            [
+                MotifVideoSingleTransformerBlock(
+                    num_attention_heads,
+                    attention_head_dim,
+                    mlp_ratio=mlp_ratio,
+                    qk_norm=qk_norm,
+                    norm_type=norm_type,
+                    enable_text_cross_attention=enable_text_cross_attention_single
+                    if i < num_encoder_single
+                    else False,
+                )
+                for i in range(num_single_layers)
+            ]
+        )
+
+        # 5. Output projection
+        self.norm_out = AdaLayerNormContinuous(
+            inner_dim,
+            inner_dim,
+            elementwise_affine=False,
+            eps=1e-6,
+            norm_type=norm_type,
+        )
+        self.proj_out = nn.Linear(inner_dim, patch_size_t * patch_size * patch_size * out_channels)
+
+        # Verify cross-attention config matches actual block state.
+        # Catches silent misconfiguration (e.g. checkpoint config with renamed keys).
+        for i, block in enumerate(self.transformer_blocks):
+            if block.enable_text_cross_attention != enable_text_cross_attention_dual:
+                raise ValueError(
+                    f"transformer_blocks[{i}].enable_text_cross_attention="
+                    f"{block.enable_text_cross_attention}, expected {enable_text_cross_attention_dual}. "
+                    f"Check checkpoint config.json key names match __init__ parameters."
+                )
+        for i, block in enumerate(self.single_transformer_blocks):
+            expected = enable_text_cross_attention_single if i < num_encoder_single else False
+            if block.enable_text_cross_attention != expected:
+                raise ValueError(
+                    f"single_transformer_blocks[{i}].enable_text_cross_attention="
+                    f"{block.enable_text_cross_attention}, expected {expected}. "
+                    f"Check checkpoint config.json key names match __init__ parameters."
+                )
+
+        self.gradient_checkpointing = False
+        self.num_decoder_layers = num_decoder_layers
+
+    @property
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+        r"""
+        Returns:
+            `dict` of attention processors: A dictionary containing all attention processors used in the model with
+            indexed by its weight name.
+        """
+        processors = {}
+
+        def fn_recursive_add_processors(
+            name: str,
+            module: torch.nn.Module,
+            processors: Dict[str, AttentionProcessor],
+        ):
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor()
+
+            for sub_name, child in module.named_children():
+                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
+
+            return processors
+
+        for name, module in self.named_children():
+            fn_recursive_add_processors(name, module, processors)
+
+        return processors
+
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+        r"""
+        Sets the attention processor to use to compute attention.
+
+        Parameters:
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+                The instantiated processor class or a dictionary of processor classes that will be set as the processor
+                for **all** `Attention` layers.
+        """
+        count = len(self.attn_processors.keys())
+
+        if isinstance(processor, dict) and len(processor) != count:
+            raise ValueError(
+                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
+                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
+            )
+
+        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+            if hasattr(module, "set_processor"):
+                if not isinstance(processor, dict):
+                    module.set_processor(processor)
+                else:
+                    module.set_processor(processor.pop(f"{name}.processor"))
+
+            for sub_name, child in module.named_children():
+                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
+
+        for name, module in self.named_children():
+            fn_recursive_attn_processor(name, module, processor)
+
+    def _maybe_gradient_checkpoint_block(self, block, *args):
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            return self._gradient_checkpointing_func(block, *args)
+        return block(*args)
+
+    def _create_attention_mask(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_attention_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        attention_mask = F.pad(
+            encoder_attention_mask.to(torch.bool),
+            (hidden_states.shape[1], 0),
+            value=True,
+        )
+        attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
+        return attention_mask
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        timestep: torch.LongTensor,
+        encoder_hidden_states: torch.Tensor,
+        encoder_attention_mask: torch.Tensor | None = None,
+        image_embeds: torch.Tensor | None = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+        return_dict: bool = True,
+    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        """
+        Forward pass of the MotifVideoTransformer3DModel.
+
+        Args:
+            hidden_states (`torch.Tensor`):
+                Input latent tensor of shape `(batch_size, channels, num_frames, height, width)`.
+            timestep (`torch.LongTensor`):
+                Diffusion timesteps of shape `(batch_size,)`.
+            encoder_hidden_states (`torch.Tensor`):
+                Text conditioning of shape `(batch_size, sequence_length, embed_dim)`.
+            encoder_attention_mask (`torch.Tensor`):
+                Mask for text conditioning of shape `(batch_size, sequence_length)`.
+            image_embeds (`torch.Tensor`, *optional*):
+                Image embeddings from vision encoder of shape `(batch_size, num_tokens, embed_dim)`.
+            attention_kwargs (`dict`, *optional*):
+                Additional arguments for attention processors.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return a [`~models.modeling_outputs.Transformer2DModelOutput`].
+
+        Returns:
+            [`~models.modeling_outputs.Transformer2DModelOutput`] or `tuple`:
+                The predicted samples.
+        """
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            scale_lora_layers(self, lora_scale)
+        else:
+            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
+        batch_size, _, num_frames, height, width = hidden_states.shape
+        p, p_t = self.config.patch_size, self.config.patch_size_t
+        post_patch_num_frames = num_frames // p_t
+        post_patch_height = height // p
+        post_patch_width = width // p
+
+        # 1. RoPE
+        image_rotary_emb = self.rope(hidden_states, timestep=timestep)
+
+        # 2. Conditional embeddings
+        temb = self.time_text_embed(timestep)
+        hidden_states = self.x_embedder(hidden_states)
+        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+
+        # First frame conditioning: Image embeddings from vision encoder
+        if image_embeds is not None:
+            image_embeds = self.image_embedder(image_embeds)
+            encoder_hidden_states = torch.cat([image_embeds, encoder_hidden_states], dim=1)
+            if encoder_attention_mask is not None:
+                image_mask = torch.ones(
+                    image_embeds.shape[0],
+                    image_embeds.shape[1],
+                    device=encoder_attention_mask.device,
+                    dtype=encoder_attention_mask.dtype,
+                )
+                encoder_attention_mask = torch.cat([image_mask, encoder_attention_mask], dim=1)
+
+        # image_embed_seq_len: used by cross-attention blocks to slice text from encoder_hidden_states
+        image_embed_seq_len = image_embeds.shape[1] if image_embeds is not None else 0
+
+        decoder_hidden_states = hidden_states.clone()
+
+        if encoder_attention_mask is not None:
+            attention_mask = self._create_attention_mask(
+                hidden_states=hidden_states,
+                encoder_attention_mask=encoder_attention_mask,
+            )
+        else:
+            attention_mask = None
+
+        # 3. Dual stream transformer blocks
+        for block in self.transformer_blocks:
+            hidden_states, encoder_hidden_states = self._maybe_gradient_checkpoint_block(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                temb,
+                attention_mask,
+                image_rotary_emb,
+                image_embed_seq_len,
+            )
+
+        # 4. Single stream transformer blocks (Encoder)
+        single_transformer_blocks = self.single_transformer_blocks
+
+        for block in single_transformer_blocks[: len(single_transformer_blocks) - self.num_decoder_layers]:
+            hidden_states, encoder_hidden_states = self._maybe_gradient_checkpoint_block(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                temb,
+                attention_mask,
+                image_rotary_emb,
+                image_embed_seq_len,
+            )
+
+        # 5. Single stream transformer blocks (Decoder)
+        if self.num_decoder_layers > 0:
+            encoder_hidden_states = hidden_states
+            attention_mask = None
+
+            for block in single_transformer_blocks[-self.num_decoder_layers :]:
+                decoder_hidden_states, encoder_hidden_states = self._maybe_gradient_checkpoint_block(
+                    block,
+                    decoder_hidden_states,
+                    encoder_hidden_states,
+                    temb,
+                    attention_mask,
+                    image_rotary_emb,
+                )
+
+            hidden_states = decoder_hidden_states
+
+        # 6. Output projection
+        hidden_states = self.norm_out(hidden_states, temb)
+        hidden_states = self.proj_out(hidden_states)
+
+        hidden_states = hidden_states.reshape(
+            batch_size,
+            post_patch_num_frames,
+            post_patch_height,
+            post_patch_width,
+            -1,
+            p_t,
+            p,
+            p,
+        )
+        hidden_states = hidden_states.permute(0, 4, 1, 5, 2, 6, 3, 7)
+        hidden_states = hidden_states.flatten(6, 7).flatten(4, 5).flatten(2, 3)
+
+        if USE_PEFT_BACKEND:
+            unscale_lora_layers(self, lora_scale)
+
+        if not return_dict:
+            return (hidden_states,)
+
+        return Transformer2DModelOutput(
+            sample=hidden_states,
+        )
