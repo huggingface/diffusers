@@ -35,8 +35,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _CUDA_AVAILABLE = torch.cuda.is_available()
-_KERNELS_AVAILABLE = is_kernels_available()
-
 
 _PARAM_NATIVE_CUDNN = pytest.param(
     AttentionBackendName._NATIVE_CUDNN,
@@ -53,7 +51,7 @@ _PARAM_FLASH_HUB = pytest.param(
     marks=[
         pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is required for flash_hub backend."),
         pytest.mark.skipif(
-            not _KERNELS_AVAILABLE,
+            not is_kernels_available(),
             reason="`kernels` package is required for flash_hub backend. Install with `pip install kernels`.",
         ),
     ],
@@ -65,7 +63,7 @@ _PARAM_FLASH_3_HUB = pytest.param(
     marks=[
         pytest.mark.skipif(not _CUDA_AVAILABLE, reason="CUDA is required for _flash_3_hub backend."),
         pytest.mark.skipif(
-            not _KERNELS_AVAILABLE,
+            not is_kernels_available(),
             reason="`kernels` package is required for _flash_3_hub backend. Install with `pip install kernels`.",
         ),
     ],
