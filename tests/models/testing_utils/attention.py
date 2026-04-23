@@ -330,11 +330,7 @@ class AttentionBackendTesterMixin:
 
         initial_registry_backend, _ = _AttentionBackendRegistry.get_active_backend()
 
-        try:
-            model.set_attention_backend(backend.value)
-        except Exception as e:
-            logger.warning("Skipping test for backend '%s': %s", backend.value, e)
-            pytest.skip(str(e))
+        model.set_attention_backend(backend.value)
 
         try:
             set_output = model(**inputs_dict, return_dict=False)[0]
