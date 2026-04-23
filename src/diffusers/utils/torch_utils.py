@@ -181,6 +181,12 @@ def randn_tensor(
                 )
         elif gen_device_type != device.type and gen_device_type == "cuda":
             raise ValueError(f"Cannot generate a {device} tensor from a generator of type {gen_device_type}.")
+        elif gen_device_type == "cuda" and device.type == "cuda":
+            logger.warning(
+                "Using a CUDA random generator may produce different results than a CPU generator with the same seed."
+                " This is expected because PyTorch uses different random number generation algorithms on CPU and CUDA."
+                " If you need reproducible results across devices, use a CPU generator (e.g., torch.Generator('cpu'))."
+            )
 
     # make sure generator list of length 1 is treated like a non-list
     if isinstance(generator, list) and len(generator) == 1:
