@@ -966,8 +966,8 @@ class QwenImageTransformer2DModel(
 
             else:
                 encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
+                    hidden_states=hidden_states.clone(),
+                    encoder_hidden_states=encoder_hidden_states.clone(),
                     encoder_hidden_states_mask=None,  # Don't pass (using attention_mask instead)
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
