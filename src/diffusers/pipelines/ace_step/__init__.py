@@ -22,7 +22,11 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modeling_ace_step"] = ["AceStepConditionEncoder"]
+    _import_structure["modeling_ace_step"] = [
+        "AceStepAudioTokenDetokenizer",
+        "AceStepAudioTokenizer",
+        "AceStepConditionEncoder",
+    ]
     _import_structure["pipeline_ace_step"] = ["AceStepPipeline"]
 
 
@@ -34,7 +38,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
 
     else:
-        from .modeling_ace_step import AceStepConditionEncoder
+        from .modeling_ace_step import AceStepAudioTokenDetokenizer, AceStepAudioTokenizer, AceStepConditionEncoder
         from .pipeline_ace_step import AceStepPipeline
 
 else:

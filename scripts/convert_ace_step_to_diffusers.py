@@ -131,7 +131,9 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     # =========================================================================
     transformer_sd = {}
     condition_encoder_sd = {}
-    other_sd = {}  # tokenizer, detokenizer (audio quantization — not used by the text2music pipeline)
+    audio_tokenizer_sd = {}
+    audio_token_detokenizer_sd = {}
+    other_sd = {}
 
     # Rename original ACE-Step attention keys to the diffusers `Attention` +
     # `AttnProcessor` convention (`to_q`/`to_k`/`to_v`/`to_out.0`/`norm_q`/`norm_k`).
@@ -174,11 +176,21 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
             # Keep it co-located with the condition encoder since that is where the
             # pipeline pulls unconditional sequences from.
             condition_encoder_sd["null_condition_emb"] = value.to(target_dtype)
+        elif key.startswith("tokenizer."):
+            new_key = key[len("tokenizer.") :]
+            new_key = _rename_attn_keys(new_key)
+            audio_tokenizer_sd[new_key] = value.to(target_dtype)
+        elif key.startswith("detokenizer."):
+            new_key = key[len("detokenizer.") :]
+            new_key = _rename_attn_keys(new_key)
+            audio_token_detokenizer_sd[new_key] = value.to(target_dtype)
         else:
             other_sd[key] = value.to(target_dtype)
 
     print(f"  Transformer keys: {len(transformer_sd)}")
     print(f"  Condition encoder keys: {len(condition_encoder_sd)}")
+    print(f"  Audio tokenizer keys: {len(audio_tokenizer_sd)}")
+    print(f"  Audio token detokenizer keys: {len(audio_token_detokenizer_sd)}")
     print(f"  Other keys: {len(other_sd)} ({list(other_sd.keys())[:5]}...)")
 
     # =========================================================================
@@ -248,6 +260,47 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         "sliding_window": original_config["sliding_window"],
     }
 
+    audio_tokenizer_config = {
+        "_class_name": "AceStepAudioTokenizer",
+        "_diffusers_version": "0.33.0.dev0",
+        "hidden_size": encoder_hidden_size,
+        "intermediate_size": encoder_intermediate_size,
+        "audio_acoustic_hidden_dim": original_config["audio_acoustic_hidden_dim"],
+        "pool_window_size": original_config.get("pool_window_size", 5),
+        "fsq_dim": original_config.get("fsq_dim", encoder_hidden_size),
+        "fsq_input_levels": original_config.get("fsq_input_levels", [8, 8, 8, 5, 5, 5]),
+        "fsq_input_num_quantizers": original_config.get("fsq_input_num_quantizers", 1),
+        "num_attention_pooler_hidden_layers": original_config.get("num_attention_pooler_hidden_layers", 2),
+        "num_attention_heads": encoder_num_attention_heads,
+        "num_key_value_heads": encoder_num_key_value_heads,
+        "head_dim": original_config["head_dim"],
+        "rope_theta": original_config["rope_theta"],
+        "attention_bias": original_config["attention_bias"],
+        "attention_dropout": original_config["attention_dropout"],
+        "rms_norm_eps": original_config["rms_norm_eps"],
+        "sliding_window": original_config["sliding_window"],
+        "layer_types": original_config["layer_types"][: original_config.get("num_attention_pooler_hidden_layers", 2)],
+    }
+
+    audio_token_detokenizer_config = {
+        "_class_name": "AceStepAudioTokenDetokenizer",
+        "_diffusers_version": "0.33.0.dev0",
+        "hidden_size": encoder_hidden_size,
+        "intermediate_size": encoder_intermediate_size,
+        "audio_acoustic_hidden_dim": original_config["audio_acoustic_hidden_dim"],
+        "pool_window_size": original_config.get("pool_window_size", 5),
+        "num_attention_pooler_hidden_layers": original_config.get("num_attention_pooler_hidden_layers", 2),
+        "num_attention_heads": encoder_num_attention_heads,
+        "num_key_value_heads": encoder_num_key_value_heads,
+        "head_dim": original_config["head_dim"],
+        "rope_theta": original_config["rope_theta"],
+        "attention_bias": original_config["attention_bias"],
+        "attention_dropout": original_config["attention_dropout"],
+        "rms_norm_eps": original_config["rms_norm_eps"],
+        "sliding_window": original_config["sliding_window"],
+        "layer_types": original_config["layer_types"][: original_config.get("num_attention_pooler_hidden_layers", 2)],
+    }
+
     # =========================================================================
     # 3. Bake silence_latent into the condition_encoder state dict.
     #
@@ -282,11 +335,19 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         AutoencoderOobleck,
         FlowMatchEulerDiscreteScheduler,
     )
-    from diffusers.pipelines.ace_step import AceStepConditionEncoder
+    from diffusers.pipelines.ace_step import (
+        AceStepAudioTokenDetokenizer,
+        AceStepAudioTokenizer,
+        AceStepConditionEncoder,
+    )
 
     # Drop metadata keys — they're re-populated by `save_pretrained` at save time.
     transformer_init_kwargs = {k: v for k, v in transformer_config.items() if not k.startswith("_")}
     condition_encoder_init_kwargs = {k: v for k, v in condition_encoder_config.items() if not k.startswith("_")}
+    audio_tokenizer_init_kwargs = {k: v for k, v in audio_tokenizer_config.items() if not k.startswith("_")}
+    audio_token_detokenizer_init_kwargs = {
+        k: v for k, v in audio_token_detokenizer_config.items() if not k.startswith("_")
+    }
 
     print("\nConstructing transformer ...")
     transformer = AceStepTransformer1DModel(**transformer_init_kwargs).to(target_dtype)
@@ -295,6 +356,14 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     print("Constructing condition_encoder ...")
     condition_encoder = AceStepConditionEncoder(**condition_encoder_init_kwargs).to(target_dtype)
     condition_encoder.load_state_dict(condition_encoder_sd, strict=True)
+
+    print("Constructing audio_tokenizer ...")
+    audio_tokenizer = AceStepAudioTokenizer(**audio_tokenizer_init_kwargs).to(target_dtype)
+    audio_tokenizer.load_state_dict(audio_tokenizer_sd, strict=True)
+
+    print("Constructing audio_token_detokenizer ...")
+    audio_token_detokenizer = AceStepAudioTokenDetokenizer(**audio_token_detokenizer_init_kwargs).to(target_dtype)
+    audio_token_detokenizer.load_state_dict(audio_token_detokenizer_sd, strict=True)
 
     print("Loading VAE ...")
     vae = AutoencoderOobleck.from_pretrained(vae_dir).to(target_dtype)
@@ -319,6 +388,8 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         transformer=transformer,
         condition_encoder=condition_encoder,
         scheduler=scheduler,
+        audio_tokenizer=audio_tokenizer,
+        audio_token_detokenizer=audio_token_detokenizer,
     )
 
     print(f"\nSaving pipeline -> {output_dir}")
@@ -331,18 +402,13 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         shutil.copy2(silence_latent_src, os.path.join(output_dir, "silence_latent.pt"))
         print(f"  kept raw silence_latent copy at {output_dir}/silence_latent.pt")
 
-    # Report other keys that were not saved to transformer or condition_encoder
+    # Report any keys that were not saved to registered pipeline modules.
     if other_sd:
-        print(f"\nNote: {len(other_sd)} keys were dropped (tokenizer / detokenizer weights):")
+        print(f"\nNote: {len(other_sd)} keys were dropped:")
         for key in sorted(other_sd.keys())[:10]:
             print(f"  {key}")
         if len(other_sd) > 10:
             print(f"  ... ({len(other_sd) - 10} more)")
-        print(
-            "These belong to the audio tokenizer / detokenizer used by the 5Hz LM path "
-            "(cover / audio-code tasks). The Diffusers text2music pipeline does not "
-            "currently expose them."
-        )
 
     print(f"\nConversion complete! Output saved to: {output_dir}")
     print("\nTo load the pipeline:")

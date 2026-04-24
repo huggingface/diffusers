@@ -487,6 +487,8 @@ else:
     )
     _import_structure["pipelines"].extend(
         [
+            "AceStepAudioTokenDetokenizer",
+            "AceStepAudioTokenizer",
             "AceStepConditionEncoder",
             "AceStepPipeline",
             "AllegroPipeline",
@@ -1277,6 +1279,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageModularPipeline,
         )
         from .pipelines import (
+            AceStepAudioTokenDetokenizer,
+            AceStepAudioTokenizer,
             AceStepConditionEncoder,
             AceStepPipeline,
             AllegroPipeline,

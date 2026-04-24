@@ -20,13 +20,14 @@ import torch
 import torch.nn.functional as F
 from transformers import PreTrainedModel, PreTrainedTokenizerFast
 
+from ...guiders.adaptive_projected_guidance import MomentumBuffer, normalized_guidance
 from ...models import AutoencoderOobleck
 from ...models.transformers.ace_step_transformer import AceStepTransformer1DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from .modeling_ace_step import AceStepConditionEncoder
+from .modeling_ace_step import AceStepAudioTokenDetokenizer, AceStepAudioTokenizer, AceStepConditionEncoder
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -61,67 +62,6 @@ TASK_INSTRUCTIONS = {
 
 # Valid task types
 TASK_TYPES = ["text2music", "repaint", "cover", "extract", "lego", "complete"]
-
-
-class _APGMomentumBuffer:
-    """Running-average buffer used by APG guidance.
-
-    Ported from `acestep/models/common/apg_guidance.py`. The negative momentum
-    (`-0.75` by default) is intentional — each step reverses the sign of the
-    previous average and adds the new diff, which has the effect of alternating
-    the guidance direction and prevents the denoising trajectory from being
-    pulled too far off-distribution.
-    """
-
-    def __init__(self, momentum: float = -0.75):
-        self.momentum = momentum
-        self.running_average: Union[float, torch.Tensor] = 0.0
-
-    def update(self, update_value: torch.Tensor) -> None:
-        self.running_average = update_value + self.momentum * self.running_average
-
-
-def _apg_forward(
-    pred_cond: torch.Tensor,
-    pred_uncond: torch.Tensor,
-    guidance_scale: float,
-    momentum_buffer: Optional[_APGMomentumBuffer] = None,
-    eta: float = 0.0,
-    norm_threshold: float = 2.5,
-    dims: Tuple[int, ...] = (-1,),
-) -> torch.Tensor:
-    """APG (Adaptive Projected Guidance) forward step — used by base / SFT models.
-
-    Matches `apg_forward` in `acestep/models/common/apg_guidance.py`. Differs from
-    vanilla CFG in three ways: (1) accumulates `(pred_cond - pred_uncond)` through
-    a momentum buffer, (2) caps the L2 norm of the accumulated diff at
-    `norm_threshold`, (3) projects the diff onto the component orthogonal to
-    `pred_cond` before scaling.
-    """
-    diff = pred_cond - pred_uncond
-    if momentum_buffer is not None:
-        momentum_buffer.update(diff)
-        diff = momentum_buffer.running_average
-
-    if norm_threshold > 0:
-        diff_norm = diff.norm(p=2, dim=list(dims), keepdim=True)
-        scale_factor = torch.minimum(torch.ones_like(diff_norm), norm_threshold / diff_norm)
-        diff = diff * scale_factor
-
-    # Project `diff` onto `pred_cond` direction; keep only the orthogonal part
-    # (plus `eta * parallel`, typically eta=0).
-    orig_dtype = diff.dtype
-    device_type = diff.device.type
-    if device_type == "mps":  # `normalize` on MPS is slower; match the original fallback.
-        diff_f, cond_f = diff.cpu().double(), pred_cond.cpu().double()
-    else:
-        diff_f, cond_f = diff.double(), pred_cond.double()
-    cond_dir = F.normalize(cond_f, dim=list(dims))
-    parallel = (diff_f * cond_dir).sum(dim=list(dims), keepdim=True) * cond_dir
-    orthogonal = diff_f - parallel
-    normalized_update = (orthogonal + eta * parallel).to(orig_dtype).to(diff.device)
-
-    return pred_cond + (guidance_scale - 1) * normalized_update
 
 
 EXAMPLE_DOC_STRING = """
@@ -187,7 +127,7 @@ class AceStepPipeline(DiffusionPipeline):
 
     Supported task types:
     - `"text2music"`: Generate music from text prompts and lyrics.
-    - `"cover"`: Generate audio from semantic codes or with timbre transfer from reference audio.
+    - `"cover"`: Generate audio from source audio / semantic codes with timbre transfer from reference audio.
     - `"repaint"`: Regenerate a section of existing audio while keeping the rest.
     - `"extract"`: Extract a specific track (e.g., vocals, drums) from audio.
     - `"lego"`: Generate a specific track based on audio context.
@@ -212,7 +152,10 @@ class AceStepPipeline(DiffusionPipeline):
             `set_timesteps(sigmas=...)`.
     """
 
-    model_cpu_offload_seq = "text_encoder->condition_encoder->transformer->vae"
+    model_cpu_offload_seq = (
+        "text_encoder->condition_encoder->audio_tokenizer->audio_token_detokenizer->transformer->vae"
+    )
+    _optional_components = ["audio_tokenizer", "audio_token_detokenizer"]
     _callback_tensor_inputs = ["latents"]
 
     def __init__(
@@ -223,6 +166,8 @@ class AceStepPipeline(DiffusionPipeline):
         transformer: AceStepTransformer1DModel,
         condition_encoder: AceStepConditionEncoder,
         scheduler: FlowMatchEulerDiscreteScheduler,
+        audio_tokenizer: Optional[AceStepAudioTokenizer] = None,
+        audio_token_detokenizer: Optional[AceStepAudioTokenDetokenizer] = None,
     ):
         super().__init__()
 
@@ -233,6 +178,8 @@ class AceStepPipeline(DiffusionPipeline):
             transformer=transformer,
             condition_encoder=condition_encoder,
             scheduler=scheduler,
+            audio_tokenizer=audio_tokenizer,
+            audio_token_detokenizer=audio_token_detokenizer,
         )
 
         # Cache config-derived values (Flux2-style). `sample_rate` / `latents_per_second`
@@ -681,28 +628,6 @@ class AceStepPipeline(DiffusionPipeline):
             latents = latents.squeeze(0)
         return latents
 
-    @staticmethod
-    def _parse_audio_code_string(code_str: str) -> List[int]:
-        """
-        Extract integer audio codes from prompt tokens like `<|audio_code_123|>`.
-
-        Code values are clamped to valid range `[0, 63999]` (codebook size = 64000).
-
-        Args:
-            code_str (`str`): String containing audio code tokens.
-
-        Returns:
-            `List[int]`: List of parsed audio code integers.
-        """
-        if not code_str:
-            return []
-        max_audio_code = 63999
-        codes = []
-        for x in re.findall(r"<\|audio_code_(\d+)\|>", code_str):
-            code_value = int(x)
-            codes.append(max(0, min(code_value, max_audio_code)))
-        return codes
-
     def _prepare_reference_audio_latents(
         self,
         reference_audio: torch.Tensor,
@@ -787,6 +712,91 @@ class AceStepPipeline(DiffusionPipeline):
             repeats = (latent_length + T_long - 1) // T_long
             tiled = sl.repeat(1, repeats, 1)[:, :latent_length, :]
         return tiled.expand(batch_size, -1, -1).contiguous()
+
+    def _require_audio_token_modules(self) -> None:
+        if self.audio_tokenizer is None or self.audio_token_detokenizer is None:
+            raise ValueError(
+                "ACE-Step audio-code / source-audio cover conditioning requires the registered "
+                "`audio_tokenizer` and `audio_token_detokenizer` modules. Re-run the converter with "
+                "a checkpoint that includes tokenizer/detokenizer weights."
+            )
+
+    def _parse_audio_code_string(self, code_str: str) -> List[int]:
+        if not code_str:
+            return []
+
+        max_audio_code = 63999
+        audio_tokenizer = getattr(self, "audio_tokenizer", None)
+        if audio_tokenizer is not None:
+            max_audio_code = audio_tokenizer.quantizer.codebook_size - 1
+
+        codes = []
+        for value in re.findall(r"<\|audio_code_(\d+)\|>", code_str):
+            code_value = int(value)
+            codes.append(max(0, min(code_value, max_audio_code)))
+        return codes
+
+    @staticmethod
+    def _normalize_audio_codes(audio_codes: Union[str, List[str]], batch_size: int) -> List[str]:
+        if isinstance(audio_codes, str):
+            return [audio_codes] * batch_size
+        if not all(isinstance(code, str) for code in audio_codes):
+            raise TypeError("`audio_codes` must be a string or a list of strings.")
+        audio_codes = list(audio_codes[:batch_size])
+        while len(audio_codes) < batch_size:
+            audio_codes.append(audio_codes[-1] if audio_codes else "")
+        return audio_codes
+
+    def _get_audio_codes_latent_length(self, audio_codes: Union[str, List[str]], batch_size: int) -> int:
+        audio_codes = self._normalize_audio_codes(audio_codes, batch_size)
+        num_audio_codes = max((len(self._parse_audio_code_string(code)) for code in audio_codes), default=0)
+        pool_window_size = int(getattr(self.audio_token_detokenizer.config, "pool_window_size", 5))
+        return num_audio_codes * pool_window_size
+
+    def _audio_codes_to_lm_hints(
+        self,
+        audio_codes: Union[str, List[str]],
+        batch_size: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        self._require_audio_token_modules()
+
+        audio_codes = self._normalize_audio_codes(audio_codes, batch_size)
+        parsed_codes = [self._parse_audio_code_string(code) for code in audio_codes]
+        max_length = max((len(code_ids) for code_ids in parsed_codes), default=0)
+        if max_length == 0:
+            raise ValueError("`audio_codes` did not contain any `<|audio_code_*|>` tokens.")
+
+        indices = torch.zeros(
+            batch_size,
+            max_length,
+            int(getattr(self.audio_tokenizer.config, "fsq_input_num_quantizers", 1)),
+            device=device,
+            dtype=torch.long,
+        )
+        for batch_idx, code_ids in enumerate(parsed_codes):
+            if code_ids:
+                indices[batch_idx, : len(code_ids), 0] = torch.tensor(code_ids, device=device, dtype=torch.long)
+
+        quantized = self.audio_tokenizer.quantizer.get_output_from_indices(indices).to(device=device, dtype=dtype)
+        return self.audio_token_detokenizer(quantized).to(dtype=dtype)
+
+    def _src_latents_to_lm_hints(
+        self,
+        src_latents: torch.Tensor,
+        latent_length: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        self._require_audio_token_modules()
+
+        silence_latent = getattr(self.condition_encoder, "silence_latent", None)
+        if silence_latent is not None:
+            silence_latent = silence_latent.to(device=device, dtype=dtype)
+        quantized, _ = self.audio_tokenizer.tokenize(src_latents.to(device=device, dtype=dtype), silence_latent)
+        lm_hints = self.audio_token_detokenizer(quantized.to(device=device, dtype=dtype))
+        return lm_hints[:, :latent_length, :].contiguous()
 
     def _prepare_src_audio_and_latents(
         self,
@@ -984,8 +994,9 @@ class AceStepPipeline(DiffusionPipeline):
                 Reference audio tensor of shape `[channels, samples]` at 48kHz for timbre conditioning. Used to
                 extract timbre features for style transfer.
             audio_codes (`str` or `List[str]`, *optional*):
-                Audio semantic codes as strings (e.g., `"<|audio_code_123|><|audio_code_456|>..."`). When provided,
-                the task is automatically switched to `"cover"` mode.
+                Audio semantic code strings (e.g. `"<|audio_code_123|><|audio_code_456|>..."`). When provided,
+                the task is automatically switched to `"cover"` mode and the registered ACE-Step audio tokenizer /
+                detokenizer modules decode the 5 Hz codes into 25 Hz acoustic conditioning.
             repainting_start (`float`, *optional*):
                 Start time in seconds for the repaint region (for `"repaint"` and `"lego"` tasks).
             repainting_end (`float`, *optional*):
@@ -1037,6 +1048,26 @@ class AceStepPipeline(DiffusionPipeline):
             logger.warning(f"Guidance scale {guidance_scale} is ignored for turbo (guidance-distilled) checkpoints.")
             guidance_scale = 1.0
 
+        has_audio_codes = False
+        audio_codes_latent_length = None
+        if audio_codes is not None:
+            if isinstance(audio_codes, str):
+                has_audio_codes = bool(audio_codes.strip())
+            elif isinstance(audio_codes, list):
+                if not all(isinstance(code, str) for code in audio_codes):
+                    raise TypeError("`audio_codes` must be a string or a list of strings.")
+                has_audio_codes = any(code.strip() for code in audio_codes)
+            else:
+                raise TypeError(f"`audio_codes` must be str or list[str], got {type(audio_codes).__name__}")
+            if has_audio_codes:
+                self._require_audio_token_modules()
+                task_type = "cover" if task_type == "text2music" else task_type
+                audio_codes_latent_length = self._get_audio_codes_latent_length(audio_codes, batch_size)
+                if audio_codes_latent_length <= 0:
+                    raise ValueError("`audio_codes` did not contain any `<|audio_code_*|>` tokens.")
+                if audio_duration is None or audio_duration <= 0:
+                    audio_duration = audio_codes_latent_length / self.latents_per_second
+
         self.check_inputs(
             prompt=prompt,
             lyrics=lyrics,
@@ -1055,16 +1086,6 @@ class AceStepPipeline(DiffusionPipeline):
         self._guidance_scale = guidance_scale
         self._num_timesteps = num_inference_steps
         self._interrupt = False
-
-        # Auto-detect task type from audio_codes
-        if task_type == "text2music" and audio_codes is not None:
-            has_codes = False
-            if isinstance(audio_codes, list):
-                has_codes = any((c or "").strip() for c in audio_codes)
-            elif isinstance(audio_codes, str):
-                has_codes = bool(audio_codes.strip())
-            if has_codes:
-                task_type = "cover"
 
         # Auto-generate instruction based on task_type if not provided
         if instruction is None:
@@ -1112,26 +1133,21 @@ class AceStepPipeline(DiffusionPipeline):
             # produce drone-like output (observed on all pre-fix text2music runs).
             src_latents = self._silence_latent_tiled(latent_length, device, dtype, batch_size)
 
-        # 3. Handle audio_codes: decode to latents for cover task
-        if audio_codes is not None:
-            if isinstance(audio_codes, str):
-                audio_codes = [audio_codes] * batch_size
-            # Pad/truncate to batch_size
-            while len(audio_codes) < batch_size:
-                audio_codes.append(audio_codes[-1] if audio_codes else "")
-
-            # Check if any codes are actually provided
-            has_any_codes = any((c or "").strip() for c in audio_codes)
-            if has_any_codes:
-                # For cover task with audio codes, we don't use src_audio
-                # The codes define the target latent structure
-                code_ids_first = self._parse_audio_code_string(audio_codes[0])
-                if code_ids_first:
-                    # Estimate latent length from codes: 5Hz codes -> 25Hz latents (5x upsampling)
-                    code_latent_length = len(code_ids_first) * 5
-                    latent_length = code_latent_length
-                    # Reset src_latents to silence for the new length
-                    src_latents = self._silence_latent_tiled(latent_length, device, dtype, batch_size)
+        if has_audio_codes:
+            src_latents = self._audio_codes_to_lm_hints(
+                audio_codes=audio_codes,
+                batch_size=batch_size,
+                device=device,
+                dtype=dtype,
+            )
+            latent_length = src_latents.shape[1]
+        elif task_type == "cover" and has_src_audio:
+            src_latents = self._src_latents_to_lm_hints(
+                src_latents=src_latents,
+                latent_length=latent_length,
+                device=device,
+                dtype=dtype,
+            )
 
         # 4. Prepare reference audio for timbre encoder
         if reference_audio is not None:
@@ -1239,7 +1255,7 @@ class AceStepPipeline(DiffusionPipeline):
         # `null_condition_emb` to the shape of the conditional sequence. Re-encoding empty
         # strings through the text encoder produces out-of-distribution conditioning and
         # visibly degrades audio quality — do not do that.
-        do_cfg = guidance_scale > 1.0
+        do_cfg = self.do_classifier_free_guidance
         null_encoder_hidden_states = None
         if do_cfg:
             null_emb = getattr(self.condition_encoder, "null_condition_emb", None)
@@ -1270,7 +1286,7 @@ class AceStepPipeline(DiffusionPipeline):
         # 10. Denoising loop (flow matching ODE)
         xt = latents
         # APG momentum is stateful across steps, so instantiate once before the loop.
-        momentum_buffer = _APGMomentumBuffer() if do_cfg else None
+        momentum_buffer = MomentumBuffer(momentum=-0.75) if do_cfg else None
         with self.progress_bar(total=num_steps) as progress_bar:
             for step_idx, t_sched in enumerate(self.scheduler.timesteps):
                 current_timestep = float(t_sched)
@@ -1293,15 +1309,17 @@ class AceStepPipeline(DiffusionPipeline):
                         return_dict=False,
                     )
                     vt_cond, vt_uncond = model_output[0].chunk(2, dim=0)
-                    # ACE-Step base / SFT use APG — not vanilla CFG. Vanilla CFG
-                    # (`vt_uncond + guidance * (vt_cond - vt_uncond)`) produces off-genre,
-                    # over-guided outputs here. See `acestep/models/common/apg_guidance.py`.
-                    vt = _apg_forward(
+                    # ACE-Step base / SFT use APG — not vanilla CFG. The original formulation is
+                    # `pred_cond + (guidance_scale - 1) * update` with time-only normalization.
+                    vt = normalized_guidance(
                         pred_cond=vt_cond,
                         pred_uncond=vt_uncond,
-                        guidance_scale=guidance_scale,
+                        guidance_scale=guidance_scale - 1.0,
                         momentum_buffer=momentum_buffer,
-                        dims=(1,),  # time dim; matches the original's `dims=[1]`
+                        eta=0.0,
+                        norm_threshold=2.5,
+                        use_original_formulation=True,
+                        norm_dim=(1,),
                     )
                 else:
                     # Standard forward pass (no CFG)

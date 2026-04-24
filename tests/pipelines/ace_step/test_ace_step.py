@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+import math
 import unittest
 
 import torch
@@ -21,7 +22,12 @@ from transformers import AutoTokenizer, Qwen3Config, Qwen3Model
 
 from diffusers import AutoencoderOobleck, FlowMatchEulerDiscreteScheduler
 from diffusers.models.transformers.ace_step_transformer import AceStepTransformer1DModel
-from diffusers.pipelines.ace_step import AceStepConditionEncoder, AceStepPipeline
+from diffusers.pipelines.ace_step import (
+    AceStepAudioTokenDetokenizer,
+    AceStepAudioTokenizer,
+    AceStepConditionEncoder,
+    AceStepPipeline,
+)
 
 from ...testing_utils import enable_full_determinism
 from ..test_pipelines_common import PipelineTesterMixin
@@ -182,6 +188,37 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             sliding_window=16,
         )
 
+        audio_tokenizer_kwargs = {
+            "hidden_size": 32,
+            "intermediate_size": 64,
+            "audio_acoustic_hidden_dim": 8,
+            "pool_window_size": 2,
+            "fsq_dim": 32,
+            "fsq_input_levels": [4, 4, 4],
+            "fsq_input_num_quantizers": 1,
+            "num_attention_pooler_hidden_layers": 1,
+            "num_attention_heads": 4,
+            "num_key_value_heads": 2,
+            "head_dim": 8,
+            "rope_theta": 10000.0,
+            "sliding_window": 16,
+        }
+        torch.manual_seed(0)
+        audio_tokenizer = AceStepAudioTokenizer(**audio_tokenizer_kwargs)
+        torch.manual_seed(0)
+        audio_token_detokenizer = AceStepAudioTokenDetokenizer(
+            hidden_size=32,
+            intermediate_size=64,
+            audio_acoustic_hidden_dim=8,
+            pool_window_size=2,
+            num_attention_pooler_hidden_layers=1,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            head_dim=8,
+            rope_theta=10000.0,
+            sliding_window=16,
+        )
+
         torch.manual_seed(0)
         vae = AutoencoderOobleck(
             encoder_hidden_size=6,
@@ -202,6 +239,8 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "scheduler": scheduler,
+            "audio_tokenizer": audio_tokenizer,
+            "audio_token_detokenizer": audio_token_detokenizer,
         }
         return components
 
@@ -307,6 +346,21 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertIsInstance(output, tuple)
         self.assertEqual(len(output), 1)
 
+    def test_audio_codes_cover_path(self):
+        components = self.get_dummy_components()
+        pipe = AceStepPipeline(**components)
+
+        output = pipe(
+            prompt="A test prompt",
+            lyrics="",
+            audio_codes="<|audio_code_1|><|audio_code_2|>",
+            num_inference_steps=1,
+            output_type="latent",
+            max_text_length=32,
+        )
+
+        self.assertEqual(output.audios.shape[1], 4)
+
     def test_save_load_local(self, expected_max_difference=7e-3):
         # increase tolerance to account for large composite model
         super().test_save_load_local(expected_max_difference=expected_max_difference)
@@ -392,8 +446,8 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             device=device,
         )
 
-        # 25 Hz latent rate, 1s duration -> 25 frames
-        self.assertEqual(latents.shape, (2, 25, 8))
+        expected_length = math.ceil(1.0 * pipe.latents_per_second)
+        self.assertEqual(latents.shape, (2, expected_length, 8))
 
     def test_timestep_schedule(self):
         """Test that the timestep schedule is generated correctly."""
