@@ -20,7 +20,7 @@ import torch
 from transformers import AutoTokenizer, Qwen3Config, Qwen3Model
 
 from diffusers import AutoencoderOobleck, FlowMatchEulerDiscreteScheduler
-from diffusers.models.transformers.ace_step_transformer import AceStepDiTModel
+from diffusers.models.transformers.ace_step_transformer import AceStepTransformer1DModel
 from diffusers.pipelines.ace_step import AceStepConditionEncoder, AceStepPipeline
 
 from ...testing_utils import enable_full_determinism
@@ -137,7 +137,7 @@ class AceStepPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = AceStepDiTModel(
+        transformer = AceStepTransformer1DModel(
             hidden_size=32,
             intermediate_size=64,
             num_hidden_layers=2,

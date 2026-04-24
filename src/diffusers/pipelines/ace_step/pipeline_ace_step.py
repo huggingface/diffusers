@@ -62,36 +62,6 @@ TASK_INSTRUCTIONS = {
 # Valid task types
 TASK_TYPES = ["text2music", "repaint", "cover", "extract", "lego", "complete"]
 
-# Sample rate used by ACE-Step
-SAMPLE_RATE = 48000
-
-# Pre-defined timestep schedules for the turbo model (fix_nfe=8)
-SHIFT_TIMESTEPS = {
-    1.0: [1.0, 0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125],
-    2.0: [
-        1.0,
-        0.9333333333333333,
-        0.8571428571428571,
-        0.7692307692307693,
-        0.6666666666666666,
-        0.5454545454545454,
-        0.4,
-        0.2222222222222222,
-    ],
-    3.0: [
-        1.0,
-        0.9545454545454546,
-        0.9,
-        0.8333333333333334,
-        0.75,
-        0.6428571428571429,
-        0.5,
-        0.3,
-    ],
-}
-
-VALID_SHIFTS = [1.0, 2.0, 3.0]
-
 
 class _APGMomentumBuffer:
     """Running-average buffer used by APG guidance.
@@ -181,7 +151,7 @@ EXAMPLE_DOC_STRING = """
         >>> # Repaint task: regenerate a section of existing audio
         >>> import torchaudio
         >>> src_audio, sr = torchaudio.load("input.wav")
-        >>> src_audio = AceStepPipeline._normalize_audio_to_stereo_48k(src_audio, sr)
+        >>> src_audio = pipe._normalize_audio_to_stereo_48k(src_audio, sr)
         >>> audio = pipe(
         ...     prompt="Epic rock guitar solo",
         ...     lyrics="",
@@ -193,7 +163,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Cover task with reference audio for timbre transfer
         >>> ref_audio, sr = torchaudio.load("reference.wav")
-        >>> ref_audio = AceStepPipeline._normalize_audio_to_stereo_48k(ref_audio, sr)
+        >>> ref_audio = pipe._normalize_audio_to_stereo_48k(ref_audio, sr)
         >>> audio = pipe(
         ...     prompt="Pop song with bright vocals",
         ...     lyrics="[verse]\\nHello world",
@@ -265,32 +235,24 @@ class AceStepPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-    @property
-    def is_turbo(self) -> bool:
-        """Whether the loaded transformer is a turbo / guidance-distilled variant."""
-        cfg = self.transformer.config
-        return bool(getattr(cfg, "is_turbo", False)) or getattr(cfg, "model_version", None) == "turbo"
-
-    @property
-    def sample_rate(self) -> int:
-        """Audio sampling rate read from the VAE config (48000 for ACE-Step 1.5)."""
-        return int(self.vae.config.sampling_rate)
-
-    @property
-    def latents_per_second(self) -> float:
-        """Latent-space frame rate = VAE sample_rate / product(downsampling_ratios).
-
-        For ACE-Step 1.5 this is 48000 / 1920 = 25 fps.
-        """
-        downsample = math.prod(getattr(self.vae.config, "downsampling_ratios", (1920,)))
-        return float(self.sample_rate) / float(downsample)
+        # Cache config-derived values (Flux2-style). `sample_rate` / `latents_per_second`
+        # fall back to the ACE-Step 1.5 defaults if the VAE happens to be offloaded.
+        transformer_config = getattr(self, "transformer", None) and self.transformer.config
+        self.is_turbo = bool(
+            transformer_config
+            and (
+                getattr(transformer_config, "is_turbo", False)
+                or getattr(transformer_config, "model_version", None) == "turbo"
+            )
+        )
+        vae_config = getattr(self, "vae", None) and self.vae.config
+        self.sample_rate = int(getattr(vae_config, "sampling_rate", 48000)) if vae_config else 48000
+        downsample = math.prod(getattr(vae_config, "downsampling_ratios", (1920,))) if vae_config else 1920
+        self.latents_per_second = float(self.sample_rate) / float(downsample)
 
     @property
     def do_classifier_free_guidance(self) -> bool:
-        """True iff APG guidance should run in the denoising loop. Kept as a
-        property so user-facing code and the pipeline internals agree on the
-        flag (reviewer ask on PR #13095).
-        """
+        """True iff APG guidance should run in the denoising loop."""
         gs = getattr(self, "_guidance_scale", 1.0)
         return gs is not None and gs > 1.0
 
@@ -308,10 +270,7 @@ class AceStepPipeline(DiffusionPipeline):
         repainting_start: Optional[float],
         repainting_end: Optional[float],
     ) -> None:
-        """Validate user-facing arguments before we start allocating noise tensors.
-
-        Reviewer comment on PR #13095 — follows the Flux2 pattern.
-        """
+        """Validate user-facing arguments before we start allocating noise tensors."""
         if prompt is None:
             raise ValueError("`prompt` must be provided (a string or a list of strings).")
         if not isinstance(prompt, (str, list)):
@@ -348,10 +307,9 @@ class AceStepPipeline(DiffusionPipeline):
 
         Turbo variants ship with guidance distilled into weights (CFG off by default).
         Base / SFT variants use APG guidance through the learned
-        `AceStepConditionEncoder.null_condition_emb`. All variants default to the
-        8-step `SHIFT_TIMESTEPS` table at `shift=1.0` per
-        `acestep/inference.py:GenerationParams` — base / sft users typically override
-        `num_inference_steps` to 30–60 for higher quality.
+        `AceStepConditionEncoder.null_condition_emb`. All variants default to an 8-step
+        schedule at `shift=1.0` per `acestep/inference.py:GenerationParams` — base / sft
+        users typically override `num_inference_steps` to 30–60 for higher quality.
         """
         if self.is_turbo:
             return {"num_inference_steps": 8, "shift": 1.0, "guidance_scale": 1.0}
@@ -575,15 +533,13 @@ class AceStepPipeline(DiffusionPipeline):
         lyric_input_ids = lyric_inputs.input_ids.to(device)
         lyric_attention_mask = lyric_inputs.attention_mask.to(device).bool()
 
-        # Encode text through the full text encoder model
-        with torch.no_grad():
-            text_hidden_states = self.text_encoder(input_ids=text_input_ids).last_hidden_state
+        # Encode text through the full text encoder model.
+        text_hidden_states = self.text_encoder(input_ids=text_input_ids).last_hidden_state
 
-        # Encode lyrics using only the embedding layer (token lookup)
-        # The lyric encoder in the condition_encoder handles contextual encoding
-        with torch.no_grad():
-            embed_layer = self.text_encoder.get_input_embeddings()
-            lyric_hidden_states = embed_layer(lyric_input_ids)
+        # Encode lyrics using only the embedding layer (token lookup); contextual encoding
+        # happens inside the condition encoder.
+        embed_layer = self.text_encoder.get_input_embeddings()
+        lyric_hidden_states = embed_layer(lyric_input_ids)
 
         return text_hidden_states, text_attention_mask, lyric_hidden_states, lyric_attention_mask
 
@@ -652,27 +608,16 @@ class AceStepPipeline(DiffusionPipeline):
         if timesteps is not None:
             return torch.tensor(timesteps, device=device, dtype=dtype)
 
-        # Turbo variants ship with a fixed 8-step `SHIFT_TIMESTEPS` table keyed on
-        # `shift in {1, 2, 3}`. Anything else falls through to the linear+shift schedule
-        # used by base/SFT (matches `base/modeling_acestep_v15_base.py:1931-1934`).
-        if self.is_turbo and num_inference_steps == 8:
-            nearest = min(VALID_SHIFTS, key=lambda x: abs(x - shift))
-            if nearest != shift:
-                logger.warning(
-                    f"[AceStepPipeline] turbo only supports shift in {VALID_SHIFTS}; "
-                    f"rounding shift={shift} to {nearest}."
-                )
-            return torch.tensor(SHIFT_TIMESTEPS[nearest], device=device, dtype=dtype)
-
-        # Base / SFT schedule: linear in [1, 0] with `N+1` points, then drop the final
-        # `t=0` node, then apply the flow-matching shift transform.
+        # Linear schedule in [1, 0] with N+1 points, drop the terminal t=0, then apply
+        # the flow-matching shift transform. The turbo checkpoints ship with fixed 8-step
+        # tables for `shift ∈ {1, 2, 3}` — those values are recovered exactly by this
+        # formula, so no separate lookup table is needed.
         t = torch.linspace(1.0, 0.0, num_inference_steps + 1, device=device, dtype=dtype)
         if shift != 1.0:
             t = shift * t / (1 + (shift - 1) * t)
         return t[:-1]
 
-    @staticmethod
-    def _normalize_audio_to_stereo_48k(audio: torch.Tensor, sr: int) -> torch.Tensor:
+    def _normalize_audio_to_stereo_48k(self, audio: torch.Tensor, sr: int) -> torch.Tensor:
         """
         Normalize audio to stereo 48kHz format.
 
@@ -689,14 +634,14 @@ class AceStepPipeline(DiffusionPipeline):
             audio = torch.cat([audio, audio], dim=0)
         audio = audio[:2]
 
-        if sr != SAMPLE_RATE:
+        if sr != self.sample_rate:
             try:
                 import torchaudio
 
-                audio = torchaudio.transforms.Resample(sr, SAMPLE_RATE)(audio)
+                audio = torchaudio.transforms.Resample(sr, self.sample_rate)(audio)
             except ImportError:
                 # Simple linear resampling fallback
-                target_len = int(audio.shape[-1] * SAMPLE_RATE / sr)
+                target_len = int(audio.shape[-1] * self.sample_rate / sr)
                 audio = F.interpolate(audio.unsqueeze(0), size=target_len, mode="linear", align_corners=False)[0]
 
         audio = torch.clamp(audio, -1.0, 1.0)
@@ -713,18 +658,14 @@ class AceStepPipeline(DiffusionPipeline):
 
         The input audio can be 1D/2D/3D; stereo is required. Use this instead of
         calling the VAE directly if you want the tiled encode + layout transpose
-        that the pipeline applies internally (reviewer ask on PR #13095).
+        that the pipeline applies internally.
         """
         device = device if device is not None else self._execution_device
         dtype = dtype if dtype is not None else self.transformer.dtype
         return self._encode_audio_to_latents(audio, device=device, dtype=dtype)
 
     def _encode_audio_to_latents(self, audio: torch.Tensor, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-        """Encode a waveform to VAE latents in the `[B, T, D]` layout the DiT expects.
-
-        Relies on `AutoencoderOobleck.enable_tiling()` (called from `__init__`) for
-        memory-bounded long-audio encoding.
-        """
+        """Encode a waveform to VAE latents in the `[B, T, D]` layout the DiT expects."""
         input_was_2d = audio.dim() == 2
         if input_was_2d:
             audio = audio.unsqueeze(0)
@@ -784,7 +725,7 @@ class AceStepPipeline(DiffusionPipeline):
         Returns:
             Tuple of `(refer_audio_acoustic, refer_audio_order_mask)`.
         """
-        target_frames = 30 * SAMPLE_RATE  # 30 seconds
+        target_frames = 30 * self.sample_rate  # 30 seconds
 
         # Repeat if shorter than 30 seconds
         if reference_audio.shape[-1] < target_frames:
@@ -792,7 +733,7 @@ class AceStepPipeline(DiffusionPipeline):
             reference_audio = reference_audio.repeat(1, repeat_times)
 
         # Select 3 segments of 10 seconds each
-        segment_frames = 10 * SAMPLE_RATE
+        segment_frames = 10 * self.sample_rate
         total_frames = reference_audio.shape[-1]
         segment_size = total_frames // 3
 
@@ -831,10 +772,6 @@ class AceStepPipeline(DiffusionPipeline):
         (flat/drone audio)."""
         sl = getattr(self.condition_encoder, "silence_latent", None)
         if sl is None or sl.abs().sum() == 0:
-            logger.warning(
-                "[AceStepPipeline] silence_latent missing/zero; falling back to zeros for "
-                "src_latents. Re-run the converter with the latest script."
-            )
             return torch.zeros(
                 batch_size,
                 latent_length,
@@ -1093,6 +1030,13 @@ class AceStepPipeline(DiffusionPipeline):
         if guidance_scale is None:
             guidance_scale = variant_defaults["guidance_scale"]
 
+        # Turbo checkpoints have guidance distilled into the weights: running CFG
+        # produces over-guided audio. Warn + coerce to 1.0 so users who forward their
+        # base/sft settings to a turbo pipe still get sensible output.
+        if self.is_turbo and guidance_scale > 1.0:
+            logger.warning(f"Guidance scale {guidance_scale} is ignored for turbo (guidance-distilled) checkpoints.")
+            guidance_scale = 1.0
+
         self.check_inputs(
             prompt=prompt,
             lyrics=lyrics,
@@ -1133,7 +1077,7 @@ class AceStepPipeline(DiffusionPipeline):
         # Determine if src_audio provides the duration
         has_src_audio = src_audio is not None
         if has_src_audio:
-            src_audio_duration = src_audio.shape[-1] / SAMPLE_RATE
+            src_audio_duration = src_audio.shape[-1] / self.sample_rate
             if audio_duration is None or audio_duration <= 0:
                 audio_duration = src_audio_duration
         if audio_duration is None or audio_duration <= 0:
@@ -1212,13 +1156,6 @@ class AceStepPipeline(DiffusionPipeline):
                     .contiguous()
                 )
             else:
-                # Pre-fix fallback for legacy converted pipelines that don't carry
-                # `silence_latent`. Warn loudly — this path produces drone audio.
-                logger.warning(
-                    "[AceStepPipeline] `condition_encoder.silence_latent` missing or all-zero; "
-                    "falling back to literal zeros. Re-run the converter to get a usable "
-                    "silence reference."
-                )
                 refer_audio_acoustic = torch.zeros(
                     batch_size,
                     timbre_fix_frame,

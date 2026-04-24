@@ -188,7 +188,6 @@ else:
     ]
     _import_structure["models"].extend(
         [
-            "AceStepDiTModel",
             "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
@@ -1002,7 +1001,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VaeImageProcessorLDM3D,
         )
         from .models import (
-            AceStepDiTModel,
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,

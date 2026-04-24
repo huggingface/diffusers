@@ -185,6 +185,22 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     # 2. Build configs for each sub-model
     # =========================================================================
 
+    # On the 5B XL turbo the condition encoder is narrower than the DiT
+    # (`encoder_hidden_size=2048` feeding a `hidden_size=2560` DiT). Non-XL
+    # turbo / base checkpoints don't set this field, so fall back to
+    # `hidden_size` — that makes the DiT's `condition_embedder` an identity-width
+    # Linear as before. Similarly `encoder_intermediate_size` /
+    # `encoder_num_attention_heads` / `encoder_num_key_value_heads` describe the
+    # condition encoder on XL only.
+    encoder_hidden_size = original_config.get("encoder_hidden_size", original_config["hidden_size"])
+    encoder_intermediate_size = original_config.get("encoder_intermediate_size", original_config["intermediate_size"])
+    encoder_num_attention_heads = original_config.get(
+        "encoder_num_attention_heads", original_config["num_attention_heads"]
+    )
+    encoder_num_key_value_heads = original_config.get(
+        "encoder_num_key_value_heads", original_config["num_key_value_heads"]
+    )
+
     # Transformer (DiT) config. `is_turbo` / `model_version` propagate the variant so
     # the pipeline can pick the right CFG / shift / step-count defaults at inference.
     # Note: `max_position_embeddings` is dropped (RoPE computes freqs on-the-fly per call),
@@ -207,6 +223,7 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
         "rms_norm_eps": original_config["rms_norm_eps"],
         "sliding_window": original_config["sliding_window"],
         "layer_types": original_config["layer_types"],
+        "encoder_hidden_size": encoder_hidden_size,
         "is_turbo": bool(original_config.get("is_turbo", False)),
         "model_version": original_config.get("model_version"),
     }
@@ -215,14 +232,14 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     condition_encoder_config = {
         "_class_name": "AceStepConditionEncoder",
         "_diffusers_version": "0.33.0.dev0",
-        "hidden_size": original_config["hidden_size"],
-        "intermediate_size": original_config["intermediate_size"],
+        "hidden_size": encoder_hidden_size,
+        "intermediate_size": encoder_intermediate_size,
         "text_hidden_dim": original_config["text_hidden_dim"],
         "timbre_hidden_dim": original_config["timbre_hidden_dim"],
         "num_lyric_encoder_hidden_layers": original_config["num_lyric_encoder_hidden_layers"],
         "num_timbre_encoder_hidden_layers": original_config["num_timbre_encoder_hidden_layers"],
-        "num_attention_heads": original_config["num_attention_heads"],
-        "num_key_value_heads": original_config["num_key_value_heads"],
+        "num_attention_heads": encoder_num_attention_heads,
+        "num_key_value_heads": encoder_num_key_value_heads,
         "head_dim": original_config["head_dim"],
         "rope_theta": original_config["rope_theta"],
         "attention_bias": original_config["attention_bias"],

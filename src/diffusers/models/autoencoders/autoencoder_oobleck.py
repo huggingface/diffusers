@@ -369,7 +369,7 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
         self.tile_latent_min_length = 512
         self.tile_latent_overlap = 64
 
-    def _encode_one(self, x: torch.Tensor) -> torch.Tensor:
+    def _encode(self, x: torch.Tensor) -> torch.Tensor:
         if self.use_tiling and x.shape[-1] > self.tile_sample_min_length:
             return self._tiled_encode(x)
         return self.encoder(x)
@@ -391,10 +391,10 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         if self.use_slicing and x.shape[0] > 1:
-            encoded_slices = [self._encode_one(x_slice) for x_slice in x.split(1)]
+            encoded_slices = [self._encode(x_slice) for x_slice in x.split(1)]
             h = torch.cat(encoded_slices)
         else:
-            h = self._encode_one(x)
+            h = self._encode(x)
 
         posterior = OobleckDiagonalGaussianDistribution(h)
 

@@ -67,11 +67,7 @@ def _pack_sequences(
 
 
 class AceStepEncoderLayer(nn.Module):
-    """Pre-LN transformer block used by the lyric and timbre encoders.
-
-    Kept inside the pipeline package because the main DiT does not consume it
-    (reviewer comment on PR #13095).
-    """
+    """Pre-LN transformer block used by the lyric and timbre encoders."""
 
     def __init__(
         self,
@@ -120,40 +116,6 @@ class AceStepEncoderLayer(nn.Module):
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
         return hidden_states
-
-
-def _run_encoder_layers(
-    layers: nn.ModuleList,
-    layer_types: list,
-    hidden_states: torch.Tensor,
-    position_embeddings: Tuple[torch.Tensor, torch.Tensor],
-    full_attn_mask: torch.Tensor,
-    sliding_attn_mask: Optional[torch.Tensor],
-    gradient_checkpointing: bool,
-    gradient_checkpointing_func,
-) -> torch.Tensor:
-    """Shared encoder-layer loop used by the lyric + timbre encoders.
-
-    Picks the per-layer mask based on ``layer_types`` and optionally wraps each
-    call in ``gradient_checkpointing_func`` (matches the original ACE-Step
-    encoders that enable gradient checkpointing during training — reviewer
-    comment on PR #13095).
-    """
-    for i, layer_module in enumerate(layers):
-        mask = (
-            sliding_attn_mask
-            if layer_types[i] == "sliding_attention" and sliding_attn_mask is not None
-            else full_attn_mask
-        )
-        if gradient_checkpointing and torch.is_grad_enabled():
-            hidden_states = gradient_checkpointing_func(layer_module, hidden_states, position_embeddings, mask)
-        else:
-            hidden_states = layer_module(
-                hidden_states=hidden_states,
-                position_embeddings=position_embeddings,
-                attention_mask=mask,
-            )
-    return hidden_states
 
 
 # --------------------------------------------------------------------------- #
@@ -247,16 +209,19 @@ class AceStepLyricEncoder(ModelMixin, ConfigMixin):
             is_causal=False,
         )
 
-        hidden_states = _run_encoder_layers(
-            self.layers,
-            self._layer_types,
-            inputs_embeds,
-            position_embeddings,
-            full_attn_mask,
-            sliding_attn_mask,
-            self.gradient_checkpointing,
-            self._gradient_checkpointing_func if hasattr(self, "_gradient_checkpointing_func") else None,
-        )
+        hidden_states = inputs_embeds
+        for i, layer_module in enumerate(self.layers):
+            mask = sliding_attn_mask if self._layer_types[i] == "sliding_attention" else full_attn_mask
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(
+                    layer_module, hidden_states, position_embeddings, mask
+                )
+            else:
+                hidden_states = layer_module(
+                    hidden_states=hidden_states,
+                    position_embeddings=position_embeddings,
+                    attention_mask=mask,
+                )
         return self.norm(hidden_states)
 
 
@@ -366,9 +331,6 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
         cos, sin = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
         position_embeddings = (cos, sin)
 
-        full_attn_mask = _create_4d_mask(
-            seq_len=seq_len, dtype=dtype, device=device, attention_mask=None, is_causal=False
-        )
         sliding_attn_mask = _create_4d_mask(
             seq_len=seq_len,
             dtype=dtype,
@@ -379,16 +341,20 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
             is_causal=False,
         )
 
-        hidden_states = _run_encoder_layers(
-            self.layers,
-            self._layer_types,
-            inputs_embeds,
-            position_embeddings,
-            full_attn_mask,
-            sliding_attn_mask,
-            self.gradient_checkpointing,
-            self._gradient_checkpointing_func if hasattr(self, "_gradient_checkpointing_func") else None,
-        )
+        hidden_states = inputs_embeds
+        for i, layer_module in enumerate(self.layers):
+            # No padding mask on timbre input (pre-packed), so full-attention layers see None.
+            mask = sliding_attn_mask if self._layer_types[i] == "sliding_attention" else None
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(
+                    layer_module, hidden_states, position_embeddings, mask
+                )
+            else:
+                hidden_states = layer_module(
+                    hidden_states=hidden_states,
+                    position_embeddings=position_embeddings,
+                    attention_mask=mask,
+                )
 
         hidden_states = self.norm(hidden_states)
         # CLS-like pooling: first-token embedding per packed sequence.

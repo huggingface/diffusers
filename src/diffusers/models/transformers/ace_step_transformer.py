@@ -408,6 +408,11 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         rms_norm_eps: float = 1e-6,
         sliding_window: int = 128,
         layer_types: Optional[List[str]] = None,
+        # Dim of the condition encoder's output. Equal to `hidden_size` on the
+        # non-XL turbo / base models, but the XL turbo has a smaller condition
+        # encoder (`encoder_hidden_size=2048`) feeding a wider DiT
+        # (`hidden_size=2560`), so `condition_embedder` needs to project it up.
+        encoder_hidden_size: Optional[int] = None,
         # Variant metadata. Turbo models have guidance distilled into the weights and
         # should run without CFG; base/SFT models require CFG with the learned
         # `AceStepConditionEncoder.null_condition_emb`. The pipeline reads these to
@@ -416,6 +421,8 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         model_version: Optional[str] = None,
     ):
         super().__init__()
+        if encoder_hidden_size is None:
+            encoder_hidden_size = hidden_size
         self.patch_size = patch_size
         self.head_dim = head_dim
         self.rope_theta = rope_theta
@@ -458,7 +465,7 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         self.time_embed = AceStepTimestepEmbedding(in_channels=256, time_embed_dim=hidden_size)
         self.time_embed_r = AceStepTimestepEmbedding(in_channels=256, time_embed_dim=hidden_size)
 
-        self.condition_embedder = nn.Linear(hidden_size, hidden_size, bias=True)
+        self.condition_embedder = nn.Linear(encoder_hidden_size, hidden_size, bias=True)
 
         self.norm_out = RMSNorm(hidden_size, eps=rms_norm_eps)
         self.proj_out_conv = nn.ConvTranspose1d(
@@ -479,8 +486,6 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         timestep_r: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         context_latents: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """The [`AceStepTransformer1DModel`] forward method.
@@ -497,12 +502,6 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
             context_latents (`torch.Tensor` of shape `(batch_size, seq_len, context_dim)`):
                 Context latents (source latents concatenated with chunk masks) — fed to the
                 patchify conv alongside `hidden_states`.
-            attention_mask (`torch.Tensor`, *optional*):
-                Ignored; the model rebuilds a full / sliding-window mask internally to match
-                the reference implementation (which also discards this input). Kept in the
-                signature for API stability with other diffusers transformers.
-            encoder_attention_mask (`torch.Tensor`, *optional*):
-                Same as above but for the encoder side.
             return_dict (`bool`, defaults to `True`):
                 Whether to return a `Transformer2DModelOutput` or a plain tuple.
 
@@ -524,21 +523,12 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         hidden_states = self.proj_in_conv(hidden_states.transpose(1, 2)).transpose(1, 2)
         encoder_hidden_states = self.condition_embedder(encoder_hidden_states)
 
-        # Precompute RoPE freqs + attention masks for this pass. Masks are built with
-        # `attention_mask=None` to mirror the reference model, which also ignores the
-        # passed-in mask inside the DiT forward and rebuilds from the sequence shape.
         seq_len = hidden_states.shape[1]
-        encoder_seq_len = encoder_hidden_states.shape[1]
         dtype = hidden_states.dtype
         device = hidden_states.device
 
         cos, sin = _ace_step_rotary_freqs(seq_len, self.head_dim, self.rope_theta, device, dtype)
         position_embeddings = (cos, sin)
-
-        full_attn_mask = _create_4d_mask(seq_len=seq_len, dtype=dtype, device=device, is_causal=False)
-        encoder_4d_mask = _create_4d_mask(
-            seq_len=max(seq_len, encoder_seq_len), dtype=dtype, device=device, is_causal=False
-        )[:, :, :seq_len, :encoder_seq_len]
 
         sliding_attn_mask = _create_4d_mask(
             seq_len=seq_len,
@@ -550,7 +540,9 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         )
 
         for i, layer_module in enumerate(self.layers):
-            layer_attn_mask = sliding_attn_mask if self.layer_types[i] == "sliding_attention" else full_attn_mask
+            # Full-attention layers see no mask; only the sliding-attention layers
+            # need the banded mask. Cross-attention uses no padding mask.
+            layer_attn_mask = sliding_attn_mask if self.layer_types[i] == "sliding_attention" else None
 
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
@@ -560,7 +552,7 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
                     timestep_proj,
                     layer_attn_mask,
                     encoder_hidden_states,
-                    encoder_4d_mask,
+                    None,
                 )
             else:
                 hidden_states = layer_module(
@@ -569,7 +561,7 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
                     temb=timestep_proj,
                     attention_mask=layer_attn_mask,
                     encoder_hidden_states=encoder_hidden_states,
-                    encoder_attention_mask=encoder_4d_mask,
+                    encoder_attention_mask=None,
                 )
 
         # Adaptive output normalization + de-patchify.
@@ -581,15 +573,3 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
         if not return_dict:
             return (hidden_states,)
         return Transformer2DModelOutput(sample=hidden_states)
-
-
-# --------------------------------------------------------------------------- #
-#                         backward-compat aliases                              #
-# --------------------------------------------------------------------------- #
-
-
-# Keep the old names available so existing code / checkpoints that reference
-# `AceStepDiTModel` / `AceStepDiTLayer` continue to import cleanly. New code
-# should prefer the renamed classes.
-AceStepDiTModel = AceStepTransformer1DModel
-AceStepDiTLayer = AceStepTransformerBlock

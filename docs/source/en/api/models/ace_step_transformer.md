@@ -14,8 +14,6 @@ specific language governing permissions and limitations under the License.
 
 A 1D Diffusion Transformer for music generation from [ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5). The model operates on the 25 Hz stereo latents produced by [`AutoencoderOobleck`] using flow matching, and is trained with a Qwen3-derived backbone (grouped-query attention, rotary position embedding, RMSNorm, AdaLN-Zero timestep conditioning) plus cross-attention to the text / lyric / timbre conditions built by `AceStepConditionEncoder`.
 
-The class was previously exported as `AceStepDiTModel`; that name is still available as an alias for backwards compatibility.
-
 ## AceStepTransformer1DModel
 
 [[autodoc]] AceStepTransformer1DModel
