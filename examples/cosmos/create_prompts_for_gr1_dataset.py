@@ -19,7 +19,7 @@ import os
 from tqdm import tqdm
 
 """example command
-python -m scripts.create_prompts_for_gr1_dataset --dataset_path datasets/benchmark_train/gr1
+python create_prompts_for_gr1_dataset.py --dataset_path datasets/benchmark_train/gr1
 """
 
 
@@ -32,13 +32,13 @@ def parse_args() -> argparse.ArgumentParser:
         "--prompt_prefix", type=str, default="The robot arm is performing a task. ", help="Prefix of the prompt"
     )
     parser.add_argument(
-        "--meta_csv", type=str, default="datasets/benchmark_train/gr1/metadata.csv", help="Metadata csv file"
+        "--meta_csv", type=str, default=None, help="Metadata csv file (defaults to <dataset_path>/metadata.csv)"
     )
     return parser.parse_args()
 
 
 def main(args) -> None:
-    meta_csv = args.meta_csv
+    meta_csv = args.meta_csv or os.path.join(args.dataset_path, "metadata.csv")
     meta_lines = open(meta_csv).readlines()[1:]
     meta_txt_dir = os.path.join(args.dataset_path, "metas")
     os.makedirs(meta_txt_dir, exist_ok=True)

@@ -20,3 +20,6 @@ mv datasets/benchmark_train/gr1 $train_dir
 mv dream_gen_benchmark/gr1_object $test_dir
 echo Download training data to $train_dir
 echo Download test data to $test_dir
+
+# Clean up staging directories
+rm -rf datasets/ dream_gen_benchmark/

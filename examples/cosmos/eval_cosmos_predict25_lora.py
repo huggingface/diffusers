@@ -102,6 +102,13 @@ def parse_args():
         default=None,
         help="Negative prompt. Defaults to the pipeline's built-in negative prompt.",
     )
+    parser.add_argument(
+        "--text_encoder_attn_implementation",
+        type=str,
+        default="flash_attention_2",
+        choices=["eager", "sdpa", "flash_attention_2"],
+        help="The attention implementation to use for the text encoder (Qwen2.5 VL).",
+    )
 
     return parser.parse_args()
 
@@ -137,6 +144,7 @@ def main():
         device_map=args.device,
         torch_dtype=torch.bfloat16,
         safety_checker=MockSafetyChecker(),
+        text_encoder_attn_implementation=args.text_encoder_attn_implementation,
     )
 
     if args.lora_dir is not None:
