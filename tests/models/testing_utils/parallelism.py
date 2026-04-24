@@ -24,7 +24,13 @@ import torch.multiprocessing as mp
 from diffusers.models._modeling_parallel import ContextParallelConfig
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
 
-from ...testing_utils import is_context_parallel, is_kernels_available, require_torch_multi_accelerator, torch_device
+from ...testing_utils import (
+    is_attention,
+    is_context_parallel,
+    is_kernels_available,
+    require_torch_multi_accelerator,
+    torch_device,
+)
 from .utils import _maybe_cast_to_bf16
 
 
