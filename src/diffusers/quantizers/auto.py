@@ -140,9 +140,11 @@ class DiffusersAutoQuantizer:
             )
         else:
             warning_msg = ""
-        existing_fields = set(quantization_config.keys())
         if isinstance(quantization_config, dict):
+            existing_fields = set(quantization_config.keys())
             quantization_config = cls.from_dict(quantization_config)
+        else:
+            existing_fields = set(quantization_config.__dict__.keys())
 
         if isinstance(quantization_config, NVIDIAModelOptConfig):
             quantization_config.check_model_patching()

@@ -79,7 +79,7 @@ from diffusers import AutoRoundConfig
 config = AutoRoundConfig()
 
 # Explicit Triton backend for CUDA
-config = AutoRoundConfig(backend="triton")
+config = AutoRoundConfig(backend="tritonv2")
 
 # Marlin backend for best CUDA performance (requires gptqmodel>=5.8.0)
 config = AutoRoundConfig(backend="marlin")

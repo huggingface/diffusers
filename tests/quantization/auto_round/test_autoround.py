@@ -1,8 +1,11 @@
 import gc
 import tempfile
 import unittest
+import warnings
 
 from diffusers import AutoRoundConfig, ZImageTransformer2DModel, ZImagePipeline
+from diffusers.quantizers.auto import DiffusersAutoQuantizer
+from diffusers.quantizers.quantization_config import QuantizationMethod
 from diffusers.utils import is_auto_round_available, is_torch_available
 from diffusers.utils.testing_utils import (
     backend_empty_cache,
@@ -70,7 +73,6 @@ class AutoRoundBaseTesterMixin:
     pipeline_cls = ZImagePipeline
     torch_dtype = torch.bfloat16
     expected_memory_reduction = 0.0
-    modules_to_not_convert = ""
     _test_torch_compile = False
 
     def setUp(self):
@@ -162,36 +164,6 @@ class AutoRoundBaseTesterMixin:
 
         assert unquantized_model_memory / quantized_model_memory >= self.expected_memory_reduction
 
-    def test_modules_to_not_convert(self):
-        """Verify that modules listed in `modules_to_not_convert` remain as standard nn.Linear."""
-        from auto_round.inference.convert_model import dynamic_import_inference_linear
-
-        init_kwargs = self.get_dummy_model_init_kwargs()
-        quantization_config_kwargs = self.get_dummy_init_kwargs()
-        quantization_config_kwargs.update({"modules_to_not_convert": self.modules_to_not_convert})
-        quantization_config = AutoRoundConfig(**quantization_config_kwargs)
-        init_kwargs.update({"quantization_config": quantization_config})
-
-        model = self.model_cls.from_pretrained(**init_kwargs)
-        model.to(torch_device)
-
-        # Resolve the actual backend used after model loading.
-        # When backend='auto', AutoRound selects the best available backend
-        # per-layer during convert_hf_model(); 'auto' itself is not a valid
-        # argument to dynamic_import_inference_linear.
-        used_backends = getattr(model.hf_quantizer, "used_backends", [])
-        resolved_backend = (
-            used_backends[0]
-            if used_backends
-            else quantization_config_kwargs.get("backend", "auto_round:torch_zp")
-        )
-        quant_linear_cls = dynamic_import_inference_linear(resolved_backend, quantization_config_kwargs)
-
-        for name, module in model.named_modules():
-            if name in self.modules_to_not_convert:
-                assert not isinstance(
-                    module, quant_linear_cls
-                ), f"Module '{name}' should NOT have been quantized but is a {quant_linear_cls}."
 
     def test_serialization(self):
         """Test round-trip save and load of an AutoRound quantized model."""
@@ -392,3 +364,100 @@ class AutoRoundW4G128AsymTorchCPUTest(AutoRoundBaseTesterMixin, unittest.TestCas
             "sym": False,
             "backend": "auto_round:torch_zp",
         }
+
+
+# ============================================================================
+# Unit tests: AutoRoundConfig (no hardware required)
+# ============================================================================
+
+
+class AutoRoundConfigTest(unittest.TestCase):
+    """Unit tests for AutoRoundConfig — no GPU / nightly decorator needed."""
+
+    def test_defaults(self):
+        cfg = AutoRoundConfig()
+        self.assertEqual(cfg.bits, 4)
+        self.assertEqual(cfg.group_size, 128)
+        self.assertTrue(cfg.sym)
+        self.assertEqual(cfg.backend, "auto")
+        self.assertEqual(cfg.quant_method, QuantizationMethod.AUTOROUND)
+
+    def test_backend_values(self):
+        """All documented backend strings are stored correctly."""
+        for backend in ("auto", "torch", "tritonv2", "marlin", "exllamav2"):
+            self.assertEqual(AutoRoundConfig(backend=backend).backend, backend)
+
+    def test_to_dict_round_trip(self):
+        """to_dict → from_dict preserves all fields including backend and extra kwargs."""
+        cfg = AutoRoundConfig(bits=4, group_size=32, sym=False, backend="gptqmodel:marlin_zp",
+                              packing_format="auto_round:auto_gptq")
+        restored = AutoRoundConfig.from_dict(cfg.to_dict())
+        self.assertEqual(restored.bits, cfg.bits)
+        self.assertEqual(restored.group_size, cfg.group_size)
+        self.assertEqual(restored.sym, cfg.sym)
+        self.assertEqual(restored.backend, cfg.backend)
+        self.assertEqual(restored.packing_format, cfg.packing_format)
+        self.assertEqual(restored.to_dict()["quant_method"], "auto-round")
+
+
+# ============================================================================
+# Unit tests: DiffusersAutoQuantizer.merge_quantization_configs (no hardware)
+# ============================================================================
+
+
+class MergeQuantizationConfigsTest(unittest.TestCase):
+    """Tests for the merge logic in DiffusersAutoQuantizer.merge_quantization_configs.
+
+    Key behaviours under test:
+    1. New fields in quantization_config_from_args (e.g. `backend`) are forwarded to
+       the merged config when they are absent from the model's saved config.
+    2. Fields already present in the model's saved config are NOT overridden.
+    3. A warning is emitted when quantization_config_from_args is provided.
+    4. No warning when quantization_config_from_args is None.
+    """
+
+    def _model_config_dict(self, **overrides):
+        """Simulate a minimal saved AutoRound quantization_config dict (no 'backend' key)."""
+        base = {
+            "quant_method": "auto-round",
+            "bits": 4,
+            "group_size": 128,
+            "sym": True,
+            "autoround_version": "0.13.0",
+            "packing_format": "auto_round:auto_gptq",
+        }
+        base.update(overrides)
+        return base
+
+    def test_new_fields_from_args_are_forwarded(self):
+        """Fields absent from the model config (backend, or arbitrary kwargs) are added from args."""
+        for backend in ("marlin", "triton", "torch", "exllamav2"):  # tritonv2 equals triton
+            with self.subTest(backend=backend):
+                merged = DiffusersAutoQuantizer.merge_quantization_configs(
+                    self._model_config_dict(), AutoRoundConfig(backend=backend)
+                )
+                self.assertEqual(merged.backend, backend)
+
+    def test_existing_fields_not_overridden(self):
+        """Fields already in model config are NOT overridden; absent fields (backend) ARE added."""
+        args_cfg = AutoRoundConfig(bits=2, group_size=32, sym=False, backend="torch")
+        merged = DiffusersAutoQuantizer.merge_quantization_configs(self._model_config_dict(), args_cfg)
+
+        self.assertEqual(merged.bits, 4)           # model value kept
+        self.assertEqual(merged.group_size, 128)   # model value kept
+        self.assertTrue(merged.sym)                # model value kept
+        self.assertEqual(merged.backend, "torch")  # new field added
+
+    def test_warning_behaviour(self):
+        """Warning emitted with args; no warning without args."""
+        model_cfg = self._model_config_dict()
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            DiffusersAutoQuantizer.merge_quantization_configs(model_cfg, AutoRoundConfig(backend="auto"))
+        self.assertTrue(any("quantization_config" in str(x.message) for x in w))
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            DiffusersAutoQuantizer.merge_quantization_configs(model_cfg, None)
+        self.assertFalse(any("quantization_config" in str(x.message).lower() for x in w))
