@@ -27,6 +27,7 @@ from diffusers import (
     PixArtAlphaPipeline,
     PixArtTransformer2DModel,
 )
+from diffusers.utils.import_utils import is_torch_neuronx_available
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -291,7 +292,9 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array([0.0742, 0.0835, 0.2114, 0.0295, 0.0784, 0.2361, 0.1738, 0.2251, 0.3589])
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
-        self.assertLessEqual(max_diff, 1e-4)
+        # Neuron uses bfloat16 internally which has lower precision than float16 on CUDA
+        atol = 1e-2 if is_torch_neuronx_available() else 1e-4
+        self.assertLessEqual(max_diff, atol)
 
     def test_pixart_512(self):
         generator = torch.Generator("cpu").manual_seed(0)
@@ -307,7 +310,9 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array([0.3477, 0.3882, 0.4541, 0.3413, 0.3821, 0.4463, 0.4001, 0.4409, 0.4958])
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
-        self.assertLessEqual(max_diff, 1e-4)
+        # Neuron uses bfloat16 internally which has lower precision than float16 on CUDA
+        atol = 1e-2 if is_torch_neuronx_available() else 1e-4
+        self.assertLessEqual(max_diff, atol)
 
     def test_pixart_1024_without_resolution_binning(self):
         generator = torch.manual_seed(0)

@@ -22,7 +22,13 @@ import os
 from typing import Callable, ParamSpec, TypeVar
 
 from . import logging
-from .import_utils import is_torch_available, is_torch_mlu_available, is_torch_npu_available, is_torch_version
+from .import_utils import (
+    is_torch_available,
+    is_torch_mlu_available,
+    is_torch_neuronx_available,
+    is_torch_npu_available,
+    is_torch_version,
+)
 
 
 T = TypeVar("T")
@@ -33,12 +39,20 @@ if is_torch_available():
     import torch
     from torch.fft import fftn, fftshift, ifftn, ifftshift
 
-    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
+    BACKEND_SUPPORTS_TRAINING = {
+        "cuda": True,
+        "xpu": True,
+        "cpu": True,
+        "mps": False,
+        "neuron": False,
+        "default": True,
+    }
     BACKEND_EMPTY_CACHE = {
         "cuda": torch.cuda.empty_cache,
         "xpu": torch.xpu.empty_cache,
         "cpu": None,
         "mps": torch.mps.empty_cache,
+        "neuron": None,
         "default": None,
     }
     BACKEND_DEVICE_COUNT = {
@@ -46,6 +60,7 @@ if is_torch_available():
         "xpu": torch.xpu.device_count,
         "cpu": lambda: 0,
         "mps": lambda: 0,
+        "neuron": lambda: getattr(getattr(torch, "neuron", None), "device_count", lambda: 0)(),
         "default": 0,
     }
     BACKEND_MANUAL_SEED = {
@@ -53,6 +68,7 @@ if is_torch_available():
         "xpu": torch.xpu.manual_seed,
         "cpu": torch.manual_seed,
         "mps": torch.mps.manual_seed,
+        "neuron": torch.manual_seed,
         "default": torch.manual_seed,
     }
     BACKEND_RESET_PEAK_MEMORY_STATS = {
@@ -60,6 +76,7 @@ if is_torch_available():
         "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "cpu": None,
         "mps": None,
+        "neuron": None,
         "default": None,
     }
     BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
@@ -67,6 +84,7 @@ if is_torch_available():
         "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
         "cpu": None,
         "mps": None,
+        "neuron": None,
         "default": None,
     }
     BACKEND_MAX_MEMORY_ALLOCATED = {
@@ -74,6 +92,7 @@ if is_torch_available():
         "xpu": getattr(torch.xpu, "max_memory_allocated", None),
         "cpu": 0,
         "mps": 0,
+        "neuron": 0,
         "default": 0,
     }
     BACKEND_SYNCHRONIZE = {
@@ -81,6 +100,7 @@ if is_torch_available():
         "xpu": getattr(torch.xpu, "synchronize", None),
         "cpu": None,
         "mps": None,
+        "neuron": lambda: getattr(getattr(torch, "neuron", None), "synchronize", lambda: None)(),
         "default": None,
     }
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -169,11 +189,15 @@ def randn_tensor(
     layout = layout or torch.strided
     device = device or torch.device("cpu")
 
+    # Neuron (XLA) does not support creating random tensors directly on device; always use CPU
+    if device.type == "neuron":
+        rand_device = torch.device("cpu")
+
     if generator is not None:
         gen_device_type = generator.device.type if not isinstance(generator, list) else generator[0].device.type
         if gen_device_type != device.type and gen_device_type == "cpu":
             rand_device = "cpu"
-            if device != "mps":
+            if device.type not in ("mps", "neuron"):
                 logger.info(
                     f"The passed generator was created on 'cpu' even though a tensor on {device} was expected."
                     f" Tensors will be created on 'cpu' and then moved to {device}. Note that one can probably"
@@ -296,6 +320,8 @@ def get_device():
         return "mps"
     elif is_torch_mlu_available():
         return "mlu"
+    elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+        return "neuron"
     else:
         return "cpu"
 
