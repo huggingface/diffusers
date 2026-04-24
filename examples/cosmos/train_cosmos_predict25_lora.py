@@ -380,13 +380,7 @@ class VideoDataset(Dataset):
         """Load caption from JSON file with prompt type selection."""
         try:
             with open(json_path, "r") as f:
-                content = f.read()
-                # Handle JSON that might not have top-level object
-                if not content.strip().startswith("{"):
-                    # Wrap in object if needed
-                    data = json.loads("{" + content + "}")
-                else:
-                    data = json.loads(content)
+                data = json.load(f)
 
             # Get the first model's captions (e.g., "qwen3_vl_30b_a3b")
             model_key = next(iter(data.keys()))
