@@ -84,6 +84,9 @@ _BF16_REQUIRED_BACKENDS = {
 _NON_DETERMINISTIC_BACKENDS = {AttentionBackendName._NATIVE_CUDNN}
 
 
+# TODO: revist this when https://github.com/huggingface/diffusers/pull/13182
+# is merged.
+
 def _maybe_cast_to_bf16(backend, model, inputs_dict):
     """Cast model and floating-point inputs to bfloat16 when the backend requires it."""
     if backend not in _BF16_REQUIRED_BACKENDS:
