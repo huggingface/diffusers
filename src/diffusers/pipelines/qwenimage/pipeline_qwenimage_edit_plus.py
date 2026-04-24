@@ -260,15 +260,15 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         ).to(device)
 
         outputs = self.text_encoder(
-            input_ids=model_inputs.input_ids,
-            attention_mask=model_inputs.attention_mask,
-            pixel_values=model_inputs.pixel_values,
-            image_grid_thw=model_inputs.image_grid_thw,
+            input_ids=model_inputs["input_ids"],
+            attention_mask=model_inputs["attention_mask"],
+            pixel_values=model_inputs.get("pixel_values"),
+            image_grid_thw=model_inputs.get("image_grid_thw"),
             output_hidden_states=True,
         )
 
         hidden_states = outputs.hidden_states[-1]
-        split_hidden_states = self._extract_masked_hidden(hidden_states, model_inputs.attention_mask)
+        split_hidden_states = self._extract_masked_hidden(hidden_states, model_inputs["attention_mask"])
         split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
         attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
         max_seq_len = max([e.size(0) for e in split_hidden_states])
@@ -320,11 +320,13 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
 
-        if prompt_embeds_mask is not None and prompt_embeds_mask.all():
-            prompt_embeds_mask = None
+        if prompt_embeds_mask is not None:
+            prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
+            prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
+
+            if prompt_embeds_mask.all():
+                prompt_embeds_mask = None
 
         return prompt_embeds, prompt_embeds_mask
 
@@ -373,12 +375,19 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             )
 
         if prompt_embeds is not None and prompt_embeds_mask is None:
-            raise ValueError(
-                "If `prompt_embeds` are provided, `prompt_embeds_mask` also have to be passed. Make sure to generate `prompt_embeds_mask` from the same text encoder that was used to generate `prompt_embeds`."
+            logger.warning(
+                "`prompt_embeds` is provided and `prompt_embeds_mask` is not provided, so the model will treat all"
+                " prompt tokens as valid. If `prompt_embeds` contains padding, you should provide the padding mask as"
+                " `prompt_embeds_mask`. Make sure to generate `prompt_embeds_mask` from the same text encoder that was"
+                " used to generate `prompt_embeds`."
             )
+
         if negative_prompt_embeds is not None and negative_prompt_embeds_mask is None:
-            raise ValueError(
-                "If `negative_prompt_embeds` are provided, `negative_prompt_embeds_mask` also have to be passed. Make sure to generate `negative_prompt_embeds_mask` from the same text encoder that was used to generate `negative_prompt_embeds`."
+            logger.warning(
+                "`negative_prompt_embeds` is provided and `negative_prompt_embeds_mask` is not provided, so the model will treat all"
+                " negative prompt tokens as valid. If `negative_prompt_embeds` contains padding, you should provide the padding mask as"
+                " `negative_prompt_embeds_mask`. Make sure to generate `negative_prompt_embeds_mask` from the same text encoder that was"
+                " used to generate `negative_prompt_embeds`."
             )
 
         if max_sequence_length is not None and max_sequence_length > 1024:
@@ -693,9 +702,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 condition_images.append(self.image_processor.resize(img, condition_height, condition_width))
                 vae_images.append(self.image_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
 
-        has_neg_prompt = negative_prompt is not None or (
-            negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
-        )
+        has_neg_prompt = negative_prompt is not None or negative_prompt_embeds is not None
 
         if true_cfg_scale > 1 and not has_neg_prompt:
             logger.warning(

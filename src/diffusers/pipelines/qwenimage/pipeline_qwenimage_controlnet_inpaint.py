@@ -74,7 +74,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
+# Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -221,7 +221,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
         self.prompt_template_encode_start_idx = 34
         self.default_sample_size = 128
 
-    # Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.extract_masked_hidden
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._extract_masked_hidden
     def _extract_masked_hidden(self, hidden_states: torch.Tensor, mask: torch.Tensor):
         bool_mask = mask.bool()
         valid_lengths = bool_mask.sum(dim=1)
@@ -230,7 +230,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
 
         return split_result
 
-    # Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.get_qwen_prompt_embeds
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._get_qwen_prompt_embeds
     def _get_qwen_prompt_embeds(
         self,
         prompt: str | list[str] = None,
@@ -247,7 +247,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
         txt = [template.format(e) for e in prompt]
         txt_tokens = self.tokenizer(
             txt, max_length=self.tokenizer_max_length + drop_idx, padding=True, truncation=True, return_tensors="pt"
-        ).to(self.device)
+        ).to(device)
         encoder_hidden_states = self.text_encoder(
             input_ids=txt_tokens.input_ids,
             attention_mask=txt_tokens.attention_mask,
@@ -269,7 +269,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
 
         return prompt_embeds, encoder_attention_mask
 
-    # Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.encode_prompt
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: str | list[str],
@@ -280,6 +280,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
         max_sequence_length: int = 1024,
     ):
         r"""
+
         Args:
             prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
@@ -299,14 +300,18 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
         if prompt_embeds is None:
             prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, device)
 
+        prompt_embeds = prompt_embeds[:, :max_sequence_length]
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
 
-        if prompt_embeds_mask is not None and prompt_embeds_mask.all():
-            prompt_embeds_mask = None
+        if prompt_embeds_mask is not None:
+            prompt_embeds_mask = prompt_embeds_mask[:, :max_sequence_length]
+            prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
+            prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
+
+            if prompt_embeds_mask.all():
+                prompt_embeds_mask = None
 
         return prompt_embeds, prompt_embeds_mask
 
@@ -354,12 +359,19 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
             )
 
         if prompt_embeds is not None and prompt_embeds_mask is None:
-            raise ValueError(
-                "If `prompt_embeds` are provided, `prompt_embeds_mask` also have to be passed. Make sure to generate `prompt_embeds_mask` from the same text encoder that was used to generate `prompt_embeds`."
+            logger.warning(
+                "`prompt_embeds` is provided and `prompt_embeds_mask` is not provided, so the model will treat all"
+                " prompt tokens as valid. If `prompt_embeds` contains padding, you should provide the padding mask as"
+                " `prompt_embeds_mask`. Make sure to generate `prompt_embeds_mask` from the same text encoder that was"
+                " used to generate `prompt_embeds`."
             )
+
         if negative_prompt_embeds is not None and negative_prompt_embeds_mask is None:
-            raise ValueError(
-                "If `negative_prompt_embeds` are provided, `negative_prompt_embeds_mask` also have to be passed. Make sure to generate `negative_prompt_embeds_mask` from the same text encoder that was used to generate `negative_prompt_embeds`."
+            logger.warning(
+                "`negative_prompt_embeds` is provided and `negative_prompt_embeds_mask` is not provided, so the model will treat all"
+                " negative prompt tokens as valid. If `negative_prompt_embeds` contains padding, you should provide the padding mask as"
+                " `negative_prompt_embeds_mask`. Make sure to generate `negative_prompt_embeds_mask` from the same text encoder that was"
+                " used to generate `negative_prompt_embeds`."
             )
 
         if max_sequence_length is not None and max_sequence_length > 1024:
@@ -739,9 +751,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
 
         device = self._execution_device
 
-        has_neg_prompt = negative_prompt is not None or (
-            negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
-        )
+        has_neg_prompt = negative_prompt is not None or negative_prompt_embeds is not None
         do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
         prompt_embeds, prompt_embeds_mask = self.encode_prompt(
             prompt=prompt,
