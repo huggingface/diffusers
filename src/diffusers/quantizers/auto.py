@@ -140,12 +140,23 @@ class DiffusersAutoQuantizer:
             )
         else:
             warning_msg = ""
-
+        existing_fields = set(quantization_config.keys())
         if isinstance(quantization_config, dict):
             quantization_config = cls.from_dict(quantization_config)
 
         if isinstance(quantization_config, NVIDIAModelOptConfig):
             quantization_config.check_model_patching()
+
+        if quantization_config_from_args is not None:
+            # Only override fields that the user explicitly set.
+            for key, value in quantization_config_from_args.__dict__.items():
+                if key not in existing_fields:
+                    # Field does not exist in the model's quantization_config, add it.
+                    setattr(quantization_config, key, value)
+                    warning_msg += (
+                        f" Field `{key}` from `quantization_config_from_args` is not present in the model's "
+                        f"`quantization_config`. Adding it with value: {value!r}."
+                    )
 
         if warning_msg != "":
             warnings.warn(warning_msg)

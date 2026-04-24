@@ -768,12 +768,9 @@ class AutoRoundConfig(QuantizationConfigMixin):
         group_size (`int`, *optional*, defaults to `128`):
             The group size for weight quantization. Weights in each group share the same
             scale and zero-point. Common choices: 32, 64, 128, -1 (per-channel).
-        sym (`bool`, *optional*, defaults to `False`):
+        sym (`bool`, *optional*, defaults to `True`):
             Whether to use symmetric quantization (zero-point fixed at 0) or asymmetric
-            quantization (zero-point is learned). Asymmetric is generally more accurate.
-        modules_to_not_convert (`list[str]` or `None`, *optional*, defaults to `None`):
-            List of module name patterns that should NOT be quantized. Useful for keeping
-            certain sensitive layers (e.g. the final output projection) in full precision.
+            quantization (zero-point is learned).
         backend (`str`, *optional*, defaults to `"auto"`):
             The backend kernel to use for quantized inference. Available backends:
             - `"auto"`: Automatically select the best available backend for the current device.
@@ -790,8 +787,7 @@ class AutoRoundConfig(QuantizationConfigMixin):
         self,
         bits: int = 4,
         group_size: int = 128,
-        sym: bool = False,
-        modules_to_not_convert: list[str] | None = None,
+        sym: bool = True,
         backend: str = "auto",
         **kwargs,
     ) -> None:
@@ -799,7 +795,6 @@ class AutoRoundConfig(QuantizationConfigMixin):
         self.bits = bits
         self.group_size = group_size
         self.sym = sym
-        self.modules_to_not_convert = modules_to_not_convert
         self.backend = backend
         for k, v in kwargs.items():
             setattr(self, k, v)

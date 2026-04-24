@@ -90,8 +90,6 @@ class AutoRoundQuantizer(DiffusersQuantizer):
             model, used_backends = convert_hf_model(model, target_device)
             self.used_backends = used_backends
 
-        model.config.quantization_config = self.quantization_config
-
     def _process_model_after_weight_loading(self, model, **kwargs):
         """
         Finalizes the model after all quantized weights (qweight, scales, qzeros, etc.) have

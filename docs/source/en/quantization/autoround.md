@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # AutoRound
 
-[AutoRound](https://huggingface.co/papers/2309.05516) is a weight-only quantization algorithm. It uses sign gradient descent to jointly optimize weight rounding and min-max ranges. AutoRound targets W4A16 (4-bit weights, 16-bit activations), reducing memory usage without sacrificing inference accuracy.
+[AutoRound](https://github.com/intel/auto-round) is an advanced quantization toolkit. It achieves high accuracy at ultra-low bit widths (2-4 bits) with minimal tuning by leveraging sign-gradient descent and providing broad hardware compatibility. See our papers [SignRoundV1](https://arxiv.org/pdf/2309.05516) and [SignRoundV2](https://arxiv.org/abs/2512.04746) for more details.
 
 
 Install `auto-round`(version ≥ 0.13.0):
@@ -32,25 +32,27 @@ Load a pre-quantized AutoRound model by passing [`AutoRoundConfig`] to [`~ModelM
 
 ```python
 import torch
-from diffusers import AutoModel, FluxPipeline, AutoRoundConfig
+from diffusers import ZImageTransformer2DModel, ZImagePipeline, AutoRoundConfig
 
 model_id = "INCModel/Z-Image-W4A16-AutoRound"
 
-quantization_config = AutoRoundConfig(bits=4, group_size=128, sym=False)
-transformer = AutoModel.from_pretrained(
+quantization_config = AutoRoundConfig(backend="marlin")
+transformer = ZImageTransformer2DModel.from_pretrained(
     model_id,
     subfolder="transformer",
     quantization_config=quantization_config,
-    torch_dtype=torch.float16,
+    torch_dtype=torch.bfloat16,
+    device_map="cuda",
 )
-pipe = FluxPipeline.from_pretrained(
+
+pipe = ZImagePipeline.from_pretrained(
     model_id,
     transformer=transformer,
-    torch_dtype=torch.float16,
+    torch_dtype=torch.bfloat16,
+    device_map="cuda",
 )
-pipe.to("cuda")
 
-image = pipe("A cat holding a sign that says hello world").images[0]
+image = pipe("a cat holding a sign that says hello").images[0]
 image.save("output.png")
 ```
 
@@ -64,36 +66,31 @@ AutoRound supports multiple inference backends. The backend controls which kerne
 | Backend | Value | Device | Requirements | Notes |
 |---------|-------|--------|--------------|-------|
 | **Auto** | `"auto"` | Any | — | Default. Automatically selects the best available backend. |
-| **PyTorch** | `"auto_round:torch_zp"` | CPU / CUDA | — | Pure PyTorch implementation. Broadest compatibility. |
-| **Triton** | `"auto_round:tritonv2_zp"` | CUDA | `triton` | Triton-based kernel for GPU inference. |
-| **Marlin** | `"gptqmodel:marlin_zp"` | CUDA | `gptqmodel>=5.8.0` | Best CUDA performance via the Marlin kernel. |
+| **PyTorch** | `"torch"` | CPU / CUDA | — | Pure PyTorch implementation. Broadest compatibility. |
+| **Triton** | `"tritonv2"` | CUDA | `triton` | Triton-based kernel for GPU inference. |
+| **ExllamaV2** | `"exllamav2"` | CUDA | `gptqmodel>=5.8.0` | Good CUDA performance via the ExllamaV2 kernel. |
+| **Marlin** | `"marlin"` | CUDA | `gptqmodel>=5.8.0` | Best CUDA performance via the Marlin kernel. |
 
 
 ```python
 from diffusers import AutoRoundConfig
 
 # Auto-select (default)
-config = AutoRoundConfig(bits=4, group_size=128)
+config = AutoRoundConfig()
 
 # Explicit Triton backend for CUDA
-config = AutoRoundConfig(bits=4, group_size=128, backend="auto_round:tritonv2_zp")
+config = AutoRoundConfig(backend="triton")
 
 # Marlin backend for best CUDA performance (requires gptqmodel>=5.8.0)
-config = AutoRoundConfig(bits=4, group_size=128, backend="gptqmodel:marlin_zp")
+config = AutoRoundConfig(backend="marlin")
 
-# PyTorch backend for CPU inference
-config = AutoRoundConfig(bits=4, group_size=128, backend="auto_round:torch_zp")
+# Marlin backend for best CUDA performance (requires gptqmodel>=5.8.0)
+config = AutoRoundConfig(backend="exllamav2")
+
+# PyTorch backend for CPU/CUDA inference
+config = AutoRoundConfig(backend="torch")
 ```
 
-## AutoRoundConfig
-
-The [`AutoRoundConfig`] class accepts the following parameters:
-
-- `bits` (`int`, defaults to `4`): Number of bits for weight quantization. Use `4` for W4A16.
-- `group_size` (`int`, defaults to `128`): Group size for quantization. Weights in each group share the same scale and zero-point. Common values: `32`, `64`, `128`, or `-1` (per-channel).
-- `sym` (`bool`, defaults to `False`): Whether to use symmetric quantization (`True`) or asymmetric quantization (`False`). Asymmetric is generally more accurate.
-- `modules_to_not_convert` (`list[str]` or `None`, defaults to `None`): List of module name patterns to exclude from quantization. Use this to keep sensitive layers in full precision.
-- `backend` (`str`, defaults to `"auto"`): The inference backend kernel. See the [Inference backends](#inference-backends) table above.
 
 ## Quantization configurations
 
@@ -107,46 +104,43 @@ AutoRound focuses on weight-only quantization. The primary configuration is W4A1
 
 ## Save and load
 
-Save and reload AutoRound quantized models using the standard [`~ModelMixin.save_pretrained`] and [`~ModelMixin.from_pretrained`] methods.
-
-### Save
+<hfoptions id="save-and-load">
+<hfoption id="save">
 
 ```python
-import torch
-from diffusers import AutoModel, AutoRoundConfig
-
-model_id = "INCModel/Z-Image-W4A16-AutoRound"
-quantization_config = AutoRoundConfig(bits=4, group_size=128, sym=False)
-model = AutoModel.from_pretrained(
-    model_id,
-    subfolder="transformer",
-    quantization_config=quantization_config,
-    torch_dtype=torch.float16,
+from auto_round import AutoRound
+autoround = AutoRound(
+    tiny_z_image_model_path,
+    num_inference_steps=3,
+    guidance_scale=7.5,
+    dataset="coco2014,
 )
-model.save_pretrained("path/to/saved_model")
+autoround.quantize_and_save("Z-Image-W4A16-AutoRound")
 ```
 
+</hfoption>
+<hfoption id="load">
 
 ```python
 import torch
-from diffusers import AutoModel, FluxPipeline
+from diffusers import ZImageTransformer2DModel, ZImagePipeline
 
-transformer = AutoModel.from_pretrained(
-    "path/to/saved_model",
-    torch_dtype=torch.float16,
-)
-pipe = FluxPipeline.from_pretrained(
-    "your-org/flux-autoround-w4g128",
-    transformer=transformer,
-    torch_dtype=torch.float16,
-)
-pipe.to("cuda")
+model_id = "INCModel/Z-Image-W4A16-AutoRound"
 
-image = pipe("A beautiful sunset over the ocean").images[0]
+# The inference backend will be automatically selected.
+pipe = ZImagePipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.bfloat16,
+    device_map="cuda",
+)
+
+image = pipe("a cat holding a sign that says hello").images[0]
 image.save("output.png")
 ```
 
+</hfoption>
+</hfoptions>
+
 ## Resources
 
-- [AutoRound Hugging Face integration (Transformers)](https://huggingface.co/docs/transformers/quantization/autoround)
 - [Pre-quantized AutoRound models on the Hub](https://huggingface.co/models?search=autoround)
