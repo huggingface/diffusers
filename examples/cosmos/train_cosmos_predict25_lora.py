@@ -423,7 +423,7 @@ class VideoDataset(Dataset):
 
             # Load caption based on format
             video_path = self.video_paths[index]
-            video_basename = os.path.basename(video_path).replace(".mp4", "")
+            video_basename = os.path.splitext(os.path.basename(video_path))[0]
 
             if self.caption_format == "json":
                 caption_path = os.path.join(self.caption_dir, f"{video_basename}.json")
@@ -550,6 +550,7 @@ def main():
     vae = pipe.vae
     text_encoder = pipe.text_encoder
 
+    dit.set_autocast_fp32(True)
     dit.requires_grad_(False)
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
