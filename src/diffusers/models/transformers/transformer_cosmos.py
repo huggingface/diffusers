@@ -67,7 +67,7 @@ class CosmosTimestepEmbedding(nn.Module):
 
 
 class CosmosEmbedding(nn.Module):
-    def __init__(self, embedding_dim: int, condition_dim: int, autocast_fp32: bool = True) -> None:
+    def __init__(self, embedding_dim: int, condition_dim: int, autocast_fp32: bool = False) -> None:
         super().__init__()
 
         self.autocast_fp32 = autocast_fp32
@@ -116,7 +116,7 @@ class CosmosAdaLayerNorm(nn.Module):
 
 
 class CosmosAdaLayerNormZero(nn.Module):
-    def __init__(self, in_features: int, hidden_features: int | None = None, autocast_fp32: bool = True) -> None:
+    def __init__(self, in_features: int, hidden_features: int | None = None, autocast_fp32: bool = False) -> None:
         super().__init__()
 
         self.autocast_fp32 = autocast_fp32
@@ -158,7 +158,7 @@ class CosmosAdaLayerNormZero(nn.Module):
 
 
 class CosmosAttnProcessor2_0:
-    def __init__(self, autocast_fp32: bool = True):
+    def __init__(self, autocast_fp32: bool = False):
         if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
             raise ImportError("CosmosAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
         self.autocast_fp32 = autocast_fp32
@@ -228,7 +228,7 @@ class CosmosAttnProcessor2_0:
 
 
 class CosmosAttnProcessor2_5:
-    def __init__(self, autocast_fp32: bool = True):
+    def __init__(self, autocast_fp32: bool = False):
         if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
             raise ImportError("CosmosAttnProcessor2_5 requires PyTorch 2.0. Please upgrade PyTorch to 2.0 or newer.")
         self.autocast_fp32 = autocast_fp32
@@ -373,7 +373,7 @@ class CosmosTransformerBlock(nn.Module):
         img_context: bool = False,
         before_proj: bool = False,
         after_proj: bool = False,
-        autocast_fp32: bool = True,
+        autocast_fp32: bool = False,
     ) -> None:
         super().__init__()
 
@@ -622,7 +622,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
         img_context_dim_out (`int`):
             The output dimension of the image context projection layer. If `img_context_dim_in` is not provided, then
             this parameter is ignored.
-        autocast_fp32 (`bool`, defaults to `True`):
+        autocast_fp32 (`bool`, defaults to `False`):
             Whether to cast certain computations (AdaLN, timestep embedding, RoPE, final norm and projection) to
             float32 for numerical stability. Set to `False` to disable autocasting (e.g., when the model is already
             running in float32 or when autocasting is handled externally).
@@ -656,7 +656,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin, 
         img_context_dim_in: int | None = None,
         img_context_num_tokens: int = 256,
         img_context_dim_out: int = 2048,
-        autocast_fp32: bool = True,
+        autocast_fp32: bool = False,
     ) -> None:
         super().__init__()
         hidden_size = num_attention_heads * attention_head_dim
