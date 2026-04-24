@@ -367,6 +367,7 @@ class ContextParallelTesterMixin:
         )
 
 
+@is_attention
 @is_context_parallel
 @require_torch_multi_accelerator
 class ContextParallelAttentionBackendsTesterMixin:
