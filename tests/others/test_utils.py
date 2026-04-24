@@ -251,48 +251,37 @@ class RandnTensorTester(unittest.TestCase):
     """Tests for :func:`diffusers.utils.torch_utils.randn_tensor`."""
 
     def test_mps_suppresses_cpu_generator_info_log(self):
-        """
-        When a CPU generator targets MPS, the informational log about falling back to CPU
-        should be suppressed — MPS does not support device-side generators, so the message
-        would be misleading. Prior to fixing the ``device != "mps"`` string/``torch.device``
-        comparison this log fired on every device, including MPS.
-        """
-        import logging as py_logging
-
         import torch
 
         from diffusers.utils import logging as diffusers_logging
         from diffusers.utils import torch_utils
 
-        gen = torch.Generator(device="cpu")
+        from ..testing_utils import CaptureLogger
 
+        gen = torch.Generator(device="cpu")
         diffusers_logging.set_verbosity_info()
-        prev_level = torch_utils.logger.level
-        torch_utils.logger.setLevel(py_logging.INFO)
 
         def _capture(target_device):
-            with self.assertLogs(torch_utils.logger, level="INFO") as cm:
-                torch_utils.logger.info("sentinel")
+            with CaptureLogger(torch_utils.logger) as cl:
                 try:
                     torch_utils.randn_tensor((1, 2), generator=gen, device=target_device, dtype=torch.float32)
                 except (AssertionError, RuntimeError):
                     pass
-            return [m for m in cm.output if "sentinel" not in m]
+            return cl.out
 
-        try:
-            mps_logs = _capture("mps")
-            self.assertFalse(
-                any("moved to" in m and "generator" in m for m in mps_logs),
-                f"MPS target should not emit the CPU-fallback info log, got: {mps_logs}",
-            )
+        mps_out = _capture("mps")
+        self.assertNotIn(
+            "moved to",
+            mps_out,
+            f"MPS target should not emit the CPU-fallback info log, got: {mps_out}",
+        )
 
-            cuda_logs = _capture("cuda")
-            self.assertTrue(
-                any("moved to" in m and "generator" in m for m in cuda_logs),
-                f"Non-MPS target should still emit the CPU-fallback info log, got: {cuda_logs}",
-            )
-        finally:
-            torch_utils.logger.setLevel(prev_level)
+        cuda_out = _capture("cuda")
+        self.assertIn(
+            "moved to",
+            cuda_out,
+            f"Non-MPS target should still emit the CPU-fallback info log, got: {cuda_out}",
+        )
 
 
 # Copied from https://github.com/huggingface/transformers/blob/main/tests/utils/test_expectations.py
