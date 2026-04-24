@@ -34,11 +34,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
+          HAS_LABEL=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/labels" --jq '[.[].name] | contains(["missing-tests"])')
           if [ "${{ steps.check.outcome }}" = "failure" ]; then
-            gh pr edit "$PR_NUMBER" --add-label "missing-tests"
+            if [ "$HAS_LABEL" != "true" ]; then
+              gh pr edit "$PR_NUMBER" --add-label "missing-tests"
+            fi
           else
-            gh pr edit "$PR_NUMBER" --remove-label "missing-tests" 2>/dev/null || true
+            if [ "$HAS_LABEL" = "true" ]; then
+              gh pr edit "$PR_NUMBER" --remove-label "missing-tests" 2>/dev/null || true
+            fi
           fi
 
   fixes-issue:
@@ -65,10 +71,15 @@ jobs:
                 }
               }' \
             --jq '.data.repository.pullRequest.closingIssuesReferences.totalCount')
+          HAS_LABEL=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/labels" --jq '[.[].name] | contains(["fixes-issue"])')
           if [ "${COUNT:-0}" -gt 0 ]; then
-            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "fixes-issue"
+            if [ "$HAS_LABEL" != "true" ]; then
+              gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "fixes-issue"
+            fi
           else
-            gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label "fixes-issue" 2>/dev/null || true
+            if [ "$HAS_LABEL" = "true" ]; then
+              gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label "fixes-issue" 2>/dev/null || true
+            fi
           fi
 
   size-label:
@@ -81,13 +92,19 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           DIFF_SIZE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.additions + .deletions')
-          for label in size/S size/M size/L; do
-            gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label "$label" 2>/dev/null || true
-          done
           if [ "$DIFF_SIZE" -lt 50 ]; then
-            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "size/S"
+            DESIRED="size/S"
           elif [ "$DIFF_SIZE" -lt 200 ]; then
-            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "size/M"
+            DESIRED="size/M"
           else
-            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "size/L"
+            DESIRED="size/L"
+          fi
+          CURRENT_LABELS=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/labels" --jq '.[].name')
+          for label in size/S size/M size/L; do
+            if [ "$label" != "$DESIRED" ] && echo "$CURRENT_LABELS" | grep -qx "$label"; then
+              gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label "$label" 2>/dev/null || true
+            fi
+          done
+          if ! echo "$CURRENT_LABELS" | grep -qx "$DESIRED"; then
+            gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "$DESIRED"
           fi
