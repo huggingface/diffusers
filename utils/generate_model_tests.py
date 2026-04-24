@@ -73,6 +73,7 @@ OPTIONAL_TESTERS = [
     ("SingleFileTesterMixin", "single_file"),
     ("IPAdapterTesterMixin", "ip_adapter"),
     ("AttentionBackendTesterMixin", "attention_backends"),
+    ("ContextParallelAttentionBackendsTesterMixin", "cp_attn"),
 ]
 
 
@@ -230,7 +231,14 @@ def determine_testers(model_info: dict, include_optional: list[str], imports: se
 
     for tester, flag in OPTIONAL_TESTERS:
         if flag in include_optional:
-            if tester not in testers:
+            if tester == "ContextParallelAttentionBackendsTesterMixin":
+                if (
+                    "cp_attn" in include_optional
+                    and "_cp_plan" in model_info["attributes"]
+                    and model_info["attributes"]["_cp_plan"] is not None
+                ):
+                    testers.append(tester)
+            elif tester not in testers:
                 testers.append(tester)
 
     return testers
@@ -532,6 +540,7 @@ def main():
             "single_file",
             "ip_adapter",
             "attention_backends",
+            "cp_attn",
             "all",
         ],
         help="Optional testers to include",

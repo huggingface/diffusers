@@ -30,6 +30,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesCompileTesterMixin,
     BitsAndBytesTesterMixin,
+    ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
@@ -248,6 +249,12 @@ class TestFluxTransformerAttentionBackend(FluxTransformerTesterConfig, Attention
 
 class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux Transformer"""
+
+
+class TestFluxTransformerContextParallelAttnBackends(
+    FluxTransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
+):
+    """Context Parallel inference x attention backends tests for Flux Transformer"""
 
 
 class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterMixin):
