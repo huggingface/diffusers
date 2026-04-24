@@ -85,7 +85,7 @@ class ContextParallelConfig:
     # Whether to enable ulysses anything attention to support
     # any sequence lengths and any head numbers.
     ulysses_anything: bool = False
-    # Whether to enable ring anything attention to support sequence lengths.
+    # Whether to enable ring anything attention to support any sequence lengths.
     ring_anything: bool = False
 
     _rank: int = None
@@ -124,6 +124,8 @@ class ContextParallelConfig:
                 raise ValueError("ring_degree must be greater than 1 for ring_anything to be enabled.")
             if self.ulysses_degree > 1:
                 raise ValueError("ring_anything cannot be enabled when ulysses_degree > 1.")
+        if self.ulysses_anything and self.ring_anything:
+            raise ValueError("ulysses_anything and ring_anything cannot both be enabled.")
 
     @property
     def mesh_shape(self) -> tuple[int, int]:
