@@ -86,10 +86,7 @@ def _context_parallel_worker(
 
         # Enable attention backend
         if attention_backend:
-            try:
-                model.set_attention_backend(attention_backend)
-            except Exception as e:
-                pytest.skip(f"Skipping test because of exception: {e}.")
+            model.set_attention_backend(attention_backend)
 
         # Enable context parallelism
         cp_config = ContextParallelConfig(**cp_dict)
@@ -402,8 +399,8 @@ class ContextParallelAttentionBackendsTesterMixin:
             pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
 
         if cp_type == "ring_degree":
-            if attention_backend == "native":
-                pytest.skip("Skipping test because ulysses isn't supported with native attention backend.")
+            if attention_backend == AttentionBackendName.NATIVE:
+                pytest.skip("Skipping test because ring isn't supported with native attention backend.")
 
         if ulysses_anything and "ulysses" not in cp_type:
             pytest.skip("Skipping test as ulysses anything needs the ulysses degree set.")
