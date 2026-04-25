@@ -769,11 +769,15 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         Args:
             image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
-                numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
-                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
-                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
-                latents as `image`, but if passing latents directly it is not encoded again.
+                Reference image(s) used to condition generation. Flux.2 encodes them as additional attention tokens that
+                flow through the transformer alongside the text prompt — this is **reference conditioning**, not
+                SD/Flux.1 style img2img, so there is no companion `strength` argument. Pass a list to provide multiple
+                references.
+
+                For both numpy array and pytorch tensor, the expected value range is between `[0, 1]`. If it's a tensor
+                or a list of tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy
+                array or a list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`. Can also accept
+                image latents directly, in which case they will not be re-encoded.
             prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.

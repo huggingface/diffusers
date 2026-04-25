@@ -32,6 +32,26 @@ Flux.2 can potentially generate better better outputs with better prompts. We ca
 an input prompt by setting the `caption_upsample_temperature` argument in the pipeline call arguments.
 The [official implementation](https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/text_encoder.py#L140) recommends this value to be 0.15.
 
+## Reference conditioning vs. img2img
+
+The `image` argument on `Flux2Pipeline` and `Flux2KleinPipeline` is **reference conditioning**, not
+img2img. Reference images are encoded into additional attention tokens that flow through the
+transformer alongside the text prompt — there is no noisy latent initialization, and so no `strength`
+parameter to scale.
+
+This differs from `StableDiffusionImg2ImgPipeline`, `FluxImg2ImgPipeline`, and
+`FluxKontextInpaintPipeline`, which add noise to a latent encoding of the input image and then
+partially denoise it. If you port code from those pipelines and pass `strength=...` to a Flux.2
+pipeline, you will see:
+
+```
+TypeError: Flux2Pipeline.__call__() got an unexpected keyword argument 'strength'
+```
+
+Drop the `strength` kwarg and pass references via `image=` (a single image, or a list for multiple
+references). For Flux.2 inpainting (which does add noise to a latent and therefore does take a
+`strength` parameter), use `Flux2KleinInpaintPipeline` instead.
+
 ## Flux2Pipeline
 
 [[autodoc]] Flux2Pipeline
