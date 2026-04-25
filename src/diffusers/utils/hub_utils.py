@@ -224,6 +224,38 @@ def _add_variant(weights_name: str, variant: str | None = None) -> str:
     return weights_name
 
 
+# Real `.safetensors` / `.bin` weight files are MB-to-GB. Git LFS pointer stubs are
+# tiny text files (~130 bytes). Anything under this size that starts with the LFS
+# pointer marker is, with extremely high confidence, a pointer rather than weights.
+_LFS_POINTER_MAX_SIZE = 1024
+_LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1"
+
+
+def _is_lfs_pointer(path: str | os.PathLike) -> bool:
+    """
+    Return ``True`` if ``path`` is a Git LFS pointer stub rather than the actual file content.
+
+    LFS pointer files are small text files (~130 bytes) of the form::
+
+        version https://git-lfs.github.com/spec/v1
+        oid sha256:<hash>
+        size <bytes>
+
+    They are produced by ``git clone`` of an LFS-backed repository without ``git lfs pull``,
+    or by tools such as ``gsutil rsync`` / ``aws s3 sync`` that mirror an HF repository
+    without LFS-aware copying. Loading a pointer file as if it were the actual weights
+    leads to a confusing safetensors / pickle deserialization error far away from the
+    real cause.
+    """
+    try:
+        if os.path.getsize(path) > _LFS_POINTER_MAX_SIZE:
+            return False
+        with open(path, "rb") as f:
+            return f.read(len(_LFS_POINTER_PREFIX)) == _LFS_POINTER_PREFIX
+    except OSError:
+        return False
+
+
 @validate_hf_hub_args
 def _get_model_file(
     pretrained_model_name_or_path: str | Path,
