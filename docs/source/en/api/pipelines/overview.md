@@ -41,10 +41,13 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [ControlNet with Stable Diffusion XL](controlnet_sdxl) | text2image |
 | [DDIM](ddim) | unconditional image generation |
 | [DDPM](ddpm) | unconditional image generation |
+| [DFlash](dflash) | text2text |
+| [SDAR](sdar) | text2text |
 | [DeepFloyd IF](deepfloyd_if) | text2image, image2image, inpainting, super-resolution |
 | [DiT](dit) | text2image |
 | [Flux](flux) | text2image |
 | [Hunyuan-DiT](hunyuandit) | text2image |
+| [Hybrid Token Diffusion](hybrid_token_diffusion) | text2text |
 | [InstructPix2Pix](pix2pix) | image editing |
 | [Kandinsky 2.1](kandinsky) | text2image, image2image, inpainting, interpolation |
 | [Kandinsky 2.2](kandinsky_v22) | text2image, image2image, inpainting |
@@ -68,6 +71,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Stable Diffusion XL Turbo](stable_diffusion/sdxl_turbo) | text2image, image2image, inpainting |
 | [Stable unCLIP](stable_unclip) | text2image, image variation |
 | [T2I-Adapter](stable_diffusion/adapter) | text2image |
+| [Token Diffusion](token_diffusion) | text2text |
 | [Value-guided planning](value_guided_sampling) | value guided sampling |
 | [VisualCloze](visualcloze) | text2image, image2image, subject driven generation, inpainting, style transfer, image restoration, image editing, [depth,normal,edge,pose]2image, [depth,normal,edge,pose]-estimation, virtual try-on, image relighting |
 
