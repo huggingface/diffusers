@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from fractions import Fraction
 from itertools import chain
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import PIL.Image
@@ -265,12 +266,20 @@ def save_exr_tensor(
         out.close()
 
 
-def _linear_to_srgb(x: np.ndarray) -> np.ndarray:
+def simple_tone_map(x: np.ndarray) -> np.ndarray:
     r"""
-    Apply the sRGB OETF (IEC 61966-2-1) to a linear image. Input values must be in `[0, 1]`; values outside are
-    clipped.
+    Applies a very simple tone-mapping function on (scene-referred) linear light which simply clips values above `1.0`
+    to `1.0`. This is what the original LTX-2.X code does, but you probably want to do some non-trivial tone-mapping
+    to make the sample look better.
     """
-    x = np.clip(x, 0.0, 1.0)
+    return np.clip(x, 0.0, 1.0)
+
+
+def linear_to_srgb(x: np.ndarray) -> np.ndarray:
+    r"""
+    Apply the sRGB (Rec.709) transfer function (OETF; IEC 61966-2-1) to a linear light image. Input values must be in
+    `[0, 1]`.
+    """
     return np.where(x <= 0.0031308, x * 12.92, 1.055 * np.power(x, 1.0 / 2.4) - 0.055)
 
 
@@ -278,14 +287,15 @@ def encode_exr_sequence_to_mp4(
     exr_dir: str | Path,
     output_mp4: str | Path,
     frame_rate: float,
+    tone_mapping_fn: Callable[[np.ndarray], np.ndarray] | None = None,
+    tone_map_in_rgb: bool = False,
     crf: int = 18,
 ) -> None:
     r"""
     Convert a linear-HDR EXR frame sequence into an sRGB-tonemapped H.264 `.mp4` preview.
 
     Each EXR frame is loaded, clipped to `[0, 1]`, passed through the sRGB OETF (no exposure/gain, EV=0), quantized
-    to 8-bit BGR, and fed into a libx264 stream at the supplied `frame_rate`. This mirrors the reference CLI's
-    `encode_exr_sequence_to_mp4`.
+    to 8-bit, and fed into a libx264 stream at the supplied `frame_rate`.
 
     Args:
         exr_dir (`str` or `pathlib.Path`):
@@ -294,14 +304,26 @@ def encode_exr_sequence_to_mp4(
             Output MP4 path.
         frame_rate (`float`):
             Frame rate for the output video.
+        tone_mapping_fn (`Callable[[np.ndarray], np.ndarray]`, *optional*, defaults to `None`):
+            An optional tone mapping function which takes a float32 NumPy array of shape `(H, W, 3)` containing
+            linear HDR values in `[0, ∞)` and returns tone-mapped linear values in `[0, 1]`. The sRGB transfer
+            function (OETF) is applied afterwards — do **not** pre-apply gamma inside this function. If `None`,
+            defaults to [`simple_tone_map`], which clips values above `1.0`. The channel ordering of the input
+            array is controlled by `tone_map_in_rgb`: BGR by default (matching `opencv-python` conventions), or
+            RGB when `tone_map_in_rgb=True` (matching `colour-science` and most other libraries).
+        tone_map_in_rgb (`bool`, *optional*, defaults to `False`):
+            When `True`, each EXR frame is converted from BGR to RGB before being passed to `tone_mapping_fn`,
+            and the output frame is tagged as `rgb24`. Use this when `tone_mapping_fn` expects RGB input (e.g.
+            operators from `colour-science`). When `False` (default), frames are passed as BGR, which is the
+            native format for `opencv-python` tone mappers (e.g. `cv2.createTonemapReinhard().process`).
         crf (`int`, *optional*, defaults to `18`):
             libx264 CRF quality factor. Lower values produce higher quality.
 
     Requires `opencv-python` (for EXR reading via `OPENCV_IO_ENABLE_OPENEXR`).
     """
     import os
-
     os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
+
     try:
         import cv2
     except ImportError as e:  # pragma: no cover - optional dep
@@ -319,17 +341,24 @@ def encode_exr_sequence_to_mp4(
     stream.pix_fmt = "yuv420p"
     stream.options = {"crf": str(crf), "movflags": "+faststart"}
 
+    pix_fmt = "rgb24" if tone_map_in_rgb else "bgr24"
+    if tone_mapping_fn is None:
+        tone_mapping_fn = simple_tone_map
+
     try:
         for i, exr_path in enumerate(exr_files):
             hdr = cv2.imread(str(exr_path), cv2.IMREAD_UNCHANGED).astype(np.float32)
-            sdr = _linear_to_srgb(np.maximum(hdr, 0.0))
-            bgr8 = (sdr * 255.0 + 0.5).astype(np.uint8)
+            if tone_map_in_rgb:
+                hdr = hdr[..., ::-1]
+            hdr_mapped = tone_mapping_fn(hdr)
+            sdr = linear_to_srgb(np.maximum(hdr_mapped, 0.0))
+            out8 = (sdr * 255.0 + 0.5).astype(np.uint8)
 
             if i == 0:
-                stream.height = bgr8.shape[0]
-                stream.width = bgr8.shape[1]
+                stream.height = out8.shape[0]
+                stream.width = out8.shape[1]
 
-            frame = av.VideoFrame.from_ndarray(bgr8, format="bgr24")
+            frame = av.VideoFrame.from_ndarray(out8, format=pix_fmt)
             for packet in stream.encode(frame):
                 container.mux(packet)
 
