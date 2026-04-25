@@ -437,7 +437,7 @@ class UNet2DConditionModel(OriginalUNet2DConditionModel, ConfigMixin, UNet2DCond
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
+        mid_block_type: str | None = "UNetMidBlock2DCrossAttn",
         up_block_types: Tuple[str, ...] = (
             "UpBlock2D",
             "CrossAttnUpBlock2D",
@@ -457,13 +457,13 @@ class UNet2DConditionModel(OriginalUNet2DConditionModel, ConfigMixin, UNet2DCond
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
         reverse_transformer_layers_per_block: Optional[Tuple[Tuple[int]]] = None,
         encoder_hid_dim: Optional[int] = None,
-        encoder_hid_dim_type: Optional[str] = None,
+        encoder_hid_dim_type: str | None = None,
         attention_head_dim: Union[int, Tuple[int]] = 8,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
-        class_embed_type: Optional[str] = None,
-        addition_embed_type: Optional[str] = None,
+        class_embed_type: str | None = None,
+        addition_embed_type: str | None = None,
         addition_time_embed_dim: Optional[int] = None,
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
@@ -472,8 +472,8 @@ class UNet2DConditionModel(OriginalUNet2DConditionModel, ConfigMixin, UNet2DCond
         resnet_out_scale_factor: float = 1.0,
         time_embedding_type: str = "positional",
         time_embedding_dim: Optional[int] = None,
-        time_embedding_act_fn: Optional[str] = None,
-        timestep_post_act: Optional[str] = None,
+        time_embedding_act_fn: str | None = None,
+        timestep_post_act: str | None = None,
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
@@ -481,7 +481,7 @@ class UNet2DConditionModel(OriginalUNet2DConditionModel, ConfigMixin, UNet2DCond
         attention_type: str = "default",
         class_embeddings_concat: bool = False,
         mid_block_only_cross_attention: Optional[bool] = None,
-        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm: str | None = None,
         addition_embed_type_num_heads: int = 64,
     ):
         """Initialize the UnifiedUNet2DConditionModel."""
@@ -565,7 +565,7 @@ class UNet2DConditionModel(OriginalUNet2DConditionModel, ConfigMixin, UNet2DCond
         self.agg_net = nn.ModuleList()
 
     def load_additional_layers(
-        self, dtype: Optional[torch.dtype] = torch.float16, channel: int = 512, weight_path: Optional[str] = None
+        self, dtype: Optional[torch.dtype] = torch.float16, channel: int = 512, weight_path: str | None = None
     ):
         """Load additional layers and weights from a file.
 
@@ -1096,7 +1096,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     """Retrieve latents from an encoder output.
 
@@ -1267,12 +1267,12 @@ class FaithDiffStableDiffusionXLPipeline(
     def encode_prompt(
         self,
         prompt: str,
-        prompt_2: Optional[str] = None,
+        prompt_2: str | None = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[str] = None,
-        negative_prompt_2: Optional[str] = None,
+        negative_prompt: str | None = None,
+        negative_prompt_2: str | None = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -1808,7 +1808,7 @@ class FaithDiffStableDiffusionXLPipeline(
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
-        start_point: Optional[str] = "noise",
+        start_point: str | None = "noise",
         timesteps: List[int] = None,
         denoising_end: Optional[float] = None,
         overlap: float = 0.5,
@@ -1823,7 +1823,7 @@ class FaithDiffStableDiffusionXLPipeline(
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,

@@ -81,7 +81,7 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
 
     @torch.no_grad()
-    def test_torch_compile_repeated_blocks(self):
+    def test_torch_compile_repeated_blocks(self, recompile_limit=1):
         if self.model_class._repeated_blocks is None:
             pytest.skip("Skipping test as the model class doesn't have `_repeated_blocks` set.")
 
@@ -92,7 +92,6 @@ class TorchCompileTesterMixin:
         model.eval()
         model.compile_repeated_blocks(fullgraph=True)
 
-        recompile_limit = 1
         if self.model_class.__name__ == "UNet2DConditionModel":
             recompile_limit = 2
 

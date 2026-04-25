@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 from functools import partial
-from typing import Dict, List, Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -48,9 +49,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: FlaxUNet2DConditionModel,
-        scheduler: Union[
-            FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
-        ],
+        scheduler: FlaxDDIMScheduler | FlaxPNDMScheduler | FlaxLMSDiscreteScheduler | FlaxDPMSolverMultistepScheduler,
         dtype: jnp.dtype = jnp.float32,
     ):
         super().__init__()
@@ -67,7 +66,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
 
-    def prepare_inputs(self, prompt: Union[str, List[str]]):
+    def prepare_inputs(self, prompt: str | list[str]):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
@@ -88,12 +87,12 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
     def __call__(
         self,
         prompt_ids: jax.Array,
-        params: Union[Dict, FrozenDict],
+        params: dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int = 50,
-        guidance_scale: Union[float, jax.Array] = 7.5,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        guidance_scale: float | jax.Array = 7.5,
+        height: int | None = None,
+        width: int | None = None,
         latents: jnp.array = None,
         neg_prompt_ids: jnp.array = None,
         return_dict: bool = True,
@@ -169,14 +168,14 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
     def _generate(
         self,
         prompt_ids: jnp.array,
-        params: Union[Dict, FrozenDict],
+        params: dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int,
         height: int,
         width: int,
         guidance_scale: float,
-        latents: Optional[jnp.array] = None,
-        neg_prompt_ids: Optional[jnp.array] = None,
+        latents: jnp.array | None = None,
+        neg_prompt_ids: jnp.array | None = None,
         return_latents=False,
     ):
         if height % 8 != 0 or width % 8 != 0:

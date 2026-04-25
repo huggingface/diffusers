@@ -13,7 +13,7 @@
 # limitations under the License.
 from dataclasses import dataclass
 from math import gcd
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 from torch import Tensor, nn
@@ -71,8 +71,8 @@ class DownBlockControlNetXSAdapter(nn.Module):
         resnets: nn.ModuleList,
         base_to_ctrl: nn.ModuleList,
         ctrl_to_base: nn.ModuleList,
-        attentions: Optional[nn.ModuleList] = None,
-        downsampler: Optional[nn.Conv2d] = None,
+        attentions: nn.ModuleList | None = None,
+        downsampler: nn.Conv2d | None = None,
     ):
         super().__init__()
         self.resnets = resnets
@@ -107,14 +107,14 @@ def get_down_block_adapter(
     ctrl_in_channels: int,
     ctrl_out_channels: int,
     temb_channels: int,
-    max_norm_num_groups: Optional[int] = 32,
+    max_norm_num_groups: int | None = 32,
     has_crossattn=True,
-    transformer_layers_per_block: Optional[Union[int, Tuple[int]]] = 1,
-    num_attention_heads: Optional[int] = 1,
-    cross_attention_dim: Optional[int] = 1024,
+    transformer_layers_per_block: int | tuple[int] | None = 1,
+    num_attention_heads: int | None = 1,
+    cross_attention_dim: int | None = 1024,
     add_downsample: bool = True,
-    upcast_attention: Optional[bool] = False,
-    use_linear_projection: Optional[bool] = True,
+    upcast_attention: bool | None = False,
+    use_linear_projection: bool | None = True,
 ):
     num_layers = 2  # only support sd + sdxl
 
@@ -195,11 +195,11 @@ def get_down_block_adapter(
 def get_mid_block_adapter(
     base_channels: int,
     ctrl_channels: int,
-    temb_channels: Optional[int] = None,
-    max_norm_num_groups: Optional[int] = 32,
+    temb_channels: int | None = None,
+    max_norm_num_groups: int | None = 32,
     transformer_layers_per_block: int = 1,
-    num_attention_heads: Optional[int] = 1,
-    cross_attention_dim: Optional[int] = 1024,
+    num_attention_heads: int | None = 1,
+    cross_attention_dim: int | None = 1024,
     upcast_attention: bool = False,
     use_linear_projection: bool = True,
 ):
@@ -230,7 +230,7 @@ def get_mid_block_adapter(
 def get_up_block_adapter(
     out_channels: int,
     prev_output_channel: int,
-    ctrl_skip_channels: List[int],
+    ctrl_skip_channels: list[int],
 ):
     ctrl_to_base = []
     num_layers = 3  # only support sd + sdxl
@@ -278,7 +278,7 @@ class ControlNetXSAdapter(ModelMixin, AttentionMixin, ConfigMixin):
             The tuple of downsample blocks to use.
         sample_size (`int`, defaults to 96):
             Height and width of input/output sample.
-        transformer_layers_per_block (`Union[int, Tuple[int]]`, defaults to 1):
+        transformer_layers_per_block (`int | tuple[int]`, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
         upcast_attention (`bool`, defaults to `True`):
@@ -293,21 +293,21 @@ class ControlNetXSAdapter(ModelMixin, AttentionMixin, ConfigMixin):
         self,
         conditioning_channels: int = 3,
         conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: tuple[int] = (16, 32, 96, 256),
         time_embedding_mix: float = 1.0,
         learn_time_embedding: bool = False,
-        num_attention_heads: Union[int, Tuple[int]] = 4,
-        block_out_channels: Tuple[int, ...] = (4, 8, 16, 16),
-        base_block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
+        num_attention_heads: int | tuple[int] = 4,
+        block_out_channels: tuple[int] = (4, 8, 16, 16),
+        base_block_out_channels: tuple[int] = (320, 640, 1280, 1280),
         cross_attention_dim: int = 1024,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        sample_size: Optional[int] = 96,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        sample_size: int | None = 96,
+        transformer_layers_per_block: int | tuple[int] = 1,
         upcast_attention: bool = True,
         max_norm_num_groups: int = 32,
         use_linear_projection: bool = True,
@@ -429,14 +429,14 @@ class ControlNetXSAdapter(ModelMixin, AttentionMixin, ConfigMixin):
     def from_unet(
         cls,
         unet: UNet2DConditionModel,
-        size_ratio: Optional[float] = None,
-        block_out_channels: Optional[List[int]] = None,
-        num_attention_heads: Optional[List[int]] = None,
+        size_ratio: float | None = None,
+        block_out_channels: list[int] | None = None,
+        num_attention_heads: list[int] | None = None,
         learn_time_embedding: bool = False,
         time_embedding_mix: int = 1.0,
         conditioning_channels: int = 3,
         conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: tuple[int] = (16, 32, 96, 256),
     ):
         r"""
         Instantiate a [`ControlNetXSAdapter`] from a [`UNet2DConditionModel`].
@@ -447,9 +447,9 @@ class ControlNetXSAdapter(ModelMixin, AttentionMixin, ConfigMixin):
             size_ratio (float, *optional*, defaults to `None`):
                 When given, block_out_channels is set to a fraction of the base model's block_out_channels. Either this
                 or `block_out_channels` must be given.
-            block_out_channels (`List[int]`, *optional*, defaults to `None`):
+            block_out_channels (`list[int]`, *optional*, defaults to `None`):
                 Down blocks output channels in control model. Either this or `size_ratio` must be given.
-            num_attention_heads (`List[int]`, *optional*, defaults to `None`):
+            num_attention_heads (`list[int]`, *optional*, defaults to `None`):
                 The dimension of the attention heads. The naming seems a bit confusing and it is, see
                 https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
             learn_time_embedding (`bool`, defaults to `False`):
@@ -461,7 +461,7 @@ class ControlNetXSAdapter(ModelMixin, AttentionMixin, ConfigMixin):
                 Number of channels of conditioning input (e.g. an image)
             conditioning_channel_order (`str`, defaults to `"rgb"`):
                 The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
-            conditioning_embedding_out_channels (`Tuple[int]`, defaults to `(16, 32, 96, 256)`):
+            conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
                 The tuple of output channel for each block in the `controlnet_cond_embedding` layer.
         """
 
@@ -528,38 +528,33 @@ class UNetControlNetXSModel(ModelMixin, AttentionMixin, ConfigMixin):
     def __init__(
         self,
         # unet configs
-        sample_size: Optional[int] = 96,
-        down_block_types: Tuple[str, ...] = (
+        sample_size: int | None = 96,
+        down_block_types: tuple[str] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        up_block_types: Tuple[str, ...] = (
-            "UpBlock2D",
-            "CrossAttnUpBlock2D",
-            "CrossAttnUpBlock2D",
-            "CrossAttnUpBlock2D",
-        ),
-        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
-        norm_num_groups: Optional[int] = 32,
-        cross_attention_dim: Union[int, Tuple[int]] = 1024,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
-        num_attention_heads: Union[int, Tuple[int]] = 8,
-        addition_embed_type: Optional[str] = None,
-        addition_time_embed_dim: Optional[int] = None,
+        up_block_types: tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        block_out_channels: tuple[int] = (320, 640, 1280, 1280),
+        norm_num_groups: int | None = 32,
+        cross_attention_dim: int | tuple[int] = 1024,
+        transformer_layers_per_block: int | tuple[int] = 1,
+        num_attention_heads: int | tuple[int] = 8,
+        addition_embed_type: str | None = None,
+        addition_time_embed_dim: int | None = None,
         upcast_attention: bool = True,
         use_linear_projection: bool = True,
-        time_cond_proj_dim: Optional[int] = None,
-        projection_class_embeddings_input_dim: Optional[int] = None,
+        time_cond_proj_dim: int | None = None,
+        projection_class_embeddings_input_dim: int | None = None,
         # additional controlnet configs
         time_embedding_mix: float = 1.0,
         ctrl_conditioning_channels: int = 3,
-        ctrl_conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
+        ctrl_conditioning_embedding_out_channels: tuple[int] = (16, 32, 96, 256),
         ctrl_conditioning_channel_order: str = "rgb",
         ctrl_learn_time_embedding: bool = False,
-        ctrl_block_out_channels: Tuple[int, ...] = (4, 8, 16, 16),
-        ctrl_num_attention_heads: Union[int, Tuple[int]] = 4,
+        ctrl_block_out_channels: tuple[int] = (4, 8, 16, 16),
+        ctrl_num_attention_heads: int | tuple[int] = 4,
         ctrl_max_norm_num_groups: int = 32,
     ):
         super().__init__()
@@ -724,11 +719,11 @@ class UNetControlNetXSModel(ModelMixin, AttentionMixin, ConfigMixin):
     def from_unet(
         cls,
         unet: UNet2DConditionModel,
-        controlnet: Optional[ControlNetXSAdapter] = None,
-        size_ratio: Optional[float] = None,
-        ctrl_block_out_channels: Optional[List[float]] = None,
-        time_embedding_mix: Optional[float] = None,
-        ctrl_optional_kwargs: Optional[Dict] = None,
+        controlnet: ControlNetXSAdapter | None = None,
+        size_ratio: float | None = None,
+        ctrl_block_out_channels: list[float] | None = None,
+        time_embedding_mix: float | None = None,
+        ctrl_optional_kwargs: dict | None = None,
     ):
         r"""
         Instantiate a [`UNetControlNetXSModel`] from a [`UNet2DConditionModel`] and an optional [`ControlNetXSAdapter`]
@@ -742,7 +737,7 @@ class UNetControlNetXSModel(ModelMixin, AttentionMixin, ConfigMixin):
                 adapter will be created.
             size_ratio (float, *optional*, defaults to `None`):
                 Used to construct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details.
-            ctrl_block_out_channels (`List[int]`, *optional*, defaults to `None`):
+            ctrl_block_out_channels (`list[int]`, *optional*, defaults to `None`):
                 Used to construct the controlnet if none is given. See [`ControlNetXSAdapter.from_unet`] for details,
                 where this parameter is called `block_out_channels`.
             time_embedding_mix (`float`, *optional*, defaults to None):
@@ -953,25 +948,25 @@ class UNetControlNetXSModel(ModelMixin, AttentionMixin, ConfigMixin):
     def forward(
         self,
         sample: Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
-        controlnet_cond: Optional[torch.Tensor] = None,
-        conditioning_scale: Optional[float] = 1.0,
-        class_labels: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+        controlnet_cond: torch.Tensor | None = None,
+        conditioning_scale: float | None = 1.0,
+        class_labels: torch.Tensor | None = None,
+        timestep_cond: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        added_cond_kwargs: dict[str, torch.Tensor] | None = None,
         return_dict: bool = True,
         apply_control: bool = True,
-    ) -> Union[ControlNetXSOutput, Tuple]:
+    ) -> ControlNetXSOutput | tuple:
         """
         The [`ControlNetXSModel`] forward method.
 
         Args:
             sample (`Tensor`):
                 The noisy input tensor.
-            timestep (`Union[torch.Tensor, float, int]`):
+            timestep (`torch.Tensor | float | int`):
                 The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.
@@ -1166,13 +1161,13 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         norm_num_groups: int = 32,
         ctrl_max_norm_num_groups: int = 32,
         has_crossattn=True,
-        transformer_layers_per_block: Optional[Union[int, Tuple[int]]] = 1,
-        base_num_attention_heads: Optional[int] = 1,
-        ctrl_num_attention_heads: Optional[int] = 1,
-        cross_attention_dim: Optional[int] = 1024,
+        transformer_layers_per_block: int | tuple[int] | None = 1,
+        base_num_attention_heads: int | None = 1,
+        ctrl_num_attention_heads: int | None = 1,
+        cross_attention_dim: int | None = 1024,
         add_downsample: bool = True,
-        upcast_attention: Optional[bool] = False,
-        use_linear_projection: Optional[bool] = True,
+        upcast_attention: bool | None = False,
+        use_linear_projection: bool | None = True,
     ):
         super().__init__()
         base_resnets = []
@@ -1361,14 +1356,14 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         self,
         hidden_states_base: Tensor,
         temb: Tensor,
-        encoder_hidden_states: Optional[Tensor] = None,
-        hidden_states_ctrl: Optional[Tensor] = None,
-        conditioning_scale: Optional[float] = 1.0,
-        attention_mask: Optional[Tensor] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[Tensor] = None,
+        encoder_hidden_states: Tensor | None = None,
+        hidden_states_ctrl: Tensor | None = None,
+        conditioning_scale: float | None = 1.0,
+        attention_mask: Tensor | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        encoder_attention_mask: Tensor | None = None,
         apply_control: bool = True,
-    ) -> Tuple[Tensor, Tensor, Tuple[Tensor, ...], Tuple[Tensor, ...]]:
+    ) -> tuple[Tensor, Tensor, tuple[Tensor, ...], tuple[Tensor, ...]]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1455,15 +1450,15 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
         self,
         base_channels: int,
         ctrl_channels: int,
-        temb_channels: Optional[int] = None,
+        temb_channels: int | None = None,
         norm_num_groups: int = 32,
         ctrl_max_norm_num_groups: int = 32,
         transformer_layers_per_block: int = 1,
-        base_num_attention_heads: Optional[int] = 1,
-        ctrl_num_attention_heads: Optional[int] = 1,
-        cross_attention_dim: Optional[int] = 1024,
+        base_num_attention_heads: int | None = 1,
+        ctrl_num_attention_heads: int | None = 1,
+        cross_attention_dim: int | None = 1024,
         upcast_attention: bool = False,
-        use_linear_projection: Optional[bool] = True,
+        use_linear_projection: bool | None = True,
     ):
         super().__init__()
 
@@ -1568,13 +1563,13 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
         hidden_states_base: Tensor,
         temb: Tensor,
         encoder_hidden_states: Tensor,
-        hidden_states_ctrl: Optional[Tensor] = None,
-        conditioning_scale: Optional[float] = 1.0,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        attention_mask: Optional[Tensor] = None,
-        encoder_attention_mask: Optional[Tensor] = None,
+        hidden_states_ctrl: Tensor | None = None,
+        conditioning_scale: float | None = 1.0,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        attention_mask: Tensor | None = None,
+        encoder_attention_mask: Tensor | None = None,
         apply_control: bool = True,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1606,17 +1601,17 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         in_channels: int,
         out_channels: int,
         prev_output_channel: int,
-        ctrl_skip_channels: List[int],
+        ctrl_skip_channels: list[int],
         temb_channels: int,
         norm_num_groups: int = 32,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int | None = None,
         has_crossattn=True,
         transformer_layers_per_block: int = 1,
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1024,
         add_upsample: bool = True,
         upcast_attention: bool = False,
-        use_linear_projection: Optional[bool] = True,
+        use_linear_projection: bool | None = True,
     ):
         super().__init__()
         resnets = []
@@ -1751,15 +1746,15 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
     def forward(
         self,
         hidden_states: Tensor,
-        res_hidden_states_tuple_base: Tuple[Tensor, ...],
-        res_hidden_states_tuple_ctrl: Tuple[Tensor, ...],
+        res_hidden_states_tuple_base: tuple[Tensor, ...],
+        res_hidden_states_tuple_ctrl: tuple[Tensor, ...],
         temb: Tensor,
-        encoder_hidden_states: Optional[Tensor] = None,
-        conditioning_scale: Optional[float] = 1.0,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        attention_mask: Optional[Tensor] = None,
-        upsample_size: Optional[int] = None,
-        encoder_attention_mask: Optional[Tensor] = None,
+        encoder_hidden_states: Tensor | None = None,
+        conditioning_scale: float | None = 1.0,
+        cross_attention_kwargs: dict[str, Any] | None = None,
+        attention_mask: Tensor | None = None,
+        upsample_size: int | None = None,
+        encoder_attention_mask: Tensor | None = None,
         apply_control: bool = True,
     ) -> Tensor:
         if cross_attention_kwargs is not None:

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -23,7 +23,7 @@ from diffusers.loaders import FromOriginalModelMixin
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -57,9 +57,9 @@ class HunyuanImageAttnProcessor:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if attn.add_q_proj is None and encoder_hidden_states is not None:
             hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
@@ -157,7 +157,7 @@ class HunyuanImageAttnProcessor:
 class HunyuanImagePatchEmbed(nn.Module):
     def __init__(
         self,
-        patch_size: Union[Tuple[int, int], Tuple[int, int, int]] = (16, 16),
+        patch_size: tuple[int, int, tuple[int, int, int]] = (16, 16),
         in_chans: int = 3,
         embed_dim: int = 768,
     ) -> None:
@@ -198,7 +198,7 @@ class HunyuanImageByT5TextProjection(nn.Module):
 
 
 class HunyuanImageAdaNorm(nn.Module):
-    def __init__(self, in_features: int, out_features: Optional[int] = None) -> None:
+    def __init__(self, in_features: int, out_features: int | None = None) -> None:
         super().__init__()
 
         out_features = out_features or 2 * in_features
@@ -207,7 +207,7 @@ class HunyuanImageAdaNorm(nn.Module):
 
     def forward(
         self, temb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         temb = self.linear(self.nonlinearity(temb))
         gate_msa, gate_mlp = temb.chunk(2, dim=1)
         gate_msa, gate_mlp = gate_msa.unsqueeze(1), gate_mlp.unsqueeze(1)
@@ -241,9 +241,9 @@ class HunyuanImageCombinedTimeGuidanceEmbedding(nn.Module):
     def forward(
         self,
         timestep: torch.Tensor,
-        timestep_r: Optional[torch.Tensor] = None,
-        guidance: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        timestep_r: torch.Tensor | None = None,
+        guidance: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=timestep.dtype))
 
@@ -295,7 +295,7 @@ class HunyuanImageIndividualTokenRefinerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         norm_hidden_states = self.norm1(hidden_states)
 
@@ -343,7 +343,7 @@ class HunyuanImageIndividualTokenRefiner(nn.Module):
         self,
         hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
     ) -> None:
         self_attn_mask = None
         if attention_mask is not None:
@@ -394,7 +394,7 @@ class HunyuanImageTokenRefiner(nn.Module):
         self,
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
-        attention_mask: Optional[torch.LongTensor] = None,
+        attention_mask: torch.LongTensor | None = None,
     ) -> torch.Tensor:
         if attention_mask is None:
             pooled_hidden_states = hidden_states.mean(dim=1)
@@ -412,9 +412,7 @@ class HunyuanImageTokenRefiner(nn.Module):
 
 
 class HunyuanImageRotaryPosEmbed(nn.Module):
-    def __init__(
-        self, patch_size: Union[Tuple, List[int]], rope_dim: Union[Tuple, List[int]], theta: float = 256.0
-    ) -> None:
+    def __init__(self, patch_size: tuple | list[int], rope_dim: tuple | list[int], theta: float = 256.0) -> None:
         super().__init__()
 
         if not isinstance(patch_size, (tuple, list)) or len(patch_size) not in [2, 3]:
@@ -496,8 +494,8 @@ class HunyuanImageSingleTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
@@ -577,11 +575,11 @@ class HunyuanImageTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         *args,
         **kwargs,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # 1. Input normalization
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
@@ -653,7 +651,7 @@ class HunyuanImageTransformer2DModel(
             The dimension of the pooled projection of the text embeddings.
         rope_theta (`float`, defaults to `256.0`):
             The value of theta to use in the RoPE layer.
-        rope_axes_dim (`Tuple[int]`, defaults to `(16, 56, 56)`):
+        rope_axes_dim (`tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions of the axes to use in the RoPE layer.
         image_condition_type (`str`, *optional*, defaults to `None`):
             The type of image conditioning to use. If `None`, no image conditioning is used. If `latent_concat`, the
@@ -682,13 +680,13 @@ class HunyuanImageTransformer2DModel(
         num_single_layers: int = 40,
         num_refiner_layers: int = 2,
         mlp_ratio: float = 4.0,
-        patch_size: Tuple[int, int] = (1, 1),
+        patch_size: tuple[int, int] = (1, 1),
         qk_norm: str = "rms_norm",
         guidance_embeds: bool = False,
         text_embed_dim: int = 3584,
-        text_embed_2_dim: Optional[int] = None,
+        text_embed_2_dim: int | None = None,
         rope_theta: float = 256.0,
-        rope_axes_dim: Tuple[int, ...] = (64, 64),
+        rope_axes_dim: tuple[int, ...] = (64, 64),
         use_meanflow: bool = False,
     ) -> None:
         super().__init__()
@@ -742,34 +740,20 @@ class HunyuanImageTransformer2DModel(
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        timestep_r: Optional[torch.LongTensor] = None,
-        encoder_hidden_states_2: Optional[torch.Tensor] = None,
-        encoder_attention_mask_2: Optional[torch.Tensor] = None,
-        guidance: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        timestep_r: torch.LongTensor | None = None,
+        encoder_hidden_states_2: torch.Tensor | None = None,
+        encoder_attention_mask_2: torch.Tensor | None = None,
+        guidance: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
+    ) -> torch.Tensor | dict[str, torch.Tensor]:
         if hidden_states.ndim == 4:
             batch_size, channels, height, width = hidden_states.shape
             sizes = (height, width)
@@ -899,10 +883,6 @@ class HunyuanImageTransformer2DModel(
             post_patch * patch for post_patch, patch in zip(post_patch_sizes, self.config.patch_size)
         ]
         hidden_states = hidden_states.reshape(*final_dims)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (hidden_states,)

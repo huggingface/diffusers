@@ -1,5 +1,4 @@
 import inspect
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -59,14 +58,12 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         self,
         vqvae: VQModel,
         unet: UNet2DModel,
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
+        scheduler: DDIMScheduler
+        | PNDMScheduler
+        | LMSDiscreteScheduler
+        | EulerDiscreteScheduler
+        | EulerAncestralDiscreteScheduler
+        | DPMSolverMultistepScheduler,
     ):
         super().__init__()
         self.register_modules(vqvae=vqvae, unet=unet, scheduler=scheduler)
@@ -74,14 +71,14 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Union[torch.Tensor, PIL.Image.Image] = None,
-        batch_size: Optional[int] = 1,
-        num_inference_steps: Optional[int] = 100,
-        eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        output_type: Optional[str] = "pil",
+        image: torch.Tensor | PIL.Image.Image = None,
+        batch_size: int | None = 1,
+        num_inference_steps: int | None = 100,
+        eta: float | None = 0.0,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-    ) -> Union[Tuple, ImagePipelineOutput]:
+    ) -> tuple | ImagePipelineOutput:
         r"""
         The call function to the pipeline for generation.
 
@@ -96,7 +93,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
                 applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):

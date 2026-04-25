@@ -63,7 +63,7 @@ def get_indent(line: str) -> str:
 
 
 def split_code_in_indented_blocks(
-    code: str, indent_level: str = "", start_prompt: Optional[str] = None, end_prompt: Optional[str] = None
+    code: str, indent_level: str = "", start_prompt: str | None = None, end_prompt: str | None = None
 ) -> List[str]:
     """
     Split some code into its indented blocks, starting at a given level.

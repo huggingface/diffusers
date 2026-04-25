@@ -196,13 +196,13 @@ class SanaImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     # TODO(aryan): Create a dummy gemma model with smol vocab size
     @unittest.skip(
-        "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+        "A very small vocab size is used for fast tests. So, Any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
     )
     def test_inference_batch_consistent(self):
         pass
 
     @unittest.skip(
-        "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+        "A very small vocab size is used for fast tests. So, Any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
     )
     def test_inference_batch_single_identical(self):
         pass

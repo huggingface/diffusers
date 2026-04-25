@@ -17,3 +17,7 @@ A Transformer model for image-like data from [Flux2](https://hf.co/black-forest-
 ## Flux2Transformer2DModel
 
 [[autodoc]] Flux2Transformer2DModel
+
+## Flux2Transformer2DModelOutput
+
+[[autodoc]] models.transformers.transformer_flux2.Flux2Transformer2DModelOutput

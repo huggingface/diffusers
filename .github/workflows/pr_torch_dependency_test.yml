@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "src/diffusers/**.py"
+      - "tests/**.py"
   push:
     branches:
       - main
@@ -22,11 +23,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.8"
+          python-version: "3.10"
       - name: Install dependencies
         run: |
           pip install -e .
-          pip install torch torchvision torchaudio pytest
+          pip install torch pytest
       - name: Check for soft dependencies
         run: |
             pytest tests/others/test_dependencies.py

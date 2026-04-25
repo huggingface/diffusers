@@ -19,7 +19,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, BertModel, T5EncoderModel
+from transformers import AutoConfig, AutoTokenizer, BertModel, T5EncoderModel
 
 from diffusers import (
     AutoencoderKL,
@@ -67,7 +67,9 @@ class HunyuanDiTPAGPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         scheduler = DDPMScheduler()
         text_encoder = BertModel.from_pretrained("hf-internal-testing/tiny-random-BertModel")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-BertModel")
-        text_encoder_2 = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        torch.manual_seed(0)
+        config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder_2 = T5EncoderModel(config)
         tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         components = {

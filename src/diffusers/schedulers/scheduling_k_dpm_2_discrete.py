@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -44,7 +44,7 @@ class KDPM2DiscreteSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -149,10 +149,10 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.00085,  # sensible defaults
         beta_end: float = 0.012,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
-        use_karras_sigmas: Optional[bool] = False,
-        use_exponential_sigmas: Optional[bool] = False,
-        use_beta_sigmas: Optional[bool] = False,
+        trained_betas: np.ndarray | list[float] | None = None,
+        use_karras_sigmas: bool = False,
+        use_exponential_sigmas: bool = False,
+        use_beta_sigmas: bool = False,
         prediction_type: str = "epsilon",
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
@@ -222,7 +222,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
     def scale_model_input(
         self,
         sample: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
     ) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -252,8 +252,8 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int,
-        device: Union[str, torch.device] = None,
-        num_train_timesteps: Optional[int] = None,
+        device: str | torch.device = None,
+        num_train_timesteps: int = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -339,7 +339,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(
-        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
     ) -> int:
         """
         Find the index of a given timestep in the timestep schedule.
@@ -369,7 +369,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
         """
         Initialize the step index for the scheduler based on the given timestep.
 
@@ -545,11 +545,11 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: Union[torch.Tensor, np.ndarray],
-        timestep: Union[float, torch.Tensor],
-        sample: Union[torch.Tensor, np.ndarray],
+        model_output: torch.Tensor | np.ndarray,
+        timestep: float | torch.Tensor,
+        sample: torch.Tensor | np.ndarray,
         return_dict: bool = True,
-    ) -> Union[KDPM2DiscreteSchedulerOutput, Tuple]:
+    ) -> KDPM2DiscreteSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

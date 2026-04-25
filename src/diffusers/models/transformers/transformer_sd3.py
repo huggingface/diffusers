@@ -11,14 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, SD3Transformer2DLoadersMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, FeedForward, JointTransformerBlock
 from ..attention_processor import (
@@ -106,7 +106,7 @@ class SD3Transformer2DModel(
             The number of latent channels in the output.
         pos_embed_max_size (`int`, defaults to `96`):
             The maximum latent height/width of positional embeddings.
-        dual_attention_layers (`Tuple[int, ...]`, defaults to `()`):
+        dual_attention_layers (`tuple[int, ...]`, defaults to `()`):
             The number of dual-stream transformer blocks to use.
         qk_norm (`str`, *optional*, defaults to `None`):
             The normalization to use for query and key in the attention layer. If `None`, no normalization is used.
@@ -130,10 +130,10 @@ class SD3Transformer2DModel(
         pooled_projection_dim: int = 2048,
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
-        dual_attention_layers: Tuple[
+        dual_attention_layers: tuple[
             int, ...
         ] = (),  # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
-        qk_norm: Optional[str] = None,
+        qk_norm: str | None = None,
     ):
         super().__init__()
         self.out_channels = out_channels if out_channels is not None else in_channels
@@ -172,7 +172,7 @@ class SD3Transformer2DModel(
         self.gradient_checkpointing = False
 
     # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
+    def enable_forward_chunking(self, chunk_size: int | None = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -245,17 +245,18 @@ class SD3Transformer2DModel(
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
+    @apply_lora_scale("joint_attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
         pooled_projections: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        block_controlnet_hidden_states: List = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        block_controlnet_hidden_states: list = None,
+        joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-        skip_layers: Optional[List[int]] = None,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+        skip_layers: list[int] | None = None,
+    ) -> torch.Tensor | Transformer2DModelOutput:
         """
         The [`SD3Transformer2DModel`] forward method.
 
@@ -284,20 +285,6 @@ class SD3Transformer2DModel(
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        if joint_attention_kwargs is not None:
-            joint_attention_kwargs = joint_attention_kwargs.copy()
-            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
-                )
 
         height, width = hidden_states.shape[-2:]
 
@@ -351,10 +338,6 @@ class SD3Transformer2DModel(
         output = hidden_states.reshape(
             shape=(hidden_states.shape[0], self.out_channels, height * patch_size, width * patch_size)
         )
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Optional, Tuple, Union
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -72,7 +70,7 @@ class CogVideoXCausalConv3d(nn.Module):
     Args:
         in_channels (`int`): Number of channels in the input tensor.
         out_channels (`int`): Number of output channels produced by the convolution.
-        kernel_size (`int` or `Tuple[int, int, int]`): Kernel size of the convolutional kernel.
+        kernel_size (`int` or `tuple[int, int, int]`): Kernel size of the convolutional kernel.
         stride (`int`, defaults to `1`): Stride of the convolution.
         dilation (`int`, defaults to `1`): Dilation rate of the convolution.
         pad_mode (`str`, defaults to `"constant"`): Padding mode.
@@ -82,7 +80,7 @@ class CogVideoXCausalConv3d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]],
+        kernel_size: int | tuple[int, int, int],
         stride: int = 1,
         dilation: int = 1,
         pad_mode: str = "constant",
@@ -123,7 +121,7 @@ class CogVideoXCausalConv3d(nn.Module):
         )
 
     def fake_context_parallel_forward(
-        self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None
+        self, inputs: torch.Tensor, conv_cache: torch.Tensor | None = None
     ) -> torch.Tensor:
         if self.pad_mode == "replicate":
             inputs = F.pad(inputs, self.time_causal_padding, mode="replicate")
@@ -134,7 +132,7 @@ class CogVideoXCausalConv3d(nn.Module):
                 inputs = torch.cat(cached_inputs + [inputs], dim=2)
         return inputs
 
-    def forward(self, inputs: torch.Tensor, conv_cache: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor, conv_cache: torch.Tensor | None = None) -> torch.Tensor:
         inputs = self.fake_context_parallel_forward(inputs, conv_cache)
 
         if self.pad_mode == "replicate":
@@ -174,7 +172,7 @@ class CogVideoXSpatialNorm3D(nn.Module):
         self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
 
     def forward(
-        self, f: torch.Tensor, zq: torch.Tensor, conv_cache: Optional[Dict[str, torch.Tensor]] = None
+        self, f: torch.Tensor, zq: torch.Tensor, conv_cache: dict[str, torch.Tensor] | None = None
     ) -> torch.Tensor:
         new_conv_cache = {}
         conv_cache = conv_cache or {}
@@ -227,14 +225,14 @@ class CogVideoXResnetBlock3D(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         dropout: float = 0.0,
         temb_channels: int = 512,
         groups: int = 32,
         eps: float = 1e-6,
         non_linearity: str = "swish",
         conv_shortcut: bool = False,
-        spatial_norm_dim: Optional[int] = None,
+        spatial_norm_dim: int | None = None,
         pad_mode: str = "first",
     ):
         super().__init__()
@@ -287,9 +285,9 @@ class CogVideoXResnetBlock3D(nn.Module):
     def forward(
         self,
         inputs: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        zq: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         new_conv_cache = {}
         conv_cache = conv_cache or {}
@@ -409,9 +407,9 @@ class CogVideoXDownBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        zq: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXDownBlock3D` class."""
 
@@ -477,7 +475,7 @@ class CogVideoXMidBlock3D(nn.Module):
         resnet_eps: float = 1e-6,
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        spatial_norm_dim: Optional[int] = None,
+        spatial_norm_dim: int | None = None,
         pad_mode: str = "first",
     ):
         super().__init__()
@@ -504,9 +502,9 @@ class CogVideoXMidBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        zq: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXMidBlock3D` class."""
 
@@ -611,9 +609,9 @@ class CogVideoXUpBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        zq: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXUpBlock3D` class."""
 
@@ -652,10 +650,10 @@ class CogVideoXEncoder3D(nn.Module):
             The number of input channels.
         out_channels (`int`, *optional*, defaults to 3):
             The number of output channels.
-        down_block_types (`Tuple[str, ...]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+        down_block_types (`tuple[str, ...]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
             The types of down blocks to use. See `~diffusers.models.unet_2d_blocks.get_down_block` for available
             options.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
+        block_out_channels (`tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
         act_fn (`str`, *optional*, defaults to `"silu"`):
             The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
@@ -671,13 +669,13 @@ class CogVideoXEncoder3D(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 16,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
+        block_out_channels: tuple[int, ...] = (128, 256, 256, 512),
         layers_per_block: int = 3,
         act_fn: str = "silu",
         norm_eps: float = 1e-6,
@@ -743,8 +741,8 @@ class CogVideoXEncoder3D(nn.Module):
     def forward(
         self,
         sample: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""The forward method of the `CogVideoXEncoder3D` class."""
 
@@ -805,9 +803,9 @@ class CogVideoXDecoder3D(nn.Module):
             The number of input channels.
         out_channels (`int`, *optional*, defaults to 3):
             The number of output channels.
-        up_block_types (`Tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+        up_block_types (`tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
             The types of up blocks to use. See `~diffusers.models.unet_2d_blocks.get_up_block` for available options.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
+        block_out_channels (`tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
         act_fn (`str`, *optional*, defaults to `"silu"`):
             The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
@@ -823,13 +821,13 @@ class CogVideoXDecoder3D(nn.Module):
         self,
         in_channels: int = 16,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = (
+        up_block_types: tuple[str, ...] = (
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
+        block_out_channels: tuple[int, ...] = (128, 256, 256, 512),
         layers_per_block: int = 3,
         act_fn: str = "silu",
         norm_eps: float = 1e-6,
@@ -902,8 +900,8 @@ class CogVideoXDecoder3D(nn.Module):
     def forward(
         self,
         sample: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        temb: torch.Tensor | None = None,
+        conv_cache: dict[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""The forward method of the `CogVideoXDecoder3D` class."""
 
@@ -966,12 +964,12 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
-            Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
-            Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of block output channels.
+        down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+            tuple of downsample block types.
+        up_block_types (`tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+            tuple of upsample block types.
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
+            tuple of block output channels.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         sample_size (`int`, *optional*, defaults to `32`): Sample input size.
         scaling_factor (`float`, *optional*, defaults to `1.15258426`):
@@ -995,19 +993,19 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str] = (
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
         ),
-        up_block_types: Tuple[str, ...] = (
+        up_block_types: tuple[str] = (
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
+        block_out_channels: tuple[int] = (128, 256, 256, 512),
         latent_channels: int = 16,
         layers_per_block: int = 3,
         act_fn: str = "silu",
@@ -1017,9 +1015,9 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         sample_height: int = 480,
         sample_width: int = 720,
         scaling_factor: float = 1.15258426,
-        shift_factor: Optional[float] = None,
-        latents_mean: Optional[Tuple[float]] = None,
-        latents_std: Optional[Tuple[float]] = None,
+        shift_factor: float | None = None,
+        latents_mean: tuple[float] | None = None,
+        latents_std: tuple[float] | None = None,
         force_upcast: float = True,
         use_quant_conv: bool = False,
         use_post_quant_conv: bool = False,
@@ -1090,10 +1088,10 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_overlap_factor_height: Optional[float] = None,
-        tile_overlap_factor_width: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_overlap_factor_height: float | None = None,
+        tile_overlap_factor_width: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1153,7 +1151,7 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -1178,7 +1176,7 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         batch_size, num_channels, num_frames, height, width = z.shape
 
         if self.use_tiling and (width > self.tile_latent_min_width or height > self.tile_latent_min_height):
@@ -1207,7 +1205,7 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         """
         Decode a batch of images.
 
@@ -1321,7 +1319,7 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         enc = torch.cat(result_rows, dim=3)
         return enc
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -1409,8 +1407,8 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[torch.Tensor, torch.Tensor]:
+        generator: torch.Generator | None = None,
+    ) -> torch.Tensor | torch.Tensor:
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:

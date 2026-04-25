@@ -17,7 +17,7 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable
 
 import httpx
 import requests
@@ -28,6 +28,7 @@ from packaging import version
 
 from .. import __version__
 from ..utils import (
+    FLASHPACK_WEIGHTS_NAME,
     FLAX_WEIGHTS_NAME,
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
@@ -194,6 +195,7 @@ def filter_model_files(filenames):
         FLAX_WEIGHTS_NAME,
         ONNX_WEIGHTS_NAME,
         ONNX_EXTERNAL_WEIGHTS_NAME,
+        FLASHPACK_WEIGHTS_NAME,
     ]
 
     if is_transformers_available():
@@ -210,7 +212,7 @@ def filter_with_regex(filenames, pattern_re):
     return {f for f in filenames if pattern_re.match(f.split("/")[-1]) is not None}
 
 
-def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> Union[List[os.PathLike], str]:
+def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> list[os.PathLike] | str:
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
@@ -408,10 +410,20 @@ def simple_get_class_obj(library_name, class_name):
 
 
 def get_class_obj_and_candidates(
-    library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None
+    library_name,
+    class_name,
+    importable_classes,
+    pipelines,
+    is_pipeline_module,
+    component_name=None,
+    cache_dir=None,
+    trust_remote_code: bool = False,
 ):
     """Simple helper method to retrieve class object of module as well as potential parent class objects"""
     component_folder = os.path.join(cache_dir, component_name) if component_name and cache_dir else None
+
+    if class_name.startswith("FlashPack"):
+        class_name = class_name.removeprefix("FlashPack")
 
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
@@ -421,7 +433,10 @@ def get_class_obj_and_candidates(
     elif component_folder and os.path.isfile(os.path.join(component_folder, library_name + ".py")):
         # load custom component
         class_obj = get_class_from_dynamic_module(
-            component_folder, module_file=library_name + ".py", class_name=class_name
+            component_folder,
+            module_file=library_name + ".py",
+            class_name=class_name,
+            trust_remote_code=trust_remote_code,
         )
         class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
     else:
@@ -445,6 +460,7 @@ def _get_custom_pipeline_class(
     class_name=None,
     cache_dir=None,
     revision=None,
+    trust_remote_code: bool = False,
 ):
     if custom_pipeline.endswith(".py"):
         path = Path(custom_pipeline)
@@ -468,6 +484,7 @@ def _get_custom_pipeline_class(
         class_name=class_name,
         cache_dir=cache_dir,
         revision=revision,
+        trust_remote_code=trust_remote_code,
     )
 
 
@@ -481,6 +498,7 @@ def _get_pipeline_class(
     class_name=None,
     cache_dir=None,
     revision=None,
+    trust_remote_code: bool = False,
 ):
     if custom_pipeline is not None:
         return _get_custom_pipeline_class(
@@ -490,6 +508,7 @@ def _get_pipeline_class(
             class_name=class_name,
             cache_dir=cache_dir,
             revision=revision,
+            trust_remote_code=trust_remote_code,
         )
 
     if class_obj.__name__ != "DiffusionPipeline" and class_obj.__name__ != "ModularPipeline":
@@ -525,12 +544,12 @@ def _get_pipeline_class(
 def _load_empty_model(
     library_name: str,
     class_name: str,
-    importable_classes: List[Any],
+    importable_classes: list[Any],
     pipelines: Any,
     is_pipeline_module: bool,
     name: str,
-    torch_dtype: Union[str, torch.dtype],
-    cached_folder: Union[str, os.PathLike],
+    torch_dtype: str | torch.dtype,
+    cached_folder: str | os.PathLike,
     **kwargs,
 ):
     # retrieve class objects.
@@ -607,7 +626,7 @@ def _load_empty_model(
 
 
 def _assign_components_to_devices(
-    module_sizes: Dict[str, float], device_memory: Dict[str, float], device_mapping_strategy: str = "balanced"
+    module_sizes: dict[str, float], device_memory: dict[str, float], device_mapping_strategy: str = "balanced"
 ):
     device_ids = list(device_memory.keys())
     device_cycle = device_ids + device_ids[::-1]
@@ -738,28 +757,30 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
 def load_sub_model(
     library_name: str,
     class_name: str,
-    importable_classes: List[Any],
+    importable_classes: list[Any],
     pipelines: Any,
     is_pipeline_module: bool,
     pipeline_class: Any,
     torch_dtype: torch.dtype,
     provider: Any,
     sess_options: Any,
-    device_map: Optional[Union[Dict[str, torch.device], str]],
-    max_memory: Optional[Dict[Union[int, str], Union[int, str]]],
-    offload_folder: Optional[Union[str, os.PathLike]],
+    device_map: dict[str, torch.device] | str | None,
+    max_memory: dict[int | str, int | str] | None,
+    offload_folder: str | os.PathLike | None,
     offload_state_dict: bool,
-    model_variants: Dict[str, str],
+    model_variants: dict[str, str],
     name: str,
     from_flax: bool,
     variant: str,
     low_cpu_mem_usage: bool,
-    cached_folder: Union[str, os.PathLike],
+    cached_folder: str | os.PathLike,
     use_safetensors: bool,
-    dduf_entries: Optional[Dict[str, DDUFEntry]],
+    dduf_entries: dict[str, DDUFEntry] | None,
     provider_options: Any,
     disable_mmap: bool,
-    quantization_config: Optional[Any] = None,
+    quantization_config: Any | None = None,
+    use_flashpack: bool = False,
+    trust_remote_code: bool = False,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     from ..quantizers import PipelineQuantizationConfig
@@ -774,6 +795,7 @@ def load_sub_model(
         is_pipeline_module,
         component_name=name,
         cache_dir=cached_folder,
+        trust_remote_code=trust_remote_code,
     )
 
     load_method_name = None
@@ -838,6 +860,9 @@ def load_sub_model(
         loading_kwargs["variant"] = model_variants.pop(name, None)
         loading_kwargs["use_safetensors"] = use_safetensors
 
+        if is_diffusers_model:
+            loading_kwargs["use_flashpack"] = use_flashpack
+
         if from_flax:
             loading_kwargs["from_flax"] = True
 
@@ -887,7 +912,7 @@ def load_sub_model(
         # else load from the root directory
         loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
-    if isinstance(loaded_sub_model, torch.nn.Module) and isinstance(device_map, dict):
+    if isinstance(loaded_sub_model, torch.nn.Module) and isinstance(device_map, dict) and not use_flashpack:
         # remove hooks
         remove_hook_from_module(loaded_sub_model, recurse=True)
         needs_offloading_to_cpu = device_map[""] == "cpu"
@@ -1050,10 +1075,10 @@ def _update_init_kwargs_with_connected_pipeline(
 
 def _get_custom_components_and_folders(
     pretrained_model_name: str,
-    config_dict: Dict[str, Any],
-    filenames: Optional[List[str]] = None,
-    variant_filenames: Optional[List[str]] = None,
-    variant: Optional[str] = None,
+    config_dict: dict[str, Any],
+    filenames: list[str] | None = None,
+    variant_filenames: list[str] | None = None,
+    variant: str | None = None,
 ):
     config_dict = config_dict.copy()
 
@@ -1086,15 +1111,16 @@ def _get_custom_components_and_folders(
 
 def _get_ignore_patterns(
     passed_components,
-    model_folder_names: List[str],
-    model_filenames: List[str],
+    model_folder_names: list[str],
+    model_filenames: list[str],
     use_safetensors: bool,
     from_flax: bool,
     allow_pickle: bool,
     use_onnx: bool,
     is_onnx: bool,
-    variant: Optional[str] = None,
-) -> List[str]:
+    use_flashpack: bool,
+    variant: str | None = None,
+) -> list[str]:
     if (
         use_safetensors
         and not allow_pickle
@@ -1117,6 +1143,9 @@ def _get_ignore_patterns(
         use_onnx = use_onnx if use_onnx is not None else is_onnx
         if not use_onnx:
             ignore_patterns += ["*.onnx", "*.pb"]
+
+    elif use_flashpack:
+        ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb", "*.msgpack"]
 
     else:
         ignore_patterns = ["*.safetensors", "*.msgpack"]

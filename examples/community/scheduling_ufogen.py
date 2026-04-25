@@ -377,7 +377,7 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: int,
         sample: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
     ) -> Union[UFOGenSchedulerOutput, Tuple]:
         """

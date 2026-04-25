@@ -131,7 +131,7 @@ neg_prompt = "cartoon, illustration, animation. face. male, female"
 images = generate(prompt, neg_prompt)
 print(f"First inference in {time.time() - start}")
 
-# 9. From this point forward, any calls to generate should result in a faster inference
+# 9. From this point forward, Any calls to generate should result in a faster inference
 # time and it won't change.
 start = time.time()
 prompt = "photo of a rhino dressed suit and tie sitting at a table in a bar with a bar stools, award winning photography, Elke vogelsang"

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -32,7 +31,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
     Args:
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
-        trained_betas (`np.ndarray`, *optional*):
+        trained_betas (`np.ndarray` or `List[float]`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
     """
 
@@ -40,7 +39,9 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
 
     @register_to_config
     def __init__(
-        self, num_train_timesteps: int = 1000, trained_betas: Optional[Union[np.ndarray, List[float]]] = None
+        self,
+        num_train_timesteps: int = 1000,
+        trained_betas: np.ndarray | list[float] | None = None,
     ):
         # set `betas`, `alphas`, `timesteps`
         self.set_timesteps(num_train_timesteps)
@@ -59,21 +60,29 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
 
     @property
-    def step_index(self):
+    def step_index(self) -> int | None:
         """
         The index counter for current timestep. It will increase 1 after each scheduler step.
+
+        Returns:
+            `int` or `None`:
+                The index counter for current timestep.
         """
         return self._step_index
 
     @property
-    def begin_index(self):
+    def begin_index(self) -> int | None:
         """
         The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+
+        Returns:
+            `int` or `None`:
+                The index for the first timestep.
         """
         return self._begin_index
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
-    def set_begin_index(self, begin_index: int = 0):
+    def set_begin_index(self, begin_index: int = 0) -> None:
         """
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
@@ -83,7 +92,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -113,7 +122,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(
-        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
     ) -> int:
         """
         Find the index of a given timestep in the timestep schedule.
@@ -143,7 +152,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
         """
         Initialize the step index for the scheduler based on the given timestep.
 
@@ -161,10 +170,10 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the linear multistep method. It performs one forward pass multiple times to approximate the solution.
@@ -172,7 +181,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
-            timestep (`int`):
+            timestep (`int` or `torch.Tensor`):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
@@ -231,7 +240,30 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def _get_prev_sample(self, sample, timestep_index, prev_timestep_index, ets):
+    def _get_prev_sample(
+        self,
+        sample: torch.Tensor,
+        timestep_index: int,
+        prev_timestep_index: int,
+        ets: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Predicts the previous sample based on the current sample, timestep indices, and running model outputs.
+
+        Args:
+            sample (`torch.Tensor`):
+                The current sample.
+            timestep_index (`int`):
+                Index of the current timestep in the schedule.
+            prev_timestep_index (`int`):
+                Index of the previous timestep in the schedule.
+            ets (`torch.Tensor`):
+                The running sequence of model outputs.
+
+        Returns:
+            `torch.Tensor`:
+                The predicted previous sample.
+        """
         alpha = self.alphas[timestep_index]
         sigma = self.betas[timestep_index]
 
@@ -243,5 +275,5 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
 
         return prev_sample
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps

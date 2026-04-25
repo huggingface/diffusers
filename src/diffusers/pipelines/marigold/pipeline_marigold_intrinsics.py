@@ -17,7 +17,7 @@
 # Marigold project website: https://marigoldcomputervision.github.io
 # --------------------------------------------------------------------------
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 import torch
@@ -112,9 +112,9 @@ class MarigoldIntrinsicsOutput(BaseOutput):
             The shape is `(numimages * numensemble) × (numtargets * 4) × latentheight × latentwidth`.
     """
 
-    prediction: Union[np.ndarray, torch.Tensor]
-    uncertainty: Union[None, np.ndarray, torch.Tensor]
-    latent: Union[None, torch.Tensor]
+    prediction: np.ndarray | torch.Tensor
+    uncertainty: None | np.ndarray | torch.Tensor
+    latent: None | torch.Tensor
 
 
 class MarigoldIntrinsicsPipeline(DiffusionPipeline):
@@ -139,8 +139,8 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
             CLIP tokenizer.
         prediction_type (`str`, *optional*):
             Type of predictions made by the model.
-        target_properties (`Dict[str, Any]`, *optional*):
-            Properties of the predicted modalities, such as `target_names`, a `List[str]` used to define the number,
+        target_properties (`dict[str, Any]`, *optional*):
+            Properties of the predicted modalities, such as `target_names`, a `list[str]` used to define the number,
             order and names of the predicted modalities, and any other metadata that may be required to interpret the
             predictions.
         default_denoising_steps (`int`, *optional*):
@@ -163,13 +163,13 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         self,
         unet: UNet2DConditionModel,
         vae: AutoencoderKL,
-        scheduler: Union[DDIMScheduler, LCMScheduler],
+        scheduler: DDIMScheduler | LCMScheduler,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        prediction_type: Optional[str] = None,
-        target_properties: Optional[Dict[str, Any]] = None,
-        default_denoising_steps: Optional[int] = None,
-        default_processing_resolution: Optional[int] = None,
+        prediction_type: str | None = None,
+        target_properties: dict[str, Any] | None = None,
+        default_denoising_steps: int | None = None,
+        default_processing_resolution: int | None = None,
     ):
         super().__init__()
 
@@ -216,9 +216,9 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         resample_method_input: str,
         resample_method_output: str,
         batch_size: int,
-        ensembling_kwargs: Optional[Dict[str, Any]],
-        latents: Optional[torch.Tensor],
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]],
+        ensembling_kwargs: dict[str, Any] | None,
+        latents: torch.Tensor | None,
+        generator: torch.Generator | list[torch.Generator] | None,
         output_type: str,
         output_uncertainty: bool,
     ) -> int:
@@ -361,16 +361,16 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: PipelineImageInput,
-        num_inference_steps: Optional[int] = None,
+        num_inference_steps: int | None = None,
         ensemble_size: int = 1,
-        processing_resolution: Optional[int] = None,
+        processing_resolution: int | None = None,
         match_input_resolution: bool = True,
         resample_method_input: str = "bilinear",
         resample_method_output: str = "bilinear",
         batch_size: int = 1,
-        ensembling_kwargs: Optional[Dict[str, Any]] = None,
-        latents: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        ensembling_kwargs: dict[str, Any] | None = None,
+        latents: torch.Tensor | list[torch.Tensor] | None = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str = "np",
         output_uncertainty: bool = False,
         output_latent: bool = False,
@@ -380,8 +380,8 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline.
 
         Args:
-            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`),
-                `List[torch.Tensor]`: An input image or images used as an input for the intrinsic decomposition task.
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `list[PIL.Image.Image]`, `list[np.ndarray]`),
+                `list[torch.Tensor]`: An input image or images used as an input for the intrinsic decomposition task.
                 For arrays and tensors, the expected value range is between `[0, 1]`. Passing a batch of images is
                 possible by providing a four-dimensional array or a tensor. Additionally, a list of images of two- or
                 three-dimensional arrays or tensors can be passed. In the latter case, all list elements must have the
@@ -413,7 +413,7 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
             latents (`torch.Tensor`, *optional*, defaults to `None`):
                 Latent noise tensors to replace the random initialization. These can be taken from the previous
                 function call's output.
-            generator (`torch.Generator`, or `List[torch.Generator]`, *optional*, defaults to `None`):
+            generator (`torch.Generator`, or `list[torch.Generator]`, *optional*, defaults to `None`):
                 Random number generator object to ensure reproducibility.
             output_type (`str`, *optional*, defaults to `"np"`):
                 Preferred format of the output's `prediction` and the optional `uncertainty` fields. The accepted
@@ -627,11 +627,11 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
     def prepare_latents(
         self,
         image: torch.Tensor,
-        latents: Optional[torch.Tensor],
-        generator: Optional[torch.Generator],
+        latents: torch.Tensor | None,
+        generator: torch.Generator | None,
         ensemble_size: int,
         batch_size: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         def retrieve_latents(encoder_output):
             if hasattr(encoder_output, "latent_dist"):
                 return encoder_output.latent_dist.mode()
@@ -680,7 +680,7 @@ class MarigoldIntrinsicsPipeline(DiffusionPipeline):
         targets: torch.Tensor,
         output_uncertainty: bool = False,
         reduction: str = "median",
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Ensembles the intrinsic decomposition represented by the `targets` tensor with expected shape `(B, T, 3, H,
         W)`, where B is the number of ensemble members for a given prediction of size `(H x W)`, and T is the number of

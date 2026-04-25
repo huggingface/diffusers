@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable
 
 import numpy as np
 import PIL.Image
@@ -73,10 +73,10 @@ def _append_dims(x, target_dims):
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
     **kwargs,
 ):
     r"""
@@ -91,15 +91,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -136,12 +136,12 @@ class StableVideoDiffusionPipelineOutput(BaseOutput):
     Output class for Stable Video Diffusion pipeline.
 
     Args:
-        frames (`[List[List[PIL.Image.Image]]`, `np.ndarray`, `torch.Tensor`]):
-            List of denoised PIL images of length `batch_size` or numpy array or torch tensor of shape `(batch_size,
+        frames (`[list[list[PIL.Image.Image]]`, `np.ndarray`, `torch.Tensor`]):
+            list of denoised PIL images of length `batch_size` or numpy array or torch tensor of shape `(batch_size,
             num_frames, height, width, num_channels)`.
     """
 
-    frames: Union[List[List[PIL.Image.Image]], np.ndarray, torch.Tensor]
+    frames: list[list[PIL.Image.Image]] | np.ndarray | torch.Tensor
 
 
 class StableVideoDiffusionPipeline(DiffusionPipeline):
@@ -191,7 +191,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     def _encode_image(
         self,
         image: PipelineImageInput,
-        device: Union[str, torch.device],
+        device: str | torch.device,
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
     ) -> torch.Tensor:
@@ -239,7 +239,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     def _encode_vae_image(
         self,
         image: torch.Tensor,
-        device: Union[str, torch.device],
+        device: str | torch.device,
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
     ):
@@ -323,7 +323,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             and not isinstance(image, list)
         ):
             raise ValueError(
-                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `list[PIL.Image.Image]` but is"
                 f" {type(image)}"
             )
 
@@ -338,9 +338,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         height: int,
         width: int,
         dtype: torch.dtype,
-        device: Union[str, torch.device],
+        device: str | torch.device,
         generator: torch.Generator,
-        latents: Optional[torch.Tensor] = None,
+        latents: torch.Tensor | None = None,
     ):
         shape = (
             batch_size,
@@ -385,31 +385,31 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.Tensor],
+        image: PIL.Image.Image | list[PIL.Image.Image] | torch.Tensor,
         height: int = 576,
         width: int = 1024,
-        num_frames: Optional[int] = None,
+        num_frames: int | None = None,
         num_inference_steps: int = 25,
-        sigmas: Optional[List[float]] = None,
+        sigmas: list[float] | None = None,
         min_guidance_scale: float = 1.0,
         max_guidance_scale: float = 3.0,
         fps: int = 7,
         motion_bucket_id: int = 127,
         noise_aug_strength: float = 0.02,
-        decode_chunk_size: Optional[int] = None,
-        num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        decode_chunk_size: int | None = None,
+        num_videos_per_prompt: int | None = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        output_type: str | None = "pil",
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         return_dict: bool = True,
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
-            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.Tensor`):
+            image (`PIL.Image.Image` or `list[PIL.Image.Image]` or `torch.Tensor`):
                 Image(s) to guide image generation. If you provide a tensor, the expected value range is between `[0,
                 1]`.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -422,7 +422,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality video at the
                 expense of slower inference. This parameter is modulated by `strength`.
-            sigmas (`List[float]`, *optional*):
+            sigmas (`list[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
@@ -445,7 +445,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 For lower memory usage, reduce `decode_chunk_size`.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -460,7 +460,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                     `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`.
                 `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
@@ -473,7 +473,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         Returns:
             [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] is
-                returned, otherwise a `tuple` of (`List[List[PIL.Image.Image]]` or `np.ndarray` or `torch.Tensor`) is
+                returned, otherwise a `tuple` of (`list[list[PIL.Image.Image]]` or `np.ndarray` or `torch.Tensor`) is
                 returned.
         """
         # 0. Default height and width to unet
@@ -697,7 +697,7 @@ def _filter2d(input, kernel):
 
     height, width = tmp_kernel.shape[-2:]
 
-    padding_shape: List[int] = _compute_padding([height, width])
+    padding_shape: list[int] = _compute_padding([height, width])
     input = torch.nn.functional.pad(input, padding_shape, mode="reflect")
 
     # kernel and input tensor reshape to align element-wise or batch-wise params

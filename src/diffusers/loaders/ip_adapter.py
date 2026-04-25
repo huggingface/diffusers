@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import List, Union
 
 import torch
 import torch.nn.functional as F
@@ -57,15 +57,15 @@ class IPAdapterMixin:
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, List[str], Dict[str, torch.Tensor]],
-        subfolder: Union[str, List[str]],
-        weight_name: Union[str, List[str]],
-        image_encoder_folder: Optional[str] = "image_encoder",
+        pretrained_model_name_or_path_or_dict: str | list[str] | dict[str, torch.Tensor],
+        subfolder: str | list[str],
+        weight_name: str | list[str],
+        image_encoder_folder: str | None = "image_encoder",
         **kwargs,
     ):
         """
         Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `List[str]` or `os.PathLike` or `List[os.PathLike]` or `dict` or `List[dict]`):
+            pretrained_model_name_or_path_or_dict (`str` or `list[str]` or `os.PathLike` or `list[os.PathLike]` or `dict` or `list[dict]`):
                 Can be either:
 
                     - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
@@ -74,10 +74,10 @@ class IPAdapterMixin:
                       with [`ModelMixin.save_pretrained`].
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-            subfolder (`str` or `List[str]`):
+            subfolder (`str` or `list[str]`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally. If a
                 list is passed, it should have the same length as `weight_name`.
-            weight_name (`str` or `List[str]`):
+            weight_name (`str` or `list[str]`):
                 The name of the weight file to load. If a list is passed, it should have the same length as
                 `subfolder`.
             image_encoder_folder (`str`, *optional*, defaults to `image_encoder`):
@@ -87,14 +87,14 @@ class IPAdapterMixin:
                 `image_encoder_folder="image_encoder"`. If the image encoder is located in a folder other than
                 `subfolder`, you should pass the path to the folder that contains image encoder weights, for example,
                 `image_encoder_folder="different_subfolder/image_encoder"`.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
@@ -358,14 +358,14 @@ class ModularIPAdapterMixin:
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, List[str], Dict[str, torch.Tensor]],
-        subfolder: Union[str, List[str]],
-        weight_name: Union[str, List[str]],
+        pretrained_model_name_or_path_or_dict: str | list[str] | dict[str, torch.Tensor],
+        subfolder: str | list[str],
+        weight_name: str | list[str],
         **kwargs,
     ):
         """
         Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `List[str]` or `os.PathLike` or `List[os.PathLike]` or `dict` or `List[dict]`):
+            pretrained_model_name_or_path_or_dict (`str` or `list[str]` or `os.PathLike` or `list[os.PathLike]` or `dict` or `list[dict]`):
                 Can be either:
 
                     - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
@@ -374,20 +374,20 @@ class ModularIPAdapterMixin:
                       with [`ModelMixin.save_pretrained`].
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-            subfolder (`str` or `List[str]`):
+            subfolder (`str` or `list[str]`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally. If a
                 list is passed, it should have the same length as `weight_name`.
-            weight_name (`str` or `List[str]`):
+            weight_name (`str` or `list[str]`):
                 The name of the weight file to load. If a list is passed, it should have the same length as
                 `subfolder`.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
@@ -608,17 +608,17 @@ class FluxIPAdapterMixin:
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, List[str], Dict[str, torch.Tensor]],
-        weight_name: Union[str, List[str]],
-        subfolder: Optional[Union[str, List[str]]] = "",
-        image_encoder_pretrained_model_name_or_path: Optional[str] = "image_encoder",
-        image_encoder_subfolder: Optional[str] = "",
+        pretrained_model_name_or_path_or_dict: str | list[str] | dict[str, torch.Tensor],
+        weight_name: str | list[str],
+        subfolder: str | list[str] | None = "",
+        image_encoder_pretrained_model_name_or_path: str | None = "image_encoder",
+        image_encoder_subfolder: str | None = "",
         image_encoder_dtype: torch.dtype = torch.float16,
         **kwargs,
     ):
         """
         Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `List[str]` or `os.PathLike` or `List[os.PathLike]` or `dict` or `List[dict]`):
+            pretrained_model_name_or_path_or_dict (`str` or `list[str]` or `os.PathLike` or `list[os.PathLike]` or `dict` or `list[dict]`):
                 Can be either:
 
                     - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
@@ -627,10 +627,10 @@ class FluxIPAdapterMixin:
                       with [`ModelMixin.save_pretrained`].
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-            subfolder (`str` or `List[str]`):
+            subfolder (`str` or `list[str]`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally. If a
                 list is passed, it should have the same length as `weight_name`.
-            weight_name (`str` or `List[str]`):
+            weight_name (`str` or `list[str]`):
                 The name of the weight file to load. If a list is passed, it should have the same length as
                 `weight_name`.
             image_encoder_pretrained_model_name_or_path (`str`, *optional*, defaults to `./image_encoder`):
@@ -640,14 +640,14 @@ class FluxIPAdapterMixin:
                       hosted on the Hub.
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       with [`ModelMixin.save_pretrained`].
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
@@ -797,13 +797,13 @@ class FluxIPAdapterMixin:
         # load ip-adapter into transformer
         self.transformer._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
-    def set_ip_adapter_scale(self, scale: Union[float, List[float], List[List[float]]]):
+    def set_ip_adapter_scale(self, scale: float | list[float] | list[list[float]]):
         """
         Set IP-Adapter scales per-transformer block. Input `scale` could be a single config or a list of configs for
         granular control over each IP-Adapter behavior. A config can be a float or a list.
 
-        `float` is converted to list and repeated for the number of blocks and the number of IP adapters. `List[float]`
-        length match the number of blocks, it is repeated for each IP adapter. `List[List[float]]` must match the
+        `float` is converted to list and repeated for the number of blocks and the number of IP adapters. `list[float]`
+        length match the number of blocks, it is repeated for each IP adapter. `list[list[float]]` must match the
         number of IP adapters and each must match the number of blocks.
 
         Example:
@@ -918,10 +918,10 @@ class SD3IPAdapterMixin:
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         weight_name: str = "ip-adapter.safetensors",
-        subfolder: Optional[str] = None,
-        image_encoder_folder: Optional[str] = "image_encoder",
+        subfolder: str | None = None,
+        image_encoder_folder: str | None = "image_encoder",
         **kwargs,
     ) -> None:
         """
@@ -947,13 +947,13 @@ class SD3IPAdapterMixin:
                 `image_encoder_folder="image_encoder"`. If the image encoder is located in a folder other than
                 `subfolder`, you should pass the path to the folder that contains image encoder weights, for example,
                 `image_encoder_folder="different_subfolder/image_encoder"`.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):

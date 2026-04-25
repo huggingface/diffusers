@@ -40,6 +40,7 @@ from .controlnet_sd3 import (
     StableDiffusion3ControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
+from .deprecated.wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .flux import (
     FluxControlImg2ImgPipeline,
     FluxControlInpaintPipeline,
@@ -54,6 +55,7 @@ from .flux import (
 )
 from .flux2 import Flux2KleinPipeline, Flux2Pipeline
 from .glm_image import GlmImagePipeline
+from .helios import HeliosPipeline, HeliosPyramidPipeline
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
@@ -75,6 +77,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .lumina import LuminaPipeline
 from .lumina2 import Lumina2Pipeline
+from .nucleusmoe_image import NucleusMoEImagePipeline
 from .ovis_image import OvisImagePipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
@@ -94,6 +97,7 @@ from .pag import (
     StableDiffusionXLPAGPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+from .prx import PRXPipeline
 from .qwenimage import (
     QwenImageControlNetPipeline,
     QwenImageEditInpaintPipeline,
@@ -122,7 +126,6 @@ from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
 )
 from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
-from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 from .z_image import (
     ZImageControlNetInpaintPipeline,
     ZImageControlNetPipeline,
@@ -174,7 +177,10 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
         ("glm_image", GlmImagePipeline),
+        ("helios", HeliosPipeline),
+        ("helios-pyramid", HeliosPyramidPipeline),
         ("cogview4-control", CogView4ControlPipeline),
+        ("nucleusmoe-image", NucleusMoEImagePipeline),
         ("qwenimage", QwenImagePipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
         ("z-image", ZImagePipeline),
@@ -182,6 +188,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("z-image-controlnet-inpaint", ZImageControlNetInpaintPipeline),
         ("z-image-omni", ZImageOmniPipeline),
         ("ovis", OvisImagePipeline),
+        ("prx", PRXPipeline),
     ]
 )
 
@@ -248,7 +255,7 @@ AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
 
 AUTO_IMAGE2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
-        ("wan", WanImageToVideoPipeline),
+        ("wan-i2v", WanImageToVideoPipeline),
     ]
 )
 
@@ -396,11 +403,11 @@ class AutoPipelineForText2Image(ConfigMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -422,7 +429,7 @@ class AutoPipelineForText2Image(ConfigMixin):
                 Mirror source to resolve accessibility issues if you’re downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`str` or `dict[str, int | str | torch.device]`, *optional*):
                 A map that specifies where each submodule should go. It doesn’t need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device.
@@ -687,11 +694,11 @@ class AutoPipelineForImage2Image(ConfigMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -713,7 +720,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
                 Mirror source to resolve accessibility issues if you’re downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`str` or `dict[str, int | str | torch.device]`, *optional*):
                 A map that specifies where each submodule should go. It doesn’t need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device.
@@ -993,11 +1000,11 @@ class AutoPipelineForInpainting(ConfigMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -1019,7 +1026,7 @@ class AutoPipelineForInpainting(ConfigMixin):
                 Mirror source to resolve accessibility issues if you’re downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`str` or `dict[str, int | str | torch.device]`, *optional*):
                 A map that specifies where each submodule should go. It doesn’t need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device.

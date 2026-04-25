@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import flax
 import jax
@@ -43,7 +42,7 @@ class DDPMSchedulerState:
     # setable values
     init_noise_sigma: jnp.ndarray
     timesteps: jnp.ndarray
-    num_inference_steps: Optional[int] = None
+    num_inference_steps: int = None
 
     @classmethod
     def create(
@@ -108,7 +107,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: jnp.ndarray | None = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: str = "epsilon",
@@ -120,7 +119,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
         self.dtype = dtype
 
-    def create_state(self, common: Optional[CommonSchedulerState] = None) -> DDPMSchedulerState:
+    def create_state(self, common: CommonSchedulerState | None = None) -> DDPMSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
 
@@ -139,7 +138,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         self,
         state: DDPMSchedulerState,
         sample: jnp.ndarray,
-        timestep: Optional[int] = None,
+        timestep: int | None = None,
     ) -> jnp.ndarray:
         """
         Args:
@@ -153,7 +152,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         return sample
 
     def set_timesteps(
-        self, state: DDPMSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self, state: DDPMSchedulerState, num_inference_steps: int, shape: tuple = ()
     ) -> DDPMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -214,9 +213,9 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-        key: Optional[jax.Array] = None,
+        key: jax.Array | None = None,
         return_dict: bool = True,
-    ) -> Union[FlaxDDPMSchedulerOutput, Tuple]:
+    ) -> FlaxDDPMSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

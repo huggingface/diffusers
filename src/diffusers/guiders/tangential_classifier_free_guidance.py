@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -66,7 +68,7 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-    def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
+    def prepare_inputs(self, data: dict[str, tuple[torch.Tensor, torch.Tensor]]) -> list["BlockState"]:
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
         for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
@@ -75,8 +77,8 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
         return data_batches
 
     def prepare_inputs_from_block_state(
-        self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
-    ) -> List["BlockState"]:
+        self, data: "BlockState", input_fields: dict[str, str | tuple[str, str]]
+    ) -> list["BlockState"]:
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
         for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
@@ -84,7 +86,7 @@ class TangentialClassifierFreeGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: torch.Tensor | None = None) -> GuiderOutput:
         pred = None
 
         if not self._is_tcfg_enabled():
