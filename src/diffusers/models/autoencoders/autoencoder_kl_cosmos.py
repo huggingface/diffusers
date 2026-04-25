@@ -111,7 +111,10 @@ class CosmosPatchEmbed3d(nn.Module):
         self.patch_size = patch_size
         self.patch_method = patch_method
 
-        wavelets = _WAVELETS.get(patch_method).clone()
+        wavelets = _WAVELETS.get(patch_method)
+        if wavelets is None:
+            raise ValueError(f"Unknown patch_method '{patch_method}'. Supported methods: {list(_WAVELETS.keys())}")
+        wavelets = wavelets.clone()
         arange = torch.arange(wavelets.shape[0])
 
         self.register_buffer("wavelets", wavelets, persistent=False)
@@ -191,7 +194,10 @@ class CosmosUnpatcher3d(nn.Module):
         self.patch_size = patch_size
         self.patch_method = patch_method
 
-        wavelets = _WAVELETS.get(patch_method).clone()
+        wavelets = _WAVELETS.get(patch_method)
+        if wavelets is None:
+            raise ValueError(f"Unknown patch_method '{patch_method}'. Supported methods: {list(_WAVELETS.keys())}")
+        wavelets = wavelets.clone()
         arange = torch.arange(wavelets.shape[0])
 
         self.register_buffer("wavelets", wavelets, persistent=False)
