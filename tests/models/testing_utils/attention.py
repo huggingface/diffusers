@@ -25,6 +25,7 @@ from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils import is_kernels_available, is_torch_version
 
 from ...testing_utils import assert_tensors_close, backend_empty_cache, is_attention, is_torch_compile, torch_device
+from .utils import _maybe_cast_to_bf16
 
 
 logger = logging.getLogger(__name__)
@@ -72,34 +73,9 @@ _PARAM_FLASH_3_HUB = pytest.param(
 # All backends under test.
 _ALL_BACKEND_PARAMS = [_PARAM_NATIVE_CUDNN, _PARAM_FLASH_HUB, _PARAM_FLASH_3_HUB]
 
-# Backends that only accept bf16/fp16 inputs; models and inputs must be cast before running them.
-_BF16_REQUIRED_BACKENDS = {
-    AttentionBackendName._NATIVE_CUDNN,
-    AttentionBackendName.FLASH_HUB,
-    AttentionBackendName._FLASH_3_HUB,
-}
-
 # Backends that perform non-deterministic operations and therefore cannot run when
 # torch.use_deterministic_algorithms(True) is active (e.g. after enable_full_determinism()).
 _NON_DETERMINISTIC_BACKENDS = {AttentionBackendName._NATIVE_CUDNN}
-
-
-# TODO: revist this when https://github.com/huggingface/diffusers/pull/13182
-# is merged.
-
-
-def _maybe_cast_to_bf16(backend, model, inputs_dict):
-    """Cast model and floating-point inputs to bfloat16 when the backend requires it."""
-    if backend not in _BF16_REQUIRED_BACKENDS:
-        return model, inputs_dict
-    if getattr(model, "_keep_in_fp32_modules", None):
-        raise NotImplementedError("Do not know how to define casting for models with `_keep_in_fp32_modules`.")
-    model = model.to(dtype=torch.bfloat16)
-    inputs_dict = {
-        k: v.to(dtype=torch.bfloat16) if isinstance(v, torch.Tensor) and v.is_floating_point() else v
-        for k, v in inputs_dict.items()
-    }
-    return model, inputs_dict
 
 
 def _skip_if_backend_requires_nondeterminism(backend):
