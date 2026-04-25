@@ -126,7 +126,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
         tokenizer: Qwen2Tokenizer,
         transformer: JoyImageEditTransformer3DModel,
         processor: Qwen3VLProcessor,
-        enable_multi_task_training: bool = False,
         text_token_max_length: int = 2048,
         text_encoder_ckpt: Optional[str] = None,
     ):
@@ -140,7 +139,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
             tokenizer: Tokenizer paired with the text encoder.
             transformer: 3-D transformer denoising network.
             processor: Qwen3-VL processor for multi-image prompt preparation.
-            enable_multi_task_training: Whether to enable multi-task training mode.
             text_token_max_length: Maximum number of text tokens for the encoder.
             text_encoder_ckpt: Path to text encoder checkpoint. Inferred from
                 ``text_encoder`` when not provided.
@@ -155,7 +153,6 @@ class JoyImageEditPipeline(DiffusionPipeline):
             processor=processor,
         )
 
-        self.enable_multi_task_training = enable_multi_task_training
         self.text_token_max_length = text_token_max_length
 
         self.vae_scale_factor_temporal = (

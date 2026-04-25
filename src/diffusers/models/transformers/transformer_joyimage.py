@@ -498,7 +498,6 @@ class JoyImageTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
     custom rotary position embeddings.
     """
 
-    _supports_gradient_checkpointing = True
     _no_split_modules = ["JoyImageTransformerBlock"]
 
     @register_to_config
