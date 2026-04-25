@@ -25,7 +25,7 @@ from tqdm.auto import tqdm
 
 import diffusers
 from diffusers import Cosmos2_5_PredictBasePipeline
-from diffusers.optimization import get_scheduler
+from diffusers.optimization import get_linear_schedule_with_warmup, get_scheduler
 from diffusers.training_utils import cast_training_params
 from diffusers.utils.torch_utils import is_compiled_module
 from diffusers.utils import (
@@ -239,37 +239,26 @@ def parse_args():
     parser.add_argument(
         "--scheduler_warm_up_steps",
         type=int,
-        nargs="+",
-        default=[1000],
-        help="Warm-up steps per cycle for the LambdaLinearScheduler.",
+        default=1000,
+        help="Number of warmup steps for the linear LR scheduler.",
     )
     parser.add_argument(
-        "--scheduler_cycle_lengths",
+        "--num_training_steps",
         type=int,
-        nargs="+",
-        default=[100000],
-        help="Cycle lengths for the LambdaLinearScheduler.",
-    )
-    parser.add_argument(
-        "--scheduler_f_start",
-        type=float,
-        nargs="+",
-        default=[1e-6],
-        help="LR multiplier at the start of each warm-up cycle.",
+        default=100000,
+        help="Total number of training steps for the LR scheduler.",
     )
     parser.add_argument(
         "--scheduler_f_max",
         type=float,
-        nargs="+",
-        default=[0.5],
-        help="Maximum LR multiplier reached after warm-up.",
+        default=0.5,
+        help="Maximum LR multiplier (peak after warmup) for the linear scheduler.",
     )
     parser.add_argument(
         "--scheduler_f_min",
         type=float,
-        nargs="+",
-        default=[0.2],
-        help="Minimum LR multiplier at the end of each cycle.",
+        default=0.2,
+        help="Minimum LR multiplier (floor of linear decay) for the linear scheduler.",
     )
     parser.add_argument(
         "--do_final_eval",
@@ -585,16 +574,13 @@ def main():
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
 
-    from optimizer_utils import build_optimizer_and_scheduler
-    optimizer, lr_scheduler = build_optimizer_and_scheduler(
-        lora_params,
-        lr=args.learning_rate,
-        weight_decay=args.weight_decay,
-        warm_up_steps=args.scheduler_warm_up_steps,
-        cycle_lengths=args.scheduler_cycle_lengths,
-        f_start=args.scheduler_f_start,
-        f_max=args.scheduler_f_max,
+    optimizer = torch.optim.AdamW(lora_params, lr=args.learning_rate, weight_decay=args.weight_decay)
+    lr_scheduler = get_linear_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=args.scheduler_warm_up_steps,
+        num_training_steps=args.num_training_steps,
         f_min=args.scheduler_f_min,
+        f_max=args.scheduler_f_max,
     )
 
     train_dataloader = build_dataloader(args)
