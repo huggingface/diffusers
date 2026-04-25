@@ -1483,7 +1483,7 @@ def main(args):
                 )
 
     if args.validation_prompt is not None:
-        validation_image = load_image(args.validation_image_path).convert("RGB")
+        validation_image = load_image(args.validation_image).convert("RGB")
         validation_kwargs = {"image": validation_image}
         if args.remote_text_encoder:
             validation_kwargs["prompt_embeds"] = compute_remote_text_embeddings(args.validation_prompt)
