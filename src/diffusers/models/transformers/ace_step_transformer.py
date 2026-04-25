@@ -13,12 +13,10 @@
 # limitations under the License.
 """Diffusion Transformer (DiT) for ACE-Step 1.5 music generation.
 
-Follows the diffusers conventions: reuse ``RMSNorm``, ``get_1d_rotary_pos_embed`` /
-``apply_rotary_emb`` and the ``Timesteps`` sinusoid from the shared primitive
-modules, and register on ``AttentionMixin`` / ``CacheMixin`` for attention-wide
-operations (QKV fusion, attention-backend dispatch, MagCache/etc.). Helpers only
-used by the condition encoder (``_pack_sequences`` and the shared
-``AceStepEncoderLayer``) live in
+Follows the diffusers conventions: reuse ``RMSNorm``, ``get_1d_rotary_pos_embed`` / ``apply_rotary_emb`` and the
+``Timesteps`` sinusoid from the shared primitive modules, and register on ``AttentionMixin`` / ``CacheMixin`` for
+attention-wide operations (QKV fusion, attention-backend dispatch, MagCache/etc.). Helpers only used by the condition
+encoder (``_pack_sequences`` and the shared ``AceStepEncoderLayer``) live in
 ``diffusers/pipelines/ace_step/modeling_ace_step.py``.
 """
 
@@ -59,9 +57,8 @@ def _create_4d_mask(
 ) -> torch.Tensor:
     """Build a `[B, 1, seq_len, seq_len]` additive mask (0.0 kept, -inf masked).
 
-    Mirrors the mask construction in ``acestep/models/turbo/modeling_acestep_v15_turbo.py::create_4d_mask``
-    so the DiT sees identical attention coverage regardless of whether SDPA, eager
-    or flash attention is selected downstream.
+    Mirrors the mask construction in ``acestep/models/turbo/modeling_acestep_v15_turbo.py::create_4d_mask`` so the DiT
+    sees identical attention coverage regardless of whether SDPA, eager or flash attention is selected downstream.
     """
     indices = torch.arange(seq_len, device=device)
     diff = indices.unsqueeze(1) - indices.unsqueeze(0)
@@ -98,11 +95,10 @@ def _ace_step_rotary_freqs(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Build (cos, sin) freqs for ACE-Step RoPE using ``get_1d_rotary_pos_embed``.
 
-    The original ACE-Step DiT reuses Qwen3's rotary layout:
-    ``freqs = cat([freq_half, freq_half], dim=-1)`` (not interleaved), and the
-    rotate-half convention splits the last dim in two halves rather than unbinding
-    pairs. That matches ``get_1d_rotary_pos_embed(..., use_real=True,
-    repeat_interleave_real=False)`` + ``apply_rotary_emb(..., use_real_unbind_dim=-2)``.
+    The original ACE-Step DiT reuses Qwen3's rotary layout: ``freqs = cat([freq_half, freq_half], dim=-1)`` (not
+    interleaved), and the rotate-half convention splits the last dim in two halves rather than unbinding pairs. That
+    matches ``get_1d_rotary_pos_embed(..., use_real=True, repeat_interleave_real=False)`` + ``apply_rotary_emb(...,
+    use_real_unbind_dim=-2)``.
     """
     positions = torch.arange(seq_len, device=device, dtype=torch.float32)
     cos, sin = get_1d_rotary_pos_embed(head_dim, positions, theta=theta, use_real=True, repeat_interleave_real=False)
@@ -130,9 +126,8 @@ class AceStepMLP(nn.Module):
 class AceStepTimestepEmbedding(nn.Module):
     """Sinusoidal timestep embedding + 2-layer MLP + 6-way AdaLN scale/shift projection.
 
-    Matches the original ACE-Step checkpoint layout exactly (``linear_1``,
-    ``linear_2``, ``time_proj``) so the converter maps keys 1:1. The sinusoid
-    itself is the shared ``Timesteps`` module (``flip_sin_to_cos=True`` for
+    Matches the original ACE-Step checkpoint layout exactly (``linear_1``, ``linear_2``, ``time_proj``) so the
+    converter maps keys 1:1. The sinusoid itself is the shared ``Timesteps`` module (``flip_sin_to_cos=True`` for
     ACE-Step's ``cat([cos, sin])`` convention).
     """
 
@@ -159,10 +154,9 @@ class AceStepTimestepEmbedding(nn.Module):
 class AceStepAttnProcessor2_0:
     """Attention processor for ACE-Step GQA attention.
 
-    Dispatches the actual attention call through ``dispatch_attention_fn`` so users
-    can pick flash / sage / native backends via ``model.set_attention_backend(...)``
-    or the ``attention_backend`` context manager. Uses the ``(B, L, H, D)`` tensor
-    layout that the diffusers attention backends consume directly.
+    Dispatches the actual attention call through ``dispatch_attention_fn`` so users can pick flash / sage / native
+    backends via ``model.set_attention_backend(...)`` or the ``attention_backend`` context manager. Uses the ``(B, L,
+    H, D)`` tensor layout that the diffusers attention backends consume directly.
     """
 
     _attention_backend = None
@@ -217,14 +211,12 @@ class AceStepAttnProcessor2_0:
 class AceStepAttention(torch.nn.Module, AttentionModuleMixin):
     """GQA attention with RMSNorm on query/key for ACE-Step 1.5.
 
-    Uses the diffusers ``Attention`` + ``AttnProcessor`` split: this module holds
-    the projections and Q/K norm; the processor runs the attention dispatch.
-    Self-attention applies RoPE on query/key; cross-attention reads K/V from
+    Uses the diffusers ``Attention`` + ``AttnProcessor`` split: this module holds the projections and Q/K norm; the
+    processor runs the attention dispatch. Self-attention applies RoPE on query/key; cross-attention reads K/V from
     ``encoder_hidden_states`` and does not apply RoPE.
 
-    GQA means Q has ``heads * head_dim`` output while K/V have
-    ``kv_heads * head_dim`` — QKV fusion is therefore disabled
-    (``_supports_qkv_fusion = False``).
+    GQA means Q has ``heads * head_dim`` output while K/V have ``kv_heads * head_dim`` — QKV fusion is therefore
+    disabled (``_supports_qkv_fusion = False``).
     """
 
     _default_processor_cls = AceStepAttnProcessor2_0
@@ -287,8 +279,8 @@ class AceStepAttention(torch.nn.Module, AttentionModuleMixin):
 class AceStepTransformerBlock(nn.Module):
     """ACE-Step DiT transformer block: self-attn (AdaLN) → cross-attn → MLP (AdaLN).
 
-    AdaLN parameters come from the shared ``scale_shift_table + timestep_proj``
-    chunked into 6 (3 for self-attn + 3 for MLP).
+    AdaLN parameters come from the shared ``scale_shift_table + timestep_proj`` chunked into 6 (3 for self-attn + 3 for
+    MLP).
     """
 
     def __init__(
@@ -381,11 +373,10 @@ class AceStepTransformerBlock(nn.Module):
 class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMixin):
     """Diffusion Transformer for ACE-Step 1.5 music generation.
 
-    Generates audio latents conditioned on text, lyrics, and timbre. Uses 1D patch
-    embedding (`Conv1d` with stride `patch_size`) followed by a stack of
-    `AceStepTransformerBlock`s with alternating sliding-window / full attention
-    on the self-attention branch. Cross-attention consumes the packed
-    `encoder_hidden_states` produced by `AceStepConditionEncoder`.
+    Generates audio latents conditioned on text, lyrics, and timbre. Uses 1D patch embedding (`Conv1d` with stride
+    `patch_size`) followed by a stack of `AceStepTransformerBlock`s with alternating sliding-window / full attention on
+    the self-attention branch. Cross-attention consumes the packed `encoder_hidden_states` produced by
+    `AceStepConditionEncoder`.
     """
 
     _supports_gradient_checkpointing = True
@@ -500,8 +491,8 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, AttentionMixin, CacheMi
             encoder_hidden_states (`torch.Tensor` of shape `(batch_size, encoder_seq_len, hidden_size)`):
                 Conditioning embeddings from the condition encoder (text + lyrics + timbre).
             context_latents (`torch.Tensor` of shape `(batch_size, seq_len, context_dim)`):
-                Context latents (source latents concatenated with chunk masks) — fed to the
-                patchify conv alongside `hidden_states`.
+                Context latents (source latents concatenated with chunk masks) — fed to the patchify conv alongside
+                `hidden_states`.
             return_dict (`bool`, defaults to `True`):
                 Whether to return a `Transformer2DModelOutput` or a plain tuple.
 

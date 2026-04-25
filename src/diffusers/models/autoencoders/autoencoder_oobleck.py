@@ -405,9 +405,8 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
 
     def _tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a long audio waveform by splitting it into overlapping tiles along
-        the time axis and concatenating the resulting encoder features. Used to
-        keep memory bounded regardless of clip length. Not bit-identical to a single
-        unsplit encode — each tile has its own receptive-field boundary — but the
+        the time axis and concatenating the resulting encoder features. Used to keep memory bounded regardless of clip
+        length. Not bit-identical to a single unsplit encode — each tile has its own receptive-field boundary — but the
         overlap/trim scheme keeps the joined feature map smooth.
         """
         _B, _C, S = x.shape

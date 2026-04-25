@@ -14,11 +14,10 @@
 
 """Pipeline-specific models for ACE-Step 1.5.
 
-Holds the condition encoder (lyric + timbre + text packing), the encoder layer
-(``AceStepEncoderLayer`` — not used by the DiT itself, hence kept here), the
-audio tokenizer / detokenizer used by cover conditioning, and the ``_pack_sequences``
-helper. The DiT uses the RoPE helper, ``AceStepAttention``, and ``_create_4d_mask``
-from ``diffusers/models/transformers/ace_step_transformer.py``.
+Holds the condition encoder (lyric + timbre + text packing), the encoder layer (``AceStepEncoderLayer`` — not used by
+the DiT itself, hence kept here), the audio tokenizer / detokenizer used by cover conditioning, and the
+``_pack_sequences`` helper. The DiT uses the RoPE helper, ``AceStepAttention``, and ``_create_4d_mask`` from
+``diffusers/models/transformers/ace_step_transformer.py``.
 """
 
 from typing import Optional, Tuple
@@ -52,9 +51,8 @@ def _pack_sequences(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Pack two masked sequences into one with all valid tokens first.
 
-    Concatenates ``hidden1`` + ``hidden2`` along the sequence dim, then stably sorts
-    each batch so mask=1 tokens come before mask=0 tokens. Returns the packed
-    hidden states plus a fresh contiguous mask.
+    Concatenates ``hidden1`` + ``hidden2`` along the sequence dim, then stably sorts each batch so mask=1 tokens come
+    before mask=0 tokens. Returns the packed hidden states plus a fresh contiguous mask.
     """
     hidden_cat = torch.cat([hidden1, hidden2], dim=1)
     mask_cat = torch.cat([mask1, mask2], dim=1)

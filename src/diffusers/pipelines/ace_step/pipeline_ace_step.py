@@ -35,15 +35,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # SFT prompt template from ACE-Step constants. The newline between each section label
 # (`# Instruction`, `# Caption`, `# Metas`) and its content is load-bearing — the text
 # encoder was trained with this exact format.
-SFT_GEN_PROMPT = """# Instruction
-{}
-
-# Caption
-{}
-
-# Metas
-{}<|endoftext|>
-"""
+SFT_GEN_PROMPT = "# Instruction\n{}\n\n# Caption\n{}\n\n# Metas\n{}<|endoftext|>\n"
 
 DEFAULT_DIT_INSTRUCTION = "Fill the audio semantic mask based on the given conditions:"
 
@@ -90,6 +82,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Repaint task: regenerate a section of existing audio
         >>> import torchaudio
+
         >>> src_audio, sr = torchaudio.load("input.wav")
         >>> src_audio = pipe._normalize_audio_to_stereo_48k(src_audio, sr)
         >>> audio = pipe(
@@ -146,10 +139,9 @@ class AceStepPipeline(DiffusionPipeline):
         condition_encoder ([`AceStepConditionEncoder`]):
             Condition encoder that combines text, lyric, and timbre embeddings for cross-attention.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
-            Flow-matching Euler scheduler. ACE-Step feeds the DiT timesteps in `[0, 1]`, so the
-            scheduler is configured with `num_train_timesteps=1` and `shift=1.0` — the pipeline
-            computes its shifted / turbo sigma schedule itself and passes it via
-            `set_timesteps(sigmas=...)`.
+            Flow-matching Euler scheduler. ACE-Step feeds the DiT timesteps in `[0, 1]`, so the scheduler is configured
+            with `num_train_timesteps=1` and `shift=1.0` — the pipeline computes its shifted / turbo sigma schedule
+            itself and passes it via `set_timesteps(sigmas=...)`.
     """
 
     model_cpu_offload_seq = (
@@ -252,11 +244,10 @@ class AceStepPipeline(DiffusionPipeline):
     def _variant_defaults(self) -> dict:
         """Per-variant sampling defaults matching the original `inference.py`.
 
-        Turbo variants ship with guidance distilled into weights (CFG off by default).
-        Base / SFT variants use APG guidance through the learned
-        `AceStepConditionEncoder.null_condition_emb`. All variants default to an 8-step
-        schedule at `shift=1.0` per `acestep/inference.py:GenerationParams` — base / sft
-        users typically override `num_inference_steps` to 30–60 for higher quality.
+        Turbo variants ship with guidance distilled into weights (CFG off by default). Base / SFT variants use APG
+        guidance through the learned `AceStepConditionEncoder.null_condition_emb`. All variants default to an 8-step
+        schedule at `shift=1.0` per `acestep/inference.py:GenerationParams` — base / sft users typically override
+        `num_inference_steps` to 30–60 for higher quality.
         """
         if self.is_turbo:
             return {"num_inference_steps": 8, "shift": 1.0, "guidance_scale": 1.0}
@@ -603,9 +594,8 @@ class AceStepPipeline(DiffusionPipeline):
         """Public entry point for encoding a waveform into VAE latents in the layout
         the DiT expects (`(B, T, D)` or `(T, D)`).
 
-        The input audio can be 1D/2D/3D; stereo is required. Use this instead of
-        calling the VAE directly if you want the tiled encode + layout transpose
-        that the pipeline applies internally.
+        The input audio can be 1D/2D/3D; stereo is required. Use this instead of calling the VAE directly if you want
+        the tiled encode + layout transpose that the pipeline applies internally.
         """
         device = device if device is not None else self._execution_device
         dtype = dtype if dtype is not None else self.transformer.dtype
@@ -638,8 +628,8 @@ class AceStepPipeline(DiffusionPipeline):
         """
         Process reference audio into acoustic latents for the timbre encoder.
 
-        The reference audio is repeated/cropped to 30 seconds (3 segments of 10 seconds each from front, middle,
-        and back), encoded through the VAE, and then transposed for the timbre encoder.
+        The reference audio is repeated/cropped to 30 seconds (3 segments of 10 seconds each from front, middle, and
+        back), encoded through the VAE, and then transposed for the timbre encoder.
 
         Args:
             reference_audio (`torch.Tensor`): Reference audio tensor of shape `[channels, samples]` at 48kHz.
@@ -690,11 +680,9 @@ class AceStepPipeline(DiffusionPipeline):
         batch_size: int = 1,
     ) -> torch.Tensor:
         """Produce a `(batch, latent_length, C)` silence tensor by slicing / tiling the
-        learned `silence_latent` buffer. Matches the handler's `silence_latent_tiled`
-        (conditioning_target.py) which is used as the default `src_latents` when no
-        target audio is given and as the "repaint fill" inside the repaint window.
-        Passing zeros here puts the DiT's `context_latents` input out of distribution
-        (flat/drone audio)."""
+        learned `silence_latent` buffer. Matches the handler's `silence_latent_tiled` (conditioning_target.py) which is
+        used as the default `src_latents` when no target audio is given and as the "repaint fill" inside the repaint
+        window. Passing zeros here puts the DiT's `context_latents` input out of distribution (flat/drone audio)."""
         sl = getattr(self.condition_encoder, "silence_latent", None)
         if sl is None or sl.abs().sum() == 0:
             return torch.zeros(
@@ -991,12 +979,12 @@ class AceStepPipeline(DiffusionPipeline):
                 Source audio tensor of shape `[channels, samples]` at 48kHz for audio-to-audio tasks (repaint, lego,
                 cover, extract, complete). The audio is encoded through the VAE to produce source latents.
             reference_audio (`torch.Tensor`, *optional*):
-                Reference audio tensor of shape `[channels, samples]` at 48kHz for timbre conditioning. Used to
-                extract timbre features for style transfer.
+                Reference audio tensor of shape `[channels, samples]` at 48kHz for timbre conditioning. Used to extract
+                timbre features for style transfer.
             audio_codes (`str` or `List[str]`, *optional*):
-                Audio semantic code strings (e.g. `"<|audio_code_123|><|audio_code_456|>..."`). When provided,
-                the task is automatically switched to `"cover"` mode and the registered ACE-Step audio tokenizer /
-                detokenizer modules decode the 5 Hz codes into 25 Hz acoustic conditioning.
+                Audio semantic code strings (e.g. `"<|audio_code_123|><|audio_code_456|>..."`). When provided, the task
+                is automatically switched to `"cover"` mode and the registered ACE-Step audio tokenizer / detokenizer
+                modules decode the 5 Hz codes into 25 Hz acoustic conditioning.
             repainting_start (`float`, *optional*):
                 Start time in seconds for the repaint region (for `"repaint"` and `"lego"` tasks).
             repainting_end (`float`, *optional*):
