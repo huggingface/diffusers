@@ -894,9 +894,14 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         grid = torch.stack(grid, dim=0)  # [3, N_F, N_H, N_W], where e.g. N_F is the number of temporal patches
 
         # 2. Get the patch boundaries with respect to the latent video grid
-        patch_size = (self.patch_size_t, self.patch_size, self.patch_size)
-        patch_size_delta = torch.tensor(patch_size, dtype=grid.dtype, device=grid.device)
-        patch_ends = grid + patch_size_delta.view(3, 1, 1, 1)
+        patch_size_delta = torch.stack(
+            [
+                grid.new_ones(1) * self.patch_size_t,
+                grid.new_ones(1) * self.patch_size,
+                grid.new_ones(1) * self.patch_size,
+            ]
+        ).reshape(3, 1, 1, 1)
+        patch_ends = grid + patch_size_delta
 
         # Combine the start (grid) and end (patch_ends) coordinates along new trailing dimension
         latent_coords = torch.stack([grid, patch_ends], dim=-1)  # [3, N_F, N_H, N_W, 2]
@@ -905,7 +910,7 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         latent_coords = latent_coords.unsqueeze(0).repeat(batch_size, 1, 1, 1)
 
         # 3. Calculate the pixel space patch boundaries from the latent boundaries.
-        scale_tensor = torch.tensor(self.scale_factors, device=latent_coords.device)
+        scale_tensor = torch.stack([latent_coords.new_ones(1) * factor for factor in self.scale_factors])
         # Broadcast the VAE scale factors such that they are compatible with latent_coords's shape
         broadcast_shape = [1] * latent_coords.ndim
         broadcast_shape[1] = -1  # This is the (frame, height, width) dim
