@@ -374,7 +374,7 @@ From the above table, it is clear that Ulysses Anything Attention offers better 
 
 ### Ring Anything Attention
 
-The default Ring Attention requires the sequence length of hidden states to be evenly divisible across the ring degree. Ring Anything Attention is a variant of Ring Attention that supports arbitrary (non-evenly divisible) sequence lengths. It pads each rank's local KV to the global maximum sequence length, all-gathers the padded KV buffer, and slices back to each rank's true length before running attention.
+The default [Ring Attention](https://huggingface.co/papers/2310.01889) requires the sequence length of hidden states to be evenly divisible across the ring degree. [Ring Anything Attention](https://github.com/huggingface/diffusers/pull/13545#issuecomment-4302195582) is a variant of Ring Attention that supports arbitrary (non-evenly divisible) sequence lengths. It pads each rank's local KV to the global maximum sequence length, all-gathers the padded KV buffer, and slices back to each rank's true length before running attention.
 
 [`ContextParallelConfig`] supports Ring Anything Attention by specifying both `ring_degree` and `ring_anything`. Please note that Ring Anything Attention is not currently supported by Unified Attention. Pass the [`ContextParallelConfig`] with `ring_degree` set to bigger than 1 and `ring_anything=True` to [`~ModelMixin.enable_parallelism`].
 
@@ -382,7 +382,14 @@ The default Ring Attention requires the sequence length of hidden states to be e
 pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ring_degree=2, ring_anything=True))
 ```
 
-> [!TIP] To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in `init_process_group`. This will significantly reduce communication latency.
+> [!TIP]
+> To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in [`init_process_group`](https://docs.pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group).
+>
+> ```py
+> import torch.distributed as dist
+>
+> dist.init_process_group(backend="cpu:gloo,cuda:nccl")
+> ```
 
 > [!NOTE]
 > Backward is not implemented yet; this mode is currently inference-only.
@@ -404,6 +411,7 @@ We ran a benchmark for FLUX.1-dev with Ulysses, Ring, Unified Attention, Ulysses
 | ring_anything      |   335.57         |    2.98     |     33.75        | 1008x1008  |
 
 From the above table, Ring Anything Attention offers compatibility with arbitrary sequence lengths while maintaining performance comparable to the standard Ring Attention.
+For more details on the motivation and trade-offs for Ring Anything Attention, see [this comment](https://github.com/huggingface/diffusers/pull/13545#issuecomment-4304104462).
 
 ### parallel_config
 

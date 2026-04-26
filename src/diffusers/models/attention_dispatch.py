@@ -2121,10 +2121,10 @@ class TemplatedRingAnythingAttention(torch.autograd.Function):
             pad_len = s_max - t.shape[1]
             if pad_len == 0:
                 return t
-            pad_shape = list(t.shape)
-            pad_shape[1] = pad_len
-            return torch.cat([t, torch.zeros(pad_shape, dtype=t.dtype, device=t.device)], dim=1)
+            pad_shape = (t.shape[0], pad_len, *t.shape[2:])
+            return torch.cat([t, t.new_zeros(pad_shape)], dim=1)
 
+        # Pad each local KV to the maximum local sequence length so all ranks can all-gather same-sized buffers.
         key_padded = pad_to_s_max(key)
         value_padded = pad_to_s_max(value)
 
