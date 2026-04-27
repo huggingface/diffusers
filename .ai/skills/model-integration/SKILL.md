@@ -65,10 +65,6 @@ docs/source/en/api/
 - [ ] Run `make style` and `make quality`
 - [ ] Test parity with reference implementation (see `parity-testing` skill)
 
-### Pre-PR self-review
-
-Before opening the PR, walk the diff against [../../review-rules.md](../../review-rules.md) — concrete patterns we catch repeatedly in review. Fixing them before submission makes the PR mergeable faster.
-
 ### Model conventions, attention pattern, and implementation rules
 
 See [../../models.md](../../models.md) for the attention pattern, implementation rules, common conventions, dependencies, and gotchas. These apply to all model work.
