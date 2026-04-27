@@ -1331,13 +1331,6 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
         reference video (downsampled to the reference video's latent dimensions) and returned so callers can build
         a self-attention mask over the full video sequence.
 
-        NOTE: As of the IC-LoRA reference-token refactor, this method is a back-compat shim — the canonical encoding
-        helper is `_encode_reference_conditions` and reference tokens are folded into the main noisy sequence by
-        `prepare_latents`. This method exists for callers that want the standalone encoding output (e.g. for
-        downstream parity instrumentation). The `reference_denoise_factors` it returns are derivable as
-        `1 - strength` per token; in the integrated path the equivalent information lives in
-        `conditioning_mask` produced by `prepare_latents`.
-
         Args:
             reference_conditions (`list[LTX2ReferenceCondition]`):
                 The reference video conditions.

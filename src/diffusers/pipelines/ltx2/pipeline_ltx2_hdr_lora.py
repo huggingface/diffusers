@@ -940,13 +940,6 @@ class LTX2HDRLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoader
         resize at the reference resolution), VAE-encoded, packed into tokens, and paired with positional coordinates
         computed at the reference latent dimensions and scaled by `reference_downscale_factor`.
 
-        NOTE: As of the HDR LoRA reference-token refactor, this method is a back-compat shim — the canonical
-        encoding helper is `_encode_reference_conditions` and reference tokens are folded into the main noisy
-        sequence by `prepare_latents`. This method exists for callers that want the standalone encoding output
-        (e.g. for downstream parity instrumentation). The `reference_denoise_factors` it returns are derivable
-        as `1 - strength` per token; in the integrated path the equivalent information lives in
-        `conditioning_mask` produced by `prepare_latents`.
-
         Returns a 3-tuple `(reference_latents, reference_coords, reference_denoise_factors)` with the same shapes as
         [`LTX2ICLoraPipeline.prepare_reference_latents`].
         """

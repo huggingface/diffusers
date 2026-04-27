@@ -193,14 +193,8 @@ def encode_video(
     container.close()
 
 
-# ---------------------------------------------------------------------------
-# HDR export helpers (used with LTX2HDRLoraPipeline).
-#
-# These mirror the reference CLI's `save_exr_tensor`, `_linear_to_srgb`, and
-# `encode_exr_sequence_to_mp4` in `ltx_pipelines.utils.media_io`.
-# ---------------------------------------------------------------------------
-
-
+# Adapted from ltx_pipelines.utils.media_io.save_exr_tensor
+# https://github.com/Lightricks/LTX-2/blob/41d924371612b692c0fd1e4d9d94c3dfb3c02cb3/packages/ltx-pipelines/src/ltx_pipelines/utils/media_io.py#L609
 def save_exr_tensor(
     tensor: torch.Tensor | np.ndarray,
     file_path: str | Path,
@@ -275,6 +269,8 @@ def simple_tone_map(x: np.ndarray) -> np.ndarray:
     return np.clip(x, 0.0, 1.0)
 
 
+# Adapted from ltx_pipelines.utils.medio_io._linear_to_srgb
+# https://github.com/Lightricks/LTX-2/blob/41d924371612b692c0fd1e4d9d94c3dfb3c02cb3/packages/ltx-pipelines/src/ltx_pipelines/utils/media_io.py#L644
 def linear_to_srgb(x: np.ndarray) -> np.ndarray:
     r"""
     Apply the sRGB (Rec.709) transfer function (OETF; IEC 61966-2-1) to a linear light image. Input values must be in
@@ -283,6 +279,8 @@ def linear_to_srgb(x: np.ndarray) -> np.ndarray:
     return np.where(x <= 0.0031308, x * 12.92, 1.055 * np.power(x, 1.0 / 2.4) - 0.055)
 
 
+# Adapted from ltx_pipelines.utils.medio_io.encode_exr_sequence_to_mp4
+# https://github.com/Lightricks/LTX-2/blob/41d924371612b692c0fd1e4d9d94c3dfb3c02cb3/packages/ltx-pipelines/src/ltx_pipelines/utils/media_io.py#L650
 def encode_exr_sequence_to_mp4(
     exr_dir: str | Path,
     output_mp4: str | Path,
