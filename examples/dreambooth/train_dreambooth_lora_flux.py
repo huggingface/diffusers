@@ -210,12 +210,13 @@ def log_validation(
             pipeline_args["prompt"], prompt_2=pipeline_args["prompt"]
         )
     images = []
-    for _ in range(args.num_validation_images):
-        with autocast_ctx:
-            image = pipeline(
-                prompt_embeds=prompt_embeds, pooled_prompt_embeds=pooled_prompt_embeds, generator=generator
-            ).images[0]
-            images.append(image)
+    with torch.no_grad():
+        for _ in range(args.num_validation_images):
+            with autocast_ctx:
+                image = pipeline(
+                    prompt_embeds=prompt_embeds, pooled_prompt_embeds=pooled_prompt_embeds, generator=generator
+                ).images[0]
+                images.append(image)
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
