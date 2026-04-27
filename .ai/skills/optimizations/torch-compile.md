@@ -1,72 +1,27 @@
 # torch.compile
 
-## Overview
+## Documentation
 
-`torch.compile` traces a model's forward pass and compiles it to optimized machine code (via Triton or other backends). For diffusers, it typically speeds up the denoising loop by 20-50% after a warmup period.
+Read the full guide for usage examples, `compile_repeated_blocks()`, modes, and benchmarks:
 
-## Full model compilation
+- **Local:** `docs/source/en/optimization/fp16.md` (search for "torch.compile")
+- **Online:** https://huggingface.co/docs/diffusers/main/en/optimization/fp16#torchcompile
 
-Compile individual components, not the whole pipeline:
+For combining torch.compile with quantization and offloading:
 
-```python
-import torch
-from diffusers import DiffusionPipeline
+- **Local:** `docs/source/en/optimization/speed-memory-optims.md`
+- **Online:** https://huggingface.co/docs/diffusers/main/en/optimization/speed-memory-optims
 
-pipe = DiffusionPipeline.from_pretrained("model_id", torch_dtype=torch.bfloat16).to("cuda")
-
-pipe.transformer = torch.compile(pipe.transformer, mode="reduce-overhead", fullgraph=True)
-# Optionally compile the VAE decoder too
-pipe.vae.decode = torch.compile(pipe.vae.decode, mode="reduce-overhead", fullgraph=True)
-```
-
-The first 1-3 inference calls are slow (compilation/warmup). Subsequent calls are fast. Always do a warmup run before benchmarking.
-
-## Regional compilation (preferred)
-
-Regional compilation compiles only the frequently repeated sub-modules (transformer blocks) instead of the whole model. It provides the same runtime speedup but with ~8-10x faster compile time and better compatibility with offloading.
-
-Diffusers models declare their repeated blocks via the `_repeated_blocks` class attribute (a list of class name strings). Most modern transformers define this:
-
-```python
-# FluxTransformer defines:
-_repeated_blocks = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
-```
-
-Use `compile_repeated_blocks()` to compile them:
-
-```python
-pipe = DiffusionPipeline.from_pretrained("model_id", torch_dtype=torch.bfloat16).to("cuda")
-pipe.transformer.compile_repeated_blocks(fullgraph=True)
-```
-
-**Always guard before calling** — raises `ValueError` if `_repeated_blocks` is empty or the named classes aren't found. Use this pattern universally, whether or not you're using offloading:
-
-```python
-# Works with or without enable_model_cpu_offload() / enable_group_offload()
-if getattr(pipe.transformer, "_repeated_blocks", None):
-    pipe.transformer.compile_repeated_blocks(fullgraph=True)
-else:
-    pipe.transformer = torch.compile(pipe.transformer, mode="reduce-overhead", fullgraph=True)
-```
-
-`torch.compile` is compatible with diffusers' offloading methods — the offloading hooks use `@torch.compiler.disable()` on device-transfer operations so they run natively outside the compiled graph. Regional compilation is preferred when combining with offloading because it avoids compiling the parts that interact with the hooks.
-
-Models with `_repeated_blocks` defined include: Flux, Flux2, HunyuanVideo, LTX2Video, Wan, CogVideo, SD3, UNet2DConditionModel, and most other modern architectures.
-
-## Compile modes
+## Compile modes quick reference
 
 | Mode | Speed gain | Compile time | Notes |
 |---|---|---|---|
 | `"default"` | Moderate | Fast | Safe starting point |
-| `"reduce-overhead"` | Good | Moderate | Reduces Python overhead via CUDA graphs |
+| `"reduce-overhead"` | Good | Moderate | CUDA graphs to reduce Python overhead |
 | `"max-autotune"` | Best | Very slow | Tries many kernel configs; best for repeated inference |
 
-## `fullgraph=True`
+## Gotchas
 
-Requires the entire forward pass to be compilable as a single graph. Most diffusers transformers support this. If you get a `torch._dynamo` graph break error, remove `fullgraph=True` to allow partial compilation.
-
-## Limitations
-
-- **Dynamic shapes**: Changing resolution between calls triggers recompilation. Use `torch.compile(..., dynamic=True)` for variable resolutions, at some speed cost.
-- **First call is slow**: Budget 1-3 minutes for initial compilation depending on model size.
-- **Windows**: `reduce-overhead` and `max-autotune` modes may have issues. Use `"default"` if you hit errors.
+- **Windows:** `reduce-overhead` and `max-autotune` may fail. Use `"default"` mode.
+- **`torch._dynamo.config.capture_dynamic_output_shape_ops = True`** is required when compiling bitsandbytes-quantized models, otherwise it errors on dynamic output shapes.
+- **`torch._dynamo.config.cache_size_limit = 1000`** is needed when combining compile with offloading to avoid excessive recompilation warnings.

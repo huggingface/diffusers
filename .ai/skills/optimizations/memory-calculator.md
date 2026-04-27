@@ -2,69 +2,46 @@
 
 Use this guide to measure VRAM and RAM requirements for each optimization strategy, then recommend the best fit for the user's hardware.
 
-## Step 1: Measure model sizes
+## Step 1: Get model sizes with hf-mem
 
-**Do NOT guess sizes from parameter counts or model cards.** Pipelines often contain components that are not obvious from the model name (e.g., a pipeline marketed as having a "28B transformer" may also include a 24 GB text encoder, 6 GB connectors module, etc.). Always measure by running this snippet after loading the pipeline:
+Use [hf-mem](https://github.com/alvarobartt/hf-mem) to get per-component sizes from the Hub without loading the model:
 
-```python
-import torch
-from diffusers import DiffusionPipeline  # or the specific pipeline class
-
-pipe = DiffusionPipeline.from_pretrained("model_id", torch_dtype=torch.bfloat16)
-
-for name, component in pipe.components.items():
-    if hasattr(component, 'parameters'):
-        size_gb = sum(p.numel() * p.element_size() for p in component.parameters()) / 1e9
-        print(f"{name}: {size_gb:.2f} GB")
+```bash
+uvx hf-mem --model-id <model-id>
 ```
 
-For the transformer, also measure block-level and leaf-level sizes:
+> **Windows note:** the default terminal encoding (cp1252) crashes on the output's box-drawing characters. Prefix with `PYTHONUTF8=1`:
+> ```bash
+> PYTHONUTF8=1 uvx hf-mem --model-id <model-id>
+> ```
 
-```python
-# S_block: size of one transformer block
-transformer = pipe.transformer
-block_attr = None
-for attr in ["transformer_blocks", "blocks", "layers"]:
-    if hasattr(transformer, attr):
-        block_attr = attr
-        break
-if block_attr:
-    blocks = getattr(transformer, block_attr)
-    block_size = sum(p.numel() * p.element_size() for p in blocks[0].parameters()) / 1e9
-    print(f"S_block: {block_size:.2f} GB ({len(blocks)} blocks)")
+The output breaks down each pipeline component (transformer, text_encoder, vae, etc.) with param counts and sizes per dtype. Do not rely on the model name or card — pipelines often contain components that are not obvious (e.g. a "28B transformer" model may also carry a 24 GB text encoder and a 6 GB connectors module).
 
-# S_leaf: largest leaf module
-max_leaf = max(
-    (sum(p.numel() * p.element_size() for p in m.parameters(recurse=False))
-     for m in transformer.modules() if list(m.parameters(recurse=False))),
-    default=0
-) / 1e9
-print(f"S_leaf: {max_leaf:.4f} GB")
-```
+### Reading the output: checkpoint dtype vs. loaded dtype
 
-To measure the effect of layerwise casting on a component, apply it and re-measure:
+`hf-mem` reports sizes at the **checkpoint's native dtype**. When loading with `torch_dtype=torch.bfloat16` (the standard), F32 components are halved. To get the actual loaded size:
 
-```python
-pipe.transformer.enable_layerwise_casting(
-    storage_dtype=torch.float8_e4m3fn,
-    compute_dtype=torch.bfloat16,
-)
-size_after = sum(p.numel() * p.element_size() for p in pipe.transformer.parameters()) / 1e9
-print(f"Transformer after layerwise casting: {size_after:.2f} GB")
-```
+- If a component shows **BF16** in the output → use as-is
+- If a component shows **F32** in the output → divide by 2 for BF16 loaded size
+- Quick formula: `total_params * 2 bytes` gives the full-BF16 pipeline size regardless of checkpoint dtype
 
-From the measurements, record:
-- `S_total` = sum of all component sizes
-- `S_max` = size of the largest single component
-- `S_block` = size of one transformer block
-- `S_leaf` = size of the largest leaf module
-- `S_total_lc` = S_total after applying layerwise casting to castable components (measured, not estimated — norm/embed layers are skipped so it's not exactly half)
-- `S_max_lc` = size of the largest component after layerwise casting (measured)
-- `A` = activation memory during forward pass (cannot be measured ahead of time — estimate conservatively):
-  - **Video models**: `A` scales with resolution and number of frames. A 5-second 960x544 video at 24fps can use ~7-8 GB. Higher resolution or more seconds = more activation memory.
-  - **Image models**: `A` scales with image resolution. A 1024x1024 image might use 2-4 GB, but 2048x2048 could use 8-16 GB.
-  - **Edit/inpainting models**: `A` includes the reference image(s) in addition to the generation activations, so budget extra.
-  - When in doubt, estimate conservatively: `A ≈ 5-8 GB` for typical video workloads, `A ≈ 2-4 GB` for typical image workloads. For high-resolution or long video, increase accordingly.
+Example (LTX-2): `hf-mem` reports 88.38 GiB total, but the text encoder is mostly F32 (45.4 GiB for 12.19B params). Loaded at BF16, the actual pipeline size is ~65 GiB.
+
+### Deriving the values needed for strategy calculations
+
+From the `hf-mem` output, record:
+
+- **`S_total`** — sum of all component sizes at loaded dtype (use `total_params * 2 bytes` if loading at BF16)
+- **`S_max`** — size of the largest single component at loaded dtype
+- **`S_block`** — estimate as `S_transformer / num_blocks`; check the model config or card for `num_hidden_layers` / `num_transformer_layers`
+- **`S_leaf`** — for most modern transformers this is very small (<0.05 GB); estimate as `S_block / 8` when needed for leaf_level offloading calculations
+- **`S_total_lc`** — estimate for layerwise casting (fp8 storage, ~45% of BF16 size due to norm/embed layers being skipped): `S_total_lc ≈ S_total * 0.45`
+- **`S_max_lc`** — same estimate applied to the largest component: `S_max_lc ≈ S_max * 0.45`
+- **`A`** — activation memory (cannot be measured ahead of time — estimate conservatively):
+  - **Video models**: scales with resolution × frames. A 5-second 960×544 video at 24fps uses ~7-8 GB. Higher resolution or longer duration = more.
+  - **Image models**: scales with resolution. ~2-4 GB at 1024×1024, ~8-16 GB at 2048×2048.
+  - **Edit/inpainting models**: budget extra for reference image(s) in activations.
+  - When in doubt: `A ≈ 5-8 GB` for video, `A ≈ 2-4 GB` for images.
 
 ## Step 2: Compute VRAM and RAM per strategy
 
@@ -147,7 +124,7 @@ Group offloading `leaf_level + use_stream=True` is strictly better. Prefer that.
 
 ### Layerwise casting (fp8 storage)
 
-Reduces weight memory by casting to fp8. Norm and embedding layers are automatically skipped, so the reduction is less than 50% — always measure with the snippet above.
+Reduces weight memory by casting to fp8. Norm and embedding layers are automatically skipped, so the reduction is less than 50% — use `S_component * 0.45` as the estimate.
 
 **`pipe.to()` caveat:** `pipe.to(device)` internally calls `module.to(device, dtype)` where dtype is `None` when not explicitly passed. This preserves fp8 weights. However, if the user passes dtype explicitly (e.g., `pipe.to("cuda", torch.bfloat16)` or the pipeline has internal dtype overrides), the fp8 storage will be overridden back to bf16. When in doubt, combine with `enable_model_cpu_offload()` which safely moves one component at a time without dtype overrides.
 
@@ -155,7 +132,7 @@ Reduces weight memory by casting to fp8. Norm and embedding layers are automatic
 
 | | Estimate |
 |---|---|
-| **VRAM** | `S_total_lc + A` (measured — use the layerwise casting measurement snippet) |
+| **VRAM** | `S_total_lc + A` (use `S_total * 0.45` estimate) |
 | **RAM** | Minimal |
 | **Speed** | Near-native — small cast overhead per layer |
 | **Quality** | Slight degradation (fp8 weights, norm layers kept full precision) |
@@ -225,7 +202,7 @@ Given `VRAM_available` and `RAM_available`, filter strategies by what fits, then
 ### Algorithm
 
 ```
-1. Measure S_total, S_max, S_block, S_leaf, S_total_lc, S_max_lc, A for the pipeline
+1. Run hf-mem to get per-component sizes; derive S_total, S_max, S_block, S_leaf, S_total_lc, S_max_lc, A
 2. For each strategy (offloading, casting, AND quantization), compute estimated VRAM and RAM
 3. Filter out strategies where VRAM > VRAM_available or RAM > RAM_available
 4. Present ALL viable strategies to the user grouped by approach (offloading/casting vs quantization)

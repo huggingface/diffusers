@@ -32,7 +32,8 @@ Help users apply and debug optimizations for diffusers pipelines. There are five
 2. **Memory reduction** — techniques to reduce peak GPU memory: model CPU offloading, group offloading, layerwise casting, VAE slicing/tiling, and attention slicing.
 3. **Quantization** — reducing model precision with bitsandbytes, torchao, or GGUF to fit larger models on smaller GPUs.
 4. **torch.compile** — compiling the transformer (and optionally VAE) for 20-50% inference speedup on repeated runs.
-5. **Combining techniques** — layerwise casting + group offloading, quantization + offloading, etc.
+5. **Caching** — reusing intermediate attention/feedforward outputs across denoising timesteps (PAB, FasterCache, TaylorSeer, MagCache, FirstBlockCache) for significant speed gains, especially on video models.
+6. **Combining techniques** — layerwise casting + group offloading, quantization + offloading + compile + caching, etc.
 
 ## Workflow: When a user hits OOM or asks to fit a model on their GPU
 
@@ -101,6 +102,25 @@ Read these for correct API usage and detailed technique descriptions:
 - [quantization.md](quantization.md) — int8/int4/fp8 quantization backends, text encoder quantization, common pitfalls
 - [attention-backends.md](attention-backends.md) — Attention backend selection for speed
 - [torch-compile.md](torch-compile.md) — torch.compile for inference speedup
+- [cache.md](cache.md) — Caching methods (PAB, FasterCache, TaylorSeer, MagCache, FirstBlockCache) for speed gains without retraining
+
+### Resolving documentation links
+
+Each guide lists a **local path** and an **online URL** for the relevant official docs.
+
+- **If working inside the diffusers repo** (e.g. contributing code, running from the cloned repo): read the local file — it reflects unreleased changes. Check by running `Read docs/source/en/optimization/memory.md`. If it opens, use local paths throughout.
+- **Otherwise**: fetch the online URL listed in each guide.
+
+| Topic | Local path | Online URL |
+|---|---|---|
+| Attention backends | `docs/source/en/optimization/attention_backends.md` | https://huggingface.co/docs/diffusers/main/en/optimization/attention_backends |
+| Memory / offloading | `docs/source/en/optimization/memory.md` | https://huggingface.co/docs/diffusers/main/en/optimization/memory |
+| Quantization overview | `docs/source/en/quantization/overview.md` | https://huggingface.co/docs/diffusers/main/en/quantization/overview |
+| bitsandbytes | `docs/source/en/quantization/bitsandbytes.md` | https://huggingface.co/docs/diffusers/main/en/quantization/bitsandbytes |
+| torchao | `docs/source/en/quantization/torchao.md` | https://huggingface.co/docs/diffusers/main/en/quantization/torchao |
+| GGUF | `docs/source/en/quantization/gguf.md` | https://huggingface.co/docs/diffusers/main/en/quantization/gguf |
+| torch.compile + offloading | `docs/source/en/optimization/speed-memory-optims.md` | https://huggingface.co/docs/diffusers/main/en/optimization/speed-memory-optims |
+| Caching | `docs/source/en/optimization/cache.md` | https://huggingface.co/docs/diffusers/main/en/optimization/cache |
 
 ## Important compatibility rules
 
