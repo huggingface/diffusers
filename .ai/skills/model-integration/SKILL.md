@@ -56,7 +56,7 @@ docs/source/en/api/
 ### Integration checklist
 
 - [ ] Implement transformer model with `from_pretrained` support
-- [ ] Implement or reuse scheduler (before writing a new scheduler / guider, grep `src/diffusers/schedulers/` and `src/diffusers/guiders/` for a close match and extend it with a kwarg instead)
+- [ ] Implement or reuse scheduler
 - [ ] Implement pipeline(s) with `__call__` method
 - [ ] Add LoRA support if applicable
 - [ ] Register all classes in `__init__.py` files (lazy imports)
