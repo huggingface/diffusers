@@ -75,32 +75,37 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import LTX2ICLoraPipeline
         >>> from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
-        >>> from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
         >>> from diffusers.pipelines.ltx2.export_utils import encode_video
+        >>> from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
         >>> from diffusers.utils import load_video
 
         >>> pipe = LTX2ICLoraPipeline.from_pretrained(
-        ...     "rootonchair/LTX-2-19b-distilled", torch_dtype=torch.bfloat16
+        ...     "dg845/LTX-2.3-Diffusers", torch_dtype=torch.bfloat16
         ... )
         >>> pipe.enable_sequential_cpu_offload(device="cuda")
-        >>> pipe.load_lora_weights("path/to/ic_lora.safetensors", adapter_name="ic_lora")
+        >>> pipe.load_lora_weights(
+        >>>     "Lightricks/LTX-2-19b-LoRA-Camera-Control-Dolly-In",
+        >>>     adapter_name="ic_lora",
+        >>>     weight_name="ltx-2-19b-lora-camera-control-dolly-in.safetensors",
+        >>> )
         >>> pipe.set_adapters("ic_lora", 1.0)
 
-        >>> reference_video = load_video("reference.mp4")
-        >>> ref_cond = LTX2ReferenceCondition(frames=reference_video, strength=1.0)
+        >>> # If the IC LoRA uses reference conditions, you can specify them as follows:
+        >>> # reference_video = load_video("reference.mp4")
+        >>> # ref_cond = LTX2ReferenceCondition(frames=reference_video, strength=1.0)
 
         >>> prompt = "A flowing river in a forest"
         >>> frame_rate = 24.0
         >>> video, audio = pipe(
         ...     prompt=prompt,
-        ...     reference_conditions=[ref_cond],
+        ...     negative_prompt=DEFAULT_NEGATIVE_PROMPT,
+        ...     # reference_conditions=[ref_cond],
         ...     width=768,
         ...     height=512,
         ...     num_frames=121,
         ...     frame_rate=frame_rate,
-        ...     num_inference_steps=8,
-        ...     sigmas=DISTILLED_SIGMA_VALUES,
-        ...     guidance_scale=1.0,
+        ...     num_inference_steps=30,
+        ...     guidance_scale=3.0,
         ...     output_type="np",
         ...     return_dict=False,
         ... )
@@ -1094,6 +1099,8 @@ class LTX2ICLoraPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderM
             latents = torch.cat([latents, torch.cat(kf_tokens_list, dim=1)], dim=1)
             conditioning_mask = torch.cat([conditioning_mask, torch.cat(kf_mask_list, dim=1)], dim=1)
             clean_latents = torch.cat([clean_latents, torch.cat(kf_clean_list, dim=1)], dim=1)
+        else:
+            keyframe_coords = None
 
         # IC-LoRA reference-video conditions: encode each reference video, then append it to the main packed
         # sequence with per-token `conditioning_mask = strength`. This is the same architectural pattern as
