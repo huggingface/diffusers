@@ -1521,17 +1521,16 @@ def _maybe_modify_attn_mask_npu(query: torch.Tensor, key: torch.Tensor, attn_mas
     if attn_mask is not None and torch.all(attn_mask != 0):
         attn_mask = None
 
-    # Reshape Attention Mask: [batch_size, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
+    # Reshape Attention Mask: [batch_size, seq_len_k] or [batch_size, 1, 1, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
     # https://www.hiascend.com/document/detail/zh/Pytorch/730/apiref/torchnpuCustomsapi/docs/context/torch_npu-npu_fusion_attention.md
-    if (
-        attn_mask is not None
-        and attn_mask.ndim == 2
-        and attn_mask.shape[0] == query.shape[0]
-        and attn_mask.shape[1] == key.shape[1]
-    ):
-        B, Sq, Skv = attn_mask.shape[0], query.shape[1], key.shape[1]
+    if attn_mask is not None:
+        if attn_mask.ndim == 2 and attn_mask.shape[0] == query.shape[0] and attn_mask.shape[1] == key.shape[1]:
+            batch_size, seq_len_q, seq_len_kv = attn_mask.shape[0], query.shape[1], key.shape[1]
+            attn_mask = attn_mask.unsqueeze(1).expand(batch_size, seq_len_q, seq_len_kv).unsqueeze(1).contiguous()
+        elif attn_mask.ndim == 4 and attn_mask.shape[1:3] == (1, 1):
+            attn_mask = attn_mask.expand(-1, -1, query.shape[1], -1).contiguous()
+
         attn_mask = ~attn_mask.to(torch.bool)
-        attn_mask = attn_mask.unsqueeze(1).expand(B, Sq, Skv).unsqueeze(1).contiguous()
 
     return attn_mask
 
@@ -1915,9 +1914,12 @@ class TemplatedRingAttention(torch.autograd.Function):
                 out = out.to(torch.float32)
                 lse = lse.to(torch.float32)
 
-            # Refer to:
-            # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
-            if is_torch_version("<", "2.9.0"):
+            # lse must be 4-D to broadcast with out (B, S, H, D).
+            # Some backends (e.g. cuDNN on torch>=2.9) already return a
+            # trailing-1 dim; others (e.g. flash-hub / native-flash) always
+            # return 3-D lse, so we add the dim here when needed.
+            # See: https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
+            if lse.ndim == 3:
                 lse = lse.unsqueeze(-1)
             if prev_out is not None:
                 out = prev_out - torch.nn.functional.sigmoid(lse - prev_lse) * (prev_out - out)
@@ -2204,10 +2206,11 @@ def _templated_unified_attention(
         scatter_idx,
     )
     if return_lse:
-        # lse is of shape (B, S, H_LOCAL, 1)
-        # Refer to:
-        # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
-        if is_torch_version("<", "2.9.0"):
+        # lse from TemplatedRingAttention is 3-D (B, S, H_LOCAL) after its
+        # final squeeze(-1). SeqAllToAllDim requires a 4-D input, so we add
+        # the trailing dim here and remove it after the collective.
+        # See: https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
+        if lse.ndim == 3:
             lse = lse.unsqueeze(-1)  # (B, S, H_LOCAL, 1)
         lse = SeqAllToAllDim.apply(ulysses_group, lse, gather_idx, scatter_idx)
         lse = lse.squeeze(-1)

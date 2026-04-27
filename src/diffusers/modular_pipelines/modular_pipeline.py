@@ -132,6 +132,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
+        ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
         ("ltx", _create_default_map_fn("LTXModularPipeline")),
     ]
 )
@@ -436,6 +437,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             pretrained_model_name_or_path,
             module_file=module_file,
             class_name=class_name,
+            trust_remote_code=trust_remote_code,
             **hub_kwargs,
         )
         expected_kwargs, optional_kwargs = block_cls._get_signature_keys(block_cls)
