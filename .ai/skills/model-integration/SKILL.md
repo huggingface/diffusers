@@ -56,7 +56,7 @@ docs/source/en/api/
 ### Integration checklist
 
 - [ ] Implement transformer model with `from_pretrained` support
-- [ ] Implement or reuse scheduler
+- [ ] Implement or reuse scheduler (before writing a new scheduler / guider, grep `src/diffusers/schedulers/` and `src/diffusers/guiders/` for a close match and extend it with a kwarg instead)
 - [ ] Implement pipeline(s) with `__call__` method
 - [ ] Add LoRA support if applicable
 - [ ] Register all classes in `__init__.py` files (lazy imports)
@@ -64,6 +64,10 @@ docs/source/en/api/
 - [ ] Write docs
 - [ ] Run `make style` and `make quality`
 - [ ] Test parity with reference implementation (see `parity-testing` skill)
+
+### Pre-PR self-review
+
+Before opening the PR, walk the diff against [../../review-rules.md](../../review-rules.md) — concrete patterns we catch repeatedly in review. Fixing them before submission makes the PR mergeable faster.
 
 ### Model conventions, attention pattern, and implementation rules
 
