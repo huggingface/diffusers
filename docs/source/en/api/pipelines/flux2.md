@@ -34,23 +34,14 @@ The [official implementation](https://github.com/black-forest-labs/flux2/blob/5a
 
 ## Reference conditioning vs. img2img
 
-The `image` argument on `Flux2Pipeline` and `Flux2KleinPipeline` is **reference conditioning**, not
-img2img. Reference images are encoded into additional attention tokens that flow through the
-transformer alongside the text prompt — there is no noisy latent initialization, and so no `strength`
-parameter to scale.
-
-This differs from `StableDiffusionImg2ImgPipeline`, `FluxImg2ImgPipeline`, and
-`FluxKontextInpaintPipeline`, which add noise to a latent encoding of the input image and then
-partially denoise it. If you port code from those pipelines and pass `strength=...` to a Flux.2
-pipeline, you will see:
+The `image` argument on [`Flux2Pipeline`] and [`Flux2KleinPipeline`] is a *reference conditioning*. Reference images are encoded as additional attention tokens that flow through the
+transformer alongside the text prompt. Flux.2 doesn't add noise to the input image unlike [`FluxImg2ImgPipeline`]. Passing `strength` to [`Flux2Pipeline`] raises:
 
 ```
 TypeError: Flux2Pipeline.__call__() got an unexpected keyword argument 'strength'
 ```
 
-Drop the `strength` kwarg and pass references via `image=` (a single image, or a list for multiple
-references). For Flux.2 inpainting (which does add noise to a latent and therefore does take a
-`strength` parameter), use `Flux2KleinInpaintPipeline` instead.
+Drop the `strength` argument and pass references with `image`. For inpainting, use [`Flux2KleinInpaintPipeline`] instead.
 
 ## Flux2Pipeline
 
